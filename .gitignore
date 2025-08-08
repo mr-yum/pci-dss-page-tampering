@@ -41,9 +41,3 @@ dist.tgz
 
 .node-builder
 tmp
-
-# jetbrains
-.idea/
-
-# vscode
-.vscode/
