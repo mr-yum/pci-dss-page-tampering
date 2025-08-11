@@ -1,0 +1,7 @@
+#!/bin/sh
+
+if [ -z "$CI" ]; then
+  npm run fix:formatting -- --only-staged
+  npm run fix:linting -- --only-staged
+  git add $(git diff --name-only --cached --diff-filter=AM)
+fi

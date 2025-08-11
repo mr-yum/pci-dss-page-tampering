@@ -1,0 +1,12 @@
+{
+  "private": true,
+  "dependencies": {
+    "@mr-yum/subdomain-pipeline": "^1.8.0"
+  },
+  "devDependencies": {
+    "@mr-yum/pipeline-cli": "^1.1.0"
+  },
+  "scripts": {
+    "pipeline": "pipeline-cli --cwd .."
+  }
+}

@@ -1,0 +1,6 @@
+{
+    "recommendations": [
+      // YAML/JSON schema support
+      "redhat.vscode-yaml"
+    ]
+  }

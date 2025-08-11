@@ -1,0 +1,8 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "local>mr-yum/renovate-config",
+    "local>mr-yum/renovate-config:auto-merge-devdeps",
+    "local>mr-yum/renovate-config:auto-merge-patch"
+  ]
+}

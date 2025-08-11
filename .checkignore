@@ -1,0 +1,11 @@
+# Used to ignore prettier checks
+
+node_modules
+dist
+.node-builder
+.docker-tools
+helmfile.d/*.yml
+
+# yalc
+.yalc
+yalc.lock
