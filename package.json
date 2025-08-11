@@ -16,13 +16,15 @@
     "@mr-yum/dotenv-tools": "^4.0.0",
     "@mr-yum/mryum-yaml": "^2.6.19",
     "@mr-yum/node-builder": "^4",
-    "husky": "^9"
+    "husky": "^9",
+    "tsx": "^4.20.3"
   },
   "prettier": "./.node-builder/prettier-config.mjs",
   "jest": {
     "preset": "./.node-builder/jest-preset.mjs"
   },
   "scripts": {
+    "start": "tsx src/main.ts",
     "secrets:pull": "dotenv-tools pull",
     "setup": "husky && node-builder setup",
     "clean": "node-builder clean",
