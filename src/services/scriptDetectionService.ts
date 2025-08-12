@@ -1,5 +1,6 @@
 import type { Browser } from 'puppeteer'
 import { PuppeteerInputAction } from 'src/types/puppeteer'
+import { getInlineScriptsFromPage } from 'src/utils/page'
 import { workflowDefinitionToPuppeteerWorkflow } from 'src/utils/workflow'
 import { legacyWorkflow } from 'src/workflows/1.0'
 
@@ -22,21 +23,18 @@ export class ScriptDetectionService implements IScriptDetectionService {
   }
 
   async getPageScripts(_url: string): Promise<ScriptInfo[]> {
-    const detectedScripts: ScriptInfo[] = []
     const workflow = legacyWorkflow
+
+    const externalScripts: ScriptInfo[] = []
+    const internalScripts: ScriptInfo[] = []
 
     try {
       // Bootstrap page
       const page = await this._browser.newPage()
-      page.on('response', (response) =>
-        scriptResponseHandler(response, detectedScripts),
-      )
+      page.on('response', (response) => scriptResponseHandler(response, externalScripts))
 
       // Get Puppeteer workflow
-      const puppeteerWorkflow = workflowDefinitionToPuppeteerWorkflow(
-        page,
-        workflow,
-      )
+      const puppeteerWorkflow = workflowDefinitionToPuppeteerWorkflow(page, workflow)
 
       // Navigate to workflow starting url
       await page.goto(puppeteerWorkflow.startingUrl, {
@@ -51,12 +49,15 @@ export class ScriptDetectionService implements IScriptDetectionService {
             break
           case 'input': {
             const action: PuppeteerInputAction = step.action
-            await step.locator
-              .click()
-              .then(() => page.type(step.querySelector, action.value))
+            await step.locator.click().then(() => page.type(step.querySelector, action.value))
             break
           }
         }
+
+        // Detect and add new inline scripts on each workflow action
+        const detectedInlineScripts = await getInlineScriptsFromPage(page)
+        const newInlineScripts = detectedInlineScripts.filter((detectedScript) => !internalScripts.some((existingScript) => existingScript.sha256 === detectedScript.sha256))
+        newInlineScripts.forEach((script) => internalScripts.push(script))
       }
     } catch (e) {
       console.error(`An error occurred during page processing: ${e}`)
@@ -64,6 +65,6 @@ export class ScriptDetectionService implements IScriptDetectionService {
       // await this._browser.close()
     }
 
-    return detectedScripts
+    return externalScripts
   }
 }

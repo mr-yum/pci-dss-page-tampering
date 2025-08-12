@@ -1,3 +1,9 @@
 const config = require('./.node-builder/eslint-config.cjs')
 
-module.exports = [...config]
+const overrides = {
+  rules: {
+    'max-len': ['warn', { code: 240 }],
+  },
+}
+
+module.exports = [...config, overrides]

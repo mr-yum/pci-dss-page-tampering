@@ -1,32 +1,15 @@
 import { Page } from 'puppeteer'
-import {
-  PuppeteerAction,
-  PuppeteerLocatorAction,
-  PuppeteerWorkflow,
-} from 'src/types/puppeteer'
-import {
-  ActionType,
-  WaitForDefinition,
-  WorkflowDefinition,
-  WorkflowStep,
-} from 'src/types/workflow'
+import { PuppeteerAction, PuppeteerLocatorAction, PuppeteerWorkflow } from 'src/types/puppeteer'
+import { ActionType, WaitForDefinition, WorkflowDefinition, WorkflowStep } from 'src/types/workflow'
 
-export function workflowDefinitionToPuppeteerWorkflow(
-  page: Page,
-  workflowDefinition: WorkflowDefinition,
-): PuppeteerWorkflow {
+export function workflowDefinitionToPuppeteerWorkflow(page: Page, workflowDefinition: WorkflowDefinition): PuppeteerWorkflow {
   return {
     startingUrl: workflowDefinition.startingPoint,
-    locatorActions: stepsToPuppeteerLocatorAction(
-      page,
-      workflowDefinition.steps,
-    ),
+    locatorActions: stepsToPuppeteerLocatorAction(page, workflowDefinition.steps),
   }
 }
 
-function waitForDefinitionToQuerySelector(
-  waitForDefinition: WaitForDefinition,
-): string {
+function waitForDefinitionToQuerySelector(waitForDefinition: WaitForDefinition): string {
   switch (waitForDefinition.type) {
     case 'div':
       return `div.${waitForDefinition.identifier}`
@@ -55,10 +38,7 @@ function actionToPuppeteerAction(action: ActionType): PuppeteerAction {
   }
 }
 
-function stepsToPuppeteerLocatorAction(
-  page: Page,
-  steps: WorkflowStep[],
-): PuppeteerLocatorAction[] {
+function stepsToPuppeteerLocatorAction(page: Page, steps: WorkflowStep[]): PuppeteerLocatorAction[] {
   return steps.map((step) => {
     const querySelector = waitForToQuerySelector(step.waitFor)
     return {

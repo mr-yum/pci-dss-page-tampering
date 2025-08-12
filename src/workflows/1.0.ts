@@ -1,8 +1,7 @@
 import { WorkflowDefinition } from 'src/types/workflow'
 
 export const legacyWorkflow: WorkflowDefinition = {
-  startingPoint:
-    'https://app-dev.meandu.com/qr?t=6696197365006d7f86a581ea_default&r=au',
+  startingPoint: 'https://app-dev.meandu.com/qr?t=6696197365006d7f86a581ea_default&r=au',
   steps: [
     {
       description: 'Press pay or split',
