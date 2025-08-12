@@ -1,5 +1,5 @@
+import { ScriptDetectionService } from './services/scriptDetectionService'
 import puppeteer from 'puppeteer'
-import { ScriptDetectionService } from './services/ScriptDetectionService'
 
 async function main() {
   // Use a command-line argument for the URL, with a default fallback

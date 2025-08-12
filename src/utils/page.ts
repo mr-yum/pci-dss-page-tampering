@@ -1,5 +1,6 @@
 import { Page } from 'puppeteer'
 import { ScriptInfo } from 'src/types/scriptInfo'
+
 import { createSha256Hash } from './hash'
 
 export async function getInlineScriptsFromPage(

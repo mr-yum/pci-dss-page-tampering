@@ -1,20 +1,20 @@
-export interface ActionType {
+export type ActionType = {
   type: 'click' | 'input'
   value?: string
 }
 
-export interface WaitForDefinition {
+export type WaitForDefinition = {
   type: 'div' | 'button'
   identifier: string
 }
 
-export interface WorkflowStep {
+export type WorkflowStep = {
   description: string
   waitFor: WaitForDefinition[]
   action: ActionType
 }
 
-export interface WorkflowDefinition {
+export type WorkflowDefinition = {
   startingPoint: string
   steps: WorkflowStep[]
 }

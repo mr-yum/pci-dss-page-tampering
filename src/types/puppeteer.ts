@@ -1,0 +1,23 @@
+import { Locator } from 'puppeteer'
+
+export type PuppeteerWorkflow = {
+  startingUrl: string
+  locatorActions: PuppeteerLocatorAction[]
+}
+
+export type PuppeteerLocatorAction = {
+  querySelector: string
+  locator: Locator<Element>
+  action: PuppeteerAction
+}
+
+export type PuppeteerAction = PuppeteerClickAction | PuppeteerInputAction
+
+export type PuppeteerClickAction = {
+  type: 'click'
+}
+
+export type PuppeteerInputAction = {
+  type: 'input'
+  value: string
+}
