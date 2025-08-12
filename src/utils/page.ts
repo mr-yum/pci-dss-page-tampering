@@ -16,7 +16,7 @@ export async function getInlineScriptsFromPage(page: Page): Promise<ScriptInfo[]
     if (content) {
       detectedScripts.push({
         type: 'Inline',
-        source: `Inline Script #${index + 1}`,
+        source: content,
         sha256: createSha256Hash(content),
       })
     }
