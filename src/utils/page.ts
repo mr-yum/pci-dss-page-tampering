@@ -1,5 +1,5 @@
 import { Page } from 'puppeteer'
-import { ScriptInfo } from 'src/types/scriptInfo'
+import { ScriptInfo } from 'src/types/script'
 
 import { createSha256Hash } from './hash'
 

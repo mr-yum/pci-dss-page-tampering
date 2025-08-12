@@ -1,18 +1,18 @@
 import type { Browser } from 'puppeteer'
 import { PuppeteerInputAction } from 'src/types/puppeteer'
+import { ScriptInfo, ScriptSummary } from 'src/types/script'
 import { getInlineScriptsFromPage } from 'src/utils/page'
 import { workflowDefinitionToPuppeteerWorkflow } from 'src/utils/workflow'
 import { legacyWorkflow } from 'src/workflows/1.0'
 
 import { scriptResponseHandler } from '../handlers/script'
-import type { ScriptInfo } from '../types/scriptInfo'
 
 interface ScriptDetectionArgs {
   browser: Browser
 }
 
 interface IScriptDetectionService {
-  getPageScripts(url: string): Promise<ScriptInfo[]>
+  getPageScripts(): Promise<ScriptSummary>
 }
 
 export class ScriptDetectionService implements IScriptDetectionService {
@@ -22,7 +22,7 @@ export class ScriptDetectionService implements IScriptDetectionService {
     this._browser = args.browser
   }
 
-  async getPageScripts(_url: string): Promise<ScriptInfo[]> {
+  async getPageScripts(): Promise<ScriptSummary> {
     const workflow = legacyWorkflow
 
     const externalScripts: ScriptInfo[] = []
@@ -65,6 +65,9 @@ export class ScriptDetectionService implements IScriptDetectionService {
       // await this._browser.close()
     }
 
-    return externalScripts
+    return {
+      external: externalScripts,
+      internal: internalScripts,
+    }
   }
 }
