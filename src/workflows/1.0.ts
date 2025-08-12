@@ -95,7 +95,7 @@ export const legacyWorkflow: WorkflowDefinition = {
       waitFor: [
         {
           type: 'button',
-          identifier: 'Pay: $217.57',
+          identifier: 'Pay: $',
         },
       ],
       action: {
