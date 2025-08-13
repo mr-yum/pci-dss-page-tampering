@@ -1,6 +1,6 @@
 import type { Page } from 'puppeteer'
 import type { PuppeteerAction, PuppeteerLocatorAction, PuppeteerWorkflow } from 'src/types/puppeteer'
-import type { ActionType, WaitForDefinition, WorkflowDefinition, WorkflowStep } from 'src/types/workflow'
+import type { WorkflowActionType, WorkflowDefinition, WorkflowStep, WorkflowWaitForDefinition } from 'src/types/workflow'
 
 export function workflowDefinitionToPuppeteerWorkflow(page: Page, workflowDefinition: WorkflowDefinition): PuppeteerWorkflow {
   return {
@@ -9,28 +9,31 @@ export function workflowDefinitionToPuppeteerWorkflow(page: Page, workflowDefini
   }
 }
 
-function waitForDefinitionToQuerySelector(waitForDefinition: WaitForDefinition): string {
+function waitForDefinitionToQuerySelector(waitForDefinition: WorkflowWaitForDefinition): string {
   switch (waitForDefinition.type) {
     case 'div':
       return `div.${waitForDefinition.identifier}`
     case 'button':
-      return `button ::-p-text(${waitForDefinition.identifier})`
+      return `button:enabled ::-p-text(${waitForDefinition.identifier})`
     case 'input':
       return `input[name="${waitForDefinition.identifier}"]`
     case 'href':
       return `a[href$="${waitForDefinition.identifier}"]`
+    case 'h2':
+      return `h2 ::-p-text(${waitForDefinition.identifier})`
   }
 }
 
-function waitForToQuerySelector(waitFor: WaitForDefinition[]): string {
+function waitForToQuerySelector(waitFor: WorkflowWaitForDefinition[]): string {
   return waitFor.map(waitForDefinitionToQuerySelector).join(' ')
 }
 
-function actionToPuppeteerAction(action: ActionType): PuppeteerAction {
+function actionToPuppeteerAction(action: WorkflowActionType): PuppeteerAction {
   switch (action.type) {
     case 'click': {
       return {
         type: 'click',
+        waitForNavigation: action.waitForNavigation ?? false,
       }
     }
     case 'input': {
@@ -47,6 +50,7 @@ function actionToPuppeteerAction(action: ActionType): PuppeteerAction {
     case 'navigate': {
       return {
         type: 'navigate',
+        waitForNavigation: action.waitForNavigation ?? false,
       }
     }
   }

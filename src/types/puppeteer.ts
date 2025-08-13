@@ -15,6 +15,7 @@ export type PuppeteerAction = PuppeteerClickAction | PuppeteerInputAction | Pupp
 
 export type PuppeteerClickAction = {
   type: 'click'
+  waitForNavigation: boolean
 }
 
 export type PuppeteerInputAction = {
@@ -28,4 +29,5 @@ export type PuppeteerEscapeAction = {
 
 export type PuppeteerNavigateAction = {
   type: 'navigate'
+  waitForNavigation: boolean
 }

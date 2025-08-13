@@ -1,5 +1,5 @@
 import type { Browser } from 'puppeteer'
-import type { PuppeteerInputAction } from 'src/types/puppeteer'
+import type { PuppeteerClickAction, PuppeteerInputAction, PuppeteerNavigateAction } from 'src/types/puppeteer'
 import type { ScriptInfo, ScriptSummary } from 'src/types/script'
 import { getInlineScriptsFromPage } from 'src/utils/page'
 import { workflowDefinitionToPuppeteerWorkflow } from 'src/utils/workflow'
@@ -49,8 +49,12 @@ export class ScriptDetectionService implements IScriptDetectionService {
         // Execute action
         switch (step.action.type) {
           case 'click':
+            const action: PuppeteerClickAction = step.action
             await step.locator.click()
-            await page.waitForNavigation()
+
+            if (action.waitForNavigation) {
+              await page.waitForNavigation()
+            }
             break
 
           case 'input': {
@@ -66,8 +70,13 @@ export class ScriptDetectionService implements IScriptDetectionService {
           }
 
           case 'navigate': {
+            const action: PuppeteerNavigateAction = step.action
             await page.$eval(step.querySelector, (element) => (element as HTMLElement).click())
-            await page.waitForNavigation()
+
+            if (action.waitForNavigation) {
+              await page.waitForNavigation()
+            }
+            break
           }
         }
 

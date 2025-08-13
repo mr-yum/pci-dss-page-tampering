@@ -1,8 +1,93 @@
 import type { WorkflowDefinition } from 'src/types/workflow'
 
 export const uatWorkflow: WorkflowDefinition = {
-  startingPoint: 'https://staging.meandu.app/demo-miss-jones/dine-in?sheet=table-number',
+  startingPoint: 'https://staging.meandu.app/demo-miss-jones',
   steps: [
+    {
+      description: 'Escape initial popup',
+      waitFor: [
+        {
+          type: 'h2',
+          identifier: 'How would you like to order?',
+        },
+      ],
+      action: {
+        type: 'escape',
+      },
+    },
+    {
+      description: 'Navigate to "On Tap" category',
+      waitFor: [
+        {
+          type: 'href',
+          identifier: '/demo-miss-jones/dine-in/on-tap',
+        },
+      ],
+      action: {
+        type: 'navigate',
+      },
+    },
+    {
+      description: 'Dismiss team message popup',
+      waitFor: [
+        {
+          type: 'button',
+          identifier: 'Thanks!',
+        },
+      ],
+      action: {
+        type: 'click',
+      },
+    },
+    {
+      description: 'Click on "Balter XPA"',
+      waitFor: [
+        {
+          type: 'href',
+          identifier: '/demo-miss-jones/dine-in/on-tap/beer/balter-xpa-2hqvfmi9g',
+        },
+      ],
+      action: {
+        type: 'navigate',
+      },
+    },
+    {
+      description: 'Add item to order',
+      waitFor: [
+        {
+          type: 'button',
+          identifier: 'Add to order',
+        },
+      ],
+      action: {
+        type: 'click',
+      },
+    },
+    {
+      description: 'Checkout order',
+      waitFor: [
+        {
+          type: 'href',
+          identifier: '/demo-miss-jones/checkout/dine-in/cart',
+        },
+      ],
+      action: {
+        type: 'navigate',
+        waitForNavigation: true,
+      },
+    },
+    {
+      description: 'Add table number to order',
+      waitFor: [
+        {
+          type: 'button',
+          identifier: 'Add',
+        },
+      ],
+      action: {
+        type: 'click',
+      },
+    },
     {
       description: 'Input table number',
       waitFor: [
@@ -29,23 +114,23 @@ export const uatWorkflow: WorkflowDefinition = {
       },
     },
     {
-      description: 'Navigate to "On Tap" category',
-      waitFor: [
-        {
-          type: 'href',
-          identifier: '/demo-miss-jones/dine-in/on-tap',
-        },
-      ],
-      action: {
-        type: 'navigate'
-      },
-    },
-    {
-      description: 'Dismiss team message popup',
+      description: 'Continue with checkout process',
       waitFor: [
         {
           type: 'button',
-          identifier: 'Thanks!',
+          identifier: 'Continue',
+        },
+      ],
+      action: {
+        type: 'click',
+      },
+    },
+    {
+      description: 'Add tip and continue with checkout process',
+      waitFor: [
+        {
+          type: 'button',
+          identifier: 'Add tip and pay',
         },
       ],
       action: {
