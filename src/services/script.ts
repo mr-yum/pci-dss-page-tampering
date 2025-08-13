@@ -1,9 +1,9 @@
 import type { Browser } from 'puppeteer'
-import { PuppeteerInputAction } from 'src/types/puppeteer'
-import { ScriptInfo, ScriptSummary } from 'src/types/script'
+import type { PuppeteerInputAction } from 'src/types/puppeteer'
+import type { ScriptInfo, ScriptSummary } from 'src/types/script'
 import { getInlineScriptsFromPage } from 'src/utils/page'
 import { workflowDefinitionToPuppeteerWorkflow } from 'src/utils/workflow'
-import { legacyWorkflow } from 'src/workflows/1.0'
+import { uatWorkflow } from 'src/workflows/2.0'
 
 import { scriptResponseHandler } from '../handlers/script'
 
@@ -23,7 +23,7 @@ export class ScriptDetectionService implements IScriptDetectionService {
   }
 
   async getPageScripts(): Promise<ScriptSummary> {
-    const workflow = legacyWorkflow
+    const workflow = uatWorkflow
 
     const externalScripts: ScriptInfo[] = []
     const internalScripts: ScriptInfo[] = []
@@ -38,19 +38,36 @@ export class ScriptDetectionService implements IScriptDetectionService {
 
       // Navigate to workflow starting url
       await page.goto(puppeteerWorkflow.startingUrl, {
-        waitUntil: 'networkidle0',
+        waitUntil: 'networkidle2',
       })
 
       // Execute workflow steps
       for (const step of puppeteerWorkflow.locatorActions) {
+        // Wait for element to be available
+        await step.locator.wait()
+
+        // Execute action
         switch (step.action.type) {
           case 'click':
             await step.locator.click()
+            await page.waitForNavigation()
             break
+
           case 'input': {
             const action: PuppeteerInputAction = step.action
-            await step.locator.click().then(() => page.type(step.querySelector, action.value))
+            await step.locator.click()
+            await page.type(step.querySelector, action.value)
             break
+          }
+
+          case 'escape': {
+            await page.keyboard.press('Escape')
+            break
+          }
+
+          case 'navigate': {
+            await page.$eval(step.querySelector, (element) => (element as HTMLElement).click())
+            await page.waitForNavigation()
           }
         }
 

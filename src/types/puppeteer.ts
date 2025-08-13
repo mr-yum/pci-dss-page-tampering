@@ -1,4 +1,4 @@
-import { Locator } from 'puppeteer'
+import type { Locator } from 'puppeteer'
 
 export type PuppeteerWorkflow = {
   startingUrl: string
@@ -11,7 +11,7 @@ export type PuppeteerLocatorAction = {
   action: PuppeteerAction
 }
 
-export type PuppeteerAction = PuppeteerClickAction | PuppeteerInputAction
+export type PuppeteerAction = PuppeteerClickAction | PuppeteerInputAction | PuppeteerEscapeAction | PuppeteerNavigateAction
 
 export type PuppeteerClickAction = {
   type: 'click'
@@ -20,4 +20,12 @@ export type PuppeteerClickAction = {
 export type PuppeteerInputAction = {
   type: 'input'
   value: string
+}
+
+export type PuppeteerEscapeAction = {
+  type: 'escape'
+}
+
+export type PuppeteerNavigateAction = {
+  type: 'navigate'
 }

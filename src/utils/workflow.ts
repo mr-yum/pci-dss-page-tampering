@@ -1,6 +1,6 @@
-import { Page } from 'puppeteer'
-import { PuppeteerAction, PuppeteerLocatorAction, PuppeteerWorkflow } from 'src/types/puppeteer'
-import { ActionType, WaitForDefinition, WorkflowDefinition, WorkflowStep } from 'src/types/workflow'
+import type { Page } from 'puppeteer'
+import type { PuppeteerAction, PuppeteerLocatorAction, PuppeteerWorkflow } from 'src/types/puppeteer'
+import type { ActionType, WaitForDefinition, WorkflowDefinition, WorkflowStep } from 'src/types/workflow'
 
 export function workflowDefinitionToPuppeteerWorkflow(page: Page, workflowDefinition: WorkflowDefinition): PuppeteerWorkflow {
   return {
@@ -15,6 +15,10 @@ function waitForDefinitionToQuerySelector(waitForDefinition: WaitForDefinition):
       return `div.${waitForDefinition.identifier}`
     case 'button':
       return `button ::-p-text(${waitForDefinition.identifier})`
+    case 'input':
+      return `input[name="${waitForDefinition.identifier}"]`
+    case 'href':
+      return `a[href$="${waitForDefinition.identifier}"]`
   }
 }
 
@@ -33,6 +37,16 @@ function actionToPuppeteerAction(action: ActionType): PuppeteerAction {
       return {
         type: 'input',
         value: action.value!,
+      }
+    }
+    case 'escape': {
+      return {
+        type: 'escape',
+      }
+    }
+    case 'navigate': {
+      return {
+        type: 'navigate',
       }
     }
   }

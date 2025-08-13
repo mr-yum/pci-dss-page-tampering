@@ -1,6 +1,6 @@
-import { WorkflowDefinition } from 'src/types/workflow'
+import type { WorkflowDefinition } from 'src/types/workflow'
 
-export const legacyWorkflow: WorkflowDefinition = {
+export const uatWorkflow: WorkflowDefinition = {
   startingPoint: 'https://app-dev.meandu.com/qr?t=6696197365006d7f86a581ea_default&r=au',
   steps: [
     {

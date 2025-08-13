@@ -1,10 +1,10 @@
 export type ActionType = {
-  type: 'click' | 'input'
+  type: 'click' | 'input' | 'escape' | 'navigate'
   value?: string
 }
 
 export type WaitForDefinition = {
-  type: 'div' | 'button'
+  type: 'div' | 'button' | 'input' | 'href'
   identifier: string
 }
 
