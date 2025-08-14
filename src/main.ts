@@ -6,10 +6,7 @@ import { uatWorkflow as uatWorkflow20 } from './workflows/2.0'
 
 async function main() {
   // Use a command-line argument for the URL, with a default fallback
-  const browser = await puppeteer.launch({
-    headless: true,
-    // executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-  })
+  const browser = await puppeteer.launch()
 
   const scriptDetectionService = new ScriptDetectionService({
     browser: browser,
@@ -20,7 +17,7 @@ async function main() {
   const detectedScripts = await Promise.all(tasksToExecute)
 
   await browser.close()
-  console.log(JSON.stringify(detectedScripts))
+  console.log(JSON.stringify(detectedScripts, null, 2))
 }
 
 main().catch(console.error)

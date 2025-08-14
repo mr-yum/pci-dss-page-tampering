@@ -114,6 +114,7 @@ export const uatWorkflow: WorkflowDefinition = {
       ],
       action: {
         type: 'click',
+        waitForNavigation: true,
       },
     },
     {
@@ -139,6 +140,7 @@ export const uatWorkflow: WorkflowDefinition = {
       ],
       action: {
         type: 'click',
+        waitForNavigation: true,
       },
     },
     {
