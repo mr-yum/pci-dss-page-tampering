@@ -137,5 +137,18 @@ export const uatWorkflow: WorkflowDefinition = {
         type: 'click',
       },
     },
+    {
+      description: 'Input phone number for verification',
+      waitFor: [
+        {
+          type: 'input',
+          identifier: 'mobile',
+        },
+      ],
+      action: {
+        type: 'input',
+        value: '0400000000',
+      },
+    }
   ],
 }
