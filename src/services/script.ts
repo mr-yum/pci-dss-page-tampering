@@ -3,16 +3,16 @@ import type { PuppeteerClickAction, PuppeteerInputAction, PuppeteerNavigateActio
 import type { ScriptInfo, ScriptSummary } from 'src/types/script'
 import { getInlineScriptsFromPage } from 'src/utils/page'
 import { workflowDefinitionToPuppeteerWorkflow } from 'src/utils/workflow'
-import { uatWorkflow } from 'src/workflows/2.0'
 
 import { scriptResponseHandler } from '../handlers/script'
+import type { WorkflowDefinition } from '../types/workflow'
 
 interface ScriptDetectionArgs {
   browser: Browser
 }
 
 interface IScriptDetectionService {
-  getPageScripts(): Promise<ScriptSummary>
+  getPageScripts(workflow: WorkflowDefinition): Promise<ScriptSummary>
 }
 
 export class ScriptDetectionService implements IScriptDetectionService {
@@ -22,15 +22,14 @@ export class ScriptDetectionService implements IScriptDetectionService {
     this._browser = args.browser
   }
 
-  async getPageScripts(): Promise<ScriptSummary> {
-    const workflow = uatWorkflow
-
+  async getPageScripts(workflow: WorkflowDefinition): Promise<ScriptSummary> {
     const externalScripts: ScriptInfo[] = []
     const internalScripts: ScriptInfo[] = []
 
+    const page = await this._browser.newPage()
+
     try {
       // Bootstrap page
-      const page = await this._browser.newPage()
       page.on('response', (response) => scriptResponseHandler(response, externalScripts))
 
       // Get Puppeteer workflow
@@ -42,7 +41,12 @@ export class ScriptDetectionService implements IScriptDetectionService {
       })
 
       // Execute workflow steps
-      for (const step of puppeteerWorkflow.locatorActions) {
+      for (const [index, step] of puppeteerWorkflow.locatorActions.entries()) {
+        const totalStepCount = puppeteerWorkflow.locatorActions.length
+        const currentStepIndex = index + 1
+
+        console.log(`[${puppeteerWorkflow.startingUrl}][${currentStepIndex}/${totalStepCount}]: ${step.description}`)
+
         // Wait for element to be available
         await step.locator.wait()
 
@@ -88,7 +92,7 @@ export class ScriptDetectionService implements IScriptDetectionService {
     } catch (e) {
       console.error(`An error occurred during page processing: ${e}`)
     } finally {
-      // await this._browser.close()
+      await page.close()
     }
 
     return {

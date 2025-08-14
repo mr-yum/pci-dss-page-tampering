@@ -6,6 +6,7 @@ export type PuppeteerWorkflow = {
 }
 
 export type PuppeteerLocatorAction = {
+  description: string
   querySelector: string
   locator: Locator<Element>
   action: PuppeteerAction

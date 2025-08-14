@@ -62,6 +62,7 @@ function stepsToPuppeteerLocatorAction(page: Page, steps: WorkflowStep[]): Puppe
   return steps.map((step) => {
     const querySelector = waitForToQuerySelector(step.waitFor)
     return {
+      description: step.description,
       querySelector: querySelector,
       locator: page.locator(querySelector),
       action: actionToPuppeteerAction(step.action),

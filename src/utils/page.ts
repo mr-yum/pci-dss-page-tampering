@@ -1,5 +1,5 @@
-import { Page } from 'puppeteer'
-import { ScriptInfo } from 'src/types/script'
+import type { Page } from 'puppeteer'
+import type { ScriptInfo } from 'src/types/script'
 
 import { createSha256Hash } from './hash'
 
@@ -11,7 +11,7 @@ export async function getInlineScriptsFromPage(page: Page): Promise<ScriptInfo[]
     return scriptElements.map((script) => script.innerHTML)
   })
 
-  inlineScripts.forEach((content, index) => {
+  inlineScripts.forEach((content) => {
     // Only process non-empty inline scripts
     if (content) {
       detectedScripts.push({
