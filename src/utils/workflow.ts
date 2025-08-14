@@ -21,6 +21,8 @@ function waitForDefinitionToQuerySelector(waitForDefinition: WorkflowWaitForDefi
       return `a[href$="${waitForDefinition.identifier}"]`
     case 'h2':
       return `h2 ::-p-text(${waitForDefinition.identifier})`
+    case 'h3':
+      return `h3 ::-p-text(${waitForDefinition.identifier})`
   }
 }
 

@@ -5,7 +5,7 @@ export type WorkflowActionType = {
 }
 
 export type WorkflowWaitForDefinition = {
-  type: 'div' | 'button' | 'input' | 'href' | 'h2'
+  type: 'div' | 'button' | 'input' | 'href' | 'h2' | 'h3'
   identifier: string
 }
 
