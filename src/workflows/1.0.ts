@@ -1,77 +1,95 @@
 import type { WorkflowDefinition } from 'src/types/workflow'
 
 export const uatWorkflow: WorkflowDefinition = {
-  startingPoint: 'https://app-dev.meandu.com/qr?t=6696197365006d7f86a581ea_default&r=au',
+  startingPoint: 'https://app-dev.meandu.com/qr?t=689e88f4d752b3d741db52b2_default&r=au',
   steps: [
     {
-      description: 'Press pay or split',
-      waitFor: [
-        {
-          type: 'button',
-          identifier: 'Pay or split',
-        },
-      ],
-      action: {
-        type: 'click',
-      },
-    },
-    {
-      description: 'Press pay balance',
-      waitFor: [
-        {
-          type: 'button',
-          identifier: 'Pay balance',
-        },
-      ],
-      action: {
-        type: 'click',
-      },
-    },
-    {
-      description: 'Fill out card number',
+      description: 'Press on "Pizza"',
       waitFor: [
         {
           type: 'div',
-          identifier: 'payment-method__add-card__field-number',
+          identifier: 'menu-card__fav',
+        },
+      ],
+      action: {
+        type: 'click',
+      },
+    },
+    {
+      description: 'Add item to cart',
+      waitFor: [
+        {
+          type: 'button',
+          identifier: 'Add',
+        },
+      ],
+      action: {
+        type: 'click',
+      },
+    },
+    {
+      description: 'View cart',
+      waitFor: [
+        {
+          type: 'div',
+          identifier: 'view-cart-button',
+        },
+        {
+          type: 'button',
+          identifier: 'View cart',
+        },
+      ],
+      action: {
+        type: 'click',
+      },
+    },
+    {
+      description: 'Go to checkout',
+      waitFor: [
+        {
+          type: 'button',
+          identifier: 'Go to checkout',
+        },
+      ],
+      action: {
+        type: 'click',
+      },
+    },
+    {
+      description: 'Continue with phone number',
+      waitFor: [
+        {
+          type: 'button',
+          identifier: 'Continue with phone number',
+        },
+      ],
+      action: {
+        type: 'click',
+      },
+    },
+    {
+      description: 'Input phone number',
+      waitFor: [
+        {
+          type: 'input',
+          identifier: 'phone',
         },
       ],
       action: {
         type: 'input',
-        value: '42424242424242424242',
+        value: '429700869',
       },
     },
     {
-      description: 'Fill out card expiry',
+      description: 'Continue with checkout process',
       waitFor: [
         {
           type: 'div',
-          identifier: 'payment-method__add-card__field-expiry',
+          identifier: 'verify-page__submit',
         },
-      ],
-      action: {
-        type: 'input',
-        value: '1242',
-      },
-    },
-    {
-      description: 'Fill out card CVV',
-      waitFor: [
         {
-          type: 'div',
-          identifier: 'payment-method__add-card__field-cvv',
-        },
-      ],
-      action: {
-        type: 'input',
-        value: '123',
-      },
-    },
-    {
-      description: 'Click select payment',
-      waitFor: [
-        {
-          type: 'div',
-          identifier: 'payment-methods__submit__container',
+          type: 'button',
+          identifier: 'Continue',
         },
       ],
       action: {
@@ -79,23 +97,60 @@ export const uatWorkflow: WorkflowDefinition = {
       },
     },
     {
-      description: 'Click continue to payment',
+      description: 'Enter verification code',
       waitFor: [
         {
-          type: 'div',
-          identifier: 'pay-only-review-payment__footer',
+          type: 'input',
+          identifier: 'phone-verification',
         },
       ],
       action: {
-        type: 'click',
+        type: 'input',
+        value: '1111',
       },
     },
     {
-      description: 'Click continue to payment',
+      description: 'Dismiss login prompt',
       waitFor: [
         {
           type: 'button',
-          identifier: 'Pay: $',
+          identifier: 'Not now',
+        },
+      ],
+      action: {
+        type: 'click',
+      },
+    },
+    {
+      description: 'Send order to kitchen',
+      waitFor: [
+        {
+          type: 'button',
+          identifier: 'Send order',
+        },
+      ],
+      action: {
+        type: 'click',
+      },
+    },
+    {
+      description: 'Dismiss order confirmation popup',
+      waitFor: [
+        {
+          type: 'button',
+          identifier: 'OK',
+        },
+      ],
+      action: {
+        type: 'click',
+      },
+    },
+    {
+      description: 'Dismiss pub+ popup',
+      waitFor: [
+        {
+          type: 'div',
+          identifier: 'button--back--close',
         },
       ],
       action: {

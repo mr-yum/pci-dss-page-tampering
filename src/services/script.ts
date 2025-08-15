@@ -1,5 +1,5 @@
-import type { Browser } from 'puppeteer'
-import type { PuppeteerClickAction, PuppeteerInputAction, PuppeteerNavigateAction } from 'src/types/puppeteer'
+import type { Browser, Page } from 'puppeteer'
+import type { PuppeteerClickAction, PuppeteerInputAction, PuppeteerLocatorAction, PuppeteerNavigateAction } from 'src/types/puppeteer'
 import type { ScriptInfo, ScriptSummary } from 'src/types/script'
 import { getInlineScriptsFromPage } from 'src/utils/page'
 import { workflowDefinitionToPuppeteerWorkflow } from 'src/utils/workflow'
@@ -54,7 +54,7 @@ export class ScriptDetectionService implements IScriptDetectionService {
         switch (step.action.type) {
           case 'click':
             const action: PuppeteerClickAction = step.action
-            await step.locator.click()
+            await this.evalClick(page, step)
 
             if (action.waitForNavigation) {
               await page.waitForNavigation()
@@ -63,7 +63,7 @@ export class ScriptDetectionService implements IScriptDetectionService {
 
           case 'input': {
             const action: PuppeteerInputAction = step.action
-            await step.locator.click()
+            await this.evalClick(page, step)
             await page.type(step.querySelector, action.value)
             break
           }
@@ -75,7 +75,7 @@ export class ScriptDetectionService implements IScriptDetectionService {
 
           case 'navigate': {
             const action: PuppeteerNavigateAction = step.action
-            await page.$eval(step.querySelector, (element) => (element as HTMLElement).click())
+            await this.evalClick(page, step)
 
             if (action.waitForNavigation) {
               await page.waitForNavigation()
@@ -99,5 +99,13 @@ export class ScriptDetectionService implements IScriptDetectionService {
       external: externalScripts,
       internal: internalScripts,
     }
+  }
+
+  /*
+   This results in a high success rate than using Locator.click() when element is visible via Locator.wait().
+   Only call this function if you are sure that the element is visible, otherwise it will error.
+   */
+  private async evalClick(page: Page, step: PuppeteerLocatorAction): Promise<void> {
+    await page.$eval(step.querySelector, (element) => (element as HTMLElement)?.click())
   }
 }

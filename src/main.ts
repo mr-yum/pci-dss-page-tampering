@@ -5,9 +5,7 @@ import { uatWorkflow as uatWorkflow10 } from './workflows/1.0'
 import { uatWorkflow as uatWorkflow20 } from './workflows/2.0'
 
 async function main() {
-  // Use a command-line argument for the URL, with a default fallback
   const browser = await puppeteer.launch()
-
   const scriptDetectionService = new ScriptDetectionService({
     browser: browser,
   })
