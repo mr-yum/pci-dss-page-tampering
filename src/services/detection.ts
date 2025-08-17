@@ -12,7 +12,7 @@ interface ScriptDetectionArgs {
 }
 
 interface IScriptDetectionService {
-  getPageScripts(workflow: WorkflowDefinition): Promise<ScriptSummary>
+  detectScripts(workflow: WorkflowDefinition): Promise<ScriptSummary>
 }
 
 export class ScriptDetectionService implements IScriptDetectionService {
@@ -22,7 +22,7 @@ export class ScriptDetectionService implements IScriptDetectionService {
     this._browser = args.browser
   }
 
-  async getPageScripts(workflow: WorkflowDefinition): Promise<ScriptSummary> {
+  async detectScripts(workflow: WorkflowDefinition): Promise<ScriptSummary> {
     const externalScripts: ScriptInfo[] = []
     const internalScripts: ScriptInfo[] = []
 
@@ -85,8 +85,7 @@ export class ScriptDetectionService implements IScriptDetectionService {
         }
 
         // Detect and add new inline scripts on each workflow action
-        const detectedInlineScripts = await getInlineScriptsFromPage(page)
-        const newInlineScripts = detectedInlineScripts.filter((detectedScript) => !internalScripts.some((existingScript) => existingScript.sha256 === detectedScript.sha256))
+        const newInlineScripts = await this.detectNewInlineScripts(page, internalScripts)
         newInlineScripts.forEach((script) => internalScripts.push(script))
       }
     } catch (e) {
@@ -107,5 +106,10 @@ export class ScriptDetectionService implements IScriptDetectionService {
    */
   private async evalClick(page: Page, step: PuppeteerLocatorAction): Promise<void> {
     await page.$eval(step.querySelector, (element) => (element as HTMLElement)?.click())
+  }
+
+  private async detectNewInlineScripts(page: Page, existingScripts: ScriptInfo[]): Promise<ScriptInfo[]> {
+    const detectedInlineScripts = await getInlineScriptsFromPage(page)
+    return detectedInlineScripts.filter((detectedScript) => !existingScripts.some((existingScript) => existingScript.sha256 === detectedScript.sha256))
   }
 }

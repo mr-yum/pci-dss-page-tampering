@@ -1,5 +1,5 @@
-import { HTTPResponse } from 'puppeteer'
-import { ScriptInfo } from 'src/types/script'
+import type { HTTPResponse } from 'puppeteer'
+import type { ScriptInfo } from 'src/types/script'
 import { createSha256Hash } from 'src/utils/hash'
 
 export async function scriptResponseHandler(response: HTTPResponse, detectedScripts: ScriptInfo[]): Promise<void> {
@@ -8,10 +8,12 @@ export async function scriptResponseHandler(response: HTTPResponse, detectedScri
       const scriptUrl = response.url()
       const scriptContent = await response.text()
 
-      if (!detectedScripts.some((scriptInfo) => scriptInfo.source === scriptUrl) && scriptContent) {
+      if (!detectedScripts.some((scriptInfo) => scriptInfo.source.type === 'external' && scriptInfo.source.url === scriptUrl) && scriptContent) {
         detectedScripts.push({
-          type: 'External',
-          source: scriptUrl,
+          source: {
+            type: 'external',
+            url: scriptUrl,
+          },
           sha256: createSha256Hash(scriptContent),
         })
       }

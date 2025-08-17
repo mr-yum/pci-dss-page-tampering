@@ -15,8 +15,10 @@ export async function getInlineScriptsFromPage(page: Page): Promise<ScriptInfo[]
     // Only process non-empty inline scripts
     if (content) {
       detectedScripts.push({
-        type: 'Inline',
-        source: content,
+        source: {
+          type: 'inline',
+          content: content,
+        },
         sha256: createSha256Hash(content),
       })
     }

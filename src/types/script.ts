@@ -1,6 +1,17 @@
+export type ExternalScriptSource = {
+  type: 'external'
+  url: string
+}
+
+export type InlineScriptSource = {
+  type: 'inline'
+  content: string
+}
+
+export type ScriptSource = ExternalScriptSource | InlineScriptSource
+
 export type ScriptInfo = {
-  type: 'Inline' | 'External'
-  source: string // URL for external scripts, or a placeholder for inline
+  source: ScriptSource
   sha256: string
 }
 
