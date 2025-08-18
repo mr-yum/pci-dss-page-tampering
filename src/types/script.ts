@@ -21,5 +21,5 @@ export type ScriptInfo = {
 export type ScriptDetectionSummary = {
   target: Target
   external: ScriptInfo[]
-  internal: ScriptInfo[]
+  inline: ScriptInfo[]
 }

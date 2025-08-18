@@ -98,7 +98,7 @@ export class ScriptDetectionService implements IScriptDetectionService {
     return {
       target: target,
       external: externalScripts,
-      internal: internalScripts,
+      inline: internalScripts,
     }
   }
 
