@@ -3,6 +3,8 @@ import puppeteer from 'puppeteer'
 import { ScriptDetectionService } from './services/detection'
 import { InMemoryScriptInventoryService } from './services/inventory'
 import { ScriptComparisonService } from './services/comparison'
+import type { ScriptDetectionSummary } from './types/script'
+import type { ComparisonResult } from './types/comparison'
 
 async function main() {
   const browser = await puppeteer.launch()
@@ -16,17 +18,24 @@ async function main() {
   const detectScriptsFromDetectionTarget = inventory.map((payload) => scriptDetectionService.detectScripts(payload.target.detection, payload.target.workflow))
   const detectScriptsFromInventoryTarget = inventory.map((payload) => scriptDetectionService.detectScripts(payload.target.inventory, payload.target.workflow))
 
-  // @ts-ignore
   const detectionTargetScripts = await Promise.all(detectScriptsFromDetectionTarget)
   const inventoryTargetScripts = await Promise.all(detectScriptsFromInventoryTarget)
 
-  const inventoryTargetScriptsToCompare = inventoryTargetScripts.map((scriptDetectionSummary) => {
-    const inventoryPayload = inventory.find((payload) => payload.target.inventory.url === scriptDetectionSummary.target.url)!
-    return scriptComparisonService.compare(inventoryPayload, scriptDetectionSummary)
-  })
+  const detectedScriptToCompare = (detectionSummary: ScriptDetectionSummary[]): Promise<ComparisonResult>[] => {
+    return detectionSummary.map((scriptDetectionSummary) => {
+      const inventoryPayload = inventory.find((payload) => payload.target.inventory.url === scriptDetectionSummary.target.url)!
+      return scriptComparisonService.compare(inventoryPayload, scriptDetectionSummary)
+    })
+  }
+
+  const detectionTargetScriptsToCompare = detectedScriptToCompare(detectionTargetScripts)
+  const inventoryTargetScriptsToCompare = detectedScriptToCompare(inventoryTargetScripts)
 
   // @ts-ignore
-  const comparisonResults = await Promise.all(inventoryTargetScriptsToCompare)
+  const detectionTargetScriptComparisonResult = await Promise.all(detectionTargetScriptsToCompare)
+  // @ts-ignore
+  const inventoryTargetScriptComparisonResult = await Promise.all(inventoryTargetScriptsToCompare)
+
   await browser.close()
 }
 
