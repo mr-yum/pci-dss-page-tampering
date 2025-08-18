@@ -19,7 +19,7 @@ export async function getInlineScriptsFromPage(page: Page): Promise<ScriptInfo[]
           type: 'inline',
           content: content,
         },
-        sha256: createSha256Hash(content),
+        hash: createSha256Hash(content),
       })
     }
   })

@@ -1,3 +1,5 @@
+import type { SHA256Hash } from './hash'
+
 export type ExternalScriptSource = {
   type: 'external'
   url: string
@@ -12,7 +14,7 @@ export type ScriptSource = ExternalScriptSource | InlineScriptSource
 
 export type ScriptInfo = {
   source: ScriptSource
-  sha256: string
+  hash: SHA256Hash
 }
 
 export type ScriptSummary = {

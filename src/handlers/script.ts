@@ -14,7 +14,7 @@ export async function scriptResponseHandler(response: HTTPResponse, detectedScri
             type: 'external',
             url: scriptUrl,
           },
-          sha256: createSha256Hash(scriptContent),
+          hash: createSha256Hash(scriptContent),
         })
       }
     } catch (error) {

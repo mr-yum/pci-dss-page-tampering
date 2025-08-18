@@ -110,6 +110,6 @@ export class ScriptDetectionService implements IScriptDetectionService {
 
   private async detectNewInlineScripts(page: Page, existingScripts: ScriptInfo[]): Promise<ScriptInfo[]> {
     const detectedInlineScripts = await getInlineScriptsFromPage(page)
-    return detectedInlineScripts.filter((detectedScript) => !existingScripts.some((existingScript) => existingScript.sha256 === detectedScript.sha256))
+    return detectedInlineScripts.filter((detectedScript) => !existingScripts.some((existingScript) => existingScript.hash === detectedScript.hash))
   }
 }
