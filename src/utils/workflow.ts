@@ -1,10 +1,11 @@
 import type { Page } from 'puppeteer'
 import type { PuppeteerAction, PuppeteerLocatorAction, PuppeteerWorkflow } from 'src/types/puppeteer'
 import type { WorkflowActionType, WorkflowDefinition, WorkflowStep, WorkflowWaitForDefinition } from 'src/types/workflow'
+import type { Target } from '../types/target'
 
-export function workflowDefinitionToPuppeteerWorkflow(page: Page, workflowDefinition: WorkflowDefinition): PuppeteerWorkflow {
+export function workflowDefinitionToPuppeteerWorkflow(page: Page, target: Target, workflowDefinition: WorkflowDefinition): PuppeteerWorkflow {
   return {
-    startingUrl: workflowDefinition.startingPoint,
+    target: target,
     locatorActions: stepsToPuppeteerLocatorAction(page, workflowDefinition.steps),
   }
 }

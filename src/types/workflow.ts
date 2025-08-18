@@ -16,6 +16,5 @@ export type WorkflowStep = {
 }
 
 export type WorkflowDefinition = {
-  startingPoint: string
   steps: WorkflowStep[]
 }

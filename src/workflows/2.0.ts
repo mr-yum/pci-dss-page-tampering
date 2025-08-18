@@ -1,7 +1,6 @@
 import type { WorkflowDefinition } from 'src/types/workflow'
 
 export const uatWorkflow: WorkflowDefinition = {
-  startingPoint: 'https://staging.meandu.app/pcidsscompliance',
   steps: [
     {
       description: 'Input table number',

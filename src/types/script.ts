@@ -1,4 +1,5 @@
 import type { SHA256Hash } from './hash'
+import type { Target } from './target'
 
 export type ExternalScriptSource = {
   type: 'external'
@@ -17,7 +18,8 @@ export type ScriptInfo = {
   hash: SHA256Hash
 }
 
-export type ScriptSummary = {
+export type ScriptDetectionSummary = {
+  target: Target
   external: ScriptInfo[]
   internal: ScriptInfo[]
 }

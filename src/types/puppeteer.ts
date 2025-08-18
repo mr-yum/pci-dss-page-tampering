@@ -1,7 +1,8 @@
 import type { Locator } from 'puppeteer'
+import type { Target } from './target'
 
 export type PuppeteerWorkflow = {
-  startingUrl: string
+  target: Target
   locatorActions: PuppeteerLocatorAction[]
 }
 

@@ -1,7 +1,6 @@
 import type { WorkflowDefinition } from 'src/types/workflow'
 
 export const uatWorkflow: WorkflowDefinition = {
-  startingPoint: 'https://app-dev.meandu.com/qr?t=689e88f4d752b3d741db52b2_default&r=au',
   steps: [
     {
       description: 'Press on "Pizza"',
