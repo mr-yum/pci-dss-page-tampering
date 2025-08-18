@@ -31,10 +31,14 @@ async function main() {
   const detectionTargetScriptsToCompare = detectedScriptToCompare(detectionTargetScripts)
   const inventoryTargetScriptsToCompare = detectedScriptToCompare(inventoryTargetScripts)
 
-  // @ts-ignore
   const detectionTargetScriptComparisonResult = await Promise.all(detectionTargetScriptsToCompare)
-  // @ts-ignore
   const inventoryTargetScriptComparisonResult = await Promise.all(inventoryTargetScriptsToCompare)
+
+  const numScriptsToAlert = detectionTargetScriptComparisonResult.map((result) => result.externalNonInventoryScripts.length + result.inlineNonInventoryScripts.length).reduce((accumulator, current) => accumulator + current)
+  const numScriptsToInventory = inventoryTargetScriptComparisonResult.map((result) => result.externalNonInventoryScripts.length + result.inlineNonInventoryScripts.length).reduce((accumulator, current) => accumulator + current)
+
+  console.log(`Number of scripts to alert: ${numScriptsToAlert}`)
+  console.log(`Number of scripts to inventory: ${numScriptsToInventory}`)
 
   await browser.close()
 }
