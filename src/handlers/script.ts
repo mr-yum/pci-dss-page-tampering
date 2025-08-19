@@ -1,0 +1,24 @@
+import type { HTTPResponse } from 'puppeteer'
+import type { ScriptInfo } from 'src/types/script'
+import { createSha256Hash } from 'src/utils/hash'
+
+export async function scriptResponseHandler(response: HTTPResponse, detectedScripts: ScriptInfo[]): Promise<void> {
+  if (response.request().resourceType() === 'script' && response.ok()) {
+    try {
+      const scriptUrl = response.url()
+      const scriptContent = await response.text()
+
+      if (!detectedScripts.some((scriptInfo) => scriptInfo.source.type === 'external' && scriptInfo.source.url === scriptUrl) && scriptContent) {
+        detectedScripts.push({
+          source: {
+            type: 'external',
+            url: scriptUrl,
+          },
+          hash: createSha256Hash(scriptContent),
+        })
+      }
+    } catch (error) {
+      console.error(`Errored while attempting to read script response: ${error}`)
+    }
+  }
+}

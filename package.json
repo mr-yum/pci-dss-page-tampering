@@ -1,0 +1,54 @@
+{
+  "private": true,
+  "name": "pci-dss-page-tampering",
+  "version": "0.0.1",
+  "engines": {
+    "node": ">=22",
+    "npm": ">=10",
+    "pnpm": "please-use-npm",
+    "yarn": "please-use-npm"
+  },
+  "dependencies": {
+    "puppeteer": "^24.16.0"
+  },
+  "devDependencies": {
+    "@mr-yum/docker-tools": "^7",
+    "@mr-yum/dotenv-tools": "^4.0.0",
+    "@mr-yum/mryum-yaml": "^2.6.19",
+    "@mr-yum/node-builder": "^4",
+    "husky": "^9",
+    "tsx": "^4.20.3"
+  },
+  "prettier": "./.node-builder/prettier-config.mjs",
+  "jest": {
+    "preset": "./.node-builder/jest-preset.mjs"
+  },
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "secrets:pull": "dotenv-tools pull",
+    "setup": "husky && node-builder setup",
+    "clean": "node-builder clean",
+    "check:formatting": "node-builder check formatting",
+    "fix:formatting": "node-builder check formatting --fix",
+    "check:linting": "node-builder check linting",
+    "fix:linting": "node-builder check linting --fix",
+    "check:typing": "node-builder check typing",
+    "develop": "node-builder build --watch",
+    "build:js": "node-builder build",
+    "build:docker": "docker-tools compose --file docker-compose.build.yml build service",
+    "test:unit": "node-builder test --suite=unit",
+    "test:integration": "docker-tools compose --file docker-compose.integration.yml --file docker-compose.common.yml run tests -- npm x -- node-builder test --suite=integration",
+    "test:integration:up": "docker-tools compose --file docker-compose.integration.yml --file docker-compose.common.yml up",
+    "test:integration:watch": "docker-tools compose --file docker-compose.integration.yml --file docker-compose.common.yml watch",
+    "test:integration:build": "docker-tools compose --file docker-compose.integration.yml --file docker-compose.common.yml build",
+    "test:integration:reset": "docker-tools compose --file docker-compose.integration.yml --file docker-compose.common.yml reset",
+    "test:smoke": "docker-tools compose --file docker-compose.smoke.yml --file docker-compose.common.yml run tests -- npm x -- node-builder test --suite=smoke",
+    "test:smoke:up": "docker-tools compose --file docker-compose.smoke.yml --file docker-compose.common.yml up",
+    "test:smoke:watch": "docker-tools compose --file docker-compose.smoke.yml --file docker-compose.common.yml watch",
+    "test:smoke:build": "docker-tools compose --file docker-compose.smoke.yml --file docker-compose.common.yml build",
+    "test:smoke:reset": "docker-tools compose --file docker-compose.smoke.yml --file docker-compose.common.yml reset",
+    "dev-env:start": "tilt up",
+    "dev-env:stop": "tilt down"
+  },
+  "license": "UNLICENSED"
+}
