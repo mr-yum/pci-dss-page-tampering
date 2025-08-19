@@ -33,8 +33,8 @@ export class ScriptComparisonService implements IScriptComparisonService {
     const newHashes: ScriptInfo[] = []
 
     detectedScripts.forEach((script) => {
+      const scriptSourceValue = this.getScriptSourceValue(script)
       if (!this.scriptExistsInInventory(script, inventoryScripts)) {
-        const scriptSourceValue = this.getScriptSourceValue(script)
         console.log(`[Comparison]: Script '${scriptSourceValue}' not found in inventory for target '${target.url}'.`)
         newScripts.push(script)
       } else {
@@ -42,7 +42,7 @@ export class ScriptComparisonService implements IScriptComparisonService {
         const hashExists = this.scriptHashExists(script, inventoryScript)
 
         if (!hashExists) {
-          console.log(`[Comparison]: Script found in inventory, but hash '${script.hash.value}' doesn't exist for target '${target.url}'.`)
+          console.log(`[Comparison]: Script '${scriptSourceValue}' found in inventory, but hash '${script.hash.value}' doesn't exist for target '${target.url}'.`)
           newHashes.push(script)
         }
       }

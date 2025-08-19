@@ -36,7 +36,7 @@ export class ScriptDetectionService implements IScriptDetectionService {
         const totalStepCount = puppeteerWorkflow.locatorActions.length
         const currentStepIndex = index + 1
 
-        console.log(`[${puppeteerWorkflow.target.url}][${currentStepIndex}/${totalStepCount}]: ${step.description}`)
+        console.log(`[Detection]: (${currentStepIndex}/${totalStepCount}) ${step.description} for target '${puppeteerWorkflow.target.url}'.`)
 
         // Wait for element to be available
         await step.locator.wait()
