@@ -142,17 +142,17 @@ export const uatWorkflow: WorkflowDefinition = {
         waitForNavigation: true,
       },
     },
-    {
-      description: 'Escape experience popup',
-      waitFor: [
-        {
-          type: 'h3',
-          identifier: 'How’s your experience going at PCI DSS Compliance?',
-        },
-      ],
-      action: {
-        type: 'escape',
-      },
-    },
+    // {
+    //   description: 'Escape experience popup',
+    //   waitFor: [
+    //     {
+    //       type: 'h3',
+    //       identifier: 'How’s your experience going at PCI DSS Compliance?',
+    //     },
+    //   ],
+    //   action: {
+    //     type: 'escape',
+    //   },
+    // },
   ],
 }

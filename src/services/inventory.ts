@@ -1,4 +1,4 @@
-import type { Inventory } from '../types/inventory'
+import type { Inventory, InventoryScriptInfo } from '../types/inventory'
 import type { ScriptComparisonSummary } from '../types/comparison'
 
 import { uatWorkflow as uatWorkflow10 } from '../workflows/1.0'
@@ -20,7 +20,13 @@ export class InMemoryScriptInventoryService implements IScriptInventoryService {
         detection: { type: 'detection', url: 'https://app-dev.meandu.com/qr?t=689e88f4d752b3d741db52b2_default&r=au' }, // TODO: replace with production target
         workflow: uatWorkflow10,
       },
-      scripts: [],
+      scripts: [
+        this.createDefaultInventoryScript(RegExp('^https://app-dev\\.meandu\\.com/config\\.production\\.js\\?v=.+$')),
+        this.createDefaultInventoryScript(RegExp('^blob:https://app-dev\\.meandu\\.com/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$')),
+        this.createDefaultInventoryScript(RegExp('^https://connect\\.facebook\\.net/[a-z]{2}_[A-Z]{2}/sdk\\.js\\?hash=[a-f0-9]{32}$')),
+        this.createDefaultInventoryScript(RegExp('^https://www\\.recaptcha\\.net/recaptcha/enterprise\\.js\\?render=.+$')),
+        this.createDefaultInventoryScript(RegExp('^https://www\\.recaptcha\\.net/recaptcha/enterprise/webworker\\.js\\?.*$')),
+      ],
     },
     {
       target: {
@@ -28,7 +34,11 @@ export class InMemoryScriptInventoryService implements IScriptInventoryService {
         detection: { type: 'detection', url: 'https://staging.meandu.app/pcidsscompliance' }, // TODO: replace with production target
         workflow: uatWorkflow20,
       },
-      scripts: [],
+      scripts: [
+        this.createDefaultInventoryScript(RegExp('^https://www\\.googletagmanager\\.com/gtag/js\\?id=G-[A-Z0-9]+$')),
+        this.createDefaultInventoryScript(RegExp('^https://hcaptcha\\.com/1/api\\.js\\?.*$')),
+        this.createDefaultInventoryScript(RegExp('^https://connect\\.facebook\\.net/signals/config/\\d+\\?.*$')),
+      ],
     },
   ]
 
@@ -50,9 +60,15 @@ export class InMemoryScriptInventoryService implements IScriptInventoryService {
 
   private pushNewScripts(comparisonSummary: ScriptComparisonSummary, updateDate: Date): void {
     const newScripts = comparisonSummary.externalScripts.newScripts.map((script) => scriptInfoToInventoryScriptInfo(script, updateDate))
+    const inventory = this._inventory.find((inventory) => inventory.target.inventory === comparisonSummary.target)
+
+    // We always expect to have an inventory entry for new hashes from the comparison stage.
+    if (inventory === undefined) {
+      throw new Error("[Inventory] Expected to find inventory for new script hash, but it doesn't exist!")
+    }
 
     console.log(`[Inventory] Adding new scripts to inventory for target: '${comparisonSummary.target.url}'.`)
-    this._inventory.find((inventory) => inventory.target.inventory === comparisonSummary.target)?.scripts.concat(newScripts)
+    inventory.scripts = inventory.scripts.concat(newScripts) // Mutation :vomit:
     console.log(`[Inventory] New scripts successfully added to inventory for target: '${comparisonSummary.target.url}'.`)
   }
 
@@ -79,5 +95,17 @@ export class InMemoryScriptInventoryService implements IScriptInventoryService {
       inventoryScript.hashes.push(scriptHashToInventoryHashInfo(script, updateDate))
       console.log(`[Inventory] New script hash successfully added to inventory script entry for target: '${comparisonSummary.target.url}'.`)
     })
+  }
+
+  private createDefaultInventoryScript(regex: RegExp): InventoryScriptInfo {
+    return {
+      matcher: regex,
+      hashes: [],
+      authorisationInfo: {
+        description: 'Script that doesnt save with default implementation due to query string',
+        authorised: true,
+        date: new Date(),
+      },
+    }
   }
 }
