@@ -1,4 +1,4 @@
-import type { Inventory, InventoryScriptInfo } from 'src/types/inventory'
+import type { Inventory, InventoryScriptInfo } from '../types/inventory'
 import type { ExternalScriptSource, ScriptDetectionSummary, ScriptInfo } from '../types/script'
 import type { ScriptComparisonResult, ScriptComparisonSummary } from '../types/comparison'
 

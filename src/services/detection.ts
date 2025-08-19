@@ -1,8 +1,8 @@
 import type { Browser, Page } from 'puppeteer'
-import type { PuppeteerClickAction, PuppeteerInputAction, PuppeteerLocatorAction, PuppeteerNavigateAction } from 'src/types/puppeteer'
-import type { ScriptInfo, ScriptDetectionSummary } from 'src/types/script'
-import { getInlineScriptsFromPage } from 'src/utils/page'
-import { workflowDefinitionToPuppeteerWorkflow } from 'src/utils/workflow'
+import type { PuppeteerClickAction, PuppeteerInputAction, PuppeteerLocatorAction, PuppeteerNavigateAction } from '../types/puppeteer'
+import type { ScriptInfo, ScriptDetectionSummary } from '../types/script'
+import { getInlineScriptsFromPage } from '../utils/page'
+import { workflowDefinitionToPuppeteerWorkflow } from '../utils/workflow'
 
 import { scriptResponseHandler } from '../handlers/script'
 import type { WorkflowDefinition } from '../types/workflow'
