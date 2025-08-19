@@ -8,21 +8,16 @@ import type { ScriptDetectionSummary } from './types/script'
 import type { ScriptComparisonSummary } from './types/comparison'
 
 async function main() {
-  const delay = (ms: number) => {
-    return new Promise((resolve) => setTimeout(resolve, ms))
-  }
-
   const scriptInventoryService = new InMemoryScriptInventoryService()
   const scriptComparisonService = new ScriptComparisonService()
+  const scriptDetectionService = new ScriptDetectionService()
 
   while (true) {
     const browser = await puppeteer.launch()
-    const scriptDetectionService = new ScriptDetectionService({ browser: browser })
-
     const inventory = await scriptInventoryService.pull()
 
-    const detectScriptsFromDetectionTarget = inventory.map((payload) => scriptDetectionService.detectScripts(payload.target.detection, payload.target.workflow))
-    const detectScriptsFromInventoryTarget = inventory.map((payload) => scriptDetectionService.detectScripts(payload.target.inventory, payload.target.workflow))
+    const detectScriptsFromDetectionTarget = inventory.map((payload) => scriptDetectionService.detectScripts(browser, payload.target.detection, payload.target.workflow))
+    const detectScriptsFromInventoryTarget = inventory.map((payload) => scriptDetectionService.detectScripts(browser, payload.target.inventory, payload.target.workflow))
 
     const detectionTargetScripts = await Promise.all(detectScriptsFromDetectionTarget)
     const inventoryTargetScripts = await Promise.all(detectScriptsFromInventoryTarget)
@@ -46,6 +41,10 @@ async function main() {
     await browser.close()
     await delay(1000)
   }
+}
+
+const delay = (ms: number) => {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 main().catch(console.error)
