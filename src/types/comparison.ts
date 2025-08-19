@@ -1,8 +1,13 @@
 import type { ScriptInfo } from './script'
 import type { Target } from './target'
 
-export type ComparisonResult = {
+export type ScriptComparisonResult = {
+  newScripts: ScriptInfo[]
+  newHashes: ScriptInfo[]
+}
+
+export type ScriptComparisonSummary = {
   target: Target
-  externalNonInventoryScripts: ScriptInfo[]
-  inlineNonInventoryScripts: ScriptInfo[]
+  externalScripts: ScriptComparisonResult
+  inlineScripts: ScriptComparisonResult
 }

@@ -25,7 +25,7 @@ export type InventoryTarget = {
   workflow: WorkflowDefinition
 }
 
-export type InventoryPayload = {
+export type Inventory = {
   target: InventoryTarget
   scripts: InventoryScriptInfo[]
 }

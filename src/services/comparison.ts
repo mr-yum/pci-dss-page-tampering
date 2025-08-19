@@ -1,9 +1,9 @@
-import type { InventoryPayload, InventoryScriptInfo } from 'src/types/inventory'
+import type { Inventory, InventoryScriptInfo } from 'src/types/inventory'
 import type { ExternalScriptSource, ScriptDetectionSummary, ScriptInfo } from '../types/script'
-import type { ComparisonResult } from '../types/comparison'
+import type { ScriptComparisonResult, ScriptComparisonSummary } from '../types/comparison'
 
 export interface IScriptComparisonService {
-  compare(inventoryPayload: InventoryPayload, scriptDetectionSummary: ScriptDetectionSummary): Promise<ComparisonResult>
+  compare(inventory: Inventory, scriptDetectionSummary: ScriptDetectionSummary): Promise<ScriptComparisonSummary>
 }
 
 export class ScriptComparisonService implements IScriptComparisonService {
@@ -12,41 +12,45 @@ export class ScriptComparisonService implements IScriptComparisonService {
     - Not found in inventory
     - Found in inventory but hash doesn't exist
    */
-  compare(inventoryPayload: InventoryPayload, scriptDetectionSummary: ScriptDetectionSummary): Promise<ComparisonResult> {
-    const inventoryScripts = inventoryPayload.scripts
+  compare(inventory: Inventory, scriptDetectionSummary: ScriptDetectionSummary): Promise<ScriptComparisonSummary> {
+    const inventoryScripts = inventory.scripts
     const detectedExternalScripts = scriptDetectionSummary.external
     const detectedInlineScripts = scriptDetectionSummary.inline
 
-    const nonInventoryExternalScripts = this.getNonInventoryScripts(detectedExternalScripts, inventoryScripts)
-    const nonInventoryInlineScripts = this.getNonInventoryScripts(detectedInlineScripts, inventoryScripts)
+    const externalScriptsComparisonResult = this.compareScriptWithInventory(detectedExternalScripts, inventoryScripts)
+    const inlineScriptsComparisonResult = this.compareScriptWithInventory(detectedInlineScripts, inventoryScripts)
 
     return Promise.resolve({
       target: scriptDetectionSummary.target,
-      externalNonInventoryScripts: nonInventoryExternalScripts,
-      inlineNonInventoryScripts: nonInventoryInlineScripts,
+      externalScripts: externalScriptsComparisonResult,
+      inlineScripts: inlineScriptsComparisonResult,
     })
   }
 
-  private getNonInventoryScripts(detectedScripts: ScriptInfo[], inventoryScripts: InventoryScriptInfo[]) {
-    const nonInventoryScripts: ScriptInfo[] = []
+  private compareScriptWithInventory(detectedScripts: ScriptInfo[], inventoryScripts: InventoryScriptInfo[]): ScriptComparisonResult {
+    const newScripts: ScriptInfo[] = []
+    const newHashes: ScriptInfo[] = []
 
     detectedScripts.forEach((script) => {
       if (!this.scriptExistsInInventory(script, inventoryScripts)) {
         const scriptSourceValue = this.getScriptSourceValue(script)
         console.log(`[Comparison]: Script '${scriptSourceValue}' not found in inventory.`)
-        nonInventoryScripts.push(script)
+        newScripts.push(script)
       } else {
         const inventoryScript = this.getScriptFromInventory(script, inventoryScripts)
         const hashExists = this.scriptHashExists(script, inventoryScript)
 
         if (!hashExists) {
           console.log(`[Comparison]: Script found in inventory, but hash '${script.hash.value}' doesn't exist.`)
-          nonInventoryScripts.push(script)
+          newHashes.push(script)
         }
       }
     })
 
-    return nonInventoryScripts
+    return {
+      newScripts: newScripts,
+      newHashes: newHashes,
+    }
   }
 
   private scriptExistsInInventory(scriptInfo: ScriptInfo, inventoryScripts: InventoryScriptInfo[]): boolean {
