@@ -13,16 +13,16 @@ export class InMemoryScriptInventoryService implements IScriptInventoryService {
   private _inventory: InventoryPayload[] = [
     {
       target: {
-        inventory: { url: 'https://app-dev.meandu.com/qr?t=689e88f4d752b3d741db52b2_default&r=au' },
-        detection: { url: 'https://app-dev.meandu.com/qr?t=689e88f4d752b3d741db52b2_default&r=au' }, // TODO: replace with production target
+        inventory: { type: 'inventory', url: 'https://app-dev.meandu.com/qr?t=689e88f4d752b3d741db52b2_default&r=au' },
+        detection: { type: 'detection', url: 'https://app-dev.meandu.com/qr?t=689e88f4d752b3d741db52b2_default&r=au' }, // TODO: replace with production target
         workflow: uatWorkflow10,
       },
       scripts: [],
     },
     {
       target: {
-        inventory: { url: 'https://staging.meandu.app/pcidsscompliance' },
-        detection: { url: 'https://staging.meandu.app/pcidsscompliance' }, // TODO: replace with production target
+        inventory: { type: 'inventory', url: 'https://staging.meandu.app/pcidsscompliance' },
+        detection: { type: 'detection', url: 'https://staging.meandu.app/pcidsscompliance' }, // TODO: replace with production target
         workflow: uatWorkflow20,
       },
       scripts: [],

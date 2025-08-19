@@ -21,6 +21,7 @@ export class ScriptComparisonService implements IScriptComparisonService {
     const nonInventoryInlineScripts = this.getNonInventoryScripts(detectedInlineScripts, inventoryScripts)
 
     return Promise.resolve({
+      target: scriptDetectionSummary.target,
       externalNonInventoryScripts: nonInventoryExternalScripts,
       inlineNonInventoryScripts: nonInventoryInlineScripts,
     })
