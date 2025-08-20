@@ -28,7 +28,7 @@ export class ScriptDetectionService implements IScriptDetectionService {
 
       // Navigate to workflow starting url
       await page.goto(puppeteerWorkflow.target.url, {
-        waitUntil: 'networkidle0',
+        waitUntil: 'networkidle2',
       })
 
       // Execute workflow steps

@@ -23,8 +23,7 @@ export function getScriptSource(scriptInfo: ScriptInfo): string {
       scriptSourceContent = scriptInfo.source.url
       break
     case 'inline':
-      // scriptSourceContent = scriptInfo.source.content
-      scriptSourceContent = 'inline_script'
+      scriptSourceContent = scriptInfo.source.id
       break
   }
 

@@ -144,17 +144,17 @@ export const uatWorkflow: WorkflowDefinition = {
         type: 'click',
       },
     },
-    {
-      description: 'Dismiss pub+ popup',
-      waitFor: [
-        {
-          type: 'div',
-          identifier: 'button--back--close',
-        },
-      ],
-      action: {
-        type: 'click',
-      },
-    },
+    // {
+    //   description: 'Dismiss pub+ popup',
+    //   waitFor: [
+    //     {
+    //       type: 'div',
+    //       identifier: 'button--back--close',
+    //     },
+    //   ],
+    //   action: {
+    //     type: 'click',
+    //   },
+    // },
   ],
 }

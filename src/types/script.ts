@@ -8,6 +8,7 @@ export type ExternalScriptSource = {
 
 export type InlineScriptSource = {
   type: 'inline'
+  id: string
   content: string
 }
 
