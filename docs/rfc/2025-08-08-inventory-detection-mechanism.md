@@ -189,7 +189,7 @@ An example can be something like:
   "scripts": [
     {
       // we might need to offer regexp or some other flexibility for names of auto-generated chunks
-      "name": "scriptName.js",
+      "name": "https://static.meandu.app/app/front-end-web/**/_next/static/chunks/*.js",
 
        // contains previous history if we have it
       "hashes": [ { "timestamp": ... "hash": "hash1" }, { "timestamp": ... "hash": "hash1" } ],
@@ -223,7 +223,23 @@ An example can be something like:
 
 ## Inventory Service
 
-![Sequence diagram showcasing the various flows during inventory stage](./assets/inventory_service.svg)
+```mermaid
+sequenceDiagram
+  actor A2 as Inventory Service
+  actor A3 as Inventory Repository
+  A2 ->> A3: Pull inventory
+  A3 -->> A2: Push inventory
+  A2 ->> A2: Execute puppeteer flow
+  alt No unidentified scripts detected
+  A2 ->> A2: Success
+  else Unidentified script detected
+    A2 ->> A2: Send alert to destination
+    A2 ->> A3: Update inventory with undefined authorisation for script
+  else Script hash mismatch detected
+    A2 ->> A2: Send alert to destination
+  end
+```
+(if you're not seeing a diagram here, install [Markdown Preview Mermaid Support](https://marketplace.cursorapi.com/items/?itemName=bierner.markdown-mermaid) extension)
 
 As previously mentioned, this service will run on a schedule via a CRON job to detect any potential script violations for our applications.
 
@@ -264,7 +280,21 @@ The alert should contain the following details:
 
 ## Detection Mechanism
 
-![Sequence diagram showcasing the various flows during detection stage](./assets/detection_service.svg)
+```mermaid
+sequenceDiagram
+  actor A2 as Detection Service
+  actor A3 as Inventory Repository
+  A2 ->> A3: Pull inventory
+  A3 -->> A2: Push inventory
+  A2 ->> A2: Execute puppeteer flow
+  alt Unidentified script detected
+    A2 ->> A2: Send alert to destination
+  else Script hash mismatch detected
+    A2 ->> A2: Send alert to destination
+  end
+
+```
+(if you're not seeing a diagram here, install [Markdown Preview Mermaid Support](https://marketplace.cursorapi.com/items/?itemName=bierner.markdown-mermaid) extension)
 
 This service will run in conjunction with the inventory service, and will run on a schedule via a CRON job.
 
