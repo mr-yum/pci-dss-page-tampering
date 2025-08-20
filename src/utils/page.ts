@@ -18,7 +18,7 @@ export async function getInlineScriptsFromPage(page: Page): Promise<ScriptInfo[]
   })
 
   inlineScripts.forEach((pageScriptElement) => {
-    const idToUse = pageScriptElement.id ? `inline_script_id_${pageScriptElement.id}` : 'inline_script_id_not_found'
+    const idToUse = pageScriptElement.id ? `inline_script/${pageScriptElement.id}` : 'inline_script/id_not_found'
 
     if (pageScriptElement.content) {
       detectedScripts.push({
