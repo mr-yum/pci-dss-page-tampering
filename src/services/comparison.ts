@@ -71,7 +71,7 @@ export class ScriptComparisonService implements IScriptComparisonService {
       case 'external':
         return (scriptInfo.source as ExternalScriptSource).url
       case 'inline':
-        return '(inline)'
+        return 'inline_script'
     }
   }
 }
