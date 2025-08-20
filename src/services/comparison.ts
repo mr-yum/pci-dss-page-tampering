@@ -1,7 +1,9 @@
 import type { Inventory, InventoryScriptInfo } from '../types/inventory'
-import type { ExternalScriptSource, ScriptDetectionSummary, ScriptInfo } from '../types/script'
+import type { ScriptDetectionSummary, ScriptInfo } from '../types/script'
 import type { ScriptComparisonResult, ScriptComparisonSummary } from '../types/comparison'
 import type { Target } from '../types/target'
+
+import { getScriptSource } from '../utils/script'
 
 export interface IScriptComparisonService {
   compare(inventory: Inventory, scriptDetectionSummary: ScriptDetectionSummary): Promise<ScriptComparisonSummary>
@@ -33,7 +35,7 @@ export class ScriptComparisonService implements IScriptComparisonService {
     const newHashes: ScriptInfo[] = []
 
     detectedScripts.forEach((script) => {
-      const scriptSourceValue = this.getScriptSourceValue(script)
+      const scriptSourceValue = getScriptSource(script)
       if (!this.scriptExistsInInventory(script, inventoryScripts)) {
         console.log(`[Comparison]: Script '${scriptSourceValue}' not found in inventory for target '${target.url}'.`)
         newScripts.push(script)
@@ -55,23 +57,14 @@ export class ScriptComparisonService implements IScriptComparisonService {
   }
 
   private scriptExistsInInventory(scriptInfo: ScriptInfo, inventoryScripts: InventoryScriptInfo[]): boolean {
-    return inventoryScripts.some((inventoryScript) => inventoryScript.matcher.test((scriptInfo.source as ExternalScriptSource).url))
+    return inventoryScripts.some((inventoryScript) => inventoryScript.matcher.test(getScriptSource(scriptInfo)))
   }
 
   private getScriptFromInventory(scriptInfo: ScriptInfo, inventoryScripts: InventoryScriptInfo[]): InventoryScriptInfo {
-    return inventoryScripts.find((inventoryScript) => inventoryScript.matcher.test((scriptInfo.source as ExternalScriptSource).url))!
+    return inventoryScripts.find((inventoryScript) => inventoryScript.matcher.test(getScriptSource(scriptInfo)))!
   }
 
   private scriptHashExists(scriptInfo: ScriptInfo, inventoryScript: InventoryScriptInfo): boolean {
     return inventoryScript.hashes.some((hashInfo) => hashInfo.hash.value === scriptInfo.hash.value)
-  }
-
-  private getScriptSourceValue(scriptInfo: ScriptInfo): string {
-    switch (scriptInfo.source.type) {
-      case 'external':
-        return (scriptInfo.source as ExternalScriptSource).url
-      case 'inline':
-        return 'inline_script'
-    }
   }
 }

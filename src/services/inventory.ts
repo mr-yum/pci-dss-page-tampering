@@ -1,12 +1,12 @@
 import type { Inventory, InventoryScriptInfo } from '../types/inventory'
 import type { ScriptComparisonResult, ScriptComparisonSummary } from '../types/comparison'
+import type { Target } from '../types/target'
 
 import { uatWorkflow as uatWorkflow10 } from '../workflows/1.0'
 import { uatWorkflow as uatWorkflow20 } from '../workflows/2.0'
-import { scriptInfoToInventoryScriptInfo } from '../utils/script'
-import type { ExternalScriptSource } from '../types/script'
+
+import { getScriptSource, scriptInfoToInventoryScriptInfo } from '../utils/script'
 import { scriptHashToInventoryHashInfo } from '../utils/hash'
-import type { Target } from '../types/target'
 
 interface IScriptInventoryService {
   pull(): Promise<Inventory[]>
@@ -88,8 +88,7 @@ export class InMemoryScriptInventoryService implements IScriptInventoryService {
 
     // Add new hash to inventory script known hashes
     newHashes.forEach((script) => {
-      const scriptUrl = (script.source as ExternalScriptSource).url
-      const inventoryScript = inventory.scripts.find((inventoryScript) => inventoryScript.matcher.test(scriptUrl))
+      const inventoryScript = inventory.scripts.find((inventoryScript) => inventoryScript.matcher.test(getScriptSource(script)))
 
       // We always expect to have an inventory script entry from the comparison stage
       if (inventoryScript === undefined) {

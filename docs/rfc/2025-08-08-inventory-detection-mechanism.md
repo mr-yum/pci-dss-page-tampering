@@ -161,21 +161,10 @@ The services will run on a regular schedule (CRON job) and will use of the follo
           "required": ["destination"]
         }
       },
-      "required": [
-        "new_inventory_script_identified",
-        "uninventoried_script_detected",
-        "mismatched_script_detected"
-      ]
+      "required": ["new_inventory_script_identified", "uninventoried_script_detected", "mismatched_script_detected"]
     }
   },
-  "required": [
-    "inventory_target",
-    "detection_target",
-    "puppeteer_flow",
-    "scripts",
-    "headers",
-    "alerts"
-  ]
+  "required": ["inventory_target", "detection_target", "puppeteer_flow", "scripts", "headers", "alerts"]
 }
 ```
 
