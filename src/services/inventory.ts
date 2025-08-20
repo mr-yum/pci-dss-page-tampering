@@ -70,11 +70,11 @@ export class InMemoryScriptInventoryService implements IScriptInventoryService {
     // We always expect to have an inventory entry for new hashes from the comparison stage.
     if (inventory === undefined) {
       throw new Error("[Inventory] Expected to find inventory for new script hash, but it doesn't exist!")
+    } else if (newScripts.length !== 0) {
+      console.log(`[Inventory] Adding new scripts to inventory for target: '${target.url}'.`)
+      inventory.scripts = inventory.scripts.concat(newScripts) // Mutation :vomit:
+      console.log(`[Inventory] New scripts successfully added to inventory for target: '${target.url}'.`)
     }
-
-    console.log(`[Inventory] Adding new scripts to inventory for target: '${target.url}'.`)
-    inventory.scripts = inventory.scripts.concat(newScripts) // Mutation :vomit:
-    console.log(`[Inventory] New scripts successfully added to inventory for target: '${target.url}'.`)
   }
 
   private pushNewHashes(scriptComparisonResult: ScriptComparisonResult, updateDate: Date, target: Target): void {
@@ -84,21 +84,21 @@ export class InMemoryScriptInventoryService implements IScriptInventoryService {
     // We always expect to have an inventory entry for new hashes from the comparison stage.
     if (inventory === undefined) {
       throw new Error("[Inventory] Expected to find inventory for new script hash, but it doesn't exist!")
+    } else if (newHashes.length !== 0) {
+      // Add new hash to inventory script known hashes
+      newHashes.forEach((script) => {
+        const inventoryScript = inventory.scripts.find((inventoryScript) => inventoryScript.matcher.test(getScriptSource(script)))
+
+        // We always expect to have an inventory script entry from the comparison stage
+        if (inventoryScript === undefined) {
+          throw new Error("[Inventory] Expected to find inventory script entry for new script hash, but it doesn't exist!")
+        }
+
+        console.log(`[Inventory] Adding new script hash to inventory script entry for target: '${target.url}'.`)
+        inventoryScript.hashes.push(scriptHashToInventoryHashInfo(script, updateDate))
+        console.log(`[Inventory] New script hash successfully added to inventory script entry for target: '${target.url}'.`)
+      })
     }
-
-    // Add new hash to inventory script known hashes
-    newHashes.forEach((script) => {
-      const inventoryScript = inventory.scripts.find((inventoryScript) => inventoryScript.matcher.test(getScriptSource(script)))
-
-      // We always expect to have an inventory script entry from the comparison stage
-      if (inventoryScript === undefined) {
-        throw new Error("[Inventory] Expected to find inventory script entry for new script hash, but it doesn't exist!")
-      }
-
-      console.log(`[Inventory] Adding new script hash to inventory script entry for target: '${target.url}'.`)
-      inventoryScript.hashes.push(scriptHashToInventoryHashInfo(script, updateDate))
-      console.log(`[Inventory] New script hash successfully added to inventory script entry for target: '${target.url}'.`)
-    })
   }
 
   private createDefaultInventoryScript(regex: RegExp): InventoryScriptInfo {
