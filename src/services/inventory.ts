@@ -7,6 +7,7 @@ import { uatWorkflow as uatWorkflow20 } from '../workflows/2.0'
 
 import { getScriptSource, scriptInfoToInventoryScriptInfo } from '../utils/script'
 import { scriptHashToInventoryHashInfo } from '../utils/hash'
+import { maybeGetInventoryForTarget } from '../utils/inventory'
 
 interface IScriptInventoryService {
   pull(): Promise<Inventory[]>
@@ -65,7 +66,7 @@ export class InMemoryScriptInventoryService implements IScriptInventoryService {
 
   private pushNewScripts(scriptComparisonResult: ScriptComparisonResult, updateDate: Date, target: Target): void {
     const newScripts = scriptComparisonResult.newScripts.map((script) => scriptInfoToInventoryScriptInfo(script, updateDate))
-    const inventory = this._inventory.find((inventory) => inventory.target.inventory.url === target.url)
+    const inventory = maybeGetInventoryForTarget(this._inventory, target)
 
     // We always expect to have an inventory entry for new hashes from the comparison stage.
     if (inventory === undefined) {
@@ -79,7 +80,7 @@ export class InMemoryScriptInventoryService implements IScriptInventoryService {
 
   private pushNewHashes(scriptComparisonResult: ScriptComparisonResult, updateDate: Date, target: Target): void {
     const newHashes = scriptComparisonResult.newHashes
-    const inventory = this._inventory.find((inventory) => inventory.target.inventory.url === target.url)
+    const inventory = maybeGetInventoryForTarget(this._inventory, target)
 
     // We always expect to have an inventory entry for new hashes from the comparison stage.
     if (inventory === undefined) {
