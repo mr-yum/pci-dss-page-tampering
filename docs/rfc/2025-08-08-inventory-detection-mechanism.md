@@ -228,6 +228,7 @@ sequenceDiagram
     A2 ->> A2: Send alert to destination
   end
 ```
+
 (if you're not seeing a diagram here, install [Markdown Preview Mermaid Support](https://marketplace.cursorapi.com/items/?itemName=bierner.markdown-mermaid) extension)
 
 As previously mentioned, this service will run on a schedule via a CRON job to detect any potential script violations for our applications.
@@ -283,6 +284,7 @@ sequenceDiagram
   end
 
 ```
+
 (if you're not seeing a diagram here, install [Markdown Preview Mermaid Support](https://marketplace.cursorapi.com/items/?itemName=bierner.markdown-mermaid) extension)
 
 This service will run in conjunction with the inventory service, and will run on a schedule via a CRON job.
