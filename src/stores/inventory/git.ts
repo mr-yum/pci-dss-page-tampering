@@ -23,6 +23,22 @@ export class GitInventoryStore implements IInventoryStore {
     console.log(`[Store] Cloning repository '${this.repositoryTarget}' to path '${this.clonePath}'.`)
     await this._git.clone(this.repositoryTarget, this.clonePath)
 
+    // Switch git context to checked out repository
+    await this._git.cwd(this.clonePath)
+
+    // Pull repository
+    console.log(`[Store] Fetching from repository '${this.repositoryTarget}'.`)
+    await this._git.fetch()
+
+    // Checkout to testing branch
+    const branch = 'feature/CAD-715_initial-inventory-payload'
+    console.log(`[Store] Checking out to branch '${branch}'.`)
+    await this._git.checkout(branch)
+
+    fs.readdir(this.clonePath, (_maybeError, files) => {
+      console.log(files)
+    })
+
     return Promise.resolve([])
   }
 
