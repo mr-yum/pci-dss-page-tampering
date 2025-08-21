@@ -1,7 +1,7 @@
 export type WorkflowActionType = {
   type: 'click' | 'input' | 'escape' | 'navigate'
-  value?: string
-  waitForNavigation?: true
+  value?: string | undefined
+  waitForNavigation?: true | undefined
 }
 
 export type WorkflowWaitForDefinition = {

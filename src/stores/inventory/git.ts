@@ -3,11 +3,16 @@ import type { GitInventoryStoreProps, Inventory } from '../../types/inventory'
 import type { SimpleGit } from 'simple-git'
 
 import fs from 'fs'
+import { readFile } from '@mr-yum/mryum-yaml/dist/utilities/fs'
+import { InventorySchema } from '../../types/zod'
 
 export class GitInventoryStore implements IInventoryStore {
   private readonly _git: SimpleGit
   private readonly repositoryTarget: string
   private readonly clonePath: string
+
+  private readonly _expectedWorkflowDirectoryName = 'workflows'
+  private readonly _expectedTargetDirectoryName = 'targets'
 
   constructor(args: GitInventoryStoreProps) {
     this._git = args.gitClient
@@ -38,6 +43,11 @@ export class GitInventoryStore implements IInventoryStore {
     // Ensure that the appropriate folders exist
     this.ensureRequiredFoldersExist()
 
+    const getInventoryJson = JSON.parse(await readFile(`${this.clonePath}/${this._expectedTargetDirectoryName}/1.0.json`))
+    const inventory = InventorySchema.parse(getInventoryJson)
+
+    console.log(inventory)
+
     return Promise.resolve([])
   }
 
@@ -56,12 +66,9 @@ export class GitInventoryStore implements IInventoryStore {
 
   private ensureRequiredFoldersExist(): void {
     fs.readdir(this.clonePath, (_maybeError, files) => {
-      const expectedWorkflowDirectoryName = 'workflows'
-      const expectedTargetDirectoryName = 'targets'
-
       console.log(`[Store] Discovered files and folders: '${files}'.`)
-      if (!files.some((name) => name === expectedWorkflowDirectoryName) && !files.some((name) => name === expectedTargetDirectoryName)) {
-        throw new Error(`[Store] Required folders not found! Please ensure that the following folders exist: '${expectedWorkflowDirectoryName}' and '${expectedTargetDirectoryName}'.`)
+      if (!files.some((name) => name === this._expectedWorkflowDirectoryName) && !files.some((name) => name === this._expectedTargetDirectoryName)) {
+        throw new Error(`[Store] Required folders not found! Please ensure that the following folders exist: '${this._expectedWorkflowDirectoryName}' and '${this._expectedTargetDirectoryName}'.`)
       }
     })
   }

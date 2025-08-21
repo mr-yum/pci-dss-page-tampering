@@ -1,5 +1,4 @@
 import type { SHA256Hash } from './hash'
-import type { WorkflowDefinition } from './workflow'
 import type { TargetDetection, TargetInventory } from './target'
 import type { IInventoryStore } from '../interfaces/inventory'
 import type { SimpleGit } from 'simple-git'
@@ -24,7 +23,7 @@ export type InventoryScriptInfo = {
 export type InventoryTarget = {
   inventory: TargetInventory
   detection: TargetDetection
-  workflow: WorkflowDefinition
+  workflow: string
 }
 
 export type Inventory = {

@@ -10,7 +10,8 @@
   },
   "dependencies": {
     "puppeteer": "^24.16.0",
-    "simple-git": "^3.28.0"
+    "simple-git": "^3.28.0",
+    "zod": "^4.0.17"
   },
   "devDependencies": {
     "@mr-yum/docker-tools": "^7",
