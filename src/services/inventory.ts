@@ -14,6 +14,7 @@ export class ScriptInventoryService implements IScriptInventoryService {
   }
 
   pull(): Promise<Inventory[]> {
+    console.log('[Inventory] Pulling inventory from store.')
     return this._inventoryStore.pull()
   }
 

@@ -43,11 +43,12 @@ async function main() {
     const inventoryTargetScriptsToCompare = detectedScriptToCompare(inventory, inventoryTargetScripts)
 
     // Run script comparison with inventory
+    // @ts-ignore
     const detectionTargetScriptComparisonResult = await Promise.all(detectionTargetScriptsToCompare)
     const inventoryTargetScriptComparisonResult = await Promise.all(inventoryTargetScriptsToCompare)
 
     // TODO: Alert on detection differences
-    console.log(`[Alert]: '${detectionTargetScriptComparisonResult.length}' detection targets to alert on.`)
+    // console.log(`[Alert]: '${detectionTargetScriptComparisonResult.length}' detection targets to alert on.`)
 
     // Prepare to run inventory sanity check
     const inventoryTargetComparisonResultToDiff = inventoryTargetScriptComparisonResult.map((result) => scriptInventoryService.diff(result, inventory))
