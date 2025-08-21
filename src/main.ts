@@ -3,14 +3,16 @@ import puppeteer from 'puppeteer'
 import { ScriptDetectionService } from './services/detection'
 import { ScriptInventoryService } from './services/inventory'
 import { ScriptComparisonService } from './services/comparison'
-import { InMemoryInventoryStore } from './stores/inventory/in-memory'
 
 import type { ScriptDetectionSummary } from './types/script'
 import type { ScriptComparisonSummary } from './types/comparison'
 import type { Inventory } from './types/inventory'
+import { GitInventoryStore } from './stores/inventory/git'
+import simpleGit from 'simple-git'
 
 async function main() {
-  const scriptInventoryService = new ScriptInventoryService({ inventoryStore: new InMemoryInventoryStore() })
+  const gitInventoryStore = new GitInventoryStore({ gitClient: simpleGit(), repositoryTarget: 'git@github.com:mr-yum/script-inventory.git', clonePath: './pulled_repo' })
+  const scriptInventoryService = new ScriptInventoryService({ inventoryStore: gitInventoryStore })
   const scriptDetectionService = new ScriptDetectionService()
   const scriptComparisonService = new ScriptComparisonService()
 
