@@ -1,6 +1,7 @@
 import type { SHA256Hash } from './hash'
 import type { WorkflowDefinition } from './workflow'
 import type { TargetDetection, TargetInventory } from './target'
+import type { IInventoryStore } from '../interfaces/inventory'
 
 export type InventoryScriptAuthorisationInfo = {
   description: string
@@ -33,4 +34,8 @@ export type Inventory = {
 export type InventoryDifferenceResult = {
   oldInventory: Inventory
   newInventory: Inventory
+}
+
+export type InventoryServiceProps = {
+  inventoryStore: IInventoryStore
 }

@@ -3,11 +3,11 @@ import puppeteer from 'puppeteer'
 import { ScriptDetectionService } from './services/detection'
 import { ScriptInventoryService } from './services/inventory'
 import { ScriptComparisonService } from './services/comparison'
+import { InMemoryInventoryStore } from './stores/inventory/in-memory'
 
 import type { ScriptDetectionSummary } from './types/script'
 import type { ScriptComparisonSummary } from './types/comparison'
 import type { Inventory } from './types/inventory'
-import { InMemoryInventoryStore } from './stores/inventory'
 
 async function main() {
   const scriptInventoryService = new ScriptInventoryService({ inventoryStore: new InMemoryInventoryStore() })
