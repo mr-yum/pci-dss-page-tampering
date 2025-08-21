@@ -29,3 +29,8 @@ export type Inventory = {
   target: InventoryTarget
   scripts: InventoryScriptInfo[]
 }
+
+export type InventoryDifferenceResult = {
+  oldInventory: Inventory
+  newInventory: Inventory
+}
