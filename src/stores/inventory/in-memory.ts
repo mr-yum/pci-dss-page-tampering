@@ -1,11 +1,8 @@
-import type { Inventory, InventoryScriptInfo } from '../types/inventory'
-import { uatWorkflow as uatWorkflow10 } from '../workflows/1.0'
-import { uatWorkflow as uatWorkflow20 } from '../workflows/2.0'
+import type { IInventoryStore } from '../../interfaces/inventory'
+import type { Inventory, InventoryScriptInfo } from '../../types/inventory'
 
-export interface IInventoryStore {
-  pull(): Promise<Inventory[]>
-  push(inventory: Inventory[]): Promise<void>
-}
+import { uatWorkflow as uatWorkflow10 } from '../../workflows/1.0'
+import { uatWorkflow as uatWorkflow20 } from '../../workflows/2.0'
 
 export class InMemoryInventoryStore implements IInventoryStore {
   private _inventory: Inventory[] = [

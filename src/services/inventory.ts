@@ -1,6 +1,6 @@
+import type { IInventoryStore } from '../interfaces/inventory'
 import type { Inventory, InventoryDifferenceResult } from '../types/inventory'
 import type { ScriptComparisonResult, ScriptComparisonSummary } from '../types/comparison'
-import type { IInventoryStore } from '../stores/inventory'
 
 import { getScriptSource, scriptInfoToInventoryScriptInfo } from '../utils/script'
 import { scriptHashToInventoryHashInfo } from '../utils/hash'
@@ -12,14 +12,14 @@ interface IScriptInventoryService {
   push(diffs: InventoryDifferenceResult[]): Promise<void>
 }
 
-export type InventoryStoreProps = {
+export type InventoryServiceProps = {
   inventoryStore: IInventoryStore
 }
 
 export class ScriptInventoryService implements IScriptInventoryService {
   private _inventoryStore: IInventoryStore
 
-  constructor(args: InventoryStoreProps) {
+  constructor(args: InventoryServiceProps) {
     this._inventoryStore = args.inventoryStore
   }
 
