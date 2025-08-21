@@ -1,33 +1,23 @@
 import type { Browser, Page } from 'puppeteer'
 import type { PuppeteerClickAction, PuppeteerInputAction, PuppeteerLocatorAction, PuppeteerNavigateAction } from '../types/puppeteer'
 import type { ScriptInfo, ScriptDetectionSummary } from '../types/script'
-import { getInlineScriptsFromPage } from '../utils/page'
-import { workflowDefinitionToPuppeteerWorkflow } from '../utils/workflow'
-
-import { scriptResponseHandler } from '../handlers/script'
 import type { WorkflowDefinition } from '../types/workflow'
 import type { Target } from '../types/target'
 
-interface ScriptDetectionArgs {
-  browser: Browser
-}
+import { getInlineScriptsFromPage } from '../utils/page'
+import { workflowDefinitionToPuppeteerWorkflow } from '../utils/workflow'
+import { scriptResponseHandler } from '../handlers/script'
 
 interface IScriptDetectionService {
-  detectScripts(target: Target, workflow: WorkflowDefinition): Promise<ScriptDetectionSummary>
+  detectScripts(browser: Browser, target: Target, workflow: WorkflowDefinition): Promise<ScriptDetectionSummary>
 }
 
 export class ScriptDetectionService implements IScriptDetectionService {
-  private _browser: Browser
-
-  constructor(args: ScriptDetectionArgs) {
-    this._browser = args.browser
-  }
-
-  async detectScripts(target: Target, workflow: WorkflowDefinition): Promise<ScriptDetectionSummary> {
+  async detectScripts(browser: Browser, target: Target, workflow: WorkflowDefinition): Promise<ScriptDetectionSummary> {
     const externalScripts: ScriptInfo[] = []
     const internalScripts: ScriptInfo[] = []
 
-    const page = await this._browser.newPage()
+    const page = await browser.newPage()
 
     try {
       // Bootstrap page
@@ -46,7 +36,7 @@ export class ScriptDetectionService implements IScriptDetectionService {
         const totalStepCount = puppeteerWorkflow.locatorActions.length
         const currentStepIndex = index + 1
 
-        console.log(`[${puppeteerWorkflow.target.url}][${currentStepIndex}/${totalStepCount}]: ${step.description}`)
+        console.log(`[Detection]: (${currentStepIndex}/${totalStepCount}) ${step.description} for target '${puppeteerWorkflow.target.url}'.`)
 
         // Wait for element to be available
         await step.locator.wait()
@@ -112,6 +102,6 @@ export class ScriptDetectionService implements IScriptDetectionService {
 
   private async detectNewInlineScripts(page: Page, existingScripts: ScriptInfo[]): Promise<ScriptInfo[]> {
     const detectedInlineScripts = await getInlineScriptsFromPage(page)
-    return detectedInlineScripts.filter((detectedScript) => !existingScripts.some((existingScript) => existingScript.hash === detectedScript.hash))
+    return detectedInlineScripts.filter((detectedScript) => !existingScripts.some((existingScript) => existingScript.hash.value === detectedScript.hash.value))
   }
 }

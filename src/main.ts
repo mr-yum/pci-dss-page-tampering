@@ -6,39 +6,46 @@ import { ScriptComparisonService } from './services/comparison'
 
 import type { ScriptDetectionSummary } from './types/script'
 import type { ScriptComparisonSummary } from './types/comparison'
+import type { Inventory } from './types/inventory'
 
 async function main() {
-  const browser = await puppeteer.launch()
-
-  const scriptDetectionService = new ScriptDetectionService({ browser: browser })
   const scriptInventoryService = new InMemoryScriptInventoryService()
+  const scriptDetectionService = new ScriptDetectionService()
   const scriptComparisonService = new ScriptComparisonService()
 
-  const inventory = await scriptInventoryService.pull()
-
-  const detectScriptsFromDetectionTarget = inventory.map((payload) => scriptDetectionService.detectScripts(payload.target.detection, payload.target.workflow))
-  const detectScriptsFromInventoryTarget = inventory.map((payload) => scriptDetectionService.detectScripts(payload.target.inventory, payload.target.workflow))
-
-  const detectionTargetScripts = await Promise.all(detectScriptsFromDetectionTarget)
-  const inventoryTargetScripts = await Promise.all(detectScriptsFromInventoryTarget)
-
-  const detectedScriptToCompare = (detectionSummary: ScriptDetectionSummary[]): Promise<ScriptComparisonSummary>[] => {
+  const detectedScriptToCompare = (inventory: Inventory[], detectionSummary: ScriptDetectionSummary[]): Promise<ScriptComparisonSummary>[] => {
     return detectionSummary.map((scriptDetectionSummary) => {
       const inventoryPayload = inventory.find((payload) => payload.target.inventory.url === scriptDetectionSummary.target.url)!
       return scriptComparisonService.compare(inventoryPayload, scriptDetectionSummary)
     })
   }
 
-  const detectionTargetScriptsToCompare = detectedScriptToCompare(detectionTargetScripts)
-  const inventoryTargetScriptsToCompare = detectedScriptToCompare(inventoryTargetScripts)
+  while (true) {
+    const inventory = await scriptInventoryService.pull()
+    const browser = await puppeteer.launch()
 
-  const detectionTargetScriptComparisonResult = await Promise.all(detectionTargetScriptsToCompare)
-  const inventoryTargetScriptComparisonResult = await Promise.all(inventoryTargetScriptsToCompare)
+    const detectScriptsFromDetectionTarget = inventory.map((payload) => scriptDetectionService.detectScripts(browser, payload.target.detection, payload.target.workflow))
+    const detectScriptsFromInventoryTarget = inventory.map((payload) => scriptDetectionService.detectScripts(browser, payload.target.inventory, payload.target.workflow))
 
-  await Promise.all(inventoryTargetScriptComparisonResult.map((result) => scriptInventoryService.push(result)))
-  await Promise.all(detectionTargetScriptComparisonResult.map((result) => scriptInventoryService.push(result)))
+    const detectionTargetScripts = await Promise.all(detectScriptsFromDetectionTarget)
+    const inventoryTargetScripts = await Promise.all(detectScriptsFromInventoryTarget)
 
-  await browser.close()
+    const detectionTargetScriptsToCompare = detectedScriptToCompare(inventory, detectionTargetScripts)
+    const inventoryTargetScriptsToCompare = detectedScriptToCompare(inventory, inventoryTargetScripts)
+
+    const detectionTargetScriptComparisonResult = await Promise.all(detectionTargetScriptsToCompare)
+    const inventoryTargetScriptComparisonResult = await Promise.all(inventoryTargetScriptsToCompare)
+
+    await Promise.all(inventoryTargetScriptComparisonResult.map((result) => scriptInventoryService.push(result)))
+    await Promise.all(detectionTargetScriptComparisonResult.map((result) => scriptInventoryService.push(result)))
+
+    await browser.close()
+    await delay(2500)
+  }
+}
+
+const delay = (ms: number) => {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 main().catch(console.error)

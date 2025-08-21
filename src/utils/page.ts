@@ -2,24 +2,32 @@ import type { Page } from 'puppeteer'
 import type { ScriptInfo } from '../types/script'
 
 import { createSha256Hash } from './hash'
+import type { PageScriptElement } from '../types/page'
 
 export async function getInlineScriptsFromPage(page: Page): Promise<ScriptInfo[]> {
   const detectedScripts: ScriptInfo[] = []
 
   const inlineScripts = await page.evaluate(() => {
     const scriptElements = Array.from(document.querySelectorAll('script:not([src])'))
-    return scriptElements.map((script) => script.innerHTML)
+    return scriptElements.map<PageScriptElement>((elem) => {
+      return {
+        id: elem.id,
+        content: elem.innerHTML,
+      }
+    })
   })
 
-  inlineScripts.forEach((content) => {
-    // Only process non-empty inline scripts
-    if (content) {
+  inlineScripts.forEach((pageScriptElement) => {
+    const idToUse = pageScriptElement.id ? `inline_script/${pageScriptElement.id}` : 'inline_script/id_not_found'
+
+    if (pageScriptElement.content) {
       detectedScripts.push({
         source: {
           type: 'inline',
-          content: content,
+          id: idToUse,
+          content: pageScriptElement.content,
         },
-        hash: createSha256Hash(content),
+        hash: createSha256Hash(pageScriptElement.content),
       })
     }
   })
