@@ -9,7 +9,8 @@
     "yarn": "please-use-npm"
   },
   "dependencies": {
-    "puppeteer": "^24.16.0"
+    "puppeteer": "^24.16.0",
+    "simple-git": "^3.28.0"
   },
   "devDependencies": {
     "@mr-yum/docker-tools": "^7",
