@@ -35,9 +35,8 @@ export class GitInventoryStore implements IInventoryStore {
     console.log(`[Store] Checking out to branch '${branch}'.`)
     await this._git.checkout(branch)
 
-    fs.readdir(this.clonePath, (_maybeError, files) => {
-      console.log(files)
-    })
+    // Ensure that the appropriate folders exist
+    this.ensureRequiredFoldersExist()
 
     return Promise.resolve([])
   }
@@ -53,5 +52,17 @@ export class GitInventoryStore implements IInventoryStore {
       console.log(`[Store] Cleaning up existing clone found in path '${this.clonePath}'`)
       fs.rmSync(this.clonePath, { recursive: true, force: true })
     }
+  }
+
+  private ensureRequiredFoldersExist(): void {
+    fs.readdir(this.clonePath, (_maybeError, files) => {
+      const expectedWorkflowDirectoryName = 'workflows'
+      const expectedTargetDirectoryName = 'targets'
+
+      console.log(`[Store] Discovered files and folders: '${files}'.`)
+      if (!files.some((name) => name === expectedWorkflowDirectoryName) && !files.some((name) => name === expectedTargetDirectoryName)) {
+        throw new Error(`[Store] Required folders not found! Please ensure that the following folders exist: '${expectedWorkflowDirectoryName}' and '${expectedTargetDirectoryName}'.`)
+      }
+    })
   }
 }
