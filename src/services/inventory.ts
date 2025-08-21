@@ -43,8 +43,12 @@ export class ScriptInventoryService implements IScriptInventoryService {
   }
 
   push(diffs: InventoryDifferenceResult[]): Promise<void> {
-    console.log('[Inventory] Pushing script differences to inventory store.')
-    return this._inventoryStore.push(diffs.map((diff) => diff.newInventory))
+    if (diffs.length !== 0) {
+      console.log('[Inventory] Pushing script differences to inventory store.')
+      return this._inventoryStore.push(diffs.map((diff) => diff.newInventory))
+    }
+
+    return Promise.resolve()
   }
 
   private getUpdatedInventoryWithNewScripts(scriptComparisonResult: ScriptComparisonResult, inventory: Inventory, updateDate: Date): Inventory {
