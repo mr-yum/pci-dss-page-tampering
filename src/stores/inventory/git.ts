@@ -1,10 +1,12 @@
 import type { IInventoryStore } from '../../interfaces/inventory'
-import type { GitInventoryStoreProps, Inventory } from '../../types/inventory'
+import type { Inventory } from '../../types/inventory/model'
+import type { GitInventoryStoreProps } from '../../types/inventory/props'
 import type { SimpleGit } from 'simple-git'
+import type { RawInventory } from '../../types/inventory/raw'
 
 import fs from 'fs'
 import { readFile } from '@mr-yum/mryum-yaml/dist/utilities/fs'
-import { InventorySchema } from '../../types/zod'
+import { RawInventorySchema } from '../../types/inventory/zod'
 
 export class GitInventoryStore implements IInventoryStore {
   private readonly _git: SimpleGit
@@ -20,7 +22,7 @@ export class GitInventoryStore implements IInventoryStore {
     this.clonePath = args.clonePath
   }
 
-  async pull(): Promise<Inventory[]> {
+  async pull(): Promise<RawInventory[]> {
     // Clean up any existing clones
     this.cleanUpExistingClone()
 
@@ -44,7 +46,7 @@ export class GitInventoryStore implements IInventoryStore {
     this.ensureRequiredFoldersExist()
 
     const getInventoryJson = JSON.parse(await readFile(`${this.clonePath}/${this._expectedTargetDirectoryName}/1.0.json`))
-    const inventory = InventorySchema.parse(getInventoryJson)
+    const inventory = RawInventorySchema.parse(getInventoryJson)
 
     console.log(inventory)
 

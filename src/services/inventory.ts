@@ -1,5 +1,6 @@
 import type { IInventoryStore, IScriptInventoryService } from '../interfaces/inventory'
-import type { Inventory, InventoryDifferenceResult, InventoryServiceProps } from '../types/inventory'
+import type { Inventory, InventoryDifferenceResult } from '../types/inventory/model'
+import type { InventoryServiceProps } from '../types/inventory/props'
 import type { ScriptComparisonResult, ScriptComparisonSummary } from '../types/comparison'
 
 import { getScriptSource, scriptInfoToInventoryScriptInfo } from '../utils/script'
@@ -13,9 +14,12 @@ export class ScriptInventoryService implements IScriptInventoryService {
     this._inventoryStore = args.inventoryStore
   }
 
-  pull(): Promise<Inventory[]> {
+  async pull(): Promise<Inventory[]> {
     console.log('[Inventory] Pulling inventory from store.')
-    return this._inventoryStore.pull()
+    // TODO: use repo to map
+    // @ts-ignore
+    const rawInventory = await this._inventoryStore.pull()
+    return Promise.resolve([])
   }
 
   diff(comparisonSummary: ScriptComparisonSummary, inventory: Inventory[]): Promise<InventoryDifferenceResult> {

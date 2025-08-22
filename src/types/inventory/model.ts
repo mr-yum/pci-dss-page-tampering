@@ -1,7 +1,6 @@
-import type { SHA256Hash } from './hash'
-import type { TargetDetection, TargetInventory } from './target'
-import type { IInventoryStore } from '../interfaces/inventory'
-import type { SimpleGit } from 'simple-git'
+import type { SHA256Hash } from '../hash'
+import type { TargetDetection, TargetInventory } from '../target'
+import type { WorkflowDefinition } from '../workflow'
 
 export type InventoryScriptAuthorisationInfo = {
   description: string
@@ -23,7 +22,7 @@ export type InventoryScriptInfo = {
 export type InventoryTarget = {
   inventory: TargetInventory
   detection: TargetDetection
-  workflow: string
+  workflow: WorkflowDefinition
 }
 
 export type Inventory = {
@@ -34,14 +33,4 @@ export type Inventory = {
 export type InventoryDifferenceResult = {
   oldInventory: Inventory
   newInventory: Inventory
-}
-
-export type InventoryServiceProps = {
-  inventoryStore: IInventoryStore
-}
-
-export type GitInventoryStoreProps = {
-  gitClient: SimpleGit
-  repositoryTarget: string
-  clonePath: string
 }

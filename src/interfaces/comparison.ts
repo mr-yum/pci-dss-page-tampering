@@ -1,4 +1,4 @@
-import type { Inventory } from '../types/inventory'
+import type { Inventory } from '../types/inventory/model'
 import type { ScriptDetectionSummary } from '../types/script'
 import type { ScriptComparisonSummary } from '../types/comparison'
 

@@ -1,8 +1,6 @@
 import { z } from 'zod'
 import type { WorkflowActionType, WorkflowDefinition, WorkflowStep, WorkflowWaitForDefinition } from './workflow'
-import type { Inventory, InventoryScriptAuthorisationInfo, InventoryScriptHashInfo, InventoryScriptInfo, InventoryTarget } from './inventory'
 import type { SHA256Hash } from './hash'
-import type { TargetDetection, TargetInventory } from './target'
 
 // --- Zod Schema Definitions ---
 
@@ -60,81 +58,4 @@ export const WorkflowDefinitionSchema: z.ZodType<WorkflowDefinition> = z.object(
  */
 export const SHA256HashSchema: z.ZodType<SHA256Hash> = z.object({
   value: z.string().regex(/^[a-f0-9]{64}$/, 'Invalid SHA256 hash format'),
-})
-
-/**
- * Base schema for a Target.
- * This is used to build the more specific target types.
- * Corresponds to `Target`.
- */
-const TargetSchema = z.object({
-  type: z.enum(['inventory', 'detection']),
-  url: z.string().url(),
-})
-
-/**
- * Schema for an Inventory Target.
- * It intersects the base TargetSchema and refines the 'type' literal.
- * Corresponds to `TargetInventory`.
- */
-export const TargetInventorySchema: z.ZodType<TargetInventory> = TargetSchema.extend({
-  type: z.literal('inventory'),
-})
-
-/**
- * Schema for a Detection Target.
- * It intersects the base TargetSchema and refines the 'type' literal.
- * Corresponds to `TargetDetection`.
- */
-export const TargetDetectionSchema: z.ZodType<TargetDetection> = TargetSchema.extend({
-  type: z.literal('detection'),
-})
-
-/**
- * Schema for script authorisation details.
- * Corresponds to `InventoryScriptAuthorisationInfo`.
- */
-export const InventoryScriptAuthorisationInfoSchema: z.ZodType<InventoryScriptAuthorisationInfo> = z.object({
-  description: z.string(),
-  authorised: z.boolean(),
-  date: z.date(),
-})
-
-/**
- * Schema for a script hash and its timestamp.
- * Corresponds to `InventoryScriptHashInfo`.
- */
-export const InventoryScriptHashInfoSchema: z.ZodType<InventoryScriptHashInfo> = z.object({
-  timestamp: z.date(),
-  hash: SHA256HashSchema,
-})
-
-/**
- * Schema for information about an inventory script.
- * Corresponds to `InventoryScriptInfo`.
- */
-export const InventoryScriptInfoSchema: z.ZodType<InventoryScriptInfo> = z.object({
-  matcher: z.instanceof(RegExp),
-  hashes: z.array(InventoryScriptHashInfoSchema),
-  authorisationInfo: InventoryScriptAuthorisationInfoSchema,
-})
-
-/**
- * Schema for the inventory target, including its workflow.
- * Corresponds to `InventoryTarget`.
- */
-export const InventoryTargetSchema: z.ZodType<InventoryTarget> = z.object({
-  inventory: TargetInventorySchema,
-  detection: TargetDetectionSchema,
-  workflow: z.string(),
-})
-
-/**
- * Schema for the complete inventory.
- * This is the top-level schema.
- * Corresponds to `Inventory`.
- */
-export const InventorySchema: z.ZodType<Inventory> = z.object({
-  target: InventoryTargetSchema,
-  scripts: z.array(InventoryScriptInfoSchema),
 })

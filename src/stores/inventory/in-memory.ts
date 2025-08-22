@@ -1,16 +1,15 @@
 import type { IInventoryStore } from '../../interfaces/inventory'
-import type { Inventory, InventoryScriptInfo } from '../../types/inventory'
 
-import { uatWorkflow as uatWorkflow10 } from '../../workflows/1.0'
-import { uatWorkflow as uatWorkflow20 } from '../../workflows/2.0'
+import type { Inventory, InventoryScriptInfo } from '../../types/inventory/model'
+import type { RawInventory } from '../../types/inventory/raw'
 
 export class InMemoryInventoryStore implements IInventoryStore {
-  private _inventory: Inventory[] = [
+  private _inventory: RawInventory[] = [
     {
       target: {
         inventory: { type: 'inventory', url: 'https://app-dev.meandu.com/qr?t=689e88f4d752b3d741db52b2_default&r=au' },
         detection: { type: 'detection', url: 'https://app-dev.meandu.com/qr?t=689e88f4d752b3d741db52b2_default&r=au' }, // TODO: replace with production target
-        workflow: uatWorkflow10,
+        workflow: '1.0_uat-workflow',
       },
       scripts: [
         this.createDefaultInventoryScript(RegExp('^https://app-dev\\.meandu\\.com/config\\.production\\.js\\?v=.+$')),
@@ -24,7 +23,7 @@ export class InMemoryInventoryStore implements IInventoryStore {
       target: {
         inventory: { type: 'inventory', url: 'https://staging.meandu.app/pcidsscompliance' },
         detection: { type: 'detection', url: 'https://staging.meandu.app/pcidsscompliance' }, // TODO: replace with production target
-        workflow: uatWorkflow20,
+        workflow: '2.0_uat-workflow',
       },
       scripts: [
         this.createDefaultInventoryScript(RegExp('^https://www\\.googletagmanager\\.com/gtag/js\\?id=G-[A-Z0-9]+$')),
@@ -34,12 +33,12 @@ export class InMemoryInventoryStore implements IInventoryStore {
     },
   ]
 
-  pull(): Promise<Inventory[]> {
+  pull(): Promise<RawInventory[]> {
     return Promise.resolve(this._inventory)
   }
 
-  push(inventory: Inventory[]): Promise<void> {
-    this._inventory = inventory
+  push(_inventory: Inventory[]): Promise<void> {
+    // this._inventory = inventory
     console.log('[Store] Updated inventory store with new payload.')
     return Promise.resolve()
   }

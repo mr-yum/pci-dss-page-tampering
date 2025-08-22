@@ -1,5 +1,5 @@
+import type { InventoryScriptInfo } from '../types/inventory/model'
 import type { ScriptInfo } from '../types/script'
-import type { InventoryScriptInfo } from '../types/inventory'
 
 import { scriptHashToInventoryHashInfo } from '../utils/hash'
 
