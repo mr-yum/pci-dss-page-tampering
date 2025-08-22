@@ -4,6 +4,16 @@ import * as path from 'node:path'
 
 import { readdir, readFile } from 'fs/promises'
 import { RawInventorySchema } from '../types/inventory/zod'
+import type { WorkflowDefinition } from '../types/workflow'
+import { WorkflowDefinitionSchema } from '../types/zod'
+
+export async function getWorkflowDefinitionFromFile(pathToFile: string): Promise<WorkflowDefinition> {
+  // Get JSON data from workflow definition file
+  const jsonData = await parseJson(pathToFile)
+
+  // Map to workflow definition and return
+  return WorkflowDefinitionSchema.parse(jsonData)
+}
 
 export async function getRawInventoryFromDirectory(directoryPath: string): Promise<RawInventory[]> {
   // Read directory for inventory json files

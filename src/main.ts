@@ -9,10 +9,12 @@ import type { ScriptComparisonSummary } from './types/comparison'
 import type { Inventory } from './types/inventory/model'
 import { GitInventoryStore } from './stores/inventory/git'
 import simpleGit from 'simple-git'
+import { ScriptInventoryRepository } from './repositories/inventory'
 
 async function main() {
-  const gitInventoryStore = new GitInventoryStore({ gitClient: simpleGit(), repositoryTarget: 'git@github.com:mr-yum/script-inventory.git', clonePath: './pulled_repo' })
-  const scriptInventoryService = new ScriptInventoryService({ inventoryStore: gitInventoryStore })
+  const gitInventoryStore = new GitInventoryStore({ gitClient: simpleGit(), repositoryTarget: 'git@github.com:mr-yum/script-inventory.git' })
+  const scriptInventoryRepository = new ScriptInventoryRepository({ inventoryStore: gitInventoryStore })
+  const scriptInventoryService = new ScriptInventoryService({ inventoryRepository: scriptInventoryRepository })
   const scriptDetectionService = new ScriptDetectionService()
   const scriptComparisonService = new ScriptComparisonService()
 

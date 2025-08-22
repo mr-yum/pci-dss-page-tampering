@@ -1,4 +1,4 @@
-import type { IInventoryStore, IScriptInventoryService } from '../interfaces/inventory'
+import type { IScriptInventoryRepository, IScriptInventoryService } from '../interfaces/inventory'
 import type { Inventory, InventoryDifferenceResult } from '../types/inventory/model'
 import type { InventoryServiceProps } from '../types/inventory/props'
 import type { ScriptComparisonResult, ScriptComparisonSummary } from '../types/comparison'
@@ -8,18 +8,15 @@ import { scriptHashToInventoryHashInfo } from '../utils/hash'
 import { copyInventory, maybeGetInventoryForTarget } from '../utils/inventory'
 
 export class ScriptInventoryService implements IScriptInventoryService {
-  private _inventoryStore: IInventoryStore
+  private _repository: IScriptInventoryRepository
 
   constructor(args: InventoryServiceProps) {
-    this._inventoryStore = args.inventoryStore
+    this._repository = args.inventoryRepository
   }
 
   async pull(): Promise<Inventory[]> {
     console.log('[Inventory] Pulling inventory from store.')
-    // TODO: use repo to map
-    // @ts-ignore
-    const rawInventory = await this._inventoryStore.pull()
-    return Promise.resolve([])
+    return await this._repository.pull()
   }
 
   diff(comparisonSummary: ScriptComparisonSummary, inventory: Inventory[]): Promise<InventoryDifferenceResult> {
@@ -50,7 +47,7 @@ export class ScriptInventoryService implements IScriptInventoryService {
   push(diffs: InventoryDifferenceResult[]): Promise<void> {
     if (diffs.length !== 0) {
       console.log('[Inventory] Pushing script differences to inventory store.')
-      return this._inventoryStore.push(diffs.map((diff) => diff.newInventory))
+      // return this._inventoryStore.push(diffs.map((diff) => diff.newInventory))
     }
 
     return Promise.resolve()

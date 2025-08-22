@@ -12,3 +12,8 @@ export interface IScriptInventoryService {
   diff(comparisonSummary: ScriptComparisonSummary, inventory: Inventory[]): Promise<InventoryDifferenceResult>
   push(diffs: InventoryDifferenceResult[]): Promise<void>
 }
+
+export interface IScriptInventoryRepository {
+  pull(): Promise<Inventory[]>
+  push(inventory: Inventory): Promise<void>
+}
