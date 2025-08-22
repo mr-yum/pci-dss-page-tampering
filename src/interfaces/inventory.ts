@@ -14,5 +14,5 @@ export interface IScriptInventoryService {
 
 export interface IScriptInventoryRepository {
   pull(): Promise<Inventory[]>
-  push(inventory: Inventory): Promise<void>
+  push(inventories: Inventory[]): Promise<void>
 }

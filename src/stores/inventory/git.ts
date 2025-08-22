@@ -11,6 +11,7 @@ import { GIT_CLONE_PATH, GIT_UPDATED_SCRIPTS_BRANCH_NAME, TARGET_DIRECTORY_NAME,
 export class GitInventoryStore implements IInventoryStore {
   private readonly initialGitClient: SimpleGit
   private readonly repositoryTarget: string
+  private repositoryGitClient: SimpleGit | undefined
 
   constructor(args: GitInventoryStoreProps) {
     this.initialGitClient = args.gitClient
@@ -28,10 +29,12 @@ export class GitInventoryStore implements IInventoryStore {
     }
 
     // Create new Git client which runs commands within clone path
-    const repositoryGitClient = simpleGit(GIT_CLONE_PATH)
+    if (!this.repositoryGitClient) {
+      this.repositoryGitClient = simpleGit(GIT_CLONE_PATH)
+    }
 
     // Checkout branch
-    await this.switchBranch(repositoryGitClient, GIT_UPDATED_SCRIPTS_BRANCH_NAME)
+    await this.switchBranch(this.repositoryGitClient, GIT_UPDATED_SCRIPTS_BRANCH_NAME)
 
     // Get and return raw inventory from files
     console.log(`[Inventory → Store] Reading and returning raw inventory.`)
@@ -57,7 +60,17 @@ export class GitInventoryStore implements IInventoryStore {
 
   // @ts-ignore
   async push(inventory: Inventory[]): Promise<void> {
-    return Promise.resolve(undefined)
+    console.log(`[Inventory → Store] Adding all changed files found in '${GIT_CLONE_PATH}'.`)
+    await this.repositoryGitClient?.add('.')
+
+    const commitMessage = 'Update scripts'
+    console.log(`[Inventory → Store] Committing changes with message '${commitMessage}'`)
+    await this.repositoryGitClient?.commit(commitMessage)
+
+    console.log(`[Inventory → Store] Pushing changes to branch '${GIT_UPDATED_SCRIPTS_BRANCH_NAME}'`)
+    await this.repositoryGitClient?.push('origin', GIT_UPDATED_SCRIPTS_BRANCH_NAME)
+
+    return Promise.resolve()
   }
 
   private async requiredFoldersExist(): Promise<boolean> {

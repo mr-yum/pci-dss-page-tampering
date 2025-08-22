@@ -46,8 +46,9 @@ export class ScriptInventoryService implements IScriptInventoryService {
 
   push(diffs: InventoryDifferenceResult[]): Promise<void> {
     if (diffs.length !== 0) {
-      console.log('[Inventory → Service] Pushing script differences to inventory store.')
-      // return this._inventoryStore.push(diffs.map((diff) => diff.newInventory))
+      console.log('[Inventory → Service] Pushing script differences to inventory.')
+      const inventoriesToPush = diffs.map((diff) => diff.newInventory)
+      return this._repository.push(inventoriesToPush)
     }
 
     return Promise.resolve()

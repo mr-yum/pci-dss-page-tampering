@@ -62,7 +62,7 @@ async function main() {
     await scriptInventoryService.push(inventoryTargetDiffResults)
 
     await browser.close()
-    await delay(2500)
+    await delay(5000)
   }
 }
 

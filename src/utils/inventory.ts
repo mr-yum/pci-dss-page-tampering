@@ -7,6 +7,7 @@ export function maybeGetInventoryForTarget(inventory: Inventory[], target: Targe
 
 export function copyInventory(inventory: Inventory, args?: { newScripts: InventoryScriptInfo[] }): Inventory {
   return {
+    fileName: inventory.fileName,
     target: inventory.target,
     scripts: args ? args.newScripts : inventory.scripts,
   }

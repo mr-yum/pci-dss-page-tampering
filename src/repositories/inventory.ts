@@ -3,8 +3,8 @@ import type { Inventory } from '../types/inventory/model'
 import type { InventoryRepositoryProps } from '../types/inventory/props'
 
 import { getWorkflowDefinitionFromFile } from '../utils/file'
-import { GIT_CLONE_PATH, WORKFLOW_PATH } from '../utils/constants'
-import { rm } from 'fs/promises'
+import { GIT_CLONE_PATH, TARGET_PATH, WORKFLOW_PATH } from '../utils/constants'
+import { rm, writeFile } from 'fs/promises'
 
 export class ScriptInventoryRepository implements IScriptInventoryRepository {
   private readonly inventoryStore: IInventoryStore
@@ -42,8 +42,19 @@ export class ScriptInventoryRepository implements IScriptInventoryRepository {
     return Promise.resolve(processedPayloads)
   }
 
-  push(_inventory: Inventory): Promise<void> {
-    return Promise.resolve(undefined)
+  push(inventories: Inventory[]): Promise<void> {
+    inventories.forEach(async (inventory) => {
+      const filePath = `${TARGET_PATH}/${inventory.fileName}`
+      const jsonString = JSON.stringify(inventory)
+
+      console.log(`[Inventory → Repository] Cleaning up old inventory payload '${inventory.fileName}'.`)
+      await rm(filePath)
+
+      console.log(`[Inventory → Repository] Writing new inventory payloads '${inventory.fileName}'.'`)
+      await writeFile(filePath, jsonString)
+    })
+
+    return this.inventoryStore.push(inventories)
   }
 
   /* This will clean up any cloned repos if it exists to ensure that we always have a clean slate to work with */
