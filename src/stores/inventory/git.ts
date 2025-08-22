@@ -1,15 +1,14 @@
 import type { IInventoryStore } from '../../interfaces/inventory'
 import type { Inventory } from '../../types/inventory/model'
 import type { GitInventoryStoreProps } from '../../types/inventory/props'
-import type { SimpleGit } from 'simple-git'
+import simpleGit, { type SimpleGit } from 'simple-git'
 import type { RawInventory } from '../../types/inventory/raw'
 
-import fs from 'fs'
-import { readFile } from '@mr-yum/mryum-yaml/dist/utilities/fs'
-import { RawInventorySchema } from '../../types/inventory/zod'
+import { rm, readdir } from 'fs/promises'
+import { getRawInventoryFromDirectory } from '../../utils/file'
 
 export class GitInventoryStore implements IInventoryStore {
-  private readonly _git: SimpleGit
+  private readonly initialGitClient: SimpleGit
   private readonly repositoryTarget: string
   private readonly clonePath: string
 
@@ -17,40 +16,41 @@ export class GitInventoryStore implements IInventoryStore {
   private readonly _expectedTargetDirectoryName = 'targets'
 
   constructor(args: GitInventoryStoreProps) {
-    this._git = args.gitClient
+    this.initialGitClient = args.gitClient
     this.repositoryTarget = args.repositoryTarget
     this.clonePath = args.clonePath
   }
 
   async pull(): Promise<RawInventory[]> {
     // Clean up any existing clones
-    this.cleanUpExistingClone()
+    console.log(`[Store] Removing any existing clones with path '${this.clonePath}'.`)
+    await this.cleanUpExistingClone()
 
     // Clone repository
     console.log(`[Store] Cloning repository '${this.repositoryTarget}' to path '${this.clonePath}'.`)
-    await this._git.clone(this.repositoryTarget, this.clonePath)
+    await this.initialGitClient.clone(this.repositoryTarget, this.clonePath)
 
-    // Switch git context to checked out repository
-    await this._git.cwd(this.clonePath)
+    // Ensure that the appropriate folders exist
+    if (!(await this.requiredFoldersExist())) {
+      return Promise.reject(new Error(`[Store] Required folders not found! Please ensure that the following folders exist: '${this._expectedWorkflowDirectoryName}' and '${this._expectedTargetDirectoryName}'.`))
+    }
+
+    // Create new Git client which runs commands within clone path
+    const repositoryGitClient = simpleGit(this.clonePath)
 
     // Pull repository
     console.log(`[Store] Fetching from repository '${this.repositoryTarget}'.`)
-    await this._git.fetch()
+    await repositoryGitClient.fetch()
 
     // Checkout to testing branch
     const branch = 'feature/CAD-715_initial-inventory-payload'
     console.log(`[Store] Checking out to branch '${branch}'.`)
-    await this._git.checkout(branch)
+    await repositoryGitClient.checkout(branch)
 
-    // Ensure that the appropriate folders exist
-    this.ensureRequiredFoldersExist()
-
-    const getInventoryJson = JSON.parse(await readFile(`${this.clonePath}/${this._expectedTargetDirectoryName}/1.0.json`))
-    const inventory = RawInventorySchema.parse(getInventoryJson)
-
-    console.log(inventory)
-
-    return Promise.resolve([])
+    // Get and return raw inventory from files
+    console.log(`[Store] Reading and returning raw inventory. '${branch}'.`)
+    const inventoryPath = `${this.clonePath}/${this._expectedTargetDirectoryName}`
+    return await getRawInventoryFromDirectory(inventoryPath)
   }
 
   // @ts-ignore
@@ -59,19 +59,12 @@ export class GitInventoryStore implements IInventoryStore {
   }
 
   /* This will clean up the cloned repo if it exists to ensure that we always have a clean slate to work with */
-  private cleanUpExistingClone(): void {
-    if (fs.existsSync(this.clonePath)) {
-      console.log(`[Store] Cleaning up existing clone found in path '${this.clonePath}'`)
-      fs.rmSync(this.clonePath, { recursive: true, force: true })
-    }
+  private async cleanUpExistingClone(): Promise<void> {
+    await rm(this.clonePath, { recursive: true, force: true })
   }
 
-  private ensureRequiredFoldersExist(): void {
-    fs.readdir(this.clonePath, (_maybeError, files) => {
-      console.log(`[Store] Discovered files and folders: '${files}'.`)
-      if (!files.some((name) => name === this._expectedWorkflowDirectoryName) && !files.some((name) => name === this._expectedTargetDirectoryName)) {
-        throw new Error(`[Store] Required folders not found! Please ensure that the following folders exist: '${this._expectedWorkflowDirectoryName}' and '${this._expectedTargetDirectoryName}'.`)
-      }
-    })
+  private async requiredFoldersExist(): Promise<boolean> {
+    const folders = await readdir(this.clonePath)
+    return folders.some((name) => name === this._expectedWorkflowDirectoryName) && folders.some((name) => name === this._expectedTargetDirectoryName)
   }
 }
