@@ -15,13 +15,13 @@ export class ScriptInventoryService implements IScriptInventoryService {
   }
 
   async pull(): Promise<Inventory[]> {
-    console.log('[Inventory] Pulling inventory from store.')
+    console.log('[Inventory → Service] Pulling inventory from store.')
     return await this._repository.pull()
   }
 
   diff(comparisonSummary: ScriptComparisonSummary, inventory: Inventory[]): Promise<InventoryDifferenceResult> {
     if (comparisonSummary.target.type !== 'inventory') {
-      return Promise.reject(new Error('[Inventory] Cannot run diff with inventory scripts from detection target! Skipping...'))
+      return Promise.reject(new Error('[Inventory → Service] Cannot run diff with inventory scripts from detection target! Skipping...'))
     }
 
     const updateDate = new Date()
@@ -29,7 +29,7 @@ export class ScriptInventoryService implements IScriptInventoryService {
     const inventoryForTarget = maybeGetInventoryForTarget(inventory, target)
 
     if (!inventoryForTarget) {
-      throw new Error(`[Inventory] Expected inventory for target '${target.url}', but it doesn't exist!`)
+      throw new Error(`[Inventory → Service] Expected inventory for target '${target.url}', but it doesn't exist!`)
     }
 
     const updatedInventoryWithExternalScripts = this.getUpdatedInventoryWithNewScripts(comparisonSummary.externalScripts, inventoryForTarget, updateDate)
@@ -46,7 +46,7 @@ export class ScriptInventoryService implements IScriptInventoryService {
 
   push(diffs: InventoryDifferenceResult[]): Promise<void> {
     if (diffs.length !== 0) {
-      console.log('[Inventory] Pushing script differences to inventory store.')
+      console.log('[Inventory → Service] Pushing script differences to inventory store.')
       // return this._inventoryStore.push(diffs.map((diff) => diff.newInventory))
     }
 
@@ -69,7 +69,7 @@ export class ScriptInventoryService implements IScriptInventoryService {
 
         // We always expect to have an inventory script entry from the comparison stage
         if (!inventoryScript) {
-          throw new Error("[Inventory] Expected to find inventory script entry for new script hash, but it doesn't exist!")
+          throw new Error("[Inventory → Service] Expected to find inventory script entry for new script hash, but it doesn't exist!")
         }
 
         inventoryScript.hashes.push(scriptHashToInventoryHashInfo(script, updateDate))
