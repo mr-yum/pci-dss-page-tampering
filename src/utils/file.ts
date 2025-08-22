@@ -1,11 +1,10 @@
 import type { RawInventory } from '../types/inventory/raw'
-
-import * as path from 'node:path'
+import type { WorkflowDefinition } from '../types/workflow'
 
 import { readdir, readFile } from 'fs/promises'
 import { RawInventorySchema } from '../types/inventory/zod'
-import type { WorkflowDefinition } from '../types/workflow'
 import { WorkflowDefinitionSchema } from '../types/zod'
+import { TARGET_PATH } from './constants'
 
 export async function getWorkflowDefinitionFromFile(pathToFile: string): Promise<WorkflowDefinition> {
   // Get JSON data from workflow definition file
@@ -15,18 +14,16 @@ export async function getWorkflowDefinitionFromFile(pathToFile: string): Promise
   return WorkflowDefinitionSchema.parse(jsonData)
 }
 
-export async function getRawInventoryFromDirectory(directoryPath: string): Promise<RawInventory[]> {
-  // Read directory for inventory json files
-  const filesWithPath = (await readdir(directoryPath)).map((filename) => path.join(directoryPath, filename))
+export async function getRawInventoryFromFile(pathToFile: string): Promise<RawInventory> {
+  // Get JSON data from workflow definition file
+  const jsonData = await parseJson(pathToFile)
 
-  // Prepare to parse inventory files
-  const getJsonDataFromFiles = filesWithPath.map((filename) => parseJson(filename))
+  // Map to workflow definition and return
+  return RawInventorySchema.parse(jsonData)
+}
 
-  // Parse inventory files to get JSON data for mapping into raw model
-  const parsedJsonFromFiles = await Promise.all(getJsonDataFromFiles)
-
-  // Map to raw model and return
-  return parsedJsonFromFiles.map((jsonData) => RawInventorySchema.parse(jsonData))
+export async function getInventoryFileNames(): Promise<string[]> {
+  return await readdir(TARGET_PATH)
 }
 
 async function parseJson(filename: string): Promise<string> {

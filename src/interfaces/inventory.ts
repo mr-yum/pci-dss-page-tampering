@@ -1,9 +1,8 @@
 import type { ScriptComparisonSummary } from '../types/comparison'
-import type { RawInventory } from '../types/inventory/raw'
-import type { Inventory, InventoryDifferenceResult } from '../types/inventory/model'
+import type { Inventory, InventoryDifferenceResult, InventoryPullResult } from '../types/inventory/model'
 
 export interface IInventoryStore {
-  pull(): Promise<RawInventory[]>
+  pull(): Promise<InventoryPullResult>
   push(inventory: Inventory[]): Promise<void>
 }
 

@@ -1,6 +1,7 @@
 import type { SHA256Hash } from '../hash'
 import type { TargetDetection, TargetInventory } from '../target'
 import type { WorkflowDefinition } from '../workflow'
+import type { RawInventory } from './raw'
 
 export type InventoryScriptAuthorisationInfo = {
   description: string
@@ -26,6 +27,7 @@ export type InventoryTarget = {
 }
 
 export type Inventory = {
+  fileName: string
   target: InventoryTarget
   scripts: InventoryScriptInfo[]
 }
@@ -33,4 +35,13 @@ export type Inventory = {
 export type InventoryDifferenceResult = {
   oldInventory: Inventory
   newInventory: Inventory
+}
+
+export type InventoryPullPayload = {
+  fileName: string
+  rawInventory: RawInventory
+}
+
+export type InventoryPullResult = {
+  payloads: InventoryPullPayload[]
 }

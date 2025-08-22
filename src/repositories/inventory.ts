@@ -18,26 +18,28 @@ export class ScriptInventoryRepository implements IScriptInventoryRepository {
     console.log(`[Inventory → Repository] Removing any existing clones from path '${GIT_CLONE_PATH}'.`)
     await this.cleanUpExistingClone()
 
-    const rawInventory = await this.inventoryStore.pull()
+    const pullResult = await this.inventoryStore.pull()
+    const payloads = pullResult.payloads
 
-    console.log(`[Inventory → Repository] Processing raw inventory.`)
-    const processedInventories = await Promise.all(
-      rawInventory.map(async (rawInventory) => {
-        const pathToWorkflowFile = `${WORKFLOW_PATH}/${rawInventory.target.workflow}`
-        const workflowDefinition = await getWorkflowDefinitionFromFile(pathToWorkflowFile)
-        return {
-          target: {
-            inventory: rawInventory.target.inventory,
-            detection: rawInventory.target.detection,
-            workflow: workflowDefinition,
-          },
-          scripts: rawInventory.scripts,
-        }
-      }),
-    )
+    const payloadsToProcess = payloads.map(async (payload): Promise<Inventory> => {
+      const pathToWorkflowFile = `${WORKFLOW_PATH}/${payload.rawInventory.target.workflow}`
+      const workflowDefinition = await getWorkflowDefinitionFromFile(pathToWorkflowFile)
 
+      return {
+        fileName: payload.fileName,
+        target: {
+          inventory: payload.rawInventory.target.inventory,
+          detection: payload.rawInventory.target.detection,
+          workflow: workflowDefinition,
+        },
+        scripts: payload.rawInventory.scripts,
+      }
+    })
+
+    const processedPayloads = await Promise.all(payloadsToProcess)
     console.log(`[Inventory → Repository] Raw inventory successfully processed.`)
-    return Promise.resolve(processedInventories)
+
+    return Promise.resolve(processedPayloads)
   }
 
   push(_inventory: Inventory): Promise<void> {
