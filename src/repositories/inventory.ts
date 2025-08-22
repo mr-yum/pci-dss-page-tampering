@@ -45,7 +45,7 @@ export class ScriptInventoryRepository implements IScriptInventoryRepository {
   push(inventories: Inventory[]): Promise<void> {
     inventories.forEach(async (inventory) => {
       const filePath = `${TARGET_PATH}/${inventory.fileName}`
-      const jsonString = JSON.stringify(inventory)
+      const jsonString = JSON.stringify(inventory, null, 2)
 
       console.log(`[Inventory → Repository] Cleaning up old inventory payload '${inventory.fileName}'.`)
       await rm(filePath)
