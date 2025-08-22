@@ -50,7 +50,7 @@ export class ScriptInventoryRepository implements IScriptInventoryRepository {
       console.log(`[Inventory → Repository] Cleaning up old inventory payload '${inventory.fileName}'.`)
       await rm(filePath)
 
-      console.log(`[Inventory → Repository] Writing new inventory payloads '${inventory.fileName}'.'`)
+      console.log(`[Inventory → Repository] Writing new inventory payload '${inventory.fileName}'.`)
       await writeFile(filePath, jsonString)
     })
 
