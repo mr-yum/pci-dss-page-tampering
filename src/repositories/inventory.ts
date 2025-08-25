@@ -4,6 +4,7 @@ import type { InventoryRepositoryProps } from '../types/inventory/props'
 import type { Workflow } from '../types/workflow'
 
 import { getWorkflowDefinitionFromFile } from '../utils/file'
+import { inventoryToRawInventory } from '../utils/inventory'
 import { rm, writeFile } from 'fs/promises'
 
 import { GIT_CLONE_PATH, TARGET_PATH, WORKFLOW_PATH } from '../utils/constants'
@@ -49,9 +50,16 @@ export class ScriptInventoryRepository implements IScriptInventoryRepository {
   }
 
   push(inventories: Inventory[]): Promise<void> {
-    inventories.forEach(async (inventory) => {
+    const rawInventories = inventories.map((inventory) => {
+      return {
+        fileName: inventory.fileName,
+        rawInventory: inventoryToRawInventory(inventory),
+      }
+    })
+
+    rawInventories.forEach(async (inventory) => {
       const filePath = `${TARGET_PATH}/${inventory.fileName}`
-      const jsonString = JSON.stringify(inventory, null, 2)
+      const jsonString = JSON.stringify(inventory.rawInventory, null, 2)
 
       console.log(`[Inventory → Repository] Cleaning up old inventory payload '${inventory.fileName}'.`)
       await rm(filePath)
