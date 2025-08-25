@@ -1,13 +1,12 @@
 import type { IInventoryStore } from '../../interfaces/inventory'
 
-import type { Inventory, InventoryPullResult, InventoryScriptInfo } from '../../types/inventory/model'
-import type { RawInventory } from '../../types/inventory/raw'
+import type { Inventory, InventoryPullResult } from '../../types/inventory/model'
+import type { RawInventory, RawInventoryScriptInfo } from '../../types/inventory/raw'
 
 export class InMemoryInventoryStore implements IInventoryStore {
   // @ts-ignore
   private _inventory: RawInventory[] = [
     {
-      fileName: '',
       target: {
         inventory: { type: 'inventory', url: 'https://app-dev.meandu.com/qr?t=689e88f4d752b3d741db52b2_default&r=au' },
         detection: { type: 'detection', url: 'https://app-dev.meandu.com/qr?t=689e88f4d752b3d741db52b2_default&r=au' }, // TODO: replace with production target
@@ -22,7 +21,6 @@ export class InMemoryInventoryStore implements IInventoryStore {
       ],
     },
     {
-      fileName: '',
       target: {
         inventory: { type: 'inventory', url: 'https://staging.meandu.app/pcidsscompliance' },
         detection: { type: 'detection', url: 'https://staging.meandu.app/pcidsscompliance' }, // TODO: replace with production target
@@ -48,9 +46,9 @@ export class InMemoryInventoryStore implements IInventoryStore {
     return Promise.resolve()
   }
 
-  private createDefaultInventoryScript(regex: RegExp): InventoryScriptInfo {
+  private createDefaultInventoryScript(regex: RegExp): RawInventoryScriptInfo {
     return {
-      matcher: regex,
+      matcher: regex.source,
       hashes: [],
       authorisationInfo: {
         description: 'Script that doesnt match with default implementation due to query string',
