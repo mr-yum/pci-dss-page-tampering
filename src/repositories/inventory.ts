@@ -1,10 +1,12 @@
 import type { IInventoryStore, IScriptInventoryRepository } from '../interfaces/inventory'
 import type { Inventory } from '../types/inventory/model'
 import type { InventoryRepositoryProps } from '../types/inventory/props'
+import type { Workflow } from '../types/workflow'
 
 import { getWorkflowDefinitionFromFile } from '../utils/file'
-import { GIT_CLONE_PATH, TARGET_PATH, WORKFLOW_PATH } from '../utils/constants'
 import { rm, writeFile } from 'fs/promises'
+
+import { GIT_CLONE_PATH, TARGET_PATH, WORKFLOW_PATH } from '../utils/constants'
 
 export class ScriptInventoryRepository implements IScriptInventoryRepository {
   private readonly inventoryStore: IInventoryStore
@@ -24,13 +26,17 @@ export class ScriptInventoryRepository implements IScriptInventoryRepository {
     const payloadsToProcess = payloads.map(async (payload): Promise<Inventory> => {
       const pathToWorkflowFile = `${WORKFLOW_PATH}/${payload.rawInventory.target.workflow}`
       const workflowDefinition = await getWorkflowDefinitionFromFile(pathToWorkflowFile)
+      const workflow: Workflow = {
+        fileName: payload.rawInventory.target.workflow,
+        definition: workflowDefinition,
+      }
 
       return {
         fileName: payload.fileName,
         target: {
           inventory: payload.rawInventory.target.inventory,
           detection: payload.rawInventory.target.detection,
-          workflow: workflowDefinition,
+          workflow: workflow,
         },
         scripts: payload.rawInventory.scripts,
       }

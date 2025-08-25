@@ -18,3 +18,8 @@ export type WorkflowStep = {
 export type WorkflowDefinition = {
   steps: WorkflowStep[]
 }
+
+export type Workflow = {
+  fileName: string
+  definition: WorkflowDefinition
+}

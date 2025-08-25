@@ -1,6 +1,6 @@
 import type { SHA256Hash } from '../hash'
 import type { TargetDetection, TargetInventory } from '../target'
-import type { WorkflowDefinition } from '../workflow'
+import type { Workflow } from '../workflow'
 import type { RawInventory } from './raw'
 
 export type InventoryScriptAuthorisationInfo = {
@@ -23,7 +23,7 @@ export type InventoryScriptInfo = {
 export type InventoryTarget = {
   inventory: TargetInventory
   detection: TargetDetection
-  workflow: WorkflowDefinition
+  workflow: Workflow
 }
 
 export type Inventory = {

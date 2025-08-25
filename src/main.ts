@@ -1,15 +1,15 @@
-import puppeteer from 'puppeteer'
-
-import { ScriptDetectionService } from './services/detection'
-import { ScriptInventoryService } from './services/inventory'
-import { ScriptComparisonService } from './services/comparison'
-
 import type { ScriptDetectionSummary } from './types/script'
 import type { ScriptComparisonSummary } from './types/comparison'
 import type { Inventory } from './types/inventory/model'
+
 import { GitInventoryStore } from './stores/inventory/git'
-import simpleGit from 'simple-git'
 import { ScriptInventoryRepository } from './repositories/inventory'
+import { ScriptInventoryService } from './services/inventory'
+import { ScriptComparisonService } from './services/comparison'
+import { ScriptDetectionService } from './services/detection'
+
+import puppeteer from 'puppeteer'
+import simpleGit from 'simple-git'
 
 async function main() {
   const gitInventoryStore = new GitInventoryStore({ gitClient: simpleGit(), repositoryTarget: 'git@github.com:mr-yum/script-inventory.git' })
