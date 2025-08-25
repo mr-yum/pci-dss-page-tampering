@@ -1,6 +1,6 @@
 import type { TargetDetection, TargetInventory } from '../target'
-import type { InventoryScriptAuthorisationInfo, InventoryScriptHashInfo, InventoryScriptInfo } from './model'
-import type { RawInventory, RawInventoryTarget } from './raw'
+import type { InventoryScriptAuthorisationInfo, InventoryScriptHashInfo } from './model'
+import type { RawInventory, RawInventoryScriptInfo, RawInventoryTarget } from './raw'
 
 import { SHA256HashSchema } from '../zod'
 import { z } from 'zod'
@@ -54,15 +54,10 @@ export const InventoryScriptHashInfoSchema: z.ZodType<InventoryScriptHashInfo> =
 
 /**
  * Schema for information about an inventory script.
- * Corresponds to `InventoryScriptInfo`.
+ * Corresponds to `RawInventoryScriptInfo`.
  */
-export const InventoryScriptInfoSchema: z.ZodType<InventoryScriptInfo> = z.object({
-  matcher: z.preprocess(
-    (matcherValue) => {
-      return RegExp(matcherValue as string)
-    },
-    z.instanceof(RegExp, { message: 'Invalid RegExp' }),
-  ),
+export const RawInventoryScriptInfoSchema: z.ZodType<RawInventoryScriptInfo> = z.object({
+  matcher: z.string(),
   hashes: z.array(InventoryScriptHashInfoSchema),
   authorisationInfo: InventoryScriptAuthorisationInfoSchema,
 })
@@ -84,5 +79,5 @@ export const RawInventoryTargetSchema: z.ZodType<RawInventoryTarget> = z.object(
  */
 export const RawInventorySchema: z.ZodType<RawInventory> = z.object({
   target: RawInventoryTargetSchema,
-  scripts: z.array(InventoryScriptInfoSchema),
+  scripts: z.array(RawInventoryScriptInfoSchema),
 })

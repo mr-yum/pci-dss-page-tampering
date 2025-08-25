@@ -5,6 +5,7 @@ import type { Workflow } from '../types/workflow'
 
 import { getWorkflowDefinitionFromFile } from '../utils/file'
 import { inventoryToRawInventory } from '../utils/inventory'
+import { rawInventoryScriptInfoToInventoryScriptInfo } from '../utils/script'
 import { rm, writeFile } from 'fs/promises'
 
 import { GIT_CLONE_PATH, TARGET_PATH, WORKFLOW_PATH } from '../utils/constants'
@@ -39,7 +40,7 @@ export class ScriptInventoryRepository implements IScriptInventoryRepository {
           detection: payload.rawInventory.target.detection,
           workflow: workflow,
         },
-        scripts: payload.rawInventory.scripts,
+        scripts: payload.rawInventory.scripts.map(rawInventoryScriptInfoToInventoryScriptInfo),
       }
     })
 

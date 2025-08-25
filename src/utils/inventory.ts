@@ -1,6 +1,7 @@
 import type { Target } from '../types/target'
 import type { Inventory, InventoryScriptInfo } from '../types/inventory/model'
 import type { RawInventory } from '../types/inventory/raw'
+import { inventoryScriptInfoToRawInventoryScriptInfo } from './script'
 
 export function maybeGetInventoryForTarget(inventory: Inventory[], target: Target): Inventory | undefined {
   return inventory.find((inventory) => inventory.target.inventory.url === target.url)
@@ -21,6 +22,6 @@ export function inventoryToRawInventory(inventory: Inventory): RawInventory {
       detection: inventory.target.detection,
       workflow: inventory.target.workflow.fileName,
     },
-    scripts: inventory.scripts,
+    scripts: inventory.scripts.map(inventoryScriptInfoToRawInventoryScriptInfo),
   }
 }
