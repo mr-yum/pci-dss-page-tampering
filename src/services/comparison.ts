@@ -1,13 +1,10 @@
-import type { Inventory, InventoryScriptInfo } from '../types/inventory'
+import type { Inventory, InventoryScriptInfo } from '../types/inventory/model'
+import type { IScriptComparisonService } from '../interfaces/comparison'
 import type { ScriptDetectionSummary, ScriptInfo } from '../types/script'
 import type { ScriptComparisonResult, ScriptComparisonSummary } from '../types/comparison'
 import type { Target } from '../types/target'
 
 import { getScriptSource } from '../utils/script'
-
-export interface IScriptComparisonService {
-  compare(inventory: Inventory, scriptDetectionSummary: ScriptDetectionSummary): Promise<ScriptComparisonSummary>
-}
 
 export class ScriptComparisonService implements IScriptComparisonService {
   /*

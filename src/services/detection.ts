@@ -1,19 +1,16 @@
 import type { Browser, Page } from 'puppeteer'
 import type { PuppeteerClickAction, PuppeteerInputAction, PuppeteerLocatorAction, PuppeteerNavigateAction } from '../types/puppeteer'
+import type { IScriptDetectionService } from '../interfaces/detection'
 import type { ScriptInfo, ScriptDetectionSummary } from '../types/script'
-import type { WorkflowDefinition } from '../types/workflow'
+import type { Workflow } from '../types/workflow'
 import type { Target } from '../types/target'
 
 import { getInlineScriptsFromPage } from '../utils/page'
 import { workflowDefinitionToPuppeteerWorkflow } from '../utils/workflow'
 import { scriptResponseHandler } from '../handlers/script'
 
-interface IScriptDetectionService {
-  detectScripts(browser: Browser, target: Target, workflow: WorkflowDefinition): Promise<ScriptDetectionSummary>
-}
-
 export class ScriptDetectionService implements IScriptDetectionService {
-  async detectScripts(browser: Browser, target: Target, workflow: WorkflowDefinition): Promise<ScriptDetectionSummary> {
+  async detectScripts(browser: Browser, target: Target, workflow: Workflow): Promise<ScriptDetectionSummary> {
     const externalScripts: ScriptInfo[] = []
     const internalScripts: ScriptInfo[] = []
 
@@ -24,7 +21,7 @@ export class ScriptDetectionService implements IScriptDetectionService {
       page.on('response', (response) => scriptResponseHandler(response, externalScripts))
 
       // Get Puppeteer workflow
-      const puppeteerWorkflow = workflowDefinitionToPuppeteerWorkflow(page, target, workflow)
+      const puppeteerWorkflow = workflowDefinitionToPuppeteerWorkflow(page, target, workflow.definition)
 
       // Navigate to workflow starting url
       await page.goto(puppeteerWorkflow.target.url, {

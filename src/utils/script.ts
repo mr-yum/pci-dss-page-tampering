@@ -1,5 +1,6 @@
+import type { InventoryScriptInfo } from '../types/inventory/model'
+import type { RawInventoryScriptInfo } from '../types/inventory/raw'
 import type { ScriptInfo } from '../types/script'
-import type { InventoryScriptInfo } from '../types/inventory'
 
 import { scriptHashToInventoryHashInfo } from '../utils/hash'
 
@@ -28,4 +29,20 @@ export function getScriptSource(scriptInfo: ScriptInfo): string {
   }
 
   return scriptSourceContent
+}
+
+export function rawInventoryScriptInfoToInventoryScriptInfo(rawInventoryScriptInfo: RawInventoryScriptInfo): InventoryScriptInfo {
+  return {
+    matcher: RegExp(rawInventoryScriptInfo.matcher),
+    hashes: rawInventoryScriptInfo.hashes,
+    authorisationInfo: rawInventoryScriptInfo.authorisationInfo,
+  }
+}
+
+export function inventoryScriptInfoToRawInventoryScriptInfo(inventoryScriptInfo: InventoryScriptInfo): RawInventoryScriptInfo {
+  return {
+    matcher: inventoryScriptInfo.matcher.source,
+    hashes: inventoryScriptInfo.hashes,
+    authorisationInfo: inventoryScriptInfo.authorisationInfo,
+  }
 }
