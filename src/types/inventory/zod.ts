@@ -1,9 +1,9 @@
 import type { TargetDetection, TargetInventory } from '../target'
 import type { InventoryScriptAuthorisationInfo, InventoryScriptHashInfo, InventoryScriptInfo } from './model'
+import type { RawInventory, RawInventoryTarget } from './raw'
 
 import { SHA256HashSchema } from '../zod'
 import { z } from 'zod'
-import type { RawInventory, RawInventoryTarget } from './raw'
 
 /**
  * Base schema for a Target.
@@ -12,7 +12,7 @@ import type { RawInventory, RawInventoryTarget } from './raw'
  */
 const TargetSchema = z.object({
   type: z.enum(['inventory', 'detection']),
-  url: z.string().url(),
+  url: z.url(),
 })
 
 /**
@@ -40,7 +40,7 @@ export const TargetDetectionSchema: z.ZodType<TargetDetection> = TargetSchema.ex
 export const InventoryScriptAuthorisationInfoSchema: z.ZodType<InventoryScriptAuthorisationInfo> = z.object({
   description: z.string(),
   authorised: z.boolean(),
-  date: z.date(),
+  date: z.coerce.date(),
 })
 
 /**
@@ -48,7 +48,7 @@ export const InventoryScriptAuthorisationInfoSchema: z.ZodType<InventoryScriptAu
  * Corresponds to `InventoryScriptHashInfo`.
  */
 export const InventoryScriptHashInfoSchema: z.ZodType<InventoryScriptHashInfo> = z.object({
-  timestamp: z.date(),
+  timestamp: z.coerce.date(),
   hash: SHA256HashSchema,
 })
 
@@ -57,14 +57,19 @@ export const InventoryScriptHashInfoSchema: z.ZodType<InventoryScriptHashInfo> =
  * Corresponds to `InventoryScriptInfo`.
  */
 export const InventoryScriptInfoSchema: z.ZodType<InventoryScriptInfo> = z.object({
-  matcher: z.instanceof(RegExp),
+  matcher: z.preprocess(
+    (matcherValue) => {
+      return RegExp(matcherValue as string)
+    },
+    z.instanceof(RegExp, { message: 'Invalid RegExp' }),
+  ),
   hashes: z.array(InventoryScriptHashInfoSchema),
   authorisationInfo: InventoryScriptAuthorisationInfoSchema,
 })
 
 /**
  * Schema for the inventory target, including its workflow.
- * Corresponds to `InventoryTarget`.
+ * Corresponds to `RawInventoryTarget`.
  */
 export const RawInventoryTargetSchema: z.ZodType<RawInventoryTarget> = z.object({
   inventory: TargetInventorySchema,
@@ -75,7 +80,7 @@ export const RawInventoryTargetSchema: z.ZodType<RawInventoryTarget> = z.object(
 /**
  * Schema for the complete inventory.
  * This is the top-level schema.
- * Corresponds to `Inventory`.
+ * Corresponds to `RawInventory`.
  */
 export const RawInventorySchema: z.ZodType<RawInventory> = z.object({
   target: RawInventoryTargetSchema,
