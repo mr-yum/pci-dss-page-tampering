@@ -12,26 +12,29 @@ export class SlackAlertService implements IAlertService {
     switch (target.type) {
       case 'detection':
         if (this.newScriptsFound(scriptComparisonSummary)) {
-          const message = `Unauthorised script detected for Detection target!`
-          this.log(message)
+          const message = `Unauthorised scripts detected for Detection target!`
+          const newScripts = this.getNewScripts(scriptComparisonSummary)
 
-          await this.sendMessage(message, scriptComparisonSummary)
+          this.log(message)
+          await this.sendMessage(message, newScripts, scriptComparisonSummary.target)
         }
 
         if (this.newHashesFound(scriptComparisonSummary)) {
-          const message = `Script hash mismatch found for Detection target!`
-          this.log(message)
+          const message = `Script hash mismatches found for Detection target!`
+          const newHashes = this.getNewHashes(scriptComparisonSummary)
 
-          await this.sendMessage(message, scriptComparisonSummary)
+          this.log(message)
+          await this.sendMessage(message, newHashes, scriptComparisonSummary.target)
         }
         break
 
       case 'inventory':
         if (this.newScriptsFound(scriptComparisonSummary)) {
-          const message = `New unauthorised script detected for Inventory target!`
-          this.log(message)
+          const message = `New unauthorised scripts detected for Inventory target!`
+          const newScripts = this.getNewScripts(scriptComparisonSummary)
 
-          await this.sendMessage(message, scriptComparisonSummary)
+          this.log(message)
+          await this.sendMessage(message, newScripts, scriptComparisonSummary.target)
         }
         break
     }
@@ -46,8 +49,8 @@ export class SlackAlertService implements IAlertService {
     return this.getNewHashes(scriptComparisonSummary).length !== 0
   }
 
-  private async sendMessage(title: string, scriptComparisonSummary: ScriptComparisonSummary): Promise<void> {
-    const payload = this.createMessagePayload(title, scriptComparisonSummary)
+  private async sendMessage(title: string, scripts: ScriptInfo[], target: Target): Promise<void> {
+    const payload = this.createMessagePayload(title, scripts, target)
     await axios.post(this._webhookUrl, payload)
   }
 
@@ -59,59 +62,7 @@ export class SlackAlertService implements IAlertService {
     return scriptComparisonSummary.externalScripts.newHashes.concat(scriptComparisonSummary.inlineScripts.newHashes)
   }
 
-  private createMessagePayload(title: string, scriptComparisonSummary: ScriptComparisonSummary): object {
-    const scriptInfoToResourceHashString = (scriptInfo: ScriptInfo) => {
-      let resourceHashString: string
-
-      switch (scriptInfo.source.type) {
-        case 'external':
-          const lastSlashIndex = scriptInfo.source.url.lastIndexOf('/')
-          const scriptName = scriptInfo.source.url.slice(lastSlashIndex + 1)
-
-          resourceHashString = `${scriptName}:${scriptInfo.hash.value}`
-          break
-        case 'inline':
-          resourceHashString = `${scriptInfo.source.id}:${scriptInfo.hash.value}`
-          break
-      }
-
-      return resourceHashString.slice(0, 75) // Slack only allows a max text length of 76.
-    }
-
-    const getMessageBlock = (blockTitle: string, options: string[]) => {
-      return {
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `*${blockTitle}*`,
-        },
-        accessory: {
-          type: 'static_select',
-          placeholder: {
-            type: 'plain_text',
-            text: 'View detected changes',
-            emoji: true,
-          },
-          options: options.map((option) => {
-            return {
-              text: {
-                type: 'plain_text',
-                text: `${option}`,
-                emoji: true,
-              },
-              value: `${option}`,
-            }
-          }),
-          action_id: 'static_select-action',
-        },
-      }
-    }
-
-    const newScriptsMessageValues = this.getNewScripts(scriptComparisonSummary).map(scriptInfoToResourceHashString)
-    const newHashesMessageValues = this.getNewHashes(scriptComparisonSummary).map(scriptInfoToResourceHashString)
-
-    const messageBlock = newScriptsMessageValues.length > 0 ? getMessageBlock('Detected Scripts', newScriptsMessageValues) : getMessageBlock('Detected Hashes', newHashesMessageValues)
-
+  private createMessagePayload(title: string, scripts: ScriptInfo[], target: Target): object {
     return {
       blocks: [
         {
@@ -128,17 +79,23 @@ export class SlackAlertService implements IAlertService {
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `*Target Type*\n- \`${scriptComparisonSummary.target.type}\``,
+            text: `*Target Type*: \`${target.type}\``,
           },
         },
         {
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `*Target Source*\n- \`${scriptComparisonSummary.target.url}\``,
+            text: `*Target Source*: \`${target.url}\``,
           },
         },
-        messageBlock,
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*Number of Detected Changes*: ${scripts.length}`,
+          },
+        },
         {
           type: 'section',
           text: {
