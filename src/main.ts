@@ -29,17 +29,17 @@ async function main() {
     const scriptDetectionSummaryForTarget = await detectScriptsFromTarget
 
     // Run script comparison with inventory
-    const comparisonResultForTarget = await scriptComparisonService.compare(payload, scriptDetectionSummaryForTarget)
+    const comparisonSummaryForTarget = await scriptComparisonService.compare(payload, scriptDetectionSummaryForTarget)
 
     // Alert for inventory and target
-    await slackAlertService.alert(comparisonResultForTarget, target)
+    await slackAlertService.alert(comparisonSummaryForTarget, target)
 
     // Close browser
     await browser.close()
 
     // Run inventory sanity check and return to push to inventory
     if (target.type === 'inventory') {
-      return await scriptInventoryService.diff(comparisonResultForTarget, payload)
+      return await scriptInventoryService.diff(comparisonSummaryForTarget, payload)
     } else {
       return null
     }
