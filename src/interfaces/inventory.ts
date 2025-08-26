@@ -8,7 +8,7 @@ export interface IInventoryStore {
 
 export interface IScriptInventoryService {
   pull(): Promise<Inventory[]>
-  diff(comparisonSummary: ScriptComparisonSummary, inventory: Inventory[]): Promise<InventoryDifferenceResult>
+  diff(comparisonSummary: ScriptComparisonSummary, inventory: Inventory): Promise<InventoryDifferenceResult>
   push(diffs: InventoryDifferenceResult[]): Promise<void>
 }
 
