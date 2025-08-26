@@ -12,7 +12,7 @@ export class SlackAlertService implements IAlertService {
     switch (target.type) {
       case 'detection':
         if (this.newScriptsFound(scriptComparisonSummary)) {
-          const message = `Unauthorised scripts detected for Detection target!`
+          const message = `Unauthorised scripts detected for target!`
           const newScripts = this.getNewScripts(scriptComparisonSummary)
 
           this.log(message)
@@ -20,7 +20,7 @@ export class SlackAlertService implements IAlertService {
         }
 
         if (this.newHashesFound(scriptComparisonSummary)) {
-          const message = `Script hash mismatches found for Detection target!`
+          const message = `Script hash mismatch detected for target!`
           const newHashes = this.getNewHashes(scriptComparisonSummary)
 
           this.log(message)
@@ -30,7 +30,7 @@ export class SlackAlertService implements IAlertService {
 
       case 'inventory':
         if (this.newScriptsFound(scriptComparisonSummary)) {
-          const message = `New unauthorised scripts detected for Inventory target!`
+          const message = `New unauthorised scripts detected for target!`
           const newScripts = this.getNewScripts(scriptComparisonSummary)
 
           this.log(message)
@@ -69,7 +69,7 @@ export class SlackAlertService implements IAlertService {
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `*${title}*`,
+            text: `:warning: *${title}* :warning:`,
           },
         },
         {
@@ -100,6 +100,55 @@ export class SlackAlertService implements IAlertService {
           type: 'section',
           text: {
             type: 'mrkdwn',
+            text: `*Detection Summary*`,
+          },
+        },
+        {
+          type: 'table',
+          rows: [
+            [
+              {
+                type: 'rich_text',
+                elements: [
+                  {
+                    type: 'rich_text_section',
+                    elements: [
+                      {
+                        type: 'text',
+                        text: 'Identifier',
+                        style: {
+                          bold: true,
+                        },
+                      },
+                    ],
+                  },
+                ],
+              },
+              {
+                type: 'rich_text',
+                elements: [
+                  {
+                    type: 'rich_text_section',
+                    elements: [
+                      {
+                        type: 'text',
+                        text: 'Hash',
+                        style: {
+                          bold: true,
+                        },
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+            ...scripts.map(this.scriptInfoToTableItem),
+          ],
+        },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
             text: 'Please review the changes as soon as possible:',
           },
         },
@@ -118,6 +167,50 @@ export class SlackAlertService implements IAlertService {
         },
       ],
     }
+  }
+
+  private scriptInfoToTableItem(scriptInfo: ScriptInfo) {
+    let scriptIdentifier: string
+
+    switch (scriptInfo.source.type) {
+      case 'external':
+        scriptIdentifier = scriptInfo.source.url
+        break
+      case 'inline':
+        scriptIdentifier = scriptInfo.source.id
+        break
+    }
+
+    return [
+      {
+        type: 'rich_text',
+        elements: [
+          {
+            type: 'rich_text_section',
+            elements: [
+              {
+                type: 'text',
+                text: scriptIdentifier,
+              },
+            ],
+          },
+        ],
+      },
+      {
+        type: 'rich_text',
+        elements: [
+          {
+            type: 'rich_text_section',
+            elements: [
+              {
+                type: 'text',
+                text: scriptInfo.hash.value,
+              },
+            ],
+          },
+        ],
+      },
+    ]
   }
 
   private log(message: string): void {
