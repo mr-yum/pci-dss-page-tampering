@@ -7,7 +7,7 @@ export function unauthorisedHeadersToInventoryHeaderInfo(headers: Map<HeaderName
     return headerValuesArray.map<InventoryHeaderInfo>((headerValue) => {
       return {
         nameMatcher: RegExp(`^${headerName}$`),
-        contentMatcher: RegExp(`/${headerValue}/`),
+        contentMatcher: RegExp(`${headerValue}`),
         authorisationInfo: {
           description: 'NO_DESCRIPTION',
           authorised: false,
