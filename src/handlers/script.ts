@@ -1,5 +1,6 @@
 import type { HTTPResponse } from 'puppeteer'
 import type { ScriptInfo } from '../types/script'
+
 import { createSha256Hash } from '../utils/hash'
 
 export async function scriptResponseHandler(response: HTTPResponse, detectedScripts: ScriptInfo[]): Promise<void> {

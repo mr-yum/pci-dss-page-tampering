@@ -19,9 +19,7 @@ export class InMemoryInventoryStore implements IInventoryStore {
         this.createDefaultInventoryScript(RegExp('^https://www\\.recaptcha\\.net/recaptcha/enterprise\\.js\\?render=.+$')),
         this.createDefaultInventoryScript(RegExp('^https://www\\.recaptcha\\.net/recaptcha/enterprise/webworker\\.js\\?.*$')),
       ],
-      headers: [
-        this.createDefaultInventoryHeader(RegExp('^content-security-policy$'), RegExp('^.*$')),
-      ],
+      headers: [this.createDefaultInventoryHeader(RegExp('^content-security-policy$'), RegExp('^.*$'))],
     },
     {
       target: {
@@ -34,9 +32,7 @@ export class InMemoryInventoryStore implements IInventoryStore {
         this.createDefaultInventoryScript(RegExp('^https://hcaptcha\\.com/1/api\\.js\\?.*$')),
         this.createDefaultInventoryScript(RegExp('^https://connect\\.facebook\\.net/signals/config/\\d+\\?.*$')),
       ],
-      headers: [
-        this.createDefaultInventoryHeader(RegExp('^content-security-policy$'), RegExp('^.*$')),
-      ],
+      headers: [this.createDefaultInventoryHeader(RegExp('^content-security-policy$'), RegExp('^.*$'))],
     },
   ]
 

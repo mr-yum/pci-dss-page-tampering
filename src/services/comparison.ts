@@ -1,7 +1,7 @@
-import type { Inventory, InventoryScriptInfo, InventoryHeaderInfo } from '../types/inventory/model'
+import type { Inventory, InventoryScriptInfo } from '../types/inventory/model'
 import type { IScriptComparisonService } from '../interfaces/comparison'
-import type { ScriptDetectionSummary, ScriptInfo, HeaderInfo } from '../types/script'
-import type { ScriptComparisonResult, ScriptComparisonSummary, HeaderComparisonResult } from '../types/comparison'
+import type { ScriptDetectionSummary, ScriptInfo } from '../types/script'
+import type { ScriptComparisonResult, ScriptComparisonSummary } from '../types/comparison'
 import type { Target } from '../types/target'
 
 import { getScriptSource } from '../utils/script'
@@ -12,22 +12,18 @@ export class ScriptComparisonService implements IScriptComparisonService {
     - Not found in inventory
     - Found in inventory but hash doesn't exist
    */
-  compare(inventory: Inventory, scriptDetectionSummary: ScriptDetectionSummary): Promise<ScriptComparisonSummary> {
+  compare(target: Target, inventory: Inventory, scriptDetectionSummary: ScriptDetectionSummary): Promise<ScriptComparisonSummary> {
     const inventoryScripts = inventory.scripts
-    const inventoryHeaders = inventory.headers
     const detectedExternalScripts = scriptDetectionSummary.external
     const detectedInlineScripts = scriptDetectionSummary.inline
-    const detectedHeaders = scriptDetectionSummary.headers
 
-    const externalScriptsComparisonResult = this.compareScriptWithInventory(detectedExternalScripts, inventoryScripts, scriptDetectionSummary.target)
-    const inlineScriptsComparisonResult = this.compareScriptWithInventory(detectedInlineScripts, inventoryScripts, scriptDetectionSummary.target)
-    const headersComparisonResult = this.compareHeadersWithInventory(detectedHeaders, inventoryHeaders, scriptDetectionSummary.target)
+    const externalScriptsComparisonResult = this.compareScriptWithInventory(detectedExternalScripts, inventoryScripts, target)
+    const inlineScriptsComparisonResult = this.compareScriptWithInventory(detectedInlineScripts, inventoryScripts, target)
 
     return Promise.resolve({
-      target: scriptDetectionSummary.target,
+      target: target,
       externalScripts: externalScriptsComparisonResult,
       inlineScripts: inlineScriptsComparisonResult,
-      headers: headersComparisonResult,
     })
   }
 
@@ -57,34 +53,34 @@ export class ScriptComparisonService implements IScriptComparisonService {
     }
   }
 
-  private compareHeadersWithInventory(detectedHeaders: HeaderInfo[], inventoryHeaders: InventoryHeaderInfo[], target: Target): HeaderComparisonResult {
-    const changedHeaders: HeaderInfo[] = []
-
-    // If no headers are defined in inventory, no comparison needed
-    if (!inventoryHeaders || inventoryHeaders.length === 0) {
-      return {
-        changedHeaders: [],
-      }
-    }
-
-    detectedHeaders.forEach((detectedHeader) => {
-      // Find if this header is defined in the inventory
-      const inventoryHeader = this.getHeaderFromInventory(detectedHeader, inventoryHeaders)
-      
-      if (inventoryHeader) {
-        // Header is defined in inventory - check if content has changed
-        if (!this.headerContentMatches(detectedHeader, inventoryHeader)) {
-          console.log(`[Comparison]: Header '${detectedHeader.name}' content changed for target '${target.url}'.`)
-          changedHeaders.push(detectedHeader)
-        }
-      }
-      // If header is not in inventory, we don't alert on it (new headers are ignored)
-    })
-
-    return {
-      changedHeaders: changedHeaders,
-    }
-  }
+  // private compareHeadersWithInventory(detectedHeaders: HeaderInfo[], inventoryHeaders: InventoryHeaderInfo[], target: Target): HeaderComparisonResult {
+  //   const changedHeaders: HeaderInfo[] = []
+  //
+  //   // If no headers are defined in inventory, no comparison needed
+  //   if (!inventoryHeaders || inventoryHeaders.length === 0) {
+  //     return {
+  //       changedHeaders: [],
+  //     }
+  //   }
+  //
+  //   detectedHeaders.forEach((detectedHeader) => {
+  //     // Find if this header is defined in the inventory
+  //     const inventoryHeader = this.getHeaderFromInventory(detectedHeader, inventoryHeaders)
+  //
+  //     if (inventoryHeader) {
+  //       // Header is defined in inventory - check if content has changed
+  //       if (!this.headerContentMatches(detectedHeader, inventoryHeader)) {
+  //         console.log(`[Comparison]: Header '${detectedHeader.name}' content changed for target '${target.url}'.`)
+  //         changedHeaders.push(detectedHeader)
+  //       }
+  //     }
+  //     // If header is not in inventory, we don't alert on it (new headers are ignored)
+  //   })
+  //
+  //   return {
+  //     changedHeaders: changedHeaders,
+  //   }
+  // }
 
   private scriptExistsInInventory(scriptInfo: ScriptInfo, inventoryScripts: InventoryScriptInfo[]): boolean {
     return inventoryScripts.some((inventoryScript) => inventoryScript.matcher.test(getScriptSource(scriptInfo)))
@@ -98,11 +94,11 @@ export class ScriptComparisonService implements IScriptComparisonService {
     return inventoryScript.hashes.some((hashInfo) => hashInfo.hash.value === scriptInfo.hash.value)
   }
 
-  private getHeaderFromInventory(detectedHeader: HeaderInfo, inventoryHeaders: InventoryHeaderInfo[]): InventoryHeaderInfo | undefined {
-    return inventoryHeaders.find((inventoryHeader) => inventoryHeader.nameMatcher.test(detectedHeader.name))
-  }
-
-  private headerContentMatches(detectedHeader: HeaderInfo, inventoryHeader: InventoryHeaderInfo): boolean {
-    return inventoryHeader.contentMatcher.test(detectedHeader.value)
-  }
+  // private getHeaderFromInventory(detectedHeader: HeaderInfo, inventoryHeaders: InventoryHeaderInfo[]): InventoryHeaderInfo | undefined {
+  //   return inventoryHeaders.find((inventoryHeader) => inventoryHeader.nameMatcher.test(detectedHeader.name))
+  // }
+  //
+  // private headerContentMatches(detectedHeader: HeaderInfo, inventoryHeader: InventoryHeaderInfo): boolean {
+  //   return inventoryHeader.contentMatcher.test(detectedHeader.value)
+  // }
 }
