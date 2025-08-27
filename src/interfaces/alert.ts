@@ -1,6 +1,7 @@
-import type { ScriptComparisonSummary } from '../types/comparison'
+import type { HeaderComparisonSummary, ScriptComparisonSummary } from '../types/comparison'
 import type { Target } from '../types/target'
 
 export interface IAlertService {
-  alert(scriptComparisonSummary: ScriptComparisonSummary, target: Target): Promise<void>
+  alertForScripts(scriptComparisonSummary: ScriptComparisonSummary, target: Target): Promise<void>
+  alertForHeaders(headerComparisonSummary: HeaderComparisonSummary, target: Target): Promise<void>
 }

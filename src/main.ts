@@ -40,10 +40,10 @@ async function main() {
 
     // Run header comparison with inventory
     const headerComparisonSummaryForTarget = await headerComparisonService.compare(detectionSummaryForTarget.target, payload, detectionSummaryForTarget.headerSummary)
-    console.log(headerComparisonSummaryForTarget.unauthorisedHeaders)
 
     // Alert for inventory and target
-    await slackAlertService.alert(scriptComparisonSummaryForTarget, target)
+    await slackAlertService.alertForScripts(scriptComparisonSummaryForTarget, target)
+    await slackAlertService.alertForHeaders(headerComparisonSummaryForTarget, target)
 
     // Close browser
     await browser.close()
