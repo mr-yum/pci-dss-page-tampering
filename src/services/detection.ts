@@ -88,11 +88,13 @@ export class DetectionService implements IDetectionService {
 
     return {
       target: target,
-      scripts: {
-        external: externalScripts,
-        inline: internalScripts,
+      scriptSummary: {
+        externalScripts: externalScripts,
+        inlineScripts: internalScripts,
       },
-      headers: headers,
+      headerSummary: {
+        headers: headers,
+      },
     }
   }
 

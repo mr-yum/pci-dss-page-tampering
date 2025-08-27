@@ -34,7 +34,7 @@ async function main() {
     const detectionSummaryForTarget = await detectResourcesForTarget
 
     // Run script comparison with inventory
-    const comparisonSummaryForTarget = await scriptComparisonService.compare(detectionSummaryForTarget.target, payload, detectionSummaryForTarget.scripts)
+    const comparisonSummaryForTarget = await scriptComparisonService.compare(detectionSummaryForTarget.target, payload, detectionSummaryForTarget.scriptSummary)
 
     // Alert for inventory and target
     await slackAlertService.alert(comparisonSummaryForTarget, target)

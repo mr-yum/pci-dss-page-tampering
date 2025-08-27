@@ -11,3 +11,7 @@ export type ScriptComparisonSummary = {
   externalScripts: ScriptComparisonResult
   inlineScripts: ScriptComparisonResult
 }
+
+export type HeaderComparisonSummary = {
+  target: Target
+}

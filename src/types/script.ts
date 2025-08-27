@@ -19,6 +19,6 @@ export type ScriptInfo = {
 }
 
 export type ScriptDetectionSummary = {
-  external: ScriptInfo[]
-  inline: ScriptInfo[]
+  externalScripts: ScriptInfo[]
+  inlineScripts: ScriptInfo[]
 }

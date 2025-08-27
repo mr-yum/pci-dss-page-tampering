@@ -14,8 +14,8 @@ export class ScriptComparisonService implements IScriptComparisonService {
    */
   compare(target: Target, inventory: Inventory, scriptDetectionSummary: ScriptDetectionSummary): Promise<ScriptComparisonSummary> {
     const inventoryScripts = inventory.scripts
-    const detectedExternalScripts = scriptDetectionSummary.external
-    const detectedInlineScripts = scriptDetectionSummary.inline
+    const detectedExternalScripts = scriptDetectionSummary.externalScripts
+    const detectedInlineScripts = scriptDetectionSummary.inlineScripts
 
     const externalScriptsComparisonResult = this.compareScriptWithInventory(detectedExternalScripts, inventoryScripts, target)
     const inlineScriptsComparisonResult = this.compareScriptWithInventory(detectedInlineScripts, inventoryScripts, target)
