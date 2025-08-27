@@ -19,7 +19,7 @@ export function inventoryToRawInventory(inventory: Inventory): RawInventory {
       workflow: inventory.target.workflow.fileName,
     },
     scripts: inventory.scripts.map(inventoryScriptInfoToRawInventoryScriptInfo),
-    headers: (inventory.headers || []).map(inventoryHeaderInfoToRawInventoryHeaderInfo),
+    headers: inventory.headers.map(inventoryHeaderInfoToRawInventoryHeaderInfo),
   }
 }
 
@@ -27,9 +27,11 @@ export function rawInventoryHeaderInfoToInventoryHeaderInfo(rawHeaderInfo: RawIn
   return {
     nameMatcher: new RegExp(rawHeaderInfo.nameMatcher),
     contentMatcher: new RegExp(rawHeaderInfo.contentMatcher),
-    description: rawHeaderInfo.description,
-    authorised: rawHeaderInfo.authorised,
-    date: new Date(rawHeaderInfo.date),
+    authorisationInfo: {
+      description: rawHeaderInfo.authorisationInfo.description,
+      authorised: rawHeaderInfo.authorisationInfo.authorised,
+      date: new Date(rawHeaderInfo.authorisationInfo.date),
+    },
   }
 }
 
@@ -37,8 +39,10 @@ export function inventoryHeaderInfoToRawInventoryHeaderInfo(headerInfo: Inventor
   return {
     nameMatcher: headerInfo.nameMatcher.source,
     contentMatcher: headerInfo.contentMatcher.source,
-    description: headerInfo.description,
-    authorised: headerInfo.authorised,
-    date: headerInfo.date.toISOString(),
+    authorisationInfo: {
+      description: headerInfo.authorisationInfo.description,
+      authorised: headerInfo.authorisationInfo.authorised,
+      date: headerInfo.authorisationInfo.date,
+    },
   }
 }

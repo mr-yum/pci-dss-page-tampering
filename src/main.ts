@@ -50,7 +50,7 @@ async function main() {
 
     // Run inventory sanity check and return to push to inventory
     if (target.type === 'inventory') {
-      return await scriptInventoryService.diff(scriptComparisonSummaryForTarget, payload)
+      return await scriptInventoryService.diff(payload, scriptComparisonSummaryForTarget, headerComparisonSummaryForTarget)
     } else {
       return null
     }

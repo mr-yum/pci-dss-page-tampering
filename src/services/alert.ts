@@ -9,7 +9,8 @@ import type { HeaderInfo, HeaderName, HeaderValues } from '../types/header'
 
 export class SlackAlertService implements IAlertService {
   /* #_pci-page-tampering-alerts */
-  private _webhookUrl = 'https://hooks.slack.com/services/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'
+  private readonly _webhookUrl = 'https://hooks.slack.com/services/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'
+  private readonly maxStringLength = 100
 
   async alertForScripts(scriptComparisonSummary: ScriptComparisonSummary, target: Target): Promise<void> {
     if (this.newScriptsFound(scriptComparisonSummary)) {
@@ -144,7 +145,7 @@ export class SlackAlertService implements IAlertService {
                 ],
               },
             ],
-            ...scripts.slice(0, 19).map(this.scriptInfoToTableItem),
+            ...scripts.slice(0, 19).map((scriptInfo) => this.scriptInfoToTableItem(scriptInfo)),
           ],
         },
         {
@@ -251,7 +252,7 @@ export class SlackAlertService implements IAlertService {
                 ],
               },
             ],
-            ...headers.slice(0, 19).map(this.headerInfoToTableItem),
+            ...headers.slice(0, 19).map((headerInfo) => this.headerInfoToTableItem(headerInfo)),
           ],
         },
         {
@@ -299,7 +300,7 @@ export class SlackAlertService implements IAlertService {
             elements: [
               {
                 type: 'text',
-                text: scriptIdentifier,
+                text: this.truncateText(scriptIdentifier),
               },
             ],
           },
@@ -313,7 +314,7 @@ export class SlackAlertService implements IAlertService {
             elements: [
               {
                 type: 'text',
-                text: scriptInfo.hash.value,
+                text: this.truncateText(scriptInfo.hash.value),
               },
             ],
           },
@@ -332,7 +333,7 @@ export class SlackAlertService implements IAlertService {
             elements: [
               {
                 type: 'text',
-                text: headerInfo.name,
+                text: this.truncateText(headerInfo.name),
               },
             ],
           },
@@ -361,7 +362,7 @@ export class SlackAlertService implements IAlertService {
       return headerValuesArray.map<HeaderInfo>((headerValue) => {
         return {
           name: headerName,
-          value: headerValue,
+          value: this.truncateText(headerValue),
         }
       })
     })
@@ -369,5 +370,9 @@ export class SlackAlertService implements IAlertService {
 
   private log(alertType: AlertType, message: string): void {
     console.log(`[Alert → ${alertType}]: ${message}`)
+  }
+
+  private truncateText(text: string): string {
+    return text.length > this.maxStringLength ? text.slice(0, this.maxStringLength - 4).concat('...') : text
   }
 }

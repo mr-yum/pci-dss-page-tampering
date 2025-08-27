@@ -8,10 +8,9 @@ export type RawInventoryTarget = Omit<InventoryTarget, 'workflow'> & {
   workflow: string
 }
 
-export type RawInventoryHeaderInfo = Omit<InventoryHeaderInfo, 'nameMatcher' | 'contentMatcher' | 'date'> & {
+export type RawInventoryHeaderInfo = Omit<InventoryHeaderInfo, 'nameMatcher' | 'contentMatcher'> & {
   nameMatcher: string
   contentMatcher: string
-  date: string
 }
 
 export type RawInventory = Omit<Inventory, 'target' | 'fileName' | 'scripts' | 'headers'> & {
