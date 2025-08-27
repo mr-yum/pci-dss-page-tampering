@@ -3,10 +3,11 @@ import type { RawInventoryScriptInfo } from '../types/inventory/raw'
 import type { ScriptInfo } from '../types/script'
 
 import { scriptHashToInventoryHashInfo } from '../utils/hash'
+import { escapeRegex } from './string'
 
 export function scriptInfoToInventoryScriptInfo(scriptInfo: ScriptInfo, date: Date): InventoryScriptInfo {
   return {
-    matcher: RegExp(`^${getScriptSource(scriptInfo)}$`),
+    matcher: RegExp(`^${escapeRegex(getScriptSource(scriptInfo))}$`),
     hashes: [scriptHashToInventoryHashInfo(scriptInfo, date)],
     authorisationInfo: {
       description: 'NO_DESCRIPTION',
