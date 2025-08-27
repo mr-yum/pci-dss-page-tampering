@@ -12,7 +12,7 @@ export async function headerResponseHandler(response: HTTPResponse, detectedHead
         const headerValue = headers[cspHeaderName]
         const splitHeaderValues = headerValue
           .split(';')
-          .map((splitValue) => splitValue.trim())
+          .map((splitValue) => splitValue.replace('\n', '\s').trim())
           .filter((value) => value.length !== 0)
 
         for (const value of splitHeaderValues) {
