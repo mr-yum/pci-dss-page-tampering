@@ -3,7 +3,7 @@ import puppeteer from 'puppeteer'
 
 import { ScriptInventoryRepository } from './repositories/inventory'
 import { SlackAlertService } from './services/alert'
-import { ScriptComparisonService } from './services/comparison'
+import { ScriptComparisonService } from './services/comparison/script'
 import { DetectionService } from './services/detection'
 import { ScriptInventoryService } from './services/inventory'
 import { GitInventoryStore } from './stores/inventory/git'
