@@ -30,11 +30,11 @@ export class HeaderComparisonService implements IHeaderComparisonService {
         const unauthorisedHeaderValues = new Set<string>()
 
         for (const detectedHeaderValue of detectedHeaderValues) {
-          const maybeContentMatcher = inventoryHeaders.find((header) => header.contentMatcher.test(detectedHeaderValue) && header.authorisationInfo.authorised)
+          const maybeContentMatcher = headerNameMatchers.find((header) => header.contentMatcher.test(detectedHeaderValue) && header.authorisationInfo.authorised)
 
           if (!maybeContentMatcher) {
             this.log(`Match not found for detected header value '${detectedHeaderValue}'.`)
-            const matcherExists = inventoryHeaders.find((header) => header.contentMatcher.test(detectedHeaderValue))
+            const matcherExists = headerNameMatchers.find((header) => header.contentMatcher.test(detectedHeaderValue))
             if (!matcherExists) {
               unauthorisedHeaderValues.add(detectedHeaderValue)
             }
