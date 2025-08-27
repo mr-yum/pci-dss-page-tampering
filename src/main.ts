@@ -1,15 +1,15 @@
-import type { ScriptDetectionSummary } from './types/script'
-import type { ScriptComparisonSummary } from './types/comparison'
-import type { Inventory } from './types/inventory/model'
+import simpleGit from 'simple-git'
+import puppeteer from 'puppeteer'
 
-import { GitInventoryStore } from './stores/inventory/git'
 import { ScriptInventoryRepository } from './repositories/inventory'
-import { ScriptInventoryService } from './services/inventory'
+import { SlackAlertService } from './services/alert'
 import { ScriptComparisonService } from './services/comparison'
 import { ScriptDetectionService } from './services/detection'
+import { ScriptInventoryService } from './services/inventory'
+import { GitInventoryStore } from './stores/inventory/git'
+import { PullTarget, type Target } from './types/target'
 
-import puppeteer from 'puppeteer'
-import simpleGit from 'simple-git'
+import type { Inventory, InventoryDifferenceResult } from './types/inventory/model'
 
 async function main() {
   const gitInventoryStore = new GitInventoryStore({ gitClient: simpleGit(), repositoryTarget: 'git@github.com:mr-yum/script-inventory.git' })
@@ -17,57 +17,69 @@ async function main() {
   const scriptInventoryService = new ScriptInventoryService({ inventoryRepository: scriptInventoryRepository })
   const scriptDetectionService = new ScriptDetectionService()
   const scriptComparisonService = new ScriptComparisonService()
-
-  const detectedScriptToCompare = (inventory: Inventory[], detectionSummary: ScriptDetectionSummary[]): Promise<ScriptComparisonSummary>[] => {
-    return detectionSummary.map((scriptDetectionSummary) => {
-      const inventoryPayload = inventory.find((payload) => payload.target.inventory.url === scriptDetectionSummary.target.url)!
-      return scriptComparisonService.compare(inventoryPayload, scriptDetectionSummary)
-    })
+  const slackAlertService = new SlackAlertService()
+  const log = (message: string): void => {
+    console.log(`[Main]: ${message}`)
   }
 
-  while (true) {
-    // Pull inventory
-    const inventory = await scriptInventoryService.pull()
-
+  const runForTargetAsync = async (payload: Inventory, target: Target): Promise<InventoryDifferenceResult | null> => {
     // Launch new Browser for executing Puppeteer workflow
     const browser = await puppeteer.launch()
 
     // Prepare to run script detection
-    const detectScriptsFromDetectionTarget = inventory.map((payload) => scriptDetectionService.detectScripts(browser, payload.target.detection, payload.target.workflow))
-    const detectScriptsFromInventoryTarget = inventory.map((payload) => scriptDetectionService.detectScripts(browser, payload.target.inventory, payload.target.workflow))
+    const detectScriptsFromTarget = scriptDetectionService.detectScripts(browser, target, payload.target.workflow)
 
     // Run script detection
-    const detectionTargetScripts = await Promise.all(detectScriptsFromDetectionTarget)
-    const inventoryTargetScripts = await Promise.all(detectScriptsFromInventoryTarget)
-
-    // Prepare to run script comparison with inventory
-    const detectionTargetScriptsToCompare = detectedScriptToCompare(inventory, detectionTargetScripts)
-    const inventoryTargetScriptsToCompare = detectedScriptToCompare(inventory, inventoryTargetScripts)
+    const scriptDetectionSummaryForTarget = await detectScriptsFromTarget
 
     // Run script comparison with inventory
-    // @ts-ignore
-    const detectionTargetScriptComparisonResult = await Promise.all(detectionTargetScriptsToCompare)
-    const inventoryTargetScriptComparisonResult = await Promise.all(inventoryTargetScriptsToCompare)
+    const comparisonSummaryForTarget = await scriptComparisonService.compare(payload, scriptDetectionSummaryForTarget)
 
-    // TODO: Alert on detection differences
-    // console.log(`[Alert]: '${detectionTargetScriptComparisonResult.length}' detection targets to alert on.`)
+    // Alert for inventory and target
+    await slackAlertService.alert(comparisonSummaryForTarget, target)
 
-    // Prepare to run inventory sanity check
-    const inventoryTargetComparisonResultToDiff = inventoryTargetScriptComparisonResult.map((result) => scriptInventoryService.diff(result, inventory))
-
-    // Run inventory sanity check
-    const inventoryTargetDiffResults = await Promise.all(inventoryTargetComparisonResultToDiff)
-
-    // Push new inventory payloads
-    await scriptInventoryService.push(inventoryTargetDiffResults)
-
+    // Close browser
     await browser.close()
-    await delay(5000)
-  }
-}
 
-const delay = (ms: number) => {
-  return new Promise((resolve) => setTimeout(resolve, ms))
+    // Run inventory sanity check and return to push to inventory
+    if (target.type === 'inventory') {
+      return await scriptInventoryService.diff(comparisonSummaryForTarget, payload)
+    } else {
+      return null
+    }
+  }
+
+  // Pull inventory
+  log('Preparing to pull inventory.')
+  const inventory = await scriptInventoryService.pull(PullTarget.Inventory)
+
+  // Run inventory workflow
+  log('Preparing to run inventory workflow.')
+  const inventoryDiffResults = await Promise.all(
+    inventory.map(async (inventory) => {
+      const inventoryResult = await runForTargetAsync(inventory, inventory.target.inventory)
+      return {
+        inventoryResult: inventoryResult ?? (await Promise.reject('Expected inventory diff result to exist, but received null!')),
+      }
+    }),
+  )
+
+  // Push inventory
+  log('Preparing to push inventory.')
+  const inventoriesToPush = inventoryDiffResults.map((result) => result.inventoryResult!)
+  await scriptInventoryService.push(inventoriesToPush)
+
+  // Pull inventory
+  log('Preparing to pull inventory.')
+  const detectionInventory = await scriptInventoryService.pull(PullTarget.Detection)
+
+  // Run detection workflow
+  log('Preparing to run detection workflow.')
+  await Promise.all(
+    detectionInventory.map(async (inventory) => {
+      await runForTargetAsync(inventory, inventory.target.detection)
+    }),
+  )
 }
 
 main().catch(console.error)

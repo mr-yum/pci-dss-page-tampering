@@ -7,6 +7,7 @@ import { simpleGit } from 'simple-git'
 import { readdir } from 'fs/promises'
 import { getInventoryFileNames, getRawInventoryFromFile } from '../../utils/file'
 import { GIT_CLONE_PATH, GIT_UPDATED_SCRIPTS_BRANCH_NAME, TARGET_DIRECTORY_NAME, TARGET_PATH, WORKFLOW_DIRECTORY_NAME } from '../../utils/constants'
+import { PullTarget } from '../../types/target'
 
 export class GitInventoryStore implements IInventoryStore {
   private readonly initialGitClient: SimpleGit
@@ -18,7 +19,7 @@ export class GitInventoryStore implements IInventoryStore {
     this.repositoryTarget = args.repositoryTarget
   }
 
-  async pull(): Promise<InventoryPullResult> {
+  async pull(target: PullTarget): Promise<InventoryPullResult> {
     // Clone repository
     console.log(`[Inventory → Store] Cloning repository '${this.repositoryTarget}' to path '${GIT_CLONE_PATH}'.`)
     await this.initialGitClient.clone(this.repositoryTarget, GIT_CLONE_PATH)
@@ -34,7 +35,13 @@ export class GitInventoryStore implements IInventoryStore {
     }
 
     // Checkout branch
-    await this.switchBranch(this.repositoryGitClient, GIT_UPDATED_SCRIPTS_BRANCH_NAME)
+    switch (target) {
+      case PullTarget.Inventory:
+        await this.switchBranch(this.repositoryGitClient, GIT_UPDATED_SCRIPTS_BRANCH_NAME)
+        break
+      case PullTarget.Detection:
+        break
+    }
 
     // Get and return raw inventory from files
     console.log(`[Inventory → Store] Reading and returning raw inventory.`)

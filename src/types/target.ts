@@ -10,3 +10,8 @@ export type Target = {
   type: 'inventory' | 'detection'
   url: string
 }
+
+export enum PullTarget {
+  Inventory,
+  Detection,
+}

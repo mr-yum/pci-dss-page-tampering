@@ -5,7 +5,8 @@ import type { ScriptComparisonResult, ScriptComparisonSummary } from '../types/c
 
 import { getScriptSource, scriptInfoToInventoryScriptInfo } from '../utils/script'
 import { scriptHashToInventoryHashInfo } from '../utils/hash'
-import { copyInventory, maybeGetInventoryForTarget } from '../utils/inventory'
+import { copyInventory } from '../utils/inventory'
+import type { PullTarget } from '../types/target'
 
 export class ScriptInventoryService implements IScriptInventoryService {
   private _repository: IScriptInventoryRepository
@@ -14,32 +15,26 @@ export class ScriptInventoryService implements IScriptInventoryService {
     this._repository = args.inventoryRepository
   }
 
-  async pull(): Promise<Inventory[]> {
+  async pull(target: PullTarget): Promise<Inventory[]> {
     console.log('[Inventory → Service] Pulling inventory from store.')
-    return await this._repository.pull()
+    return await this._repository.pull(target)
   }
 
-  diff(comparisonSummary: ScriptComparisonSummary, inventory: Inventory[]): Promise<InventoryDifferenceResult> {
+  diff(comparisonSummary: ScriptComparisonSummary, inventory: Inventory): Promise<InventoryDifferenceResult> {
     if (comparisonSummary.target.type !== 'inventory') {
       return Promise.reject(new Error('[Inventory → Service] Cannot run diff with inventory scripts from detection target! Skipping...'))
     }
 
     const updateDate = new Date()
-    const target = comparisonSummary.target
-    const inventoryForTarget = maybeGetInventoryForTarget(inventory, target)
 
-    if (!inventoryForTarget) {
-      throw new Error(`[Inventory → Service] Expected inventory for target '${target.url}', but it doesn't exist!`)
-    }
-
-    const updatedInventoryWithExternalScripts = this.getUpdatedInventoryWithNewScripts(comparisonSummary.externalScripts, inventoryForTarget, updateDate)
+    const updatedInventoryWithExternalScripts = this.getUpdatedInventoryWithNewScripts(comparisonSummary.externalScripts, inventory, updateDate)
     const updatedInventoryWithExternalHashes = this.getUpdatedInventoryWithNewHashes(comparisonSummary.externalScripts, updatedInventoryWithExternalScripts, updateDate)
 
     const updatedInventoryWithInLineScripts = this.getUpdatedInventoryWithNewScripts(comparisonSummary.inlineScripts, updatedInventoryWithExternalHashes, updateDate)
     const updatedInventoryWithInLineHashes = this.getUpdatedInventoryWithNewHashes(comparisonSummary.inlineScripts, updatedInventoryWithInLineScripts, updateDate)
 
     return Promise.resolve({
-      oldInventory: inventoryForTarget,
+      oldInventory: inventory,
       newInventory: updatedInventoryWithInLineHashes,
     })
   }
