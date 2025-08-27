@@ -9,36 +9,23 @@ export class SlackAlertService implements IAlertService {
   /* #_pci-page-tampering-alerts */
   private _webhookUrl = 'https://hooks.slack.com/services/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'
 
-  async alert(scriptComparisonSummary: ScriptComparisonSummary, target: Target): Promise<void> {
-    switch (target.type) {
-      case 'detection':
-        if (this.newScriptsFound(scriptComparisonSummary)) {
-          const message = `Unauthorised scripts detected for target!`
-          const newScripts = this.getNewScripts(scriptComparisonSummary)
+  async alert(scriptComparisonSummary: ScriptComparisonSummary, _target: Target): Promise<void> {
+    if (this.newScriptsFound(scriptComparisonSummary)) {
+      const message = `Unauthorised scripts detected for target!`
+      const newScripts = this.getNewScripts(scriptComparisonSummary)
 
-          this.log(message)
-          await this.sendMessage(message, newScripts, scriptComparisonSummary.target)
-        }
-
-        if (this.newHashesFound(scriptComparisonSummary)) {
-          const message = `Script hash mismatch detected for target!`
-          const newHashes = this.getNewHashes(scriptComparisonSummary)
-
-          this.log(message)
-          await this.sendMessage(message, newHashes, scriptComparisonSummary.target)
-        }
-        break
-
-      case 'inventory':
-        if (this.newScriptsFound(scriptComparisonSummary)) {
-          const message = `New unauthorised scripts detected for target!`
-          const newScripts = this.getNewScripts(scriptComparisonSummary)
-
-          this.log(message)
-          await this.sendMessage(message, newScripts, scriptComparisonSummary.target)
-        }
-        break
+      this.log(message)
+      await this.sendMessage(message, newScripts, scriptComparisonSummary.target)
     }
+
+    if (this.newHashesFound(scriptComparisonSummary)) {
+      const message = `Script hash mismatch detected for target!`
+      const newHashes = this.getNewHashes(scriptComparisonSummary)
+
+      this.log(message)
+      await this.sendMessage(message, newHashes, scriptComparisonSummary.target)
+    }
+
     return Promise.resolve()
   }
 
