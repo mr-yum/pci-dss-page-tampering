@@ -1,5 +1,5 @@
 import type { IScriptInventoryRepository, IInventoryService } from '../interfaces/inventory'
-import type { Inventory, InventoryDifferenceResult } from '../types/inventory/model'
+import type { Inventory, InventoryDifferenceResult, InventoryHeaderInfo } from '../types/inventory/model'
 import type { InventoryServiceProps } from '../types/inventory/props'
 import type { HeaderComparisonSummary, ScriptComparisonResult, ScriptComparisonSummary } from '../types/comparison'
 
@@ -79,11 +79,19 @@ export class ScriptInventoryService implements IInventoryService {
   }
 
   private getUpdatedInventoryWithNewHeaders(headerComparisonSummary: HeaderComparisonSummary, inventory: Inventory, updateDate: Date): Inventory {
+    let headers: InventoryHeaderInfo[]
+
+    if (headerComparisonSummary.unauthorisedHeaders) {
+      headers = unauthorisedHeadersToInventoryHeaderInfo(headerComparisonSummary.unauthorisedHeaders, updateDate).concat(inventory.headers)
+    } else {
+      headers = inventory.headers
+    }
+
     return {
       fileName: inventory.fileName,
       target: inventory.target,
       scripts: inventory.scripts,
-      headers: headerComparisonSummary.unauthorisedHeaders ? unauthorisedHeadersToInventoryHeaderInfo(headerComparisonSummary.unauthorisedHeaders, updateDate) : inventory.headers,
+      headers: headers,
     }
   }
 }
