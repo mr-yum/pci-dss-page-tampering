@@ -1,4 +1,5 @@
 import simpleGit from 'simple-git'
+import puppeteer from 'puppeteer'
 
 import { ScriptInventoryRepository } from './repositories/inventory'
 import { SlackAlertService } from './services/alert'
@@ -6,9 +7,9 @@ import { ScriptComparisonService } from './services/comparison'
 import { ScriptDetectionService } from './services/detection'
 import { ScriptInventoryService } from './services/inventory'
 import { GitInventoryStore } from './stores/inventory/git'
+import { PullTarget, type Target } from './types/target'
+
 import type { Inventory, InventoryDifferenceResult } from './types/inventory/model'
-import puppeteer from 'puppeteer'
-import type { Target } from './types/target'
 
 async function main() {
   const gitInventoryStore = new GitInventoryStore({ gitClient: simpleGit(), repositoryTarget: 'git@github.com:mr-yum/script-inventory.git' })
@@ -17,6 +18,9 @@ async function main() {
   const scriptDetectionService = new ScriptDetectionService()
   const scriptComparisonService = new ScriptComparisonService()
   const slackAlertService = new SlackAlertService()
+  const log = (message: string): void => {
+    console.log(`[Main]: ${message}`)
+  }
 
   const runForTargetAsync = async (payload: Inventory, target: Target): Promise<InventoryDifferenceResult | null> => {
     // Launch new Browser for executing Puppeteer workflow
@@ -46,21 +50,36 @@ async function main() {
   }
 
   // Pull inventory
-  const inventory = await scriptInventoryService.pull()
+  log('Preparing to pull inventory.')
+  const inventory = await scriptInventoryService.pull(PullTarget.Inventory)
 
-  // Run detection workflow
+  // Run inventory workflow
+  log('Preparing to run inventory workflow.')
   const inventoryDiffResults = await Promise.all(
     inventory.map(async (inventory) => {
-      await runForTargetAsync(inventory, inventory.target.detection)
+      const inventoryResult = await runForTargetAsync(inventory, inventory.target.inventory)
       return {
-        inventoryResult: (await runForTargetAsync(inventory, inventory.target.inventory)) ?? (await Promise.reject('Expected inventory diff result to exist, but received null!')),
+        inventoryResult: inventoryResult ?? (await Promise.reject('Expected inventory diff result to exist, but received null!')),
       }
     }),
   )
 
-  // Push inventories
+  // Push inventory
+  log('Preparing to push inventory.')
   const inventoriesToPush = inventoryDiffResults.map((result) => result.inventoryResult!)
   await scriptInventoryService.push(inventoriesToPush)
+
+  // Pull inventory
+  log('Preparing to pull inventory.')
+  const detectionInventory = await scriptInventoryService.pull(PullTarget.Detection)
+
+  // Run detection workflow
+  log('Preparing to run detection workflow.')
+  await Promise.all(
+    detectionInventory.map(async (inventory) => {
+      await runForTargetAsync(inventory, inventory.target.detection)
+    }),
+  )
 }
 
 main().catch(console.error)

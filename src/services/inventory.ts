@@ -6,6 +6,7 @@ import type { ScriptComparisonResult, ScriptComparisonSummary } from '../types/c
 import { getScriptSource, scriptInfoToInventoryScriptInfo } from '../utils/script'
 import { scriptHashToInventoryHashInfo } from '../utils/hash'
 import { copyInventory } from '../utils/inventory'
+import type { PullTarget } from '../types/target'
 
 export class ScriptInventoryService implements IScriptInventoryService {
   private _repository: IScriptInventoryRepository
@@ -14,9 +15,9 @@ export class ScriptInventoryService implements IScriptInventoryService {
     this._repository = args.inventoryRepository
   }
 
-  async pull(): Promise<Inventory[]> {
+  async pull(target: PullTarget): Promise<Inventory[]> {
     console.log('[Inventory → Service] Pulling inventory from store.')
-    return await this._repository.pull()
+    return await this._repository.pull(target)
   }
 
   diff(comparisonSummary: ScriptComparisonSummary, inventory: Inventory): Promise<InventoryDifferenceResult> {

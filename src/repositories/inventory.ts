@@ -9,6 +9,7 @@ import { rawInventoryScriptInfoToInventoryScriptInfo } from '../utils/script'
 import { rm, writeFile } from 'fs/promises'
 
 import { GIT_CLONE_PATH, TARGET_PATH, WORKFLOW_PATH } from '../utils/constants'
+import type { PullTarget } from '../types/target'
 
 export class ScriptInventoryRepository implements IScriptInventoryRepository {
   private readonly inventoryStore: IInventoryStore
@@ -17,12 +18,12 @@ export class ScriptInventoryRepository implements IScriptInventoryRepository {
     this.inventoryStore = args.inventoryStore
   }
 
-  async pull(): Promise<Inventory[]> {
+  async pull(target: PullTarget): Promise<Inventory[]> {
     // Clean up any existing clones
     console.log(`[Inventory → Repository] Removing any existing clones from path '${GIT_CLONE_PATH}'.`)
     await this.cleanUpExistingClone()
 
-    const pullResult = await this.inventoryStore.pull()
+    const pullResult = await this.inventoryStore.pull(target)
     const payloads = pullResult.payloads
 
     const payloadsToProcess = payloads.map(async (payload): Promise<Inventory> => {

@@ -6,7 +6,8 @@ import type { ScriptInfo } from '../types/script'
 import axios from 'axios'
 
 export class SlackAlertService implements IAlertService {
-  private _webhookUrl = 'https://hooks.slack.com/services/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'
+  /* #_pci-page-tampering-alerts */
+  private _webhookUrl = 'https://hooks.slack.com/services/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'
 
   async alert(scriptComparisonSummary: ScriptComparisonSummary, target: Target): Promise<void> {
     switch (target.type) {
