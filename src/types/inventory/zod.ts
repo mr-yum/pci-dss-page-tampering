@@ -1,6 +1,6 @@
 import type { TargetDetection, TargetInventory } from '../target'
 import type { InventoryScriptAuthorisationInfo, InventoryScriptHashInfo } from './model'
-import type { RawInventory, RawInventoryScriptInfo, RawInventoryTarget } from './raw'
+import type { RawInventory, RawInventoryHeaderInfo, RawInventoryScriptInfo, RawInventoryTarget } from './raw'
 
 import { SHA256HashSchema } from '../zod'
 import { z } from 'zod'
@@ -72,6 +72,14 @@ export const RawInventoryTargetSchema: z.ZodType<RawInventoryTarget> = z.object(
   workflow: z.string(),
 })
 
+export const RawInventoryHeaderInfoSchema: z.ZodType<RawInventoryHeaderInfo> = z.object({
+  nameMatcher: z.string(),
+  contentMatcher: z.string(),
+  description: z.string(),
+  authorised: z.boolean(),
+  date: z.string(),
+})
+
 /**
  * Schema for the complete inventory.
  * This is the top-level schema.
@@ -80,4 +88,5 @@ export const RawInventoryTargetSchema: z.ZodType<RawInventoryTarget> = z.object(
 export const RawInventorySchema: z.ZodType<RawInventory> = z.object({
   target: RawInventoryTargetSchema,
   scripts: z.array(RawInventoryScriptInfoSchema),
+  headers: z.array(RawInventoryHeaderInfoSchema),
 })

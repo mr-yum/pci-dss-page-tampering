@@ -102,7 +102,7 @@ export class SlackAlertService implements IAlertService {
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `*Detection Summary*`,
+            text: `*Detection Summary (Max of 20)*`,
           },
         },
         {
@@ -144,7 +144,7 @@ export class SlackAlertService implements IAlertService {
                 ],
               },
             ],
-            ...scripts.map(this.scriptInfoToTableItem),
+            ...scripts.slice(0, 19).map(this.scriptInfoToTableItem),
           ],
         },
         {
@@ -209,7 +209,7 @@ export class SlackAlertService implements IAlertService {
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `*Detection Summary*`,
+            text: `*Detection Summary (Max of 20)*`,
           },
         },
         {
@@ -251,7 +251,7 @@ export class SlackAlertService implements IAlertService {
                 ],
               },
             ],
-            ...headers.map(this.headerInfoToTableItem),
+            ...headers.slice(0, 19).map(this.headerInfoToTableItem),
           ],
         },
         {

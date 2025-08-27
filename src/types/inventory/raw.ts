@@ -1,19 +1,17 @@
-import type { Inventory, InventoryScriptInfo, InventoryHeaderInfo, InventoryTarget, InventoryScriptHashInfo, InventoryScriptAuthorisationInfo } from './model'
+import type { Inventory, InventoryHeaderInfo, InventoryScriptInfo, InventoryTarget } from './model'
 
-export type RawInventoryScriptInfo = Omit<InventoryScriptInfo, 'matcher' | 'hashes' | 'authorisationInfo'> & {
+export type RawInventoryScriptInfo = Omit<InventoryScriptInfo, 'matcher'> & {
   matcher: string
-  hashes: Array<Omit<InventoryScriptHashInfo, 'timestamp'> & { timestamp: string }>
-  authorisationInfo: Omit<InventoryScriptAuthorisationInfo, 'date'> & { date: string }
+}
+
+export type RawInventoryTarget = Omit<InventoryTarget, 'workflow'> & {
+  workflow: string
 }
 
 export type RawInventoryHeaderInfo = Omit<InventoryHeaderInfo, 'nameMatcher' | 'contentMatcher' | 'date'> & {
   nameMatcher: string
   contentMatcher: string
   date: string
-}
-
-export type RawInventoryTarget = Omit<InventoryTarget, 'workflow'> & {
-  workflow: string
 }
 
 export type RawInventory = Omit<Inventory, 'target' | 'fileName' | 'scripts' | 'headers'> & {

@@ -32,7 +32,7 @@ export class HeaderComparisonService implements IHeaderComparisonService {
         const unauthorisedHeaderValues = new Set<string>()
 
         for (const detectedHeaderValue of detectedHeaderValues) {
-          this.log(`Attempting to match on detected header value '${detectedHeaderName}'.`)
+          this.log(`Attempting to match on detected header value '${detectedHeaderValue}'.`)
           // If there is no match on header content, add to unauthorised set
           if (!matcher.contentMatcher.test(detectedHeaderValue)) {
             unauthorisedHeaderValues.add(detectedHeaderValue)

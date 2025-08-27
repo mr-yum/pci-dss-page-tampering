@@ -1,11 +1,6 @@
-import type { Target } from '../types/target'
 import type { Inventory, InventoryScriptInfo, InventoryHeaderInfo } from '../types/inventory/model'
 import type { RawInventory, RawInventoryHeaderInfo } from '../types/inventory/raw'
 import { inventoryScriptInfoToRawInventoryScriptInfo } from './script'
-
-export function maybeGetInventoryForTarget(inventory: Inventory[], target: Target): Inventory | undefined {
-  return inventory.find((inventory) => inventory.target.inventory.url === target.url)
-}
 
 export function copyInventory(inventory: Inventory, args?: { newScripts: InventoryScriptInfo[] }): Inventory {
   return {
