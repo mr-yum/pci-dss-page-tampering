@@ -9,7 +9,16 @@ export async function headerResponseHandler(response: HTTPResponse, detectedHead
 
       if (headers[cspHeaderName]) {
         const headerValues = detectedHeaders.get(cspHeaderName) || new Set<string>()
-        detectedHeaders.set(cspHeaderName, headerValues.add(headers[cspHeaderName]))
+        const headerValue = headers[cspHeaderName]
+        const splitHeaderValues = headerValue
+          .split(';')
+          .map((splitValue) => splitValue.trim())
+          .filter((value) => value.length !== 0)
+
+        for (const value of splitHeaderValues) {
+          headerValues.add(value)
+        }
+        detectedHeaders.set(cspHeaderName, headerValues)
       }
     } catch (error) {
       console.error(`Errored while attempting to read header response: ${error}`)

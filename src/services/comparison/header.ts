@@ -13,13 +13,11 @@ export class HeaderComparisonService implements IHeaderComparisonService {
     let maybeUnauthorisedHeaders: Map<HeaderName, HeaderValues> | undefined
 
     for (const detectedHeaderName of detectedHeaderNames) {
-      console.log(detectedHeaderName)
       // Attempt to match on header name
-      this.log(`Attempting to match on detected header name '${detectedHeaderName}'.`)
-      const matcher = inventoryHeaders.find((header) => header.nameMatcher.test(detectedHeaderName))
+      const headerNameMatchers = inventoryHeaders.filter((header) => header.nameMatcher.test(detectedHeaderName))
 
       // If there is no match, add current detected header + values to unauthorised set
-      if (!matcher) {
+      if (headerNameMatchers.length === 0) {
         this.log(`No match found for detected header name '${detectedHeaderName}'.`)
         maybeUnauthorisedHeaders = new Map<HeaderName, HeaderValues>()
         maybeUnauthorisedHeaders.set(detectedHeaderName, detectedHeaders.get(detectedHeaderName)!)
@@ -32,10 +30,13 @@ export class HeaderComparisonService implements IHeaderComparisonService {
         const unauthorisedHeaderValues = new Set<string>()
 
         for (const detectedHeaderValue of detectedHeaderValues) {
-          this.log(`Attempting to match on detected header value '${detectedHeaderValue}'.`)
-          // If there is no match on header content, add to unauthorised set
-          if (!matcher.contentMatcher.test(detectedHeaderValue)) {
+          const maybeContentMatcher = inventoryHeaders.find((header) => header.contentMatcher.test(detectedHeaderValue))
+
+          if (!maybeContentMatcher) {
+            this.log(`Match not found for detected header value '${detectedHeaderValue}'.`)
             unauthorisedHeaderValues.add(detectedHeaderValue)
+          } else {
+            this.log(`Match found for detected header value '${detectedHeaderValue}'.`)
           }
         }
 

@@ -35,6 +35,8 @@ async function main() {
     // Run resource detection
     const detectionSummaryForTarget = await detectResourcesForTarget
 
+    console.log(detectionSummaryForTarget.headerSummary.headers)
+
     // Run script comparison with inventory
     const scriptComparisonSummaryForTarget = await scriptComparisonService.compare(detectionSummaryForTarget.target, payload, detectionSummaryForTarget.scriptSummary)
 
