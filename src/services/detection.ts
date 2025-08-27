@@ -1,7 +1,7 @@
 import type { Browser, Page } from 'puppeteer'
 import type { PuppeteerClickAction, PuppeteerInputAction, PuppeteerLocatorAction, PuppeteerNavigateAction } from '../types/puppeteer'
 import type { IScriptDetectionService } from '../interfaces/detection'
-import type { ScriptInfo, ScriptDetectionSummary } from '../types/script'
+import type { ScriptInfo, ScriptDetectionSummary, HeaderInfo } from '../types/script'
 import type { Workflow } from '../types/workflow'
 import type { Target } from '../types/target'
 
@@ -13,6 +13,7 @@ export class ScriptDetectionService implements IScriptDetectionService {
   async detectScripts(browser: Browser, target: Target, workflow: Workflow): Promise<ScriptDetectionSummary> {
     const externalScripts: ScriptInfo[] = []
     const internalScripts: ScriptInfo[] = []
+    const headers: HeaderInfo[] = []
 
     const page = await browser.newPage()
 
@@ -24,9 +25,19 @@ export class ScriptDetectionService implements IScriptDetectionService {
       const puppeteerWorkflow = workflowDefinitionToPuppeteerWorkflow(page, target, workflow.definition)
 
       // Navigate to workflow starting url
-      await page.goto(puppeteerWorkflow.target.url, {
+      const response = await page.goto(puppeteerWorkflow.target.url, {
         waitUntil: 'networkidle2',
       })
+
+      // Capture headers from the initial page load
+      if (response) {
+        const responseHeaders = response.headers()
+        Object.entries(responseHeaders).forEach(([name, value]) => {
+          if (value) {
+            headers.push({ name: name.toLowerCase(), value })
+          }
+        })
+      }
 
       // Execute workflow steps
       for (const [index, step] of puppeteerWorkflow.locatorActions.entries()) {
@@ -45,7 +56,16 @@ export class ScriptDetectionService implements IScriptDetectionService {
             await this.evalClick(page, step)
 
             if (action.waitForNavigation) {
-              await page.waitForNavigation()
+              const navResponse = await page.waitForNavigation()
+              // Capture headers from navigation response
+              if (navResponse) {
+                const navHeaders = navResponse.headers()
+                Object.entries(navHeaders).forEach(([name, value]) => {
+                  if (value) {
+                    headers.push({ name: name.toLowerCase(), value })
+                  }
+                })
+              }
             }
             break
 
@@ -66,7 +86,16 @@ export class ScriptDetectionService implements IScriptDetectionService {
             await this.evalClick(page, step)
 
             if (action.waitForNavigation) {
-              await page.waitForNavigation()
+              const navResponse = await page.waitForNavigation()
+              // Capture headers from navigation response
+              if (navResponse) {
+                const navHeaders = navResponse.headers()
+                Object.entries(navHeaders).forEach(([name, value]) => {
+                  if (value) {
+                    headers.push({ name: name.toLowerCase(), value })
+                  }
+                })
+              }
             }
             break
           }
@@ -86,6 +115,7 @@ export class ScriptDetectionService implements IScriptDetectionService {
       target: target,
       external: externalScripts,
       inline: internalScripts,
+      headers: headers,
     }
   }
 

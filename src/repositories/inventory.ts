@@ -4,7 +4,7 @@ import type { InventoryRepositoryProps } from '../types/inventory/props'
 import type { Workflow } from '../types/workflow'
 
 import { getWorkflowDefinitionFromFile } from '../utils/file'
-import { inventoryToRawInventory } from '../utils/inventory'
+import { inventoryToRawInventory, rawInventoryHeaderInfoToInventoryHeaderInfo } from '../utils/inventory'
 import { rawInventoryScriptInfoToInventoryScriptInfo } from '../utils/script'
 import { rm, writeFile } from 'fs/promises'
 
@@ -42,6 +42,7 @@ export class ScriptInventoryRepository implements IScriptInventoryRepository {
           workflow: workflow,
         },
         scripts: payload.rawInventory.scripts.map(rawInventoryScriptInfoToInventoryScriptInfo),
+        headers: (payload.rawInventory.headers || []).map(rawInventoryHeaderInfoToInventoryHeaderInfo),
       }
     })
 

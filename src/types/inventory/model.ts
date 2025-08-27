@@ -20,6 +20,14 @@ export type InventoryScriptInfo = {
   authorisationInfo: InventoryScriptAuthorisationInfo
 }
 
+export type InventoryHeaderInfo = {
+  nameMatcher: RegExp
+  contentMatcher: RegExp
+  description: string
+  authorised: boolean
+  date: Date
+}
+
 export type InventoryTarget = {
   inventory: TargetInventory
   detection: TargetDetection
@@ -30,6 +38,7 @@ export type Inventory = {
   fileName: string
   target: InventoryTarget
   scripts: InventoryScriptInfo[]
+  headers: InventoryHeaderInfo[]
 }
 
 export type InventoryDifferenceResult = {

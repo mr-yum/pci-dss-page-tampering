@@ -19,8 +19,14 @@ export type ScriptInfo = {
   hash: SHA256Hash
 }
 
+export type HeaderInfo = {
+  name: string
+  value: string
+}
+
 export type ScriptDetectionSummary = {
   target: Target
   external: ScriptInfo[]
   inline: ScriptInfo[]
+  headers: HeaderInfo[]
 }
