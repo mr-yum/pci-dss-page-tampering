@@ -34,14 +34,14 @@ export class ScriptComparisonService implements IScriptComparisonService {
     detectedScripts.forEach((script) => {
       const scriptSourceValue = getScriptSource(script)
       if (!this.scriptExistsInInventory(script, inventoryScripts)) {
-        console.log(`[Comparison]: Script '${scriptSourceValue}' not found in inventory for target '${target.url}'.`)
+        console.log(`[Comparison → Script]: Script '${scriptSourceValue}' not found in inventory for target '${target.url}'.`)
         newScripts.push(script)
       } else {
         const inventoryScript = this.getScriptFromInventory(script, inventoryScripts)
         const hashExists = this.scriptHashExists(script, inventoryScript)
 
         if (!hashExists) {
-          console.log(`[Comparison]: Script '${scriptSourceValue}' found in inventory, but hash '${script.hash.value}' doesn't exist for target '${target.url}'.`)
+          console.log(`[Comparison → Script]: Script '${scriptSourceValue}' found in inventory, but hash '${script.hash.value}' doesn't exist for target '${target.url}'.`)
           newHashes.push(script)
         }
       }
@@ -52,35 +52,6 @@ export class ScriptComparisonService implements IScriptComparisonService {
       newHashes: newHashes,
     }
   }
-
-  // private compareHeadersWithInventory(detectedHeaders: HeaderInfo[], inventoryHeaders: InventoryHeaderInfo[], target: Target): HeaderComparisonResult {
-  //   const changedHeaders: HeaderInfo[] = []
-  //
-  //   // If no headers are defined in inventory, no comparison needed
-  //   if (!inventoryHeaders || inventoryHeaders.length === 0) {
-  //     return {
-  //       changedHeaders: [],
-  //     }
-  //   }
-  //
-  //   detectedHeaders.forEach((detectedHeader) => {
-  //     // Find if this header is defined in the inventory
-  //     const inventoryHeader = this.getHeaderFromInventory(detectedHeader, inventoryHeaders)
-  //
-  //     if (inventoryHeader) {
-  //       // Header is defined in inventory - check if content has changed
-  //       if (!this.headerContentMatches(detectedHeader, inventoryHeader)) {
-  //         console.log(`[Comparison]: Header '${detectedHeader.name}' content changed for target '${target.url}'.`)
-  //         changedHeaders.push(detectedHeader)
-  //       }
-  //     }
-  //     // If header is not in inventory, we don't alert on it (new headers are ignored)
-  //   })
-  //
-  //   return {
-  //     changedHeaders: changedHeaders,
-  //   }
-  // }
 
   private scriptExistsInInventory(scriptInfo: ScriptInfo, inventoryScripts: InventoryScriptInfo[]): boolean {
     return inventoryScripts.some((inventoryScript) => inventoryScript.matcher.test(getScriptSource(scriptInfo)))
@@ -93,12 +64,4 @@ export class ScriptComparisonService implements IScriptComparisonService {
   private scriptHashExists(scriptInfo: ScriptInfo, inventoryScript: InventoryScriptInfo): boolean {
     return inventoryScript.hashes.some((hashInfo) => hashInfo.hash.value === scriptInfo.hash.value)
   }
-
-  // private getHeaderFromInventory(detectedHeader: HeaderInfo, inventoryHeaders: InventoryHeaderInfo[]): InventoryHeaderInfo | undefined {
-  //   return inventoryHeaders.find((inventoryHeader) => inventoryHeader.nameMatcher.test(detectedHeader.name))
-  // }
-  //
-  // private headerContentMatches(detectedHeader: HeaderInfo, inventoryHeader: InventoryHeaderInfo): boolean {
-  //   return inventoryHeader.contentMatcher.test(detectedHeader.value)
-  // }
 }

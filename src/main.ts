@@ -10,6 +10,7 @@ import { GitInventoryStore } from './stores/inventory/git'
 import { PullTarget, type Target } from './types/target'
 
 import type { Inventory, InventoryDifferenceResult } from './types/inventory/model'
+import { HeaderComparisonService } from './services/comparison/header'
 
 async function main() {
   const gitInventoryStore = new GitInventoryStore({ gitClient: simpleGit(), repositoryTarget: 'git@github.com:mr-yum/script-inventory.git' })
@@ -17,6 +18,7 @@ async function main() {
   const scriptInventoryService = new ScriptInventoryService({ inventoryRepository: scriptInventoryRepository })
   const detectionService = new DetectionService()
   const scriptComparisonService = new ScriptComparisonService()
+  const headerComparisonService = new HeaderComparisonService()
   const slackAlertService = new SlackAlertService()
 
   const log = (message: string): void => {
@@ -34,17 +36,21 @@ async function main() {
     const detectionSummaryForTarget = await detectResourcesForTarget
 
     // Run script comparison with inventory
-    const comparisonSummaryForTarget = await scriptComparisonService.compare(detectionSummaryForTarget.target, payload, detectionSummaryForTarget.scriptSummary)
+    const scriptComparisonSummaryForTarget = await scriptComparisonService.compare(detectionSummaryForTarget.target, payload, detectionSummaryForTarget.scriptSummary)
+
+    // Run header comparison with inventory
+    const headerComparisonSummaryForTarget = await headerComparisonService.compare(detectionSummaryForTarget.target, payload, detectionSummaryForTarget.headerSummary)
+    console.log(headerComparisonSummaryForTarget.unauthorisedHeaders)
 
     // Alert for inventory and target
-    await slackAlertService.alert(comparisonSummaryForTarget, target)
+    await slackAlertService.alert(scriptComparisonSummaryForTarget, target)
 
     // Close browser
     await browser.close()
 
     // Run inventory sanity check and return to push to inventory
     if (target.type === 'inventory') {
-      return await scriptInventoryService.diff(comparisonSummaryForTarget, payload)
+      return await scriptInventoryService.diff(scriptComparisonSummaryForTarget, payload)
     } else {
       return null
     }

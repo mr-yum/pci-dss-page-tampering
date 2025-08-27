@@ -8,19 +8,11 @@ export async function headerResponseHandler(response: HTTPResponse, detectedHead
       const cspHeaderName = 'content-security-policy'
 
       if (headers[cspHeaderName]) {
-        const headerValues = createOrGetHeaderValues(cspHeaderName, detectedHeaders)
-        headerValues.add(headers[cspHeaderName])
+        const headerValues = detectedHeaders.get(cspHeaderName) || new Set<string>()
+        detectedHeaders.set(cspHeaderName, headerValues.add(headers[cspHeaderName]))
       }
     } catch (error) {
       console.error(`Errored while attempting to read header response: ${error}`)
     }
   }
-}
-
-function createOrGetHeaderValues(headerName: HeaderName, detectedHeaders: Map<HeaderName, HeaderValues>): HeaderValues {
-  if (!detectedHeaders.has(headerName)) {
-    detectedHeaders.set(headerName, new Set<string>())
-  }
-
-  return detectedHeaders.get(headerName)!
 }
