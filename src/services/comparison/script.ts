@@ -33,16 +33,23 @@ export class ScriptComparisonService implements IScriptComparisonService {
 
     detectedScripts.forEach((script) => {
       const scriptSourceValue = getScriptSource(script)
+      // Push detected script if there is no existing match found in inventory
       if (!this.scriptExistsInInventory(script, inventoryScripts)) {
         console.log(`[Comparison → Script]: Script '${scriptSourceValue}' not found in inventory for target '${target.url}'.`)
         newScripts.push(script)
-      } else {
-        const inventoryScript = this.getScriptFromInventory(script, inventoryScripts)
-        const hashExists = this.scriptHashExists(script, inventoryScript)
+      }
 
-        if (!hashExists) {
-          console.log(`[Comparison → Script]: Script '${scriptSourceValue}' found in inventory, but hash '${script.hash.value}' doesn't exist for target '${target.url}'.`)
-          newHashes.push(script)
+      // There is a match found in inventory for the detected script
+      else {
+        const isDetectedScriptAuthorised = this.getScriptFromInventory(script, inventoryScripts)
+
+        // There detected script is authorised, add hash if doesn't exist
+        if (isDetectedScriptAuthorised) {
+          const hashExists = this.scriptHashExists(script, isDetectedScriptAuthorised)
+          if (!hashExists) {
+            console.log(`[Comparison → Script]: Script '${scriptSourceValue}' found in inventory, but hash '${script.hash.value}' doesn't exist for target '${target.url}'.`)
+            newHashes.push(script)
+          }
         }
       }
     })
@@ -57,8 +64,8 @@ export class ScriptComparisonService implements IScriptComparisonService {
     return inventoryScripts.some((inventoryScript) => inventoryScript.matcher.test(getScriptSource(scriptInfo)))
   }
 
-  private getScriptFromInventory(scriptInfo: ScriptInfo, inventoryScripts: InventoryScriptInfo[]): InventoryScriptInfo {
-    return inventoryScripts.find((inventoryScript) => inventoryScript.matcher.test(getScriptSource(scriptInfo)))!
+  private getScriptFromInventory(scriptInfo: ScriptInfo, inventoryScripts: InventoryScriptInfo[]): InventoryScriptInfo | undefined {
+    return inventoryScripts.find((inventoryScript) => inventoryScript.matcher.test(getScriptSource(scriptInfo)) && inventoryScript.authorisationInfo.authorised)
   }
 
   private scriptHashExists(scriptInfo: ScriptInfo, inventoryScript: InventoryScriptInfo): boolean {
