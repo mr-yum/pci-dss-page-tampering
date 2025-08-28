@@ -3,7 +3,7 @@ import type { WorkflowActionType, WorkflowDefinition, WorkflowStep, WorkflowWait
 
 // Schema for WorkflowWaitForDefinition
 export const WorkflowWaitForDefinitionSchema: z.ZodType<WorkflowWaitForDefinition> = z.object({
-  type: z.enum(['div', 'button', 'input', 'href', 'h2', 'h3']),
+  type: z.enum(['div', 'button', 'input', 'href', 'h2', 'h3', 'span']),
   identifier: z.string(),
 })
 
