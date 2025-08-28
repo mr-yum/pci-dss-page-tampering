@@ -1,5 +1,6 @@
 import type { Locator } from 'puppeteer'
 import type { Target } from './target'
+import type { WorkflowStep } from './workflow'
 
 export type PuppeteerWorkflow = {
   target: Target
@@ -13,7 +14,7 @@ export type PuppeteerLocatorAction = {
   action: PuppeteerAction
 }
 
-export type PuppeteerAction = PuppeteerClickAction | PuppeteerInputAction | PuppeteerEscapeAction | PuppeteerNavigateAction
+export type PuppeteerAction = PuppeteerClickAction | PuppeteerInputAction | PuppeteerEscapeAction | PuppeteerNavigateAction | PuppeteerClickPopupAction
 
 export type PuppeteerClickAction = {
   type: 'click'
@@ -32,4 +33,10 @@ export type PuppeteerEscapeAction = {
 export type PuppeteerNavigateAction = {
   type: 'navigate'
   waitForNavigation: boolean
+}
+
+export type PuppeteerClickPopupAction = {
+  type: 'clickPopup'
+  waitForNavigation: boolean
+  steps: WorkflowStep[]
 }

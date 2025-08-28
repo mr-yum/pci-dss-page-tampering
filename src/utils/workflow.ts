@@ -36,6 +36,8 @@ function waitForDefinitionToQuerySelector(waitForDefinition: WorkflowWaitForDefi
       return `h2 ::-p-text(${waitForDefinition.identifier})`
     case 'h3':
       return `h3 ::-p-text(${waitForDefinition.identifier})`
+    case 'span':
+      return `span ::-p-text(${waitForDefinition.identifier})`
   }
 }
 
@@ -68,10 +70,17 @@ function actionToPuppeteerAction(action: WorkflowActionType): PuppeteerAction {
         waitForNavigation: action.waitForNavigation ?? false,
       }
     }
+    case 'clickPopup': {
+      return {
+        type: 'clickPopup',
+        waitForNavigation: action.waitForNavigation ?? false,
+        steps: action.steps ?? [],
+      }
+    }
   }
 }
 
-function stepsToPuppeteerLocatorAction(page: Page, steps: WorkflowStep[]): PuppeteerLocatorAction[] {
+export function stepsToPuppeteerLocatorAction(page: Page, steps: WorkflowStep[]): PuppeteerLocatorAction[] {
   return steps.map((step) => {
     const querySelector = waitForToQuerySelector(step.waitFor)
     return {
