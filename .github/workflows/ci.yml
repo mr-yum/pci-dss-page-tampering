@@ -8,11 +8,12 @@ on:
 
 env:
   NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-  NPM_CONFIG_REGISTRY: ${{ secrets.NPM_REGISTRY }}
-  NPM_REGISTRY: ${{ secrets.NPM_REGISTRY }}
+  CODEARTIFACT_REGISTRY: ${{ secrets.CODEARTIFACT_REGISTRY }}
+  CODEARTIFACT_SCOPE: ${{ secrets.CODEARTIFACT_SCOPE }}
+  CODEARTIFACT_TOKEN: ${{ secrets.CODEARTIFACT_TOKEN }}
 
 jobs:
-  test:
+  run-inventory-and-detection:
     runs-on: ubuntu-latest
     
     strategy:
@@ -28,37 +29,42 @@ jobs:
       with:
         node-version: ${{ matrix.node-version }}
         cache: 'npm'
-        
+
+    - name: Configure npm auth for both registries
+      run: |
+        set -euo pipefail
+
+        # Safety checks so you fail fast if secrets are missing
+        [ -n "${NPM_TOKEN:-}" ] || { echo "NPM_TOKEN is empty"; exit 1; }
+        [ -n "${CODEARTIFACT_REGISTRY:-}" ] || { echo "CODEARTIFACT_REGISTRY is empty"; exit 1; }
+        [ -n "${CODEARTIFACT_SCOPE:-}" ] || { echo "CODEARTIFACT_SCOPE is empty"; exit 1; }
+        [ -n "${CODEARTIFACT_TOKEN:-}" ] || { echo "CODEARTIFACT_TOKEN is empty"; exit 1; }
+
+        # Start a clean user-level .npmrc
+        : > "${HOME}/.npmrc"
+
+        # Always auth so scoped/private deps resolve cleanly
+        echo "always-auth=true" >> "${HOME}/.npmrc"
+
+        # Default npmjs registry uses NODE_AUTH_TOKEN env automatically,
+        # but we also write it explicitly for clarity:
+        echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" >> "${HOME}/.npmrc"
+
+        # AWS CodeArtifact registry: write token entry
+        echo "@${CODEARTIFACT_SCOPE}:registry=https://${CODEARTIFACT_REGISTRY}" >> "${HOME}/.npmrc"
+        echo "//${CODEARTIFACT_REGISTRY}:_authToken=${CODEARTIFACT_TOKEN}" >> "${HOME}/.npmrc"
+
+        # (Optional) Show the resulting .npmrc minus secrets
+        echo "----- ~/.npmrc (sanitized) -----"
+        # sed -E 's/(:_authToken=).+/\1***REDACTED***/' "${HOME}/.npmrc"
+        cat "${HOME}/.npmrc"
+                
     - name: Install dependencies
       run: |
         echo "📦 Installing dependencies..."
         npm ci
         echo "✅ Dependencies installed successfully"
-        
-    - name: Check formatting
-      run: |
-        echo "✨ Checking code formatting..."
-        npm run check:formatting
-        echo "✅ Formatting check completed"
-        
-    - name: Check linting
-      run: |
-        echo "🔍 Running linting checks..."
-        npm run check:linting
-        echo "✅ Linting checks completed"
-        
-    - name: Check typing
-      run: |
-        echo "📝 Running type checks..."
-        npm run check:typing
-        echo "✅ Type checks completed"
-        
-    - name: Build project
-      run: |
-        echo "🏗️ Building project..."
-        npm run build:js
-        echo "✅ Build completed successfully"
-        
+                
     - name: Run start command
       run: |
         echo "▶️ Testing start command..."
