@@ -12,6 +12,7 @@ import { HeaderComparisonService } from './services/comparison/header'
 
 import type { Inventory, InventoryDifferenceResult } from './types/inventory/model'
 
+// Just to test the CI run-on-github workflow
 async function main() {
   const gitInventoryStore = new GitInventoryStore({ gitClient: simpleGit(), repositoryTarget: 'git@github.com:mr-yum/script-inventory.git' })
   const scriptInventoryRepository = new ScriptInventoryRepository({ inventoryStore: gitInventoryStore })
