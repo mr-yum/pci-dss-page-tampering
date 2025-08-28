@@ -51,7 +51,7 @@ export class DetectionService implements IDetectionService {
     } catch (e) {
       console.error(`An error occurred during page processing: ${e}`)
     } finally {
-      // await page.close()
+      await page.close()
     }
 
     return {
