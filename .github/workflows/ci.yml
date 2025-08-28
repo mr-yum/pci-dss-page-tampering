@@ -1,4 +1,4 @@
-name: CI run-on-github
+name: Run inventory and detection
 
 on:
   push:
@@ -8,6 +8,7 @@ on:
 
 env:
   NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+  NPM_CONFIG_REGISTRY: ${{ secrets.NPM_REGISTRY }}
   NPM_REGISTRY: ${{ secrets.NPM_REGISTRY }}
 
 jobs:
