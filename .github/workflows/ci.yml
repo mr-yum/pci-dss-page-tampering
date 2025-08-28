@@ -2,9 +2,9 @@ name: CI run-on-github
 
 on:
   push:
-    branches: [ ** ]
+    branches: [ '**' ]
   pull_request:
-    branches: [ ** ]
+    branches: [ '**' ]
 
 env:
   NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
