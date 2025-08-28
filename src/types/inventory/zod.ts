@@ -1,9 +1,9 @@
-import type { TargetDetection, TargetInventory } from '../target'
 import type { InventoryAuthorisationInfo, InventoryScriptHashInfo } from './model'
 import type { RawInventory, RawInventoryHeaderInfo, RawInventoryScriptInfo, RawInventoryTarget } from './raw'
 
 import { SHA256HashSchema } from '../zod'
 import { z } from 'zod'
+import type { RawTargetDetection, RawTargetInventory } from '../target/raw'
 
 /**
  * Base schema for a Target.
@@ -18,19 +18,21 @@ const TargetSchema = z.object({
 /**
  * Schema for an Inventory Target.
  * It intersects the base TargetSchema and refines the 'type' literal.
- * Corresponds to `TargetInventory`.
+ * Corresponds to `RawTargetInventory`.
  */
-export const TargetInventorySchema: z.ZodType<TargetInventory> = TargetSchema.extend({
+export const RawTargetInventorySchema: z.ZodType<RawTargetInventory> = TargetSchema.extend({
   type: z.literal('inventory'),
+  workflow: z.string(),
 })
 
 /**
  * Schema for a Detection Target.
  * It intersects the base TargetSchema and refines the 'type' literal.
- * Corresponds to `TargetDetection`.
+ * Corresponds to `RawTargetDetection`.
  */
-export const TargetDetectionSchema: z.ZodType<TargetDetection> = TargetSchema.extend({
+export const RawTargetDetectionSchema: z.ZodType<RawTargetDetection> = TargetSchema.extend({
   type: z.literal('detection'),
+  workflow: z.string(),
 })
 
 /**
@@ -67,9 +69,8 @@ export const RawInventoryScriptInfoSchema: z.ZodType<RawInventoryScriptInfo> = z
  * Corresponds to `RawInventoryTarget`.
  */
 export const RawInventoryTargetSchema: z.ZodType<RawInventoryTarget> = z.object({
-  inventory: TargetInventorySchema,
-  detection: TargetDetectionSchema,
-  workflow: z.string(),
+  inventory: RawTargetInventorySchema,
+  detection: RawTargetDetectionSchema,
 })
 
 export const RawInventoryHeaderInfoSchema: z.ZodType<RawInventoryHeaderInfo> = z.object({

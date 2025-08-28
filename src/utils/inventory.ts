@@ -14,9 +14,16 @@ export function copyInventory(inventory: Inventory, args?: { newScripts: Invento
 export function inventoryToRawInventory(inventory: Inventory): RawInventory {
   return {
     target: {
-      inventory: inventory.target.inventory,
-      detection: inventory.target.detection,
-      workflow: inventory.target.workflow.fileName,
+      inventory: {
+        type: inventory.target.inventory.type,
+        url: inventory.target.inventory.url,
+        workflow: inventory.target.inventory.workflow.fileName,
+      },
+      detection: {
+        type: inventory.target.detection.type,
+        url: inventory.target.detection.url,
+        workflow: inventory.target.detection.workflow.fileName,
+      },
     },
     scripts: inventory.scripts.map(inventoryScriptInfoToRawInventoryScriptInfo),
     headers: inventory.headers.map(inventoryHeaderInfoToRawInventoryHeaderInfo),

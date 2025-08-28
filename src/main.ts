@@ -30,7 +30,7 @@ async function main() {
     const browser = await puppeteer.launch()
 
     // Prepare to run resource detection
-    const detectResourcesForTarget = detectionService.detect(browser, target, payload.target.workflow)
+    const detectResourcesForTarget = detectionService.detect(browser, target, target.workflow)
 
     // Run resource detection
     const detectionSummaryForTarget = await detectResourcesForTarget
