@@ -1,6 +1,6 @@
 import type { TargetDetection, TargetInventory } from '../target'
-import type { InventoryScriptAuthorisationInfo, InventoryScriptHashInfo } from './model'
-import type { RawInventory, RawInventoryScriptInfo, RawInventoryTarget } from './raw'
+import type { InventoryAuthorisationInfo, InventoryScriptHashInfo } from './model'
+import type { RawInventory, RawInventoryHeaderInfo, RawInventoryScriptInfo, RawInventoryTarget } from './raw'
 
 import { SHA256HashSchema } from '../zod'
 import { z } from 'zod'
@@ -35,9 +35,9 @@ export const TargetDetectionSchema: z.ZodType<TargetDetection> = TargetSchema.ex
 
 /**
  * Schema for script authorisation details.
- * Corresponds to `InventoryScriptAuthorisationInfo`.
+ * Corresponds to `InventoryAuthorisationInfo`.
  */
-export const InventoryScriptAuthorisationInfoSchema: z.ZodType<InventoryScriptAuthorisationInfo> = z.object({
+export const InventoryAuthorisationInfoSchema: z.ZodType<InventoryAuthorisationInfo> = z.object({
   description: z.string(),
   authorised: z.boolean(),
   date: z.coerce.date(),
@@ -59,7 +59,7 @@ export const InventoryScriptHashInfoSchema: z.ZodType<InventoryScriptHashInfo> =
 export const RawInventoryScriptInfoSchema: z.ZodType<RawInventoryScriptInfo> = z.object({
   matcher: z.string(),
   hashes: z.array(InventoryScriptHashInfoSchema),
-  authorisationInfo: InventoryScriptAuthorisationInfoSchema,
+  authorisationInfo: InventoryAuthorisationInfoSchema,
 })
 
 /**
@@ -72,6 +72,12 @@ export const RawInventoryTargetSchema: z.ZodType<RawInventoryTarget> = z.object(
   workflow: z.string(),
 })
 
+export const RawInventoryHeaderInfoSchema: z.ZodType<RawInventoryHeaderInfo> = z.object({
+  nameMatcher: z.string(),
+  contentMatcher: z.string(),
+  authorisationInfo: InventoryAuthorisationInfoSchema,
+})
+
 /**
  * Schema for the complete inventory.
  * This is the top-level schema.
@@ -80,4 +86,5 @@ export const RawInventoryTargetSchema: z.ZodType<RawInventoryTarget> = z.object(
 export const RawInventorySchema: z.ZodType<RawInventory> = z.object({
   target: RawInventoryTargetSchema,
   scripts: z.array(RawInventoryScriptInfoSchema),
+  headers: z.array(RawInventoryHeaderInfoSchema),
 })

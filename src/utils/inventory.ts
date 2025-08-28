@@ -1,17 +1,13 @@
-import type { Target } from '../types/target'
-import type { Inventory, InventoryScriptInfo } from '../types/inventory/model'
-import type { RawInventory } from '../types/inventory/raw'
+import type { Inventory, InventoryScriptInfo, InventoryHeaderInfo } from '../types/inventory/model'
+import type { RawInventory, RawInventoryHeaderInfo } from '../types/inventory/raw'
 import { inventoryScriptInfoToRawInventoryScriptInfo } from './script'
-
-export function maybeGetInventoryForTarget(inventory: Inventory[], target: Target): Inventory | undefined {
-  return inventory.find((inventory) => inventory.target.inventory.url === target.url)
-}
 
 export function copyInventory(inventory: Inventory, args?: { newScripts: InventoryScriptInfo[] }): Inventory {
   return {
     fileName: inventory.fileName,
     target: inventory.target,
     scripts: args ? args.newScripts : inventory.scripts,
+    headers: inventory.headers,
   }
 }
 
@@ -23,5 +19,30 @@ export function inventoryToRawInventory(inventory: Inventory): RawInventory {
       workflow: inventory.target.workflow.fileName,
     },
     scripts: inventory.scripts.map(inventoryScriptInfoToRawInventoryScriptInfo),
+    headers: inventory.headers.map(inventoryHeaderInfoToRawInventoryHeaderInfo),
+  }
+}
+
+export function rawInventoryHeaderInfoToInventoryHeaderInfo(rawHeaderInfo: RawInventoryHeaderInfo): InventoryHeaderInfo {
+  return {
+    nameMatcher: new RegExp(rawHeaderInfo.nameMatcher),
+    contentMatcher: new RegExp(rawHeaderInfo.contentMatcher),
+    authorisationInfo: {
+      description: rawHeaderInfo.authorisationInfo.description,
+      authorised: rawHeaderInfo.authorisationInfo.authorised,
+      date: new Date(rawHeaderInfo.authorisationInfo.date),
+    },
+  }
+}
+
+export function inventoryHeaderInfoToRawInventoryHeaderInfo(headerInfo: InventoryHeaderInfo): RawInventoryHeaderInfo {
+  return {
+    nameMatcher: headerInfo.nameMatcher.source,
+    contentMatcher: headerInfo.contentMatcher.source,
+    authorisationInfo: {
+      description: headerInfo.authorisationInfo.description,
+      authorised: headerInfo.authorisationInfo.authorised,
+      date: headerInfo.authorisationInfo.date,
+    },
   }
 }

@@ -1,24 +1,28 @@
 import type { Browser, Page } from 'puppeteer'
 import type { PuppeteerClickAction, PuppeteerInputAction, PuppeteerLocatorAction, PuppeteerNavigateAction } from '../types/puppeteer'
-import type { IScriptDetectionService } from '../interfaces/detection'
-import type { ScriptInfo, ScriptDetectionSummary } from '../types/script'
+import type { DetectionSummary } from '../types/detection'
+import type { IDetectionService } from '../interfaces/detection'
+import type { HeaderName, HeaderValues } from '../types/header'
+import type { ScriptInfo } from '../types/script'
 import type { Workflow } from '../types/workflow'
 import type { Target } from '../types/target'
 
 import { getInlineScriptsFromPage } from '../utils/page'
 import { workflowDefinitionToPuppeteerWorkflow } from '../utils/workflow'
 import { scriptResponseHandler } from '../handlers/script'
+import { headerResponseHandler } from '../handlers/header'
 
-export class ScriptDetectionService implements IScriptDetectionService {
-  async detectScripts(browser: Browser, target: Target, workflow: Workflow): Promise<ScriptDetectionSummary> {
+export class DetectionService implements IDetectionService {
+  async detect(browser: Browser, target: Target, workflow: Workflow): Promise<DetectionSummary> {
     const externalScripts: ScriptInfo[] = []
     const internalScripts: ScriptInfo[] = []
+    const headers = new Map<HeaderName, HeaderValues>()
 
     const page = await browser.newPage()
 
     try {
       // Bootstrap page
-      page.on('response', (response) => scriptResponseHandler(response, externalScripts))
+      page.on('response', (response) => scriptResponseHandler(response, externalScripts)).on('response', (response) => headerResponseHandler(response, headers))
 
       // Get Puppeteer workflow
       const puppeteerWorkflow = workflowDefinitionToPuppeteerWorkflow(page, target, workflow.definition)
@@ -84,8 +88,13 @@ export class ScriptDetectionService implements IScriptDetectionService {
 
     return {
       target: target,
-      external: externalScripts,
-      inline: internalScripts,
+      scriptSummary: {
+        externalScripts: externalScripts,
+        inlineScripts: internalScripts,
+      },
+      headerSummary: {
+        headers: headers,
+      },
     }
   }
 

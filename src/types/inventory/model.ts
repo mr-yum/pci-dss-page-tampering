@@ -3,7 +3,7 @@ import type { TargetDetection, TargetInventory } from '../target'
 import type { Workflow } from '../workflow'
 import type { RawInventory } from './raw'
 
-export type InventoryScriptAuthorisationInfo = {
+export type InventoryAuthorisationInfo = {
   description: string
   authorised: boolean
   date: Date
@@ -17,7 +17,13 @@ export type InventoryScriptHashInfo = {
 export type InventoryScriptInfo = {
   matcher: RegExp
   hashes: InventoryScriptHashInfo[]
-  authorisationInfo: InventoryScriptAuthorisationInfo
+  authorisationInfo: InventoryAuthorisationInfo
+}
+
+export type InventoryHeaderInfo = {
+  nameMatcher: RegExp
+  contentMatcher: RegExp
+  authorisationInfo: InventoryAuthorisationInfo
 }
 
 export type InventoryTarget = {
@@ -30,6 +36,7 @@ export type Inventory = {
   fileName: string
   target: InventoryTarget
   scripts: InventoryScriptInfo[]
+  headers: InventoryHeaderInfo[]
 }
 
 export type InventoryDifferenceResult = {

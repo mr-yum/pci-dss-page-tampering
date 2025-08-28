@@ -1,32 +1,48 @@
 import type { IAlertService } from '../interfaces/alert'
-import type { ScriptComparisonSummary } from '../types/comparison'
+import type { HeaderComparisonSummary, ScriptComparisonSummary } from '../types/comparison'
 import type { Target } from '../types/target'
 import type { ScriptInfo } from '../types/script'
 
 import axios from 'axios'
+import { AlertType } from '../types/alert'
+import type { HeaderInfo, HeaderName, HeaderValues } from '../types/header'
 
 export class SlackAlertService implements IAlertService {
   /* #_pci-page-tampering-alerts */
-  private _webhookUrl = 'https://hooks.slack.com/services/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'
+  private readonly _webhookUrl = 'https://hooks.slack.com/services/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'
+  private readonly maxStringLength = 100
 
-  async alert(scriptComparisonSummary: ScriptComparisonSummary, _target: Target): Promise<void> {
+  async alertForScripts(scriptComparisonSummary: ScriptComparisonSummary, target: Target): Promise<void> {
     if (this.newScriptsFound(scriptComparisonSummary)) {
       const message = `Unauthorised scripts detected for target!`
       const newScripts = this.getNewScripts(scriptComparisonSummary)
+      const messagePayload = this.createScriptMessagePayload(message, newScripts, target)
 
-      this.log(message)
-      await this.sendMessage(message, newScripts, scriptComparisonSummary.target)
+      this.log(AlertType.Script, message)
+      await this.sendMessage(messagePayload)
     }
 
     if (this.newHashesFound(scriptComparisonSummary)) {
       const message = `Script hash mismatch detected for target!`
       const newHashes = this.getNewHashes(scriptComparisonSummary)
+      const messagePayload = this.createScriptMessagePayload(message, newHashes, target)
 
-      this.log(message)
-      await this.sendMessage(message, newHashes, scriptComparisonSummary.target)
+      this.log(AlertType.Script, message)
+      await this.sendMessage(messagePayload)
     }
 
     return Promise.resolve()
+  }
+
+  async alertForHeaders(headerComparisonSummary: HeaderComparisonSummary, target: Target): Promise<void> {
+    if (headerComparisonSummary.unauthorisedHeaders) {
+      const message = `Unauthorised headers detected for target!`
+      const headers = this.headerComparisonSummaryToHeaderInfo(headerComparisonSummary.unauthorisedHeaders)
+      const messagePayload = this.createHeaderMessagePayload(message, headers, target)
+
+      this.log(AlertType.Header, message)
+      await this.sendMessage(messagePayload)
+    }
   }
 
   private newScriptsFound(scriptComparisonSummary: ScriptComparisonSummary): boolean {
@@ -37,9 +53,8 @@ export class SlackAlertService implements IAlertService {
     return this.getNewHashes(scriptComparisonSummary).length !== 0
   }
 
-  private async sendMessage(title: string, scripts: ScriptInfo[], target: Target): Promise<void> {
-    const payload = this.createMessagePayload(title, scripts, target)
-    await axios.post(this._webhookUrl, payload)
+  private async sendMessage(messagePayload: object): Promise<void> {
+    await axios.post(this._webhookUrl, messagePayload)
   }
 
   private getNewScripts(scriptComparisonSummary: ScriptComparisonSummary): ScriptInfo[] {
@@ -50,7 +65,7 @@ export class SlackAlertService implements IAlertService {
     return scriptComparisonSummary.externalScripts.newHashes.concat(scriptComparisonSummary.inlineScripts.newHashes)
   }
 
-  private createMessagePayload(title: string, scripts: ScriptInfo[], target: Target): object {
+  private createScriptMessagePayload(title: string, scripts: ScriptInfo[], target: Target): object {
     return {
       blocks: [
         {
@@ -88,7 +103,7 @@ export class SlackAlertService implements IAlertService {
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `*Detection Summary*`,
+            text: `*Detection Summary (Max of 20)*`,
           },
         },
         {
@@ -130,7 +145,114 @@ export class SlackAlertService implements IAlertService {
                 ],
               },
             ],
-            ...scripts.map(this.scriptInfoToTableItem),
+            ...scripts.slice(0, 19).map((scriptInfo) => this.scriptInfoToTableItem(scriptInfo)),
+          ],
+        },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: 'Please review the changes as soon as possible:',
+          },
+        },
+        {
+          type: 'actions',
+          elements: [
+            {
+              type: 'button',
+              text: {
+                type: 'plain_text',
+                text: 'Review changes',
+              },
+              url: 'https://github.com/mr-yum/script-inventory/compare/update/scripts?expand=1',
+            },
+          ],
+        },
+      ],
+    }
+  }
+
+  private createHeaderMessagePayload(title: string, headers: HeaderInfo[], target: Target): object {
+    return {
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `:warning: *${title}* :warning:`,
+          },
+        },
+        {
+          type: 'divider',
+        },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*Target Type*: \`${target.type}\``,
+          },
+        },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*Target Source*: \`${target.url}\``,
+          },
+        },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*Number of unauthorised headers*: ${headers.length}`,
+          },
+        },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*Detection Summary (Max of 20)*`,
+          },
+        },
+        {
+          type: 'table',
+          rows: [
+            [
+              {
+                type: 'rich_text',
+                elements: [
+                  {
+                    type: 'rich_text_section',
+                    elements: [
+                      {
+                        type: 'text',
+                        text: 'Header Name',
+                        style: {
+                          bold: true,
+                        },
+                      },
+                    ],
+                  },
+                ],
+              },
+              {
+                type: 'rich_text',
+                elements: [
+                  {
+                    type: 'rich_text_section',
+                    elements: [
+                      {
+                        type: 'text',
+                        text: 'Value',
+                        style: {
+                          bold: true,
+                        },
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+            ...headers.slice(0, 19).map((headerInfo) => this.headerInfoToTableItem(headerInfo)),
           ],
         },
         {
@@ -178,7 +300,7 @@ export class SlackAlertService implements IAlertService {
             elements: [
               {
                 type: 'text',
-                text: scriptIdentifier,
+                text: this.truncateText(scriptIdentifier),
               },
             ],
           },
@@ -192,7 +314,7 @@ export class SlackAlertService implements IAlertService {
             elements: [
               {
                 type: 'text',
-                text: scriptInfo.hash.value,
+                text: this.truncateText(scriptInfo.hash.value),
               },
             ],
           },
@@ -201,7 +323,56 @@ export class SlackAlertService implements IAlertService {
     ]
   }
 
-  private log(message: string): void {
-    console.log(`[Alert]: ${message}`)
+  private headerInfoToTableItem(headerInfo: HeaderInfo) {
+    return [
+      {
+        type: 'rich_text',
+        elements: [
+          {
+            type: 'rich_text_section',
+            elements: [
+              {
+                type: 'text',
+                text: this.truncateText(headerInfo.name),
+              },
+            ],
+          },
+        ],
+      },
+      {
+        type: 'rich_text',
+        elements: [
+          {
+            type: 'rich_text_section',
+            elements: [
+              {
+                type: 'text',
+                text: headerInfo.value,
+              },
+            ],
+          },
+        ],
+      },
+    ]
+  }
+
+  private headerComparisonSummaryToHeaderInfo(unauthorisedHeaders: Map<HeaderName, HeaderValues>): HeaderInfo[] {
+    return [...unauthorisedHeaders].flatMap(([headerName, headerValues]) => {
+      const headerValuesArray = [...headerValues.values()]
+      return headerValuesArray.map<HeaderInfo>((headerValue) => {
+        return {
+          name: headerName,
+          value: this.truncateText(headerValue),
+        }
+      })
+    })
+  }
+
+  private log(alertType: AlertType, message: string): void {
+    console.log(`[Alert → ${alertType}]: ${message}`)
+  }
+
+  private truncateText(text: string): string {
+    return text.length > this.maxStringLength ? text.slice(0, this.maxStringLength - 4).concat('...') : text
   }
 }

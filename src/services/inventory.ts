@@ -1,14 +1,15 @@
-import type { IScriptInventoryRepository, IScriptInventoryService } from '../interfaces/inventory'
-import type { Inventory, InventoryDifferenceResult } from '../types/inventory/model'
+import type { IScriptInventoryRepository, IInventoryService } from '../interfaces/inventory'
+import type { Inventory, InventoryDifferenceResult, InventoryHeaderInfo } from '../types/inventory/model'
 import type { InventoryServiceProps } from '../types/inventory/props'
-import type { ScriptComparisonResult, ScriptComparisonSummary } from '../types/comparison'
+import type { HeaderComparisonSummary, ScriptComparisonResult, ScriptComparisonSummary } from '../types/comparison'
 
 import { getScriptSource, scriptInfoToInventoryScriptInfo } from '../utils/script'
 import { scriptHashToInventoryHashInfo } from '../utils/hash'
 import { copyInventory } from '../utils/inventory'
 import type { PullTarget } from '../types/target'
+import { unauthorisedHeadersToInventoryHeaderInfo } from '../utils/header'
 
-export class ScriptInventoryService implements IScriptInventoryService {
+export class ScriptInventoryService implements IInventoryService {
   private _repository: IScriptInventoryRepository
 
   constructor(args: InventoryServiceProps) {
@@ -20,22 +21,24 @@ export class ScriptInventoryService implements IScriptInventoryService {
     return await this._repository.pull(target)
   }
 
-  diff(comparisonSummary: ScriptComparisonSummary, inventory: Inventory): Promise<InventoryDifferenceResult> {
-    if (comparisonSummary.target.type !== 'inventory') {
+  diff(inventory: Inventory, scriptComparisonSummary: ScriptComparisonSummary, headerComparisonSummary: HeaderComparisonSummary): Promise<InventoryDifferenceResult> {
+    if (scriptComparisonSummary.target.type !== 'inventory' || headerComparisonSummary.target.type !== 'inventory') {
       return Promise.reject(new Error('[Inventory → Service] Cannot run diff with inventory scripts from detection target! Skipping...'))
     }
 
     const updateDate = new Date()
 
-    const updatedInventoryWithExternalScripts = this.getUpdatedInventoryWithNewScripts(comparisonSummary.externalScripts, inventory, updateDate)
-    const updatedInventoryWithExternalHashes = this.getUpdatedInventoryWithNewHashes(comparisonSummary.externalScripts, updatedInventoryWithExternalScripts, updateDate)
+    const updatedInventoryWithExternalScripts = this.getUpdatedInventoryWithNewScripts(scriptComparisonSummary.externalScripts, inventory, updateDate)
+    const updatedInventoryWithExternalHashes = this.getUpdatedInventoryWithNewHashes(scriptComparisonSummary.externalScripts, updatedInventoryWithExternalScripts, updateDate)
 
-    const updatedInventoryWithInLineScripts = this.getUpdatedInventoryWithNewScripts(comparisonSummary.inlineScripts, updatedInventoryWithExternalHashes, updateDate)
-    const updatedInventoryWithInLineHashes = this.getUpdatedInventoryWithNewHashes(comparisonSummary.inlineScripts, updatedInventoryWithInLineScripts, updateDate)
+    const updatedInventoryWithInLineScripts = this.getUpdatedInventoryWithNewScripts(scriptComparisonSummary.inlineScripts, updatedInventoryWithExternalHashes, updateDate)
+    const updatedInventoryWithInLineHashes = this.getUpdatedInventoryWithNewHashes(scriptComparisonSummary.inlineScripts, updatedInventoryWithInLineScripts, updateDate)
+
+    const updatedInventoryWithHeaders = this.getUpdatedInventoryWithNewHeaders(headerComparisonSummary, updatedInventoryWithInLineHashes, updateDate)
 
     return Promise.resolve({
       oldInventory: inventory,
-      newInventory: updatedInventoryWithInLineHashes,
+      newInventory: updatedInventoryWithHeaders,
     })
   }
 
@@ -73,5 +76,22 @@ export class ScriptInventoryService implements IScriptInventoryService {
     }
 
     return newInventoryWithNewHashes
+  }
+
+  private getUpdatedInventoryWithNewHeaders(headerComparisonSummary: HeaderComparisonSummary, inventory: Inventory, updateDate: Date): Inventory {
+    let headers: InventoryHeaderInfo[]
+
+    if (headerComparisonSummary.unauthorisedHeaders) {
+      headers = unauthorisedHeadersToInventoryHeaderInfo(headerComparisonSummary.unauthorisedHeaders, updateDate).concat(inventory.headers)
+    } else {
+      headers = inventory.headers
+    }
+
+    return {
+      fileName: inventory.fileName,
+      target: inventory.target,
+      scripts: inventory.scripts,
+      headers: headers,
+    }
   }
 }

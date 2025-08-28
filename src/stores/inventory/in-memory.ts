@@ -1,7 +1,7 @@
 import type { IInventoryStore } from '../../interfaces/inventory'
 
 import type { Inventory, InventoryPullResult } from '../../types/inventory/model'
-import type { RawInventory, RawInventoryScriptInfo } from '../../types/inventory/raw'
+import type { RawInventory, RawInventoryScriptInfo, RawInventoryHeaderInfo } from '../../types/inventory/raw'
 
 export class InMemoryInventoryStore implements IInventoryStore {
   // @ts-ignore
@@ -19,6 +19,7 @@ export class InMemoryInventoryStore implements IInventoryStore {
         this.createDefaultInventoryScript(RegExp('^https://www\\.recaptcha\\.net/recaptcha/enterprise\\.js\\?render=.+$')),
         this.createDefaultInventoryScript(RegExp('^https://www\\.recaptcha\\.net/recaptcha/enterprise/webworker\\.js\\?.*$')),
       ],
+      headers: [this.createDefaultInventoryHeader(RegExp('^content-security-policy$'), RegExp('^.*$'))],
     },
     {
       target: {
@@ -31,6 +32,7 @@ export class InMemoryInventoryStore implements IInventoryStore {
         this.createDefaultInventoryScript(RegExp('^https://hcaptcha\\.com/1/api\\.js\\?.*$')),
         this.createDefaultInventoryScript(RegExp('^https://connect\\.facebook\\.net/signals/config/\\d+\\?.*$')),
       ],
+      headers: [this.createDefaultInventoryHeader(RegExp('^content-security-policy$'), RegExp('^.*$'))],
     },
   ]
 
@@ -53,8 +55,18 @@ export class InMemoryInventoryStore implements IInventoryStore {
       authorisationInfo: {
         description: 'Script that doesnt match with default implementation due to query string',
         authorised: true,
-        date: new Date(),
+        date: new Date().toISOString(),
       },
+    }
+  }
+
+  private createDefaultInventoryHeader(nameRegex: RegExp, contentRegex: RegExp): RawInventoryHeaderInfo {
+    return {
+      nameMatcher: nameRegex.source,
+      contentMatcher: contentRegex.source,
+      description: 'Default header for testing',
+      authorised: true,
+      date: new Date().toISOString(),
     }
   }
 }

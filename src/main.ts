@@ -3,21 +3,24 @@ import puppeteer from 'puppeteer'
 
 import { ScriptInventoryRepository } from './repositories/inventory'
 import { SlackAlertService } from './services/alert'
-import { ScriptComparisonService } from './services/comparison'
-import { ScriptDetectionService } from './services/detection'
+import { ScriptComparisonService } from './services/comparison/script'
+import { DetectionService } from './services/detection'
 import { ScriptInventoryService } from './services/inventory'
 import { GitInventoryStore } from './stores/inventory/git'
 import { PullTarget, type Target } from './types/target'
 
 import type { Inventory, InventoryDifferenceResult } from './types/inventory/model'
+import { HeaderComparisonService } from './services/comparison/header'
 
 async function main() {
   const gitInventoryStore = new GitInventoryStore({ gitClient: simpleGit(), repositoryTarget: 'git@github.com:mr-yum/script-inventory.git' })
   const scriptInventoryRepository = new ScriptInventoryRepository({ inventoryStore: gitInventoryStore })
   const scriptInventoryService = new ScriptInventoryService({ inventoryRepository: scriptInventoryRepository })
-  const scriptDetectionService = new ScriptDetectionService()
+  const detectionService = new DetectionService()
   const scriptComparisonService = new ScriptComparisonService()
+  const headerComparisonService = new HeaderComparisonService()
   const slackAlertService = new SlackAlertService()
+
   const log = (message: string): void => {
     console.log(`[Main]: ${message}`)
   }
@@ -26,24 +29,28 @@ async function main() {
     // Launch new Browser for executing Puppeteer workflow
     const browser = await puppeteer.launch()
 
-    // Prepare to run script detection
-    const detectScriptsFromTarget = scriptDetectionService.detectScripts(browser, target, payload.target.workflow)
+    // Prepare to run resource detection
+    const detectResourcesForTarget = detectionService.detect(browser, target, payload.target.workflow)
 
-    // Run script detection
-    const scriptDetectionSummaryForTarget = await detectScriptsFromTarget
+    // Run resource detection
+    const detectionSummaryForTarget = await detectResourcesForTarget
 
     // Run script comparison with inventory
-    const comparisonSummaryForTarget = await scriptComparisonService.compare(payload, scriptDetectionSummaryForTarget)
+    const scriptComparisonSummaryForTarget = await scriptComparisonService.compare(detectionSummaryForTarget.target, payload, detectionSummaryForTarget.scriptSummary)
+
+    // Run header comparison with inventory
+    const headerComparisonSummaryForTarget = await headerComparisonService.compare(detectionSummaryForTarget.target, payload, detectionSummaryForTarget.headerSummary)
 
     // Alert for inventory and target
-    await slackAlertService.alert(comparisonSummaryForTarget, target)
+    await slackAlertService.alertForScripts(scriptComparisonSummaryForTarget, target)
+    await slackAlertService.alertForHeaders(headerComparisonSummaryForTarget, target)
 
     // Close browser
     await browser.close()
 
     // Run inventory sanity check and return to push to inventory
     if (target.type === 'inventory') {
-      return await scriptInventoryService.diff(comparisonSummaryForTarget, payload)
+      return await scriptInventoryService.diff(payload, scriptComparisonSummaryForTarget, headerComparisonSummaryForTarget)
     } else {
       return null
     }
