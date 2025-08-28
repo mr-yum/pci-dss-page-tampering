@@ -1,15 +1,14 @@
 import type { IInventoryStore, IScriptInventoryRepository } from '../interfaces/inventory'
 import type { Inventory } from '../types/inventory/model'
 import type { InventoryRepositoryProps } from '../types/inventory/props'
-import type { Workflow } from '../types/workflow'
 
-import { getWorkflowDefinitionFromFile } from '../utils/file'
 import { inventoryToRawInventory, rawInventoryHeaderInfoToInventoryHeaderInfo } from '../utils/inventory'
 import { rawInventoryScriptInfoToInventoryScriptInfo } from '../utils/script'
 import { rm, writeFile } from 'fs/promises'
 
-import { GIT_CLONE_PATH, TARGET_PATH, WORKFLOW_PATH } from '../utils/constants'
+import { GIT_CLONE_PATH, TARGET_PATH } from '../utils/constants'
 import type { PullTarget } from '../types/target'
+import { getWorkflowFromFile } from '../utils/workflow'
 
 export class ScriptInventoryRepository implements IScriptInventoryRepository {
   private readonly inventoryStore: IInventoryStore
@@ -27,19 +26,19 @@ export class ScriptInventoryRepository implements IScriptInventoryRepository {
     const payloads = pullResult.payloads
 
     const payloadsToProcess = payloads.map(async (payload): Promise<Inventory> => {
-      const pathToWorkflowFile = `${WORKFLOW_PATH}/${payload.rawInventory.target.workflow}`
-      const workflowDefinition = await getWorkflowDefinitionFromFile(pathToWorkflowFile)
-      const workflow: Workflow = {
-        fileName: payload.rawInventory.target.workflow,
-        definition: workflowDefinition,
-      }
-
       return {
         fileName: payload.fileName,
         target: {
-          inventory: payload.rawInventory.target.inventory,
-          detection: payload.rawInventory.target.detection,
-          workflow: workflow,
+          inventory: {
+            type: payload.rawInventory.target.inventory.type,
+            url: payload.rawInventory.target.inventory.url,
+            workflow: await getWorkflowFromFile(payload.rawInventory.target.inventory.workflow),
+          },
+          detection: {
+            type: payload.rawInventory.target.detection.type,
+            url: payload.rawInventory.target.detection.url,
+            workflow: await getWorkflowFromFile(payload.rawInventory.target.detection.workflow),
+          },
         },
         scripts: payload.rawInventory.scripts.map(rawInventoryScriptInfoToInventoryScriptInfo),
         headers: (payload.rawInventory.headers || []).map(rawInventoryHeaderInfoToInventoryHeaderInfo),

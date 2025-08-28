@@ -4,16 +4,15 @@ import type { DetectionSummary } from '../types/detection'
 import type { IDetectionService } from '../interfaces/detection'
 import type { HeaderName, HeaderValues } from '../types/header'
 import type { ScriptInfo } from '../types/script'
-import type { Workflow } from '../types/workflow'
 import type { Target } from '../types/target'
 
 import { getInlineScriptsFromPage } from '../utils/page'
-import { workflowDefinitionToPuppeteerWorkflow } from '../utils/workflow'
+import { getPuppeteerWorkflowFromTarget } from '../utils/workflow'
 import { scriptResponseHandler } from '../handlers/script'
 import { headerResponseHandler } from '../handlers/header'
 
 export class DetectionService implements IDetectionService {
-  async detect(browser: Browser, target: Target, workflow: Workflow): Promise<DetectionSummary> {
+  async detect(browser: Browser, target: Target): Promise<DetectionSummary> {
     const externalScripts: ScriptInfo[] = []
     const internalScripts: ScriptInfo[] = []
     const headers = new Map<HeaderName, HeaderValues>()
@@ -25,7 +24,7 @@ export class DetectionService implements IDetectionService {
       page.on('response', (response) => scriptResponseHandler(response, externalScripts)).on('response', (response) => headerResponseHandler(response, headers))
 
       // Get Puppeteer workflow
-      const puppeteerWorkflow = workflowDefinitionToPuppeteerWorkflow(page, target, workflow.definition)
+      const puppeteerWorkflow = getPuppeteerWorkflowFromTarget(page, target)
 
       // Navigate to workflow starting url
       await page.goto(puppeteerWorkflow.target.url, {

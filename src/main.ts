@@ -8,9 +8,9 @@ import { DetectionService } from './services/detection'
 import { ScriptInventoryService } from './services/inventory'
 import { GitInventoryStore } from './stores/inventory/git'
 import { PullTarget, type Target } from './types/target'
+import { HeaderComparisonService } from './services/comparison/header'
 
 import type { Inventory, InventoryDifferenceResult } from './types/inventory/model'
-import { HeaderComparisonService } from './services/comparison/header'
 
 async function main() {
   const gitInventoryStore = new GitInventoryStore({ gitClient: simpleGit(), repositoryTarget: 'git@github.com:mr-yum/script-inventory.git' })
@@ -30,7 +30,7 @@ async function main() {
     const browser = await puppeteer.launch()
 
     // Prepare to run resource detection
-    const detectResourcesForTarget = detectionService.detect(browser, target, payload.target.workflow)
+    const detectResourcesForTarget = detectionService.detect(browser, target)
 
     // Run resource detection
     const detectionSummaryForTarget = await detectResourcesForTarget
