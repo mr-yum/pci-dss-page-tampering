@@ -29,7 +29,10 @@ async function main() {
 
   const runForTargetAsync = async (payload: Inventory, target: Target): Promise<InventoryDifferenceResult | null> => {
     // Launch new Browser for executing Puppeteer workflow
-    const browser = await puppeteer.launch()
+    const browser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    });
 
     // Prepare to run resource detection
     const detectResourcesForTarget = detectionService.detect(browser, target)
