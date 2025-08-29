@@ -6,6 +6,7 @@ Ensure you have a ``.env.secrets`` file:
 
 ```
 # .env.secrets
+INVENTORY_REPO_PAT=<PAT secret>
 NPM_TOKEN=<copy from .npmrc>
 CODEARTIFACT_SCOPE=<copy from .npmrc>
 CODEARTIFACT_TOKEN=<copy from .npmrc>
