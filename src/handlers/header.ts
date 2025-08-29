@@ -21,7 +21,7 @@ export async function headerResponseHandler(response: HTTPResponse, detectedHead
         detectedHeaders.set(cspHeaderName, headerValues)
       }
     } catch (error) {
-      await Promise.reject(`Errored while attempting to read header response: ${error}`)
+      console.error(`Errored while attempting to read header response: ${error}`)
     }
   }
 }
