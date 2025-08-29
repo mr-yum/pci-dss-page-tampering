@@ -1,4 +1,6 @@
-export enum AlertType {
-  Script = 'Script',
-  Header = 'Header',
-}
+export const AlertType = {
+  Script: 'Script',
+  Header: 'Header',
+} as const
+
+export type AlertType = (typeof AlertType)[keyof typeof AlertType]

@@ -2,7 +2,7 @@ import simpleGit from 'simple-git'
 import puppeteer, { type Browser } from 'puppeteer'
 
 import { ScriptInventoryRepository } from './repositories/inventory'
-import { SlackAlertService } from './services/alert'
+import { SlackAlertService } from './services/alert/slack'
 import { ScriptComparisonService } from './services/comparison/script'
 import { DetectionService } from './services/detection'
 import { ScriptInventoryService } from './services/inventory'

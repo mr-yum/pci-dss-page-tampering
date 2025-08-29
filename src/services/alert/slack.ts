@@ -1,11 +1,11 @@
-import type { IAlertService } from '../interfaces/alert'
-import type { HeaderComparisonSummary, ScriptComparisonSummary } from '../types/comparison'
-import type { Target } from '../types/target'
-import type { ScriptInfo } from '../types/script'
+import type { IAlertService } from '../../interfaces/alert'
+import type { HeaderComparisonSummary, ScriptComparisonSummary } from '../../types/comparison'
+import type { Target } from '../../types/target'
+import type { ScriptInfo } from '../../types/script'
+import type { HeaderInfo, HeaderName, HeaderValues } from '../../types/header'
 
+import { AlertType } from '../../types/alert'
 import axios from 'axios'
-import { AlertType } from '../types/alert'
-import type { HeaderInfo, HeaderName, HeaderValues } from '../types/header'
 
 export class SlackAlertService implements IAlertService {
   /* #_pci-page-tampering-alerts */
@@ -13,25 +13,15 @@ export class SlackAlertService implements IAlertService {
   private readonly maxStringLength = 100
 
   async alertForScripts(scriptComparisonSummary: ScriptComparisonSummary, target: Target): Promise<void> {
-    if (this.newScriptsFound(scriptComparisonSummary)) {
-      const message = `Unauthorised scripts detected for target!`
-      const newScripts = this.getNewScripts(scriptComparisonSummary)
-      const messagePayload = this.createScriptMessagePayload(message, newScripts, target)
-
-      this.log(AlertType.Script, message)
-      await this.sendMessage(messagePayload)
+    switch (target.type) {
+      case 'inventory':
+        await this.alertOnNewScripts(scriptComparisonSummary, target)
+        break
+      case 'detection':
+        await this.alertOnNewScripts(scriptComparisonSummary, target)
+        await this.alertOnNewHashes(scriptComparisonSummary, target)
+        break
     }
-
-    if (this.newHashesFound(scriptComparisonSummary)) {
-      const message = `Script hash mismatch detected for target!`
-      const newHashes = this.getNewHashes(scriptComparisonSummary)
-      const messagePayload = this.createScriptMessagePayload(message, newHashes, target)
-
-      this.log(AlertType.Script, message)
-      await this.sendMessage(messagePayload)
-    }
-
-    return Promise.resolve()
   }
 
   async alertForHeaders(headerComparisonSummary: HeaderComparisonSummary, target: Target): Promise<void> {
@@ -41,6 +31,28 @@ export class SlackAlertService implements IAlertService {
       const messagePayload = this.createHeaderMessagePayload(message, headers, target)
 
       this.log(AlertType.Header, message)
+      await this.sendMessage(messagePayload)
+    }
+  }
+
+  private async alertOnNewScripts(scriptComparisonSummary: ScriptComparisonSummary, target: Target): Promise<void> {
+    if (this.newScriptsFound(scriptComparisonSummary)) {
+      const message = `Unauthorised scripts detected for target!`
+      const newScripts = this.getNewScripts(scriptComparisonSummary)
+      const messagePayload = this.createScriptMessagePayload(message, newScripts, target)
+
+      this.log(AlertType.Script, message)
+      await this.sendMessage(messagePayload)
+    }
+  }
+
+  private async alertOnNewHashes(scriptComparisonSummary: ScriptComparisonSummary, target: Target): Promise<void> {
+    if (this.newHashesFound(scriptComparisonSummary)) {
+      const message = `Script hash mismatch detected for target!`
+      const newHashes = this.getNewHashes(scriptComparisonSummary)
+      const messagePayload = this.createScriptMessagePayload(message, newHashes, target)
+
+      this.log(AlertType.Script, message)
       await this.sendMessage(messagePayload)
     }
   }
