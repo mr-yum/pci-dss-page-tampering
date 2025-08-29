@@ -2,7 +2,7 @@
 
 To run local GitHub Actions for testing:
 
-Ensure you have a ``.env.secrets`` file:
+Ensure you have a `.env.secrets` file:
 
 ```
 # .env.secrets
@@ -16,4 +16,3 @@ CODEARTIFACT_REGISTRY=<copy from .npmrc, without https prefix!>
 ```bash
 act push --container-architecture linux/amd64 --secret-file .env.secrets
 ```
-
