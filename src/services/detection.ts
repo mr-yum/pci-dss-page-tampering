@@ -49,7 +49,7 @@ export class DetectionService implements IDetectionService {
         newInlineScripts.forEach((script) => internalScripts.push(script))
       }
     } catch (e) {
-      console.error(`An error occurred during page processing: ${e}`)
+      await Promise.reject(`An error occurred during page processing: ${e}`)
     } finally {
       await page.close()
     }
