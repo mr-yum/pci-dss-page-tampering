@@ -1,5 +1,5 @@
 import simpleGit from 'simple-git'
-import puppeteer from 'puppeteer'
+import puppeteer, { type Browser } from 'puppeteer'
 
 import { ScriptInventoryRepository } from './repositories/inventory'
 import { SlackAlertService } from './services/alert'
@@ -27,13 +27,7 @@ async function main() {
     console.log(`[Main]: ${message}`)
   }
 
-  const runForTargetAsync = async (payload: Inventory, target: Target): Promise<InventoryDifferenceResult | null> => {
-    // Launch new Browser for executing Puppeteer workflow
-    const browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    })
-
+  const runForTargetAsync = async (browser: Browser, payload: Inventory, target: Target): Promise<InventoryDifferenceResult | null> => {
     // Prepare to run resource detection
     const detectResourcesForTarget = detectionService.detect(browser, target)
 
@@ -50,9 +44,6 @@ async function main() {
     await slackAlertService.alertForScripts(scriptComparisonSummaryForTarget, target)
     await slackAlertService.alertForHeaders(headerComparisonSummaryForTarget, target)
 
-    // Close browser
-    await browser.close()
-
     // Run inventory sanity check and return to push to inventory
     if (target.type === 'inventory') {
       return await scriptInventoryService.diff(payload, scriptComparisonSummaryForTarget, headerComparisonSummaryForTarget)
@@ -60,6 +51,12 @@ async function main() {
       return null
     }
   }
+
+  // Launch new Browser for executing Puppeteer workflow
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  })
 
   // Pull inventory
   log('Preparing to pull inventory.')
@@ -69,7 +66,7 @@ async function main() {
   log('Preparing to run inventory workflow.')
   const inventoryDiffResults = await Promise.all(
     inventory.map(async (inventory) => {
-      const inventoryResult = await runForTargetAsync(inventory, inventory.target.inventory)
+      const inventoryResult = await runForTargetAsync(browser, inventory, inventory.target.inventory)
       return {
         inventoryResult: inventoryResult ?? (await Promise.reject('Expected inventory diff result to exist, but received null!')),
       }
@@ -89,9 +86,12 @@ async function main() {
   log('Preparing to run detection workflow.')
   await Promise.all(
     detectionInventory.map(async (inventory) => {
-      await runForTargetAsync(inventory, inventory.target.detection)
+      await runForTargetAsync(browser, inventory, inventory.target.detection)
     }),
   )
+
+  // Close browser
+  await browser.close()
 }
 
 main()
