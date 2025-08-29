@@ -32,7 +32,7 @@ async function main() {
     const browser = await puppeteer.launch({
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    });
+    })
 
     // Prepare to run resource detection
     const detectResourcesForTarget = detectionService.detect(browser, target)
@@ -94,4 +94,4 @@ async function main() {
   )
 }
 
-main().catch(console.error)
+main()

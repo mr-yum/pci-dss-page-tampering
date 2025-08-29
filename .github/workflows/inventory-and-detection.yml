@@ -5,9 +5,9 @@ on:
     # Run daily at 12:00 PM UTC, night time in Sydney/Melbourne
     - cron: '0 12 * * *'
   push:
-    branches: [ 'main' ]
+    branches: ['main']
   pull_request:
-    branches: [ '**' ]
+    branches: ['**']
 
 env:
   NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -19,63 +19,62 @@ env:
 jobs:
   run-inventory-and-detection:
     runs-on: ubuntu-latest
-    
+
     strategy:
       matrix:
         node-version: [22.x]
-    
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Configure git for inventory and detection 
-      run: |
-        [ -n "${INVENTORY_REPO_PAT:-}" ] || { echo "INVENTORY_REPO_PAT is empty"; exit 1; }
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Use Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ matrix.node-version }}
-        cache: 'npm'
+      - name: Configure git for inventory and detection
+        run: |
+          [ -n "${INVENTORY_REPO_PAT:-}" ] || { echo "INVENTORY_REPO_PAT is empty"; exit 1; }
 
-    - name: Configure npm auth for both registries
-      run: |
-        set -euo pipefail
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
 
-        # Safety checks so you fail fast if secrets are missing
-        [ -n "${NPM_TOKEN:-}" ] || { echo "NPM_TOKEN is empty"; exit 1; }
-        [ -n "${CODEARTIFACT_REGISTRY:-}" ] || { echo "CODEARTIFACT_REGISTRY is empty"; exit 1; }
-        [ -n "${CODEARTIFACT_SCOPE:-}" ] || { echo "CODEARTIFACT_SCOPE is empty"; exit 1; }
-        [ -n "${CODEARTIFACT_TOKEN:-}" ] || { echo "CODEARTIFACT_TOKEN is empty"; exit 1; }
+      - name: Configure npm auth for both registries
+        run: |
+          set -euo pipefail
 
-        # Start a clean user-level .npmrc
-        : > "${HOME}/.npmrc"
+          # Safety checks so you fail fast if secrets are missing
+          [ -n "${NPM_TOKEN:-}" ] || { echo "NPM_TOKEN is empty"; exit 1; }
+          [ -n "${CODEARTIFACT_REGISTRY:-}" ] || { echo "CODEARTIFACT_REGISTRY is empty"; exit 1; }
+          [ -n "${CODEARTIFACT_SCOPE:-}" ] || { echo "CODEARTIFACT_SCOPE is empty"; exit 1; }
+          [ -n "${CODEARTIFACT_TOKEN:-}" ] || { echo "CODEARTIFACT_TOKEN is empty"; exit 1; }
 
-        # Always auth so scoped/private deps resolve cleanly
-        echo "always-auth=true" >> "${HOME}/.npmrc"
+          # Start a clean user-level .npmrc
+          : > "${HOME}/.npmrc"
 
-        # Default npmjs registry uses NODE_AUTH_TOKEN env automatically,
-        # but we also write it explicitly for clarity:
-        echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" >> "${HOME}/.npmrc"
+          # Always auth so scoped/private deps resolve cleanly
+          echo "always-auth=true" >> "${HOME}/.npmrc"
 
-        # AWS CodeArtifact registry: write token entry
-        echo "@${CODEARTIFACT_SCOPE}:registry=https://${CODEARTIFACT_REGISTRY}" >> "${HOME}/.npmrc"
-        echo "//${CODEARTIFACT_REGISTRY}:_authToken=${CODEARTIFACT_TOKEN}" >> "${HOME}/.npmrc"
+          # Default npmjs registry uses NODE_AUTH_TOKEN env automatically,
+          # but we also write it explicitly for clarity:
+          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" >> "${HOME}/.npmrc"
 
-        # (Optional) Show the resulting .npmrc minus secrets
-        echo "----- ~/.npmrc (sanitized) -----"
-        # sed -E 's/(:_authToken=).+/\1***REDACTED***/' "${HOME}/.npmrc"
-        cat "${HOME}/.npmrc"
-                
-    - name: Install dependencies
-      run: |
-        echo "📦 Installing dependencies..."
-        npm ci
-        echo "✅ Dependencies installed successfully"
-                
-    - name: Run start command
-      run: |
-        echo "▶️ Testing start command..."
-        timeout 30s npm start || echo "Start command completed (timeout or success)"
-        echo "✅ Start command test completed"
-        
+          # AWS CodeArtifact registry: write token entry
+          echo "@${CODEARTIFACT_SCOPE}:registry=https://${CODEARTIFACT_REGISTRY}" >> "${HOME}/.npmrc"
+          echo "//${CODEARTIFACT_REGISTRY}:_authToken=${CODEARTIFACT_TOKEN}" >> "${HOME}/.npmrc"
+
+          # (Optional) Show the resulting .npmrc minus secrets
+          echo "----- ~/.npmrc (sanitized) -----"
+          # sed -E 's/(:_authToken=).+/\1***REDACTED***/' "${HOME}/.npmrc"
+          cat "${HOME}/.npmrc"
+
+      - name: Install dependencies
+        run: |
+          echo "📦 Installing dependencies..."
+          npm ci
+          echo "✅ Dependencies installed successfully"
+
+      - name: Run start command
+        run: |
+          echo "▶️ Testing start command..."
+          timeout 30s npm start || echo "Start command completed (timeout or success)"
+          echo "✅ Start command test completed"
