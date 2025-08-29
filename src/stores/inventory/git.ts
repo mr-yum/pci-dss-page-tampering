@@ -68,8 +68,8 @@ export class GitInventoryStore implements IInventoryStore {
   // @ts-ignore
   async push(inventory: Inventory[]): Promise<void> {
     console.log(`[Inventory → Store] Setting user.name and user.email for the local repo.`)
-    await this.repositoryGitClient?.addConfig('user.name', 'me&u (formerly Mr Yum) Dev [bot]');
-    await this.repositoryGitClient?.addConfig('user.email', 'dev@mryum.com');
+    await this.repositoryGitClient?.addConfig('user.name', 'me&u (formerly Mr Yum) Dev [bot]')
+    await this.repositoryGitClient?.addConfig('user.email', 'dev@mryum.com')
 
     console.log(`[Inventory → Store] Adding all changed files found in '${GIT_CLONE_PATH}'.`)
     await this.repositoryGitClient?.add('.')
