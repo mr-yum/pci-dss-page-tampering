@@ -19,7 +19,7 @@ export async function scriptResponseHandler(response: HTTPResponse, detectedScri
         })
       }
     } catch (error) {
-      console.error(`Errored while attempting to read script response: ${error}`)
+      await Promise.reject(`Errored while attempting to read script response: ${error}`)
     }
   }
 }

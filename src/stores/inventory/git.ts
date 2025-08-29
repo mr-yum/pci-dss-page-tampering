@@ -117,7 +117,7 @@ export class GitInventoryStore implements IInventoryStore {
         await gitClient.checkoutBranch(branchName, 'origin/main')
       }
     } catch (error) {
-      console.error('[Inventory → Store] An error occurred: ', error)
+      await Promise.reject(`[Inventory → Store] An error occurred: ${error}`)
     }
   }
 }
