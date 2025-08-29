@@ -1,6 +1,9 @@
 name: Run inventory and detection
 
 on:
+  schedule:
+    # Run daily at 12:00 PM UTC, night time in Sydney/Melbourne
+    - cron: '0 12 * * *'
   push:
     branches: [ '**' ]
   pull_request:
