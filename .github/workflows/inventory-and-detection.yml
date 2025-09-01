@@ -76,5 +76,5 @@ jobs:
       - name: Run start command
         run: |
           echo "▶️ Testing start command..."
-          timeout 30s npm start || echo "Start command completed (timeout or success)"
+          npm start || echo "Start command completed (timeout or success)"
           echo "✅ Start command test completed"
