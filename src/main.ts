@@ -55,7 +55,7 @@ async function main() {
   // Launch new Browser for executing Puppeteer workflow
   const browser = await puppeteer.launch({
     headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--enable-gpu'],
   })
 
   // Pull inventory

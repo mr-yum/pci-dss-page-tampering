@@ -28,6 +28,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+        # Required when running locally using `act` (https://github.com/nektos/act)
+        # See: https://pptr.dev/troubleshooting#chrome-doesnt-launch-on-linux
+      # - name: Install system dependencies
+      # run: apt update && apt install -y ca-certificates fonts-liberation libasound2 libatk-bridge2.0-0 libatk1.0-0 libc6 libcairo2 libcups2 libdbus-1-3 libexpat1 libfontconfig1 libgbm1 libgcc1 libglib2.0-0 libgtk-3-0 libnspr4 libnss3 libpango-1.0-0 libpangocairo-1.0-0 libstdc++6 libx11-6 libx11-xcb1 libxcb1 libxcomposite1 libxcursor1 libxdamage1 libxext6 libxfixes3 libxi6 libxrandr2 libxrender1 libxss1 libxtst6 lsb-release wget xdg-utils
+
       - name: Configure git for inventory and detection
         run: |
           [ -n "${INVENTORY_REPO_PAT:-}" ] || { echo "INVENTORY_REPO_PAT is empty"; exit 1; }
@@ -76,5 +81,4 @@ jobs:
       - name: Run start command
         run: |
           echo "▶️ Testing start command..."
-          npm start || echo "Start command completed (timeout or success)"
-          echo "✅ Start command test completed"
+          npm start
