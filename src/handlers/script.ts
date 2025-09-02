@@ -18,8 +18,14 @@ export async function scriptResponseHandler(response: HTTPResponse, detectedScri
           hash: createSha256Hash(scriptContent),
         })
       }
-    } catch (error) {
-      console.error(`Errored while attempting to read script response: ${error}`)
+    } catch (e) {
+      const error = e as Error
+      if (error.name === 'TargetCloseError') {
+        console.error('The page has already been closed, so we cannot process anymore scripts. Skipping..')
+      } else {
+        console.error(`Errored while attempting to read script response: ${error}`)
+        await Promise.reject(error)
+      }
     }
   }
 }

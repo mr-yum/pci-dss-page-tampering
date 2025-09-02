@@ -22,6 +22,7 @@ export async function headerResponseHandler(response: HTTPResponse, detectedHead
       }
     } catch (error) {
       console.error(`Errored while attempting to read header response: ${error}`)
+      await Promise.reject(error)
     }
   }
 }
