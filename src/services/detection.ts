@@ -10,6 +10,7 @@ import { getInlineScriptsFromPage } from '../utils/page'
 import { getPuppeteerWorkflowFromTarget, stepsToPuppeteerLocatorAction } from '../utils/workflow'
 import { scriptResponseHandler } from '../handlers/script'
 import { headerResponseHandler } from '../handlers/header'
+import { capitalise } from '../utils/string'
 
 export class DetectionService implements IDetectionService {
   async detect(browser: Browser, target: Target): Promise<DetectionSummary> {
@@ -35,18 +36,24 @@ export class DetectionService implements IDetectionService {
       for (const [index, step] of puppeteerWorkflow.locatorActions.entries()) {
         const totalStepCount = puppeteerWorkflow.locatorActions.length
         const currentStepIndex = index + 1
+        const url = new URL(puppeteerWorkflow.target.url)
+        const targetType = capitalise(target.type)
 
-        console.log(`[Detection]: (${currentStepIndex}/${totalStepCount}) ${step.description} for target '${puppeteerWorkflow.target.url}'.`)
+        console.log(`[${targetType} → ${url.hostname}] (${currentStepIndex}/${totalStepCount}) ${step.description}.`)
 
-        // Wait for element to be available
-        await step.locator.wait()
+        try {
+          // Wait for element to be available
+          await step.locator.wait()
 
-        // Execute action
-        await this.executeAction(page, step)
+          // Execute action
+          await this.executeAction(page, step)
 
-        // Detect and add new inline scripts on each workflow action
-        const newInlineScripts = await this.detectNewInlineScripts(page, internalScripts)
-        newInlineScripts.forEach((script) => internalScripts.push(script))
+          // Detect and add new inline scripts on each workflow action
+          const newInlineScripts = await this.detectNewInlineScripts(page, internalScripts)
+          newInlineScripts.forEach((script) => internalScripts.push(script))
+        } catch (e) {
+          console.error(`[Error → ${targetType} → ${url.hostname}] Executing step failed '${step.description}'.`)
+        }
       }
     } catch (e) {
       console.error(`An error occurred during page processing: ${e}`)
