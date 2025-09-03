@@ -88,6 +88,7 @@ export function stepsToPuppeteerLocatorAction(page: Page, steps: WorkflowStep[])
       querySelector: querySelector,
       locator: page.locator(querySelector),
       action: actionToPuppeteerAction(step.action),
+      delay: step.action.delay ?? 0,
     }
   })
 }

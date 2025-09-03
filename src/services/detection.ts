@@ -14,11 +14,10 @@ import { capitalise } from '../utils/string'
 
 export class DetectionService implements IDetectionService {
   async detect(browser: Browser, target: Target): Promise<DetectionSummary> {
+    const page = await browser.newPage()
+    const headers = new Map<HeaderName, HeaderValues>()
     const externalScripts: ScriptInfo[] = []
     const internalScripts: ScriptInfo[] = []
-    const headers = new Map<HeaderName, HeaderValues>()
-
-    const page = await browser.newPage()
 
     try {
       // Bootstrap page
@@ -75,6 +74,11 @@ export class DetectionService implements IDetectionService {
   }
 
   private async executeAction(page: Page, step: PuppeteerLocatorAction): Promise<void> {
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+    if (step.delay > 0) {
+      await sleep(step.delay)
+    }
+
     // Execute action
     switch (step.action.type) {
       case 'click':

@@ -1,6 +1,7 @@
 export type WorkflowActionType = {
   type: 'click' | 'input' | 'escape' | 'navigate' | 'clickPopup'
   value?: string | undefined
+  delay?: number | undefined
   waitForNavigation?: true | undefined
   steps?: WorkflowStep[] | undefined
 }
