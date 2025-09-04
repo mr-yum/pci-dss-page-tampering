@@ -1,6 +1,7 @@
 {
   "private": true,
   "name": "pci-dss-page-tampering",
+  "type": "module",
   "version": "0.0.1",
   "engines": {
     "node": ">=22",

@@ -21,8 +21,8 @@ export class GitInventoryStore implements IInventoryStore {
 
   async pull(target: PullTarget): Promise<InventoryPullResult> {
     // Clone repository
-    console.log(`[Inventory → Store] Cloning repository '${this.repositoryTarget}' to path '${GIT_CLONE_PATH}'.`)
-    await this.initialGitClient.clone(this.repositoryTarget, GIT_CLONE_PATH)
+    // console.log(`[Inventory → Store] Cloning repository '${this.repositoryTarget}' to path '${GIT_CLONE_PATH}'.`)
+    // await this.initialGitClient.clone(this.repositoryTarget, GIT_CLONE_PATH)
 
     // Ensure that the appropriate folders exist
     if (!(await this.requiredFoldersExist())) {
@@ -40,6 +40,7 @@ export class GitInventoryStore implements IInventoryStore {
         await this.switchBranch(this.repositoryGitClient, GIT_UPDATED_SCRIPTS_BRANCH_NAME)
         break
       case PullTarget.Detection:
+        await this.switchBranch(this.repositoryGitClient, GIT_UPDATED_SCRIPTS_BRANCH_NAME)
         break
     }
 
@@ -99,15 +100,16 @@ export class GitInventoryStore implements IInventoryStore {
       const branches = await gitClient.branch()
 
       // Check if the branch exists on the remote 'origin'
-      const remoteBranch = `remotes/origin/${branchName}`
+      // const remoteBranch = `remotes/origin/${branchName}`
 
       // Switch to remote branch if exists
-      if (branches.all.includes(remoteBranch)) {
-        console.log(`[Inventory → Store] Branch '${branchName}' found on remote, switching to branch.`)
-        await gitClient.checkout(branchName)
-      }
+      // if (branches.all.includes(remoteBranch)) {
+      //   console.log(`[Inventory → Store] Branch '${branchName}' found on remote, switching to branch.`)
+      //   await gitClient.checkout(branchName)
+      // }
       // Switch to local branch if exists
-      else if (branches.all.includes(branchName)) {
+      // else
+      if (branches.all.includes(branchName)) {
         console.log(`[Inventory → Store] Branch '${branchName}' found locally, switching to branch.`)
         await gitClient.checkout(branchName)
       }

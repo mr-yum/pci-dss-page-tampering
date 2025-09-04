@@ -11,6 +11,7 @@ import { getPuppeteerWorkflowFromTarget, stepsToPuppeteerLocatorAction } from '.
 import { scriptResponseHandler } from '../handlers/script'
 import { headerResponseHandler } from '../handlers/header'
 import { capitalise } from '../utils/string'
+import axios from 'axios'
 
 export class DetectionService implements IDetectionService {
   async detect(browser: Browser, target: Target): Promise<DetectionSummary> {
@@ -30,6 +31,60 @@ export class DetectionService implements IDetectionService {
       await page.goto(puppeteerWorkflow.target.url, {
         waitUntil: 'networkidle2',
       })
+
+      // // COOKIE AUTH STUFF
+      // type AnonymousTokenResponse = {
+      //   access_token: string
+      //   id_token: string
+      //   expires_in: number
+      //   is_anonymous: boolean
+      // }
+      //
+      // type MeAndUAuthCookie = {
+      //   idToken: string
+      //   expiresAt: number
+      //   accessToken: string
+      //   refreshToken: string | null
+      //   isAnonymous: boolean
+      //   authProvider: string | undefined
+      // }
+      //
+      // const getAnonymousTokenUrl = new URL('https://app.meandu.com/api/account/anonymoustoken')
+      //
+      // await page.evaluate(async () => {
+      //   const getAnonymousTokenResponse = await axios.get(getAnonymousTokenUrl.toString())
+      //   const anonymousToken: AnonymousTokenResponse = getAnonymousTokenResponse.data
+      //   const expiresAt = Date.now() + (anonymousToken.expires_in - 60) * 1000
+      //   const authCookie: MeAndUAuthCookie = {
+      //     idToken: '',
+      //     expiresAt: expiresAt,
+      //     accessToken: anonymousToken.access_token,
+      //     refreshToken: null,
+      //     isAnonymous: false,
+      //     authProvider: 'meandu',
+      //   }
+      //
+      //   console.log(anonymousToken)
+      //
+      //   const cookieData = getAnonymousTokenResponse.headers['set-cookie']!
+      //   const splitCookies = cookieData
+      //     .pop()!
+      //     .split(';')
+      //     .map((string) => string.trim())
+      //   console.log(splitCookies)
+      //   const authRestoreCookie = splitCookies.find((cookieStr) => cookieStr.startsWith('authrestore'))!
+      //   await browser.setCookie({
+      //     sameSite: 'Strict',
+      //     httpOnly: true,
+      //     name: 'authrestore_au',
+      //     value: authRestoreCookie.split('=').pop()!,
+      //     domain: 'app.meandu.com',
+      //   })
+      //
+      //   const cookieStr = JSON.stringify(authCookie)
+      //   console.log(cookieStr)
+      //   localStorage.setItem('auth_au', cookieStr)
+      // })
 
       // Execute workflow steps
       for (const [index, step] of puppeteerWorkflow.locatorActions.entries()) {
@@ -79,62 +134,75 @@ export class DetectionService implements IDetectionService {
       await sleep(step.delay)
     }
 
-    // Execute action
-    switch (step.action.type) {
-      case 'click':
-        const action: PuppeteerClickAction = step.action
-        await this.evalClick(page, step)
+    try {
+      // Execute action
+      switch (step.action.type) {
+        case 'click':
+          const action: PuppeteerClickAction = step.action
+          await this.evalClick(page, step)
 
-        if (action.waitForNavigation) {
-          await page.waitForNavigation()
-        }
-        break
-
-      case 'input': {
-        const action: PuppeteerInputAction = step.action
-        await this.evalClick(page, step)
-        await page.type(step.querySelector, action.value)
-        break
-      }
-
-      case 'escape': {
-        await page.keyboard.press('Escape')
-        break
-      }
-
-      case 'navigate': {
-        const action: PuppeteerNavigateAction = step.action
-        await this.evalClick(page, step)
-
-        if (action.waitForNavigation) {
-          await page.waitForNavigation()
-        }
-        break
-      }
-
-      case 'clickPopup': {
-        const action: PuppeteerClickPopupAction = step.action
-
-        // Add popup page handler
-        page.on('popup', async (popupPage) => {
-          if (popupPage) {
-            const innerSteps = stepsToPuppeteerLocatorAction(popupPage, action.steps)
-            for (const innerStep of innerSteps) {
-              await innerStep.locator.wait()
-              await this.executeAction(popupPage, innerStep)
-            }
+          if (action.waitForNavigation) {
+            await page.waitForNavigation()
           }
-        })
+          break
 
-        // 2. Click to pop up new window
-        await this.evalClick(page, step)
-
-        if (action.waitForNavigation) {
-          await page.waitForNavigation()
+        case 'input': {
+          const action: PuppeteerInputAction = step.action
+          await this.evalClick(page, step)
+          await page.type(step.querySelector, action.value)
+          break
         }
 
-        break
+        case 'escape': {
+          await page.keyboard.press('Escape')
+          break
+        }
+
+        case 'navigate': {
+          const action: PuppeteerNavigateAction = step.action
+          await this.evalClick(page, step)
+
+          if (action.waitForNavigation) {
+            await page.waitForNavigation()
+          }
+          break
+        }
+
+        case 'clickPopup': {
+          const action: PuppeteerClickPopupAction = step.action
+          let poppedUpPage: Page | undefined = undefined
+
+          // Add popup page handler
+          page.on('popup', async (popupPage) => {
+            if (popupPage) {
+              poppedUpPage = popupPage
+            }
+          })
+
+          // Click to pop up new window
+          await this.evalClick(page, step)
+
+          // Wait for popup to be available
+          while (poppedUpPage === undefined) {
+            await sleep(1000)
+          }
+
+          // Execute popup steps
+          const innerSteps = stepsToPuppeteerLocatorAction(poppedUpPage, action.steps)
+          for (const innerStep of innerSteps) {
+            await innerStep.locator.wait()
+            await this.executeAction(poppedUpPage, innerStep)
+          }
+
+          if (action.waitForNavigation) {
+            await page.waitForNavigation()
+          }
+
+          break
+        }
       }
+    } catch (e) {
+      await Promise.reject(e)
     }
   }
 

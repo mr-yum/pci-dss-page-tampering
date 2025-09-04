@@ -38,6 +38,8 @@ function waitForDefinitionToQuerySelector(waitForDefinition: WorkflowWaitForDefi
       return `h3 ::-p-text(${waitForDefinition.identifier})`
     case 'span':
       return `span ::-p-text(${waitForDefinition.identifier})`
+    case 'divDataIdentifier':
+      return `div[data-identifier="${waitForDefinition.identifier}"]`
   }
 }
 

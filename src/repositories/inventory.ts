@@ -19,8 +19,8 @@ export class ScriptInventoryRepository implements IScriptInventoryRepository {
 
   async pull(target: PullTarget): Promise<Inventory[]> {
     // Clean up any existing clones
-    console.log(`[Inventory → Repository] Removing any existing clones from path '${GIT_CLONE_PATH}'.`)
-    await this.cleanUpExistingClone()
+    // console.log(`[Inventory → Repository] Removing any existing clones from path '${GIT_CLONE_PATH}'.`)
+    // await this.cleanUpExistingClone()
 
     const pullResult = await this.inventoryStore.pull(target)
     const payloads = pullResult.payloads

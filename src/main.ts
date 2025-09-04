@@ -28,6 +28,9 @@ async function main() {
   }
 
   const runForTargetAsync = async (browser: Browser, payload: Inventory, target: Target): Promise<InventoryDifferenceResult | null> => {
+    if (target.url !== 'https://app.meandu.com/qr?t=68ad1732720602d1051ffbce-demo&r=au') {
+      return null
+    }
     // Prepare to run resource detection
     const detectResourcesForTarget = detectionService.detect(browser, target)
 
@@ -54,29 +57,30 @@ async function main() {
 
   // Launch new Browser for executing Puppeteer workflow
   const browser = await puppeteer.launch({
-    headless: true,
+    headless: false,
+    devtools: true,
     args: ['--no-sandbox', '--disable-setuid-sandbox', '--enable-gpu'],
   })
 
-  // Pull inventory
-  log('Preparing to pull inventory.')
-  const inventory = await scriptInventoryService.pull(PullTarget.Inventory)
-
-  // Run inventory workflow
-  log('Preparing to run inventory workflow.')
-  const inventoryDiffResults = await Promise.all(
-    inventory.map(async (inventory) => {
-      const inventoryResult = await runForTargetAsync(browser, inventory, inventory.target.inventory)
-      return {
-        inventoryResult: inventoryResult ?? (await Promise.reject('Expected inventory diff result to exist, but received null!')),
-      }
-    }),
-  )
-
-  // Push inventory
-  log('Preparing to push inventory.')
-  const inventoriesToPush = inventoryDiffResults.map((result) => result.inventoryResult!)
-  await scriptInventoryService.push(inventoriesToPush)
+  // // Pull inventory
+  // log('Preparing to pull inventory.')
+  // const inventory = await scriptInventoryService.pull(PullTarget.Inventory)
+  //
+  // // Run inventory workflow
+  // log('Preparing to run inventory workflow.')
+  // const inventoryDiffResults = await Promise.all(
+  //   inventory.map(async (inventory) => {
+  //     const inventoryResult = await runForTargetAsync(browser, inventory, inventory.target.inventory)
+  //     return {
+  //       inventoryResult: inventoryResult ?? (await Promise.reject('Expected inventory diff result to exist, but received null!')),
+  //     }
+  //   }),
+  // )
+  //
+  // // Push inventory
+  // log('Preparing to push inventory.')
+  // const inventoriesToPush = inventoryDiffResults.map((result) => result.inventoryResult!)
+  // await scriptInventoryService.push(inventoriesToPush)
 
   // Pull inventory
   log('Preparing to pull inventory.')
@@ -91,7 +95,7 @@ async function main() {
   )
 
   // Close browser
-  await browser.close()
+  // await browser.close()
 }
 
-main()
+main().catch(console.error)
