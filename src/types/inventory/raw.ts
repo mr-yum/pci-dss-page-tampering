@@ -1,8 +1,8 @@
 import type { Inventory, InventoryHeaderInfo, InventoryScriptInfo, InventoryTarget } from './model'
 import type { RawTargetDetection, RawTargetInventory } from '../target/raw'
 
-export type RawInventoryScriptInfo = Omit<InventoryScriptInfo, 'matcher'> & {
-  matcher: string
+export type RawInventoryScriptInfo = Omit<InventoryScriptInfo, 'nameMatcher'> & {
+  nameMatcher: string
 }
 
 export type RawInventoryTarget = Omit<InventoryTarget, 'inventory' | 'detection'> & {

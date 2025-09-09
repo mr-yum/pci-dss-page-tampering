@@ -59,7 +59,7 @@ export const InventoryScriptHashInfoSchema: z.ZodType<InventoryScriptHashInfo> =
  * Corresponds to `RawInventoryScriptInfo`.
  */
 export const RawInventoryScriptInfoSchema: z.ZodType<RawInventoryScriptInfo> = z.object({
-  matcher: z.string(),
+  nameMatcher: z.string(),
   hashes: z.array(InventoryScriptHashInfoSchema),
   authorisationInfo: InventoryAuthorisationInfoSchema,
 })

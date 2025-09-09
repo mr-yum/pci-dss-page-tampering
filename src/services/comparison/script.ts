@@ -61,11 +61,11 @@ export class ScriptComparisonService implements IScriptComparisonService {
   }
 
   private scriptExistsInInventory(scriptInfo: ScriptInfo, inventoryScripts: InventoryScriptInfo[]): boolean {
-    return inventoryScripts.some((inventoryScript) => inventoryScript.matcher.test(getScriptSource(scriptInfo)))
+    return inventoryScripts.some((inventoryScript) => inventoryScript.nameMatcher.test(getScriptSource(scriptInfo)))
   }
 
   private getScriptFromInventory(scriptInfo: ScriptInfo, inventoryScripts: InventoryScriptInfo[]): InventoryScriptInfo | undefined {
-    return inventoryScripts.find((inventoryScript) => inventoryScript.matcher.test(getScriptSource(scriptInfo)) && inventoryScript.authorisationInfo.authorised)
+    return inventoryScripts.find((inventoryScript) => inventoryScript.nameMatcher.test(getScriptSource(scriptInfo)) && inventoryScript.authorisationInfo.authorised)
   }
 
   private scriptHashExists(scriptInfo: ScriptInfo, inventoryScript: InventoryScriptInfo): boolean {
