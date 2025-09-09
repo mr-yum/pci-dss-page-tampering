@@ -3,6 +3,7 @@ import type { ScriptInfo } from '../types/script'
 
 import { createSha256Hash } from './hash'
 import type { PageScriptElement } from '../types/page'
+import { tryGetIdFromInLineScriptCode } from './script/inline'
 
 export async function getInlineScriptsFromPage(page: Page): Promise<ScriptInfo[]> {
   const detectedScripts: ScriptInfo[] = []
@@ -18,7 +19,7 @@ export async function getInlineScriptsFromPage(page: Page): Promise<ScriptInfo[]
   })
 
   inlineScripts.forEach((pageScriptElement) => {
-    const idToUse = pageScriptElement.id ? `inline_script/${pageScriptElement.id}` : 'inline_script/id_not_found'
+    const idToUse = pageScriptElement.id ? `inline_script/${pageScriptElement.id}` : tryGetIdFromInLineScriptCode(pageScriptElement)
 
     if (pageScriptElement.content) {
       detectedScripts.push({
