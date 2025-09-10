@@ -4,5 +4,5 @@ import type { DetectionSummary } from '../types/detection'
 import type { ScriptMatcher } from '../types/matcher'
 
 export interface IDetectionService {
-  detect(browser: Browser, target: Target, scriptMatchers: ScriptMatcher[]): Promise<DetectionSummary>
+  detect(browser: Browser, target: Target, scriptContentMatchers: ScriptMatcher[]): Promise<DetectionSummary>
 }

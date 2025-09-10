@@ -1,10 +1,13 @@
 import type { ScriptMatcher } from '../../types/matcher'
+import type { Inventory } from '../../types/inventory/model'
 
-const contentMatchers = payload.scripts
-  .filter((script) => script.contentMatcher !== undefined)
-  .map<ScriptMatcher>((script) => {
-    return {
-      nameMatcher: script.nameMatcher,
-      contentMatcher: script.contentMatcher!,
-    }
-  })
+export function getScriptContentMatchersFromInventory(payload: Inventory): ScriptMatcher[] {
+  return payload.scripts
+    .filter((script) => script.contentMatcher !== undefined)
+    .map<ScriptMatcher>((script) => {
+      return {
+        nameMatcher: script.nameMatcher,
+        contentMatcher: script.contentMatcher!,
+      }
+    })
+}
