@@ -11,6 +11,7 @@ import { PullTarget, type Target } from './types/target'
 import { HeaderComparisonService } from './services/comparison/header'
 
 import type { Inventory, InventoryDifferenceResult } from './types/inventory/model'
+import type { ScriptMatcher } from './types/matcher'
 
 // Just to test the CI run-on-github workflow
 async function main() {
@@ -28,8 +29,18 @@ async function main() {
   }
 
   const runForTargetAsync = async (browser: Browser, payload: Inventory, target: Target): Promise<InventoryDifferenceResult | null> => {
+    // Get content matchers for in-script detection
+    const contentMatchers = payload.scripts
+      .filter((script) => script.contentMatcher !== undefined)
+      .map<ScriptMatcher>((script) => {
+        return {
+          nameMatcher: script.nameMatcher,
+          contentMatcher: script.contentMatcher!,
+        }
+      })
+
     // Prepare to run resource detection
-    const detectResourcesForTarget = detectionService.detect(browser, target)
+    const detectResourcesForTarget = detectionService.detect(browser, target, contentMatchers)
 
     // Run resource detection
     const detectionSummaryForTarget = await detectResourcesForTarget

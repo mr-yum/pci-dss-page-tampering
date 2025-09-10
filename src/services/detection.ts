@@ -10,9 +10,10 @@ import { getInlineScriptsFromPage } from '../utils/page'
 import { getPuppeteerWorkflowFromTarget, stepsToPuppeteerLocatorAction } from '../utils/workflow'
 import { scriptResponseHandler } from '../handlers/script'
 import { headerResponseHandler } from '../handlers/header'
+import type { ScriptMatcher } from '../types/matcher'
 
 export class DetectionService implements IDetectionService {
-  async detect(browser: Browser, target: Target): Promise<DetectionSummary> {
+  async detect(browser: Browser, target: Target, scriptMatchers: ScriptMatcher[]): Promise<DetectionSummary> {
     const externalScripts: ScriptInfo[] = []
     const internalScripts: ScriptInfo[] = []
     const headers = new Map<HeaderName, HeaderValues>()
@@ -45,7 +46,7 @@ export class DetectionService implements IDetectionService {
         await this.executeAction(page, step)
 
         // Detect and add new inline scripts on each workflow action
-        const newInlineScripts = await this.detectNewInlineScripts(page, internalScripts)
+        const newInlineScripts = await this.detectNewInlineScripts(page, internalScripts, scriptMatchers)
         newInlineScripts.forEach((script) => internalScripts.push(script))
       }
     } catch (e) {
@@ -134,8 +135,8 @@ export class DetectionService implements IDetectionService {
     await page.$eval(step.querySelector, (element) => (element as HTMLElement)?.click())
   }
 
-  private async detectNewInlineScripts(page: Page, existingScripts: ScriptInfo[]): Promise<ScriptInfo[]> {
-    const detectedInlineScripts = await getInlineScriptsFromPage(page)
+  private async detectNewInlineScripts(page: Page, existingScripts: ScriptInfo[], scriptMatchers: ScriptMatcher[]): Promise<ScriptInfo[]> {
+    const detectedInlineScripts = await getInlineScriptsFromPage(page, scriptMatchers)
     return detectedInlineScripts.filter((detectedScript) => !existingScripts.some((existingScript) => existingScript.hash.value === detectedScript.hash.value))
   }
 }
