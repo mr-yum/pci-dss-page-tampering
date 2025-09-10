@@ -14,7 +14,8 @@ export type InventoryScriptHashInfo = {
 }
 
 export type InventoryScriptInfo = {
-  matcher: RegExp
+  nameMatcher: RegExp
+  contentMatcher?: RegExp | undefined
   hashes: InventoryScriptHashInfo[]
   authorisationInfo: InventoryAuthorisationInfo
 }
