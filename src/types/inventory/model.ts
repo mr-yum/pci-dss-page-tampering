@@ -15,6 +15,7 @@ export type InventoryScriptHashInfo = {
 
 export type InventoryScriptInfo = {
   nameMatcher: RegExp
+  contentMatcher?: RegExp | undefined
   hashes: InventoryScriptHashInfo[]
   authorisationInfo: InventoryAuthorisationInfo
 }

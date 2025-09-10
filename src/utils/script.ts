@@ -8,6 +8,7 @@ import { escapeRegex } from './string'
 export function scriptInfoToInventoryScriptInfo(scriptInfo: ScriptInfo, date: Date): InventoryScriptInfo {
   return {
     nameMatcher: RegExp(`^${escapeRegex(getScriptSource(scriptInfo))}$`),
+    contentMatcher: undefined,
     hashes: [scriptHashToInventoryHashInfo(scriptInfo, date)],
     authorisationInfo: {
       description: 'NO_DESCRIPTION',
@@ -35,6 +36,7 @@ export function getScriptSource(scriptInfo: ScriptInfo): string {
 export function rawInventoryScriptInfoToInventoryScriptInfo(rawInventoryScriptInfo: RawInventoryScriptInfo): InventoryScriptInfo {
   return {
     nameMatcher: RegExp(rawInventoryScriptInfo.nameMatcher),
+    contentMatcher: rawInventoryScriptInfo.contentMatcher ? RegExp(rawInventoryScriptInfo.contentMatcher) : undefined,
     hashes: rawInventoryScriptInfo.hashes,
     authorisationInfo: rawInventoryScriptInfo.authorisationInfo,
   }
@@ -43,6 +45,7 @@ export function rawInventoryScriptInfoToInventoryScriptInfo(rawInventoryScriptIn
 export function inventoryScriptInfoToRawInventoryScriptInfo(inventoryScriptInfo: InventoryScriptInfo): RawInventoryScriptInfo {
   return {
     nameMatcher: inventoryScriptInfo.nameMatcher.source,
+    contentMatcher: inventoryScriptInfo.contentMatcher?.source ?? undefined,
     hashes: inventoryScriptInfo.hashes,
     authorisationInfo: inventoryScriptInfo.authorisationInfo,
   }
