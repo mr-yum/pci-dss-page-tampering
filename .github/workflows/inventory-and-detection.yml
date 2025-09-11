@@ -18,6 +18,7 @@ jobs:
     runs-on: ubuntu-latest
 
     strategy:
+      fail-fast: true
       matrix:
         node-version: [22.x]
 
@@ -37,6 +38,18 @@ jobs:
           [ -n "${NPMRC:-}" ] || { echo "NPMRC env variable is empty, make sure the NPMRC_RO_FILE secret is set"; exit 1; }
 
           echo "$NPMRC" > $HOME/.npmrc
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          echo "📦 Installing dependencies..."
+          npm ci
+          echo "✅ Dependencies installed successfully"
 
       - name: Install Chrome dependencies
         run: |
@@ -79,20 +92,9 @@ jobs:
             wget \
             xdg-utils
 
-      - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ matrix.node-version }}
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: |
-          echo "📦 Installing dependencies..."
-          npm ci
-          echo "✅ Dependencies installed successfully"
-
       - name: Run start command
+        timeout-minutes: 30
         run: |
           echo "▶️ Testing start command..."
-          npm start || echo "Start command completed (timeout or success)"
+          npm start
           echo "✅ Start command test completed"

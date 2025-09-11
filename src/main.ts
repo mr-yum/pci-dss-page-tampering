@@ -15,7 +15,7 @@ import { getScriptContentMatchersFromInventory } from './utils/script/matcher'
 
 // Just to test the CI run-on-github workflow
 async function main() {
-  const gitToken = process.env['INVENTORY_REPO_PAT']!
+  const gitToken = process.env['INVENTORY_REPO_PAT'] ?? (() => { throw new Error('INVENTORY_REPO_PAT environment variable is required') })()
   const gitInventoryStore = new GitInventoryStore({ gitClient: simpleGit(), repositoryTarget: `https://x-access-token:${gitToken}@github.com/mr-yum/script-inventory.git` })
   const scriptInventoryRepository = new ScriptInventoryRepository({ inventoryStore: gitInventoryStore })
   const scriptInventoryService = new ScriptInventoryService({ inventoryRepository: scriptInventoryRepository })
@@ -29,30 +29,44 @@ async function main() {
   }
 
   const runForTargetAsync = async (browser: Browser, payload: Inventory, target: Target): Promise<InventoryDifferenceResult | null> => {
-    // Get content matchers for in-script detection
-    const scriptMatchers = getScriptContentMatchersFromInventory(payload)
+    try {
+      console.log(`[Main]: Starting processing for target: ${target.url}`)
+      
+      // Get content matchers for in-script detection
+      const scriptMatchers = getScriptContentMatchersFromInventory(payload)
 
-    // Prepare to run resource detection
-    const detectResourcesForTarget = detectionService.detect(browser, target, scriptMatchers)
+      // Prepare to run resource detection
+      const detectResourcesForTarget = detectionService.detect(browser, target, scriptMatchers)
 
-    // Run resource detection
-    const detectionSummaryForTarget = await detectResourcesForTarget
+      // Run resource detection
+      const detectionSummaryForTarget = await detectResourcesForTarget
 
-    // Run script comparison with inventory
-    const scriptComparisonSummaryForTarget = await scriptComparisonService.compare(detectionSummaryForTarget.target, payload, detectionSummaryForTarget.scriptSummary, scriptMatchers)
+      // Run script comparison with inventory
+      const scriptComparisonSummaryForTarget = await scriptComparisonService.compare(detectionSummaryForTarget.target, payload, detectionSummaryForTarget.scriptSummary, scriptMatchers)
 
-    // Run header comparison with inventory
-    const headerComparisonSummaryForTarget = await headerComparisonService.compare(detectionSummaryForTarget.target, payload, detectionSummaryForTarget.headerSummary)
+      // Run header comparison with inventory
+      const headerComparisonSummaryForTarget = await headerComparisonService.compare(detectionSummaryForTarget.target, payload, detectionSummaryForTarget.headerSummary)
 
-    // Alert for inventory and target
-    await slackAlertService.alertForScripts(scriptComparisonSummaryForTarget, target)
-    await slackAlertService.alertForHeaders(headerComparisonSummaryForTarget, target)
+      // Alert for inventory and target
+      await slackAlertService.alertForScripts(scriptComparisonSummaryForTarget, target)
+      await slackAlertService.alertForHeaders(headerComparisonSummaryForTarget, target)
 
-    // Run inventory sanity check and return to push to inventory
-    if (target.type === 'inventory') {
-      return await scriptInventoryService.diff(payload, scriptComparisonSummaryForTarget, headerComparisonSummaryForTarget)
-    } else {
-      return null
+      // Run inventory sanity check and return to push to inventory
+      if (target.type === 'inventory') {
+        return await scriptInventoryService.diff(payload, scriptComparisonSummaryForTarget, headerComparisonSummaryForTarget)
+      } else {
+        return null
+      }
+    } catch (error) {
+      console.error(`[Main]: Error processing target: ${target.url}`)
+      if (error instanceof Error) {
+        console.error(`[Main]: Error name: ${error.name}`)
+        console.error(`[Main]: Error message: ${error.message}`)
+        console.error(`[Main]: Stack trace:`, error.stack)
+      } else {
+        console.error(`[Main]: Error: ${error}`)
+      }
+      throw error // Re-throw to maintain error propagation
     }
   }
 
@@ -98,4 +112,14 @@ async function main() {
   await browser.close()
 }
 
-main()
+main().catch((error) => {
+  console.error('[Main]: Application failed')
+  if (error instanceof Error) {
+    console.error(`[Main]: Error name: ${error.name}`)
+    console.error(`[Main]: Error message: ${error.message}`)
+    console.error(`[Main]: Stack trace:`, error.stack)
+  } else {
+    console.error(`[Main]: Error: ${error}`)
+  }
+  process.exit(1)
+})
