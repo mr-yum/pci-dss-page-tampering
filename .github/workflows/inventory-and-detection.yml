@@ -18,6 +18,7 @@ jobs:
     runs-on: ubuntu-latest
 
     strategy:
+      fail-fast: true
       matrix:
         node-version: [22.x]
 
@@ -38,12 +39,25 @@ jobs:
 
           echo "$NPMRC" > $HOME/.npmrc
 
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          echo "📦 Installing dependencies..."
+          npm ci
+          echo "✅ Dependencies installed successfully"
+
       - name: Install Chrome dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             ca-certificates \
             fonts-liberation \
+            libasound2 \
             libappindicator3-1 \
             libatk-bridge2.0-0 \
             libatk1.0-0 \
@@ -79,20 +93,9 @@ jobs:
             wget \
             xdg-utils
 
-      - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ matrix.node-version }}
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: |
-          echo "📦 Installing dependencies..."
-          npm ci
-          echo "✅ Dependencies installed successfully"
-
       - name: Run start command
+        timeout-minutes: 30
         run: |
           echo "▶️ Testing start command..."
-          npm start || echo "Start command completed (timeout or success)"
+          npm start
           echo "✅ Start command test completed"

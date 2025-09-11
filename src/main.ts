@@ -98,4 +98,7 @@ async function main() {
   await browser.close()
 }
 
-main()
+main().catch((error) => {
+  console.error('Application failed:', error)
+  process.exit(1)
+})
