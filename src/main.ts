@@ -15,7 +15,7 @@ import { getScriptContentMatchersFromInventory } from './utils/script/matcher'
 
 // Just to test the CI run-on-github workflow
 async function main() {
-  const gitToken = process.env['INVENTORY_REPO_PAT']!
+  const gitToken = process.env['INVENTORY_REPO_PAT'] ?? (() => { throw new Error('INVENTORY_REPO_PAT environment variable is required') })()
   const gitInventoryStore = new GitInventoryStore({ gitClient: simpleGit(), repositoryTarget: `https://x-access-token:${gitToken}@github.com/mr-yum/script-inventory.git` })
   const scriptInventoryRepository = new ScriptInventoryRepository({ inventoryStore: gitInventoryStore })
   const scriptInventoryService = new ScriptInventoryService({ inventoryRepository: scriptInventoryRepository })
