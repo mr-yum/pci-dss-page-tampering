@@ -22,6 +22,9 @@ export class DetectionService implements IDetectionService {
     let puppeteerWorkflow: any = null
 
     try {
+       // Set timeouts to 120 seconds
+       page.setDefaultTimeout(120000) // 120 seconds for all operations
+       page.setDefaultNavigationTimeout(120000) // 120 seconds for navigation 
       
       // Bootstrap page
       page.on('response', (response) => scriptResponseHandler(response, externalScripts)).on('response', (response) => headerResponseHandler(response, headers))
