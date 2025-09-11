@@ -57,7 +57,6 @@ jobs:
           sudo apt-get install -y \
             ca-certificates \
             fonts-liberation \
-            libasound2 \
             libappindicator3-1 \
             libatk-bridge2.0-0 \
             libatk1.0-0 \
