@@ -28,6 +28,7 @@ export class ScriptInventoryRepository implements IScriptInventoryRepository {
     const payloadsToProcess = payloads.map(async (payload): Promise<Inventory> => {
       return {
         fileName: payload.fileName,
+        alerts: payload.rawInventory.alerts,
         target: {
           inventory: {
             type: payload.rawInventory.target.inventory.type,
