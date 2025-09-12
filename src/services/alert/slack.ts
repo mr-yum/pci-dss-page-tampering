@@ -9,8 +9,8 @@ import axios from 'axios'
 import type { AlertDestination, InventoryAlert } from '../../types/inventory/model'
 
 export class SlackAlertService implements IAlertService {
+  private readonly oAuthToken: string
   private readonly maxStringLength = 100
-  private oAuthToken: string
 
   constructor(slackToken: string) {
     this.oAuthToken = slackToken
@@ -28,15 +28,27 @@ export class SlackAlertService implements IAlertService {
     }
   }
 
-  async alertForHeaders(headerComparisonSummary: HeaderComparisonSummary, target: Target): Promise<void> {
+  async alertForHeaders(headerComparisonSummary: HeaderComparisonSummary, target: Target, alertDestinations: InventoryAlert): Promise<void> {
     if (headerComparisonSummary.unauthorisedHeaders) {
-      const message = `Unauthorised headers detected for target!`
       const headers = this.headerComparisonSummaryToHeaderInfo(headerComparisonSummary.unauthorisedHeaders)
-      const messagePayload = this.createHeaderMessagePayload(message, headers, target)
 
-      this.log(AlertType.Header, message)
-      await this.sendMessage(messagePayload)
+      switch (target.type) {
+        case 'inventory':
+          await this.alertOnNewHeaders(headers, target, alertDestinations.inventory.newHeaderIdentified)
+          break
+        case 'detection':
+          await this.alertOnNewHeaders(headers, target, alertDestinations.detection.newHeaderDetected)
+          break
+      }
     }
+  }
+
+  private async alertOnNewHeaders(headers: HeaderInfo[], target: Target, destination: AlertDestination): Promise<void> {
+    const message = `Unauthorised headers detected for target!`
+    const messagePayload = this.createHeaderMessagePayload(message, headers, target, destination)
+
+    this.log(AlertType.Header, message)
+    await this.sendMessage(messagePayload)
   }
 
   private async alertOnNewScripts(scriptComparisonSummary: ScriptComparisonSummary, target: Target, destination: AlertDestination): Promise<void> {
@@ -190,8 +202,9 @@ export class SlackAlertService implements IAlertService {
     }
   }
 
-  private createHeaderMessagePayload(title: string, headers: HeaderInfo[], target: Target): object {
+  private createHeaderMessagePayload(title: string, headers: HeaderInfo[], target: Target, destination: AlertDestination): object {
     return {
+      channel: destination.destination,
       blocks: [
         {
           type: 'section',

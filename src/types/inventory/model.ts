@@ -37,11 +37,13 @@ export type AlertDestination = {
 
 export type AlertInventory = {
   newScriptIdentified: AlertDestination
+  newHeaderIdentified: AlertDestination
 }
 
 export type AlertDetection = {
   newScriptDetected: AlertDestination
   scriptMismatchDetected: AlertDestination
+  newHeaderDetected: AlertDestination
 }
 
 export type InventoryAlert = {
