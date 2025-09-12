@@ -15,14 +15,23 @@ import { getScriptContentMatchersFromInventory } from './utils/script/matcher'
 
 // Just to test the CI run-on-github workflow
 async function main() {
-  const gitToken = process.env['INVENTORY_REPO_PAT'] ?? (() => { throw new Error('INVENTORY_REPO_PAT environment variable is required') })()
+  const gitToken =
+    process.env['INVENTORY_REPO_PAT'] ??
+    (() => {
+      throw new Error('INVENTORY_REPO_PAT environment variable is required')
+    })()
+  const slackToken =
+    process.env['SLACK_OATH_TOKEN'] ??
+    (() => {
+      throw new Error('SLACK_OATH_TOKEN environment variable is required')
+    })()
   const gitInventoryStore = new GitInventoryStore({ gitClient: simpleGit(), repositoryTarget: `https://x-access-token:${gitToken}@github.com/mr-yum/script-inventory.git` })
   const scriptInventoryRepository = new ScriptInventoryRepository({ inventoryStore: gitInventoryStore })
   const scriptInventoryService = new ScriptInventoryService({ inventoryRepository: scriptInventoryRepository })
   const detectionService = new DetectionService()
   const scriptComparisonService = new ScriptComparisonService()
   const headerComparisonService = new HeaderComparisonService()
-  const slackAlertService = new SlackAlertService()
+  const slackAlertService = new SlackAlertService(slackToken)
 
   const log = (message: string): void => {
     console.log(`[Main]: ${message}`)
@@ -31,7 +40,7 @@ async function main() {
   const runForTargetAsync = async (browser: Browser, payload: Inventory, target: Target): Promise<InventoryDifferenceResult | null> => {
     try {
       console.log(`[Main]: Starting processing for target: ${target.url}`)
-      
+
       // Get content matchers for in-script detection
       const scriptMatchers = getScriptContentMatchersFromInventory(payload)
 
@@ -48,8 +57,8 @@ async function main() {
       const headerComparisonSummaryForTarget = await headerComparisonService.compare(detectionSummaryForTarget.target, payload, detectionSummaryForTarget.headerSummary)
 
       // Alert for inventory and target
-      await slackAlertService.alertForScripts(scriptComparisonSummaryForTarget, target)
-      await slackAlertService.alertForHeaders(headerComparisonSummaryForTarget, target)
+      await slackAlertService.alertForScripts(scriptComparisonSummaryForTarget, target, payload.alerts)
+      await slackAlertService.alertForHeaders(headerComparisonSummaryForTarget, target, payload.alerts)
 
       // Run inventory sanity check and return to push to inventory
       if (target.type === 'inventory') {

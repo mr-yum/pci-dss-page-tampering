@@ -6,20 +6,24 @@ import type { HeaderInfo, HeaderName, HeaderValues } from '../../types/header'
 
 import { AlertType } from '../../types/alert'
 import axios from 'axios'
+import type { AlertDestination, InventoryAlert } from '../../types/inventory/model'
 
 export class SlackAlertService implements IAlertService {
-  /* #_pci-page-tampering-alerts */
-  private readonly _webhookUrl = 'https://hooks.slack.com/services/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'
   private readonly maxStringLength = 100
+  private oAuthToken: string
 
-  async alertForScripts(scriptComparisonSummary: ScriptComparisonSummary, target: Target): Promise<void> {
+  constructor(slackToken: string) {
+    this.oAuthToken = slackToken
+  }
+
+  async alertForScripts(scriptComparisonSummary: ScriptComparisonSummary, target: Target, alertDestinations: InventoryAlert): Promise<void> {
     switch (target.type) {
       case 'inventory':
-        await this.alertOnNewScripts(scriptComparisonSummary, target)
+        await this.alertOnNewScripts(scriptComparisonSummary, target, alertDestinations.inventory.newScriptIdentified)
         break
       case 'detection':
-        await this.alertOnNewScripts(scriptComparisonSummary, target)
-        await this.alertOnNewHashes(scriptComparisonSummary, target)
+        await this.alertOnNewScripts(scriptComparisonSummary, target, alertDestinations.detection.newScriptDetected)
+        await this.alertOnNewHashes(scriptComparisonSummary, target, alertDestinations.detection.scriptMismatchDetected)
         break
     }
   }
@@ -35,22 +39,22 @@ export class SlackAlertService implements IAlertService {
     }
   }
 
-  private async alertOnNewScripts(scriptComparisonSummary: ScriptComparisonSummary, target: Target): Promise<void> {
+  private async alertOnNewScripts(scriptComparisonSummary: ScriptComparisonSummary, target: Target, destination: AlertDestination): Promise<void> {
     if (this.newScriptsFound(scriptComparisonSummary)) {
       const message = `Unauthorised scripts detected for target!`
       const newScripts = this.getNewScripts(scriptComparisonSummary)
-      const messagePayload = this.createScriptMessagePayload(message, newScripts, target)
+      const messagePayload = this.createScriptMessagePayload(message, newScripts, target, destination)
 
       this.log(AlertType.Script, message)
       await this.sendMessage(messagePayload)
     }
   }
 
-  private async alertOnNewHashes(scriptComparisonSummary: ScriptComparisonSummary, target: Target): Promise<void> {
+  private async alertOnNewHashes(scriptComparisonSummary: ScriptComparisonSummary, target: Target, destination: AlertDestination): Promise<void> {
     if (this.newHashesFound(scriptComparisonSummary)) {
       const message = `Script hash mismatch detected for target!`
       const newHashes = this.getNewHashes(scriptComparisonSummary)
-      const messagePayload = this.createScriptMessagePayload(message, newHashes, target)
+      const messagePayload = this.createScriptMessagePayload(message, newHashes, target, destination)
 
       this.log(AlertType.Script, message)
       await this.sendMessage(messagePayload)
@@ -66,7 +70,8 @@ export class SlackAlertService implements IAlertService {
   }
 
   private async sendMessage(messagePayload: object): Promise<void> {
-    await axios.post(this._webhookUrl, messagePayload)
+    const postMessageEndpoint = 'https://slack.com/api/chat.postMessage'
+    await axios.post(postMessageEndpoint, messagePayload, { headers: { Authorization: `Bearer ${this.oAuthToken}`, 'Content-Type': 'application/json' } })
   }
 
   private getNewScripts(scriptComparisonSummary: ScriptComparisonSummary): ScriptInfo[] {
@@ -77,8 +82,9 @@ export class SlackAlertService implements IAlertService {
     return scriptComparisonSummary.externalScripts.newHashes.concat(scriptComparisonSummary.inlineScripts.newHashes)
   }
 
-  private createScriptMessagePayload(title: string, scripts: ScriptInfo[], target: Target): object {
+  private createScriptMessagePayload(title: string, scripts: ScriptInfo[], target: Target, destination: AlertDestination): object {
     return {
+      channel: destination.destination,
       blocks: [
         {
           type: 'section',
