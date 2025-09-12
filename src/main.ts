@@ -21,9 +21,9 @@ async function main() {
       throw new Error('INVENTORY_REPO_PAT environment variable is required')
     })()
   const slackToken =
-    process.env['SLACK_OATH_TOKEN'] ??
+    process.env['SLACK_OAUTH_TOKEN'] ??
     (() => {
-      throw new Error('SLACK_OATH_TOKEN environment variable is required')
+      throw new Error('SLACK_OAUTH_TOKEN environment variable is required')
     })()
   const gitInventoryStore = new GitInventoryStore({ gitClient: simpleGit(), repositoryTarget: `https://x-access-token:${gitToken}@github.com/mr-yum/script-inventory.git` })
   const scriptInventoryRepository = new ScriptInventoryRepository({ inventoryStore: gitInventoryStore })
