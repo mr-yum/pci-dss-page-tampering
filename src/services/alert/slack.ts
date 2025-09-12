@@ -3,10 +3,10 @@ import type { HeaderComparisonSummary, ScriptComparisonSummary } from '../../typ
 import type { Target } from '../../types/target'
 import type { ScriptInfo } from '../../types/script'
 import type { HeaderInfo, HeaderName, HeaderValues } from '../../types/header'
+import type { AlertDestination, InventoryAlert } from '../../types/inventory/model'
 
 import { AlertType } from '../../types/alert'
 import axios from 'axios'
-import type { AlertDestination, InventoryAlert } from '../../types/inventory/model'
 
 export class SlackAlertService implements IAlertService {
   private readonly oAuthToken: string

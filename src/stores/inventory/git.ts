@@ -53,8 +53,6 @@ export class GitInventoryStore implements IInventoryStore {
         const filePath = `${TARGET_PATH}/${fileName}`
         const rawInventory = await getRawInventoryFromFile(filePath)
 
-        console.log(rawInventory.alerts)
-
         return {
           fileName: fileName,
           rawInventory: rawInventory,
