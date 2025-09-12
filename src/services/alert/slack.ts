@@ -3,54 +3,70 @@ import type { HeaderComparisonSummary, ScriptComparisonSummary } from '../../typ
 import type { Target } from '../../types/target'
 import type { ScriptInfo } from '../../types/script'
 import type { HeaderInfo, HeaderName, HeaderValues } from '../../types/header'
+import type { AlertDestination, InventoryAlert } from '../../types/inventory/model'
 
 import { AlertType } from '../../types/alert'
 import axios from 'axios'
 
 export class SlackAlertService implements IAlertService {
-  /* #_pci-page-tampering-alerts */
-  private readonly _webhookUrl = 'https://hooks.slack.com/services/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'
+  private readonly oAuthToken: string
   private readonly maxStringLength = 100
 
-  async alertForScripts(scriptComparisonSummary: ScriptComparisonSummary, target: Target): Promise<void> {
+  constructor(slackToken: string) {
+    this.oAuthToken = slackToken
+  }
+
+  async alertForScripts(scriptComparisonSummary: ScriptComparisonSummary, target: Target, alertDestinations: InventoryAlert): Promise<void> {
     switch (target.type) {
       case 'inventory':
-        await this.alertOnNewScripts(scriptComparisonSummary, target)
+        await this.alertOnNewScripts(scriptComparisonSummary, target, alertDestinations.inventory.newScriptIdentified)
         break
       case 'detection':
-        await this.alertOnNewScripts(scriptComparisonSummary, target)
-        await this.alertOnNewHashes(scriptComparisonSummary, target)
+        await this.alertOnNewScripts(scriptComparisonSummary, target, alertDestinations.detection.newScriptDetected)
+        await this.alertOnNewHashes(scriptComparisonSummary, target, alertDestinations.detection.scriptMismatchDetected)
         break
     }
   }
 
-  async alertForHeaders(headerComparisonSummary: HeaderComparisonSummary, target: Target): Promise<void> {
+  async alertForHeaders(headerComparisonSummary: HeaderComparisonSummary, target: Target, alertDestinations: InventoryAlert): Promise<void> {
     if (headerComparisonSummary.unauthorisedHeaders) {
-      const message = `Unauthorised headers detected for target!`
       const headers = this.headerComparisonSummaryToHeaderInfo(headerComparisonSummary.unauthorisedHeaders)
-      const messagePayload = this.createHeaderMessagePayload(message, headers, target)
 
-      this.log(AlertType.Header, message)
-      await this.sendMessage(messagePayload)
+      switch (target.type) {
+        case 'inventory':
+          await this.alertOnNewHeaders(headers, target, alertDestinations.inventory.newHeaderIdentified)
+          break
+        case 'detection':
+          await this.alertOnNewHeaders(headers, target, alertDestinations.detection.newHeaderDetected)
+          break
+      }
     }
   }
 
-  private async alertOnNewScripts(scriptComparisonSummary: ScriptComparisonSummary, target: Target): Promise<void> {
+  private async alertOnNewHeaders(headers: HeaderInfo[], target: Target, destination: AlertDestination): Promise<void> {
+    const message = `Unauthorised headers detected for target!`
+    const messagePayload = this.createHeaderMessagePayload(message, headers, target, destination)
+
+    this.log(AlertType.Header, message)
+    await this.sendMessage(messagePayload)
+  }
+
+  private async alertOnNewScripts(scriptComparisonSummary: ScriptComparisonSummary, target: Target, destination: AlertDestination): Promise<void> {
     if (this.newScriptsFound(scriptComparisonSummary)) {
       const message = `Unauthorised scripts detected for target!`
       const newScripts = this.getNewScripts(scriptComparisonSummary)
-      const messagePayload = this.createScriptMessagePayload(message, newScripts, target)
+      const messagePayload = this.createScriptMessagePayload(message, newScripts, target, destination)
 
       this.log(AlertType.Script, message)
       await this.sendMessage(messagePayload)
     }
   }
 
-  private async alertOnNewHashes(scriptComparisonSummary: ScriptComparisonSummary, target: Target): Promise<void> {
+  private async alertOnNewHashes(scriptComparisonSummary: ScriptComparisonSummary, target: Target, destination: AlertDestination): Promise<void> {
     if (this.newHashesFound(scriptComparisonSummary)) {
       const message = `Script hash mismatch detected for target!`
       const newHashes = this.getNewHashes(scriptComparisonSummary)
-      const messagePayload = this.createScriptMessagePayload(message, newHashes, target)
+      const messagePayload = this.createScriptMessagePayload(message, newHashes, target, destination)
 
       this.log(AlertType.Script, message)
       await this.sendMessage(messagePayload)
@@ -66,7 +82,8 @@ export class SlackAlertService implements IAlertService {
   }
 
   private async sendMessage(messagePayload: object): Promise<void> {
-    await axios.post(this._webhookUrl, messagePayload)
+    const postMessageEndpoint = 'https://slack.com/api/chat.postMessage'
+    await axios.post(postMessageEndpoint, messagePayload, { headers: { Authorization: `Bearer ${this.oAuthToken}`, 'Content-Type': 'application/json' } })
   }
 
   private getNewScripts(scriptComparisonSummary: ScriptComparisonSummary): ScriptInfo[] {
@@ -77,8 +94,9 @@ export class SlackAlertService implements IAlertService {
     return scriptComparisonSummary.externalScripts.newHashes.concat(scriptComparisonSummary.inlineScripts.newHashes)
   }
 
-  private createScriptMessagePayload(title: string, scripts: ScriptInfo[], target: Target): object {
+  private createScriptMessagePayload(title: string, scripts: ScriptInfo[], target: Target, destination: AlertDestination): object {
     return {
+      channel: destination.destination,
       blocks: [
         {
           type: 'section',
@@ -184,8 +202,9 @@ export class SlackAlertService implements IAlertService {
     }
   }
 
-  private createHeaderMessagePayload(title: string, headers: HeaderInfo[], target: Target): object {
+  private createHeaderMessagePayload(title: string, headers: HeaderInfo[], target: Target, destination: AlertDestination): object {
     return {
+      channel: destination.destination,
       blocks: [
         {
           type: 'section',
