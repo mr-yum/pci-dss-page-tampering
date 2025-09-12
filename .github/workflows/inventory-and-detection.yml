@@ -10,6 +10,7 @@ on:
     branches: ['**']
 
 env:
+  SLACK_OAUTH_TOKEN: ${{ secrets.SLACK_OAUTH_TOKEN }}
   INVENTORY_REPO_PAT: ${{ secrets.INVENTORY_REPO_PAT }}
   NPMRC: ${{ secrets.NPMRC_RO_FILE }}
 
