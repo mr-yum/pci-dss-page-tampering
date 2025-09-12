@@ -31,9 +31,28 @@ export type InventoryTarget = {
   detection: TargetDetection
 }
 
+export type AlertDestination = {
+  destination: string
+}
+
+export type AlertInventory = {
+  newScriptIdentified: AlertDestination
+}
+
+export type AlertDetection = {
+  newScriptDetected: AlertDestination
+  scriptMismatchDetected: AlertDestination
+}
+
+export type InventoryAlert = {
+  inventory: AlertInventory
+  detection: AlertDetection
+}
+
 export type Inventory = {
   fileName: string
   target: InventoryTarget
+  alerts: InventoryAlert
   scripts: InventoryScriptInfo[]
   headers: InventoryHeaderInfo[]
 }

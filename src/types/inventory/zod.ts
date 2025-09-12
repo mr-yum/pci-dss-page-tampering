@@ -1,9 +1,27 @@
-import type { InventoryAuthorisationInfo, InventoryScriptHashInfo } from './model'
+import type { AlertDetection, InventoryAuthorisationInfo, InventoryScriptHashInfo } from './model'
 import type { RawInventory, RawInventoryHeaderInfo, RawInventoryScriptInfo, RawInventoryTarget } from './raw'
+import type { RawTargetDetection, RawTargetInventory } from '../target/raw'
 
 import { SHA256HashSchema } from '../zod'
 import { z } from 'zod'
-import type { RawTargetDetection, RawTargetInventory } from '../target/raw'
+
+export const AlertDestinationSchema = z.object({
+  destination: z.string(),
+})
+
+export const AlertInventorySchema = z.object({
+  newScriptIdentified: AlertDestinationSchema,
+})
+
+export const AlertDetectionSchema: z.ZodType<AlertDetection> = z.object({
+  newScriptDetected: AlertDestinationSchema,
+  scriptMismatchDetected: AlertDestinationSchema,
+})
+
+export const InventoryAlertSchema = z.object({
+  inventory: AlertInventorySchema,
+  detection: AlertDetectionSchema,
+})
 
 /**
  * Base schema for a Target.
@@ -87,6 +105,7 @@ export const RawInventoryHeaderInfoSchema: z.ZodType<RawInventoryHeaderInfo> = z
  */
 export const RawInventorySchema: z.ZodType<RawInventory> = z.object({
   target: RawInventoryTargetSchema,
+  alerts: InventoryAlertSchema,
   scripts: z.array(RawInventoryScriptInfoSchema),
   headers: z.array(RawInventoryHeaderInfoSchema),
 })
