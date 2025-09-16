@@ -132,6 +132,11 @@ export class DetectionService implements IDetectionService {
   }
 
   private async executeAction(page: Page, step: PuppeteerLocatorAction): Promise<void> {
+    // Delay action
+    if (step.delay > 0) {
+      await this.sleep(step.delay)
+    }
+
     // Execute action
     switch (step.action.type) {
       case 'click':
@@ -239,5 +244,9 @@ export class DetectionService implements IDetectionService {
   private async detectNewInlineScripts(page: Page, existingScripts: ScriptInfo[], scriptContentMatchers: ScriptMatcher[]): Promise<ScriptInfo[]> {
     const detectedInlineScripts = await getInlineScriptsFromPage(page, scriptContentMatchers)
     return detectedInlineScripts.filter((detectedScript) => !existingScripts.some((existingScript) => existingScript.hash.value === detectedScript.hash.value))
+  }
+
+  private async sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms))
   }
 }
