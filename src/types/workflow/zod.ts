@@ -15,6 +15,7 @@ export const WorkflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() =>
     action: z.object({
       type: z.enum(['click', 'input', 'escape', 'navigate', 'clickPopup']),
       value: z.string().optional(),
+      delay: z.number().optional(),
       waitForNavigation: z.literal(true).optional(),
       // This is the recursive part, referring back to workflowStepSchema
       steps: z.array(WorkflowStepSchema).optional(),
