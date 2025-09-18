@@ -9,7 +9,7 @@ import type { InLineScriptMatcher } from '../../types/script/inline'
     - [Next.js Server-side Rendering](https://github.com/vercel/next.js/discussions/42170#discussioncomment-8880248)
  */
 export function tryGetIdFromInLineScriptCode(pageScriptElement: PageScriptElement): string {
-  const scriptMatchers = [cloudFlareScriptMatcher, nextJsServerSideRenderingScriptMatcher]
+  const scriptMatchers = [cloudFlareScriptMatcher, nextJsServerSideRenderingScriptMatcher, reactServerComponentScriptMatcher]
   const maybeMatch = scriptMatchers.find((matcher) => matcher.predicate(pageScriptElement))
 
   return maybeMatch ? maybeMatch.resultingIdentifier : 'inline_script/id_not_found'
@@ -34,5 +34,16 @@ const nextJsServerSideRenderingScriptMatcher: InLineScriptMatcher = {
   predicate: (script: PageScriptElement) => {
     const innerScriptSrcCode = 'self.__next_f.push'
     return script.content.includes(innerScriptSrcCode)
+  },
+}
+
+/*
+ In-line script code for React [Server Components](https://tonyalicea.dev/blog/understanding-react-server-components/)
+ */
+const reactServerComponentScriptMatcher: InLineScriptMatcher = {
+  resultingIdentifier: 'inline_script/react-server-component',
+  predicate: (script: PageScriptElement) => {
+    const regex = RegExp('^\\$R[CS]')
+    return regex.test(script.content)
   },
 }
