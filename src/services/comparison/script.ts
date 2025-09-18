@@ -54,6 +54,10 @@ export class ScriptComparisonService implements IScriptComparisonService {
             newHashes.push(script)
           }
         }
+        // Push script if script isn't authorised
+        else {
+          newScripts.push(script)
+        }
       }
     })
 
