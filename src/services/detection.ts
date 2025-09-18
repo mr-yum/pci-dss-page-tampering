@@ -10,26 +10,49 @@ import { getInlineScriptsFromPage } from '../utils/page'
 import { getPuppeteerWorkflowFromTarget, stepsToPuppeteerLocatorAction } from '../utils/workflow'
 import { scriptResponseHandler } from '../handlers/script'
 import { headerResponseHandler } from '../handlers/header'
+import type { ScriptMatcher } from '../types/matcher'
 
 export class DetectionService implements IDetectionService {
-  async detect(browser: Browser, target: Target): Promise<DetectionSummary> {
+  async detect(browser: Browser, target: Target, scriptContentMatchers: ScriptMatcher[]): Promise<DetectionSummary> {
     const externalScripts: ScriptInfo[] = []
     const internalScripts: ScriptInfo[] = []
     const headers = new Map<HeaderName, HeaderValues>()
 
     const page = await browser.newPage()
+    let puppeteerWorkflow: any = null
 
     try {
+      // Set timeouts to 120 seconds
+      page.setDefaultTimeout(120000) // 120 seconds for all operations
+      page.setDefaultNavigationTimeout(120000) // 120 seconds for navigation
+
       // Bootstrap page
       page.on('response', (response) => scriptResponseHandler(response, externalScripts)).on('response', (response) => headerResponseHandler(response, headers))
 
       // Get Puppeteer workflow
-      const puppeteerWorkflow = getPuppeteerWorkflowFromTarget(page, target)
+      puppeteerWorkflow = getPuppeteerWorkflowFromTarget(page, target)
 
       // Navigate to workflow starting url
-      await page.goto(puppeteerWorkflow.target.url, {
-        waitUntil: 'networkidle2',
-      })
+      try {
+        await page.goto(puppeteerWorkflow.target.url, {
+          waitUntil: 'networkidle2',
+        })
+      } catch (navError) {
+        if (navError instanceof Error && navError.name === 'TimeoutError') {
+          console.error(`[Detection]: NAVIGATION TIMEOUT ERROR`)
+          console.error(`[Detection]: Target URL: ${puppeteerWorkflow.target.url}`)
+          console.error(`[Detection]: Error message: ${navError.message}`)
+          console.error(`[Detection]: Stack trace:`, navError.stack)
+        } else {
+          console.error(`[Detection]: NAVIGATION ERROR`)
+          console.error(`[Detection]: Target URL: ${puppeteerWorkflow.target.url}`)
+          console.error(`[Detection]: Error: ${navError}`)
+          if (navError instanceof Error) {
+            console.error(`[Detection]: Stack trace:`, navError.stack)
+          }
+        }
+        throw navError
+      }
 
       // Execute workflow steps
       for (const [index, step] of puppeteerWorkflow.locatorActions.entries()) {
@@ -38,18 +61,60 @@ export class DetectionService implements IDetectionService {
 
         console.log(`[Detection]: (${currentStepIndex}/${totalStepCount}) ${step.description} for target '${puppeteerWorkflow.target.url}'.`)
 
-        // Wait for element to be available
-        await step.locator.wait()
+        try {
+          // Wait for element to be available
+          await step.locator.wait()
 
-        // Execute action
-        await this.executeAction(page, step)
+          // Execute action
+          await this.executeAction(page, step)
 
-        // Detect and add new inline scripts on each workflow action
-        const newInlineScripts = await this.detectNewInlineScripts(page, internalScripts)
-        newInlineScripts.forEach((script) => internalScripts.push(script))
+          // Detect and add new inline scripts on each workflow action
+          const newInlineScripts = await this.detectNewInlineScripts(page, internalScripts, scriptContentMatchers)
+          newInlineScripts.forEach((script) => internalScripts.push(script))
+        } catch (stepError) {
+          // Enhanced error logging for workflow steps
+          if (stepError instanceof Error && stepError.name === 'TimeoutError') {
+            console.error(`[Detection]: TIMEOUT ERROR in step ${currentStepIndex}/${totalStepCount}`)
+            console.error(`[Detection]: Step description: ${step.description}`)
+            console.error(`[Detection]: Target URL: ${puppeteerWorkflow.target.url}`)
+            console.error(`[Detection]: Element selector: ${step.querySelector}`)
+            console.error(`[Detection]: Action type: ${step.action.type}`)
+            console.error(`[Detection]: Current page URL: ${page.url()}`)
+            console.error(`[Detection]: Error message: ${stepError.message}`)
+            console.error(`[Detection]: Stack trace:`, stepError.stack)
+          } else {
+            console.error(`[Detection]: ERROR in step ${currentStepIndex}/${totalStepCount}`)
+            console.error(`[Detection]: Step description: ${step.description}`)
+            console.error(`[Detection]: Target URL: ${puppeteerWorkflow.target.url}`)
+            console.error(`[Detection]: Element selector: ${step.querySelector}`)
+            console.error(`[Detection]: Action type: ${step.action.type}`)
+            console.error(`[Detection]: Current page URL: ${page.url()}`)
+            console.error(`[Detection]: Error: ${stepError}`)
+            if (stepError instanceof Error) {
+              console.error(`[Detection]: Stack trace:`, stepError.stack)
+            }
+          }
+          throw stepError // Re-throw to maintain existing error handling
+        }
       }
     } catch (e) {
-      console.error(`An error occurred during page processing: ${e}`)
+      // Enhanced error logging for the main catch block
+      if (e instanceof Error && e.name === 'TimeoutError') {
+        console.error(`[Detection]: TIMEOUT ERROR during page processing`)
+        console.error(`[Detection]: Target URL: ${puppeteerWorkflow?.target?.url || 'Unknown'}`)
+        console.error(`[Detection]: Current page URL: ${page.url()}`)
+        console.error(`[Detection]: Error message: ${e.message}`)
+        console.error(`[Detection]: Stack trace:`, e.stack)
+      } else {
+        console.error(`[Detection]: ERROR during page processing`)
+        console.error(`[Detection]: Target URL: ${puppeteerWorkflow?.target?.url || 'Unknown'}`)
+        console.error(`[Detection]: Current page URL: ${page.url()}`)
+        console.error(`[Detection]: Error: ${e}`)
+        if (e instanceof Error) {
+          console.error(`[Detection]: Stack trace:`, e.stack)
+        }
+      }
+      throw e // Re-throw the error to ensure it's propagated
     } finally {
       await page.close()
     }
@@ -67,6 +132,11 @@ export class DetectionService implements IDetectionService {
   }
 
   private async executeAction(page: Page, step: PuppeteerLocatorAction): Promise<void> {
+    // Delay action
+    if (step.delay > 0) {
+      await this.sleep(step.delay)
+    }
+
     // Execute action
     switch (step.action.type) {
       case 'click':
@@ -106,10 +176,47 @@ export class DetectionService implements IDetectionService {
         // Add popup page handler
         page.on('popup', async (popupPage) => {
           if (popupPage) {
-            const innerSteps = stepsToPuppeteerLocatorAction(popupPage, action.steps)
-            for (const innerStep of innerSteps) {
-              await innerStep.locator.wait()
-              await this.executeAction(popupPage, innerStep)
+            try {
+              const innerSteps = stepsToPuppeteerLocatorAction(popupPage, action.steps)
+
+              for (const [popupIndex, innerStep] of innerSteps.entries()) {
+                const popupStepNumber = popupIndex + 1
+                console.log(`[Detection]: Popup step ${popupStepNumber}/${innerSteps.length}: ${innerStep.description}`)
+
+                try {
+                  await innerStep.locator.wait()
+                  await this.executeAction(popupPage, innerStep)
+                } catch (popupStepError) {
+                  if (popupStepError instanceof Error && popupStepError.name === 'TimeoutError') {
+                    console.error(`[Detection]: POPUP TIMEOUT ERROR in step ${popupStepNumber}/${innerSteps.length}`)
+                    console.error(`[Detection]: Popup step description: ${innerStep.description}`)
+                    console.error(`[Detection]: Popup element selector: ${innerStep.querySelector}`)
+                    console.error(`[Detection]: Popup action type: ${innerStep.action.type}`)
+                    console.error(`[Detection]: Popup page URL: ${popupPage.url()}`)
+                    console.error(`[Detection]: Error message: ${popupStepError.message}`)
+                    console.error(`[Detection]: Stack trace:`, popupStepError.stack)
+                  } else {
+                    console.error(`[Detection]: POPUP ERROR in step ${popupStepNumber}/${innerSteps.length}`)
+                    console.error(`[Detection]: Popup step description: ${innerStep.description}`)
+                    console.error(`[Detection]: Popup element selector: ${innerStep.querySelector}`)
+                    console.error(`[Detection]: Popup action type: ${innerStep.action.type}`)
+                    console.error(`[Detection]: Popup page URL: ${popupPage.url()}`)
+                    console.error(`[Detection]: Error: ${popupStepError}`)
+                    if (popupStepError instanceof Error) {
+                      console.error(`[Detection]: Stack trace:`, popupStepError.stack)
+                    }
+                  }
+                  throw popupStepError
+                }
+              }
+            } catch (error) {
+              console.error(`[Detection]: POPUP HANDLING ERROR`)
+              console.error(`[Detection]: Popup page URL: ${popupPage.url()}`)
+              console.error(`[Detection]: Error: ${error}`)
+              if (error instanceof Error) {
+                console.error(`[Detection]: Stack trace:`, error.stack)
+              }
+              throw error // Re-throw to ensure popup errors are caught
             }
           }
         })
@@ -134,8 +241,12 @@ export class DetectionService implements IDetectionService {
     await page.$eval(step.querySelector, (element) => (element as HTMLElement)?.click())
   }
 
-  private async detectNewInlineScripts(page: Page, existingScripts: ScriptInfo[]): Promise<ScriptInfo[]> {
-    const detectedInlineScripts = await getInlineScriptsFromPage(page)
+  private async detectNewInlineScripts(page: Page, existingScripts: ScriptInfo[], scriptContentMatchers: ScriptMatcher[]): Promise<ScriptInfo[]> {
+    const detectedInlineScripts = await getInlineScriptsFromPage(page, scriptContentMatchers)
     return detectedInlineScripts.filter((detectedScript) => !existingScripts.some((existingScript) => existingScript.hash.value === detectedScript.hash.value))
+  }
+
+  private async sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms))
   }
 }

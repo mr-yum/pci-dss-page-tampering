@@ -10,17 +10,16 @@ on:
     branches: ['**']
 
 env:
-  NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-  CODEARTIFACT_REGISTRY: ${{ secrets.CODEARTIFACT_REGISTRY }}
-  CODEARTIFACT_SCOPE: ${{ secrets.CODEARTIFACT_SCOPE }}
-  CODEARTIFACT_TOKEN: ${{ secrets.CODEARTIFACT_TOKEN }}
   INVENTORY_REPO_PAT: ${{ secrets.INVENTORY_REPO_PAT }}
+  SLACK_OAUTH_TOKEN: ${{ secrets.SLACK_OAUTH_TOKEN }}
+  NPMRC: ${{ secrets.NPMRC_RO_FILE }}
 
 jobs:
   run-inventory-and-detection:
     runs-on: ubuntu-latest
 
     strategy:
+      fail-fast: true
       matrix:
         node-version: [22.x]
 
@@ -32,40 +31,24 @@ jobs:
         run: |
           [ -n "${INVENTORY_REPO_PAT:-}" ] || { echo "INVENTORY_REPO_PAT is empty"; exit 1; }
 
-      - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ matrix.node-version }}
-          cache: 'npm'
+      - name: Configure Slack for alerting
+        run: |
+          [ -n "${SLACK_OAUTH_TOKEN:-}" ] || { echo "SLACK_OAUTH_TOKEN is empty"; exit 1; }
 
       - name: Configure npm auth for both registries
         run: |
           set -euo pipefail
 
           # Safety checks so you fail fast if secrets are missing
-          [ -n "${NPM_TOKEN:-}" ] || { echo "NPM_TOKEN is empty"; exit 1; }
-          [ -n "${CODEARTIFACT_REGISTRY:-}" ] || { echo "CODEARTIFACT_REGISTRY is empty"; exit 1; }
-          [ -n "${CODEARTIFACT_SCOPE:-}" ] || { echo "CODEARTIFACT_SCOPE is empty"; exit 1; }
-          [ -n "${CODEARTIFACT_TOKEN:-}" ] || { echo "CODEARTIFACT_TOKEN is empty"; exit 1; }
+          [ -n "${NPMRC:-}" ] || { echo "NPMRC env variable is empty, make sure the NPMRC_RO_FILE secret is set"; exit 1; }
 
-          # Start a clean user-level .npmrc
-          : > "${HOME}/.npmrc"
+          echo "$NPMRC" > $HOME/.npmrc
 
-          # Always auth so scoped/private deps resolve cleanly
-          echo "always-auth=true" >> "${HOME}/.npmrc"
-
-          # Default npmjs registry uses NODE_AUTH_TOKEN env automatically,
-          # but we also write it explicitly for clarity:
-          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" >> "${HOME}/.npmrc"
-
-          # AWS CodeArtifact registry: write token entry
-          echo "@${CODEARTIFACT_SCOPE}:registry=https://${CODEARTIFACT_REGISTRY}" >> "${HOME}/.npmrc"
-          echo "//${CODEARTIFACT_REGISTRY}:_authToken=${CODEARTIFACT_TOKEN}" >> "${HOME}/.npmrc"
-
-          # (Optional) Show the resulting .npmrc minus secrets
-          echo "----- ~/.npmrc (sanitized) -----"
-          # sed -E 's/(:_authToken=).+/\1***REDACTED***/' "${HOME}/.npmrc"
-          cat "${HOME}/.npmrc"
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
 
       - name: Install dependencies
         run: |
@@ -73,8 +56,50 @@ jobs:
           npm ci
           echo "✅ Dependencies installed successfully"
 
+      - name: Install Chrome dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            ca-certificates \
+            fonts-liberation \
+            libappindicator3-1 \
+            libatk-bridge2.0-0 \
+            libatk1.0-0 \
+            libc6 \
+            libcairo2 \
+            libcups2 \
+            libdbus-1-3 \
+            libexpat1 \
+            libfontconfig1 \
+            libgbm1 \
+            libgcc1 \
+            libglib2.0-0 \
+            libgtk-3-0 \
+            libnspr4 \
+            libnss3 \
+            libpango-1.0-0 \
+            libpangocairo-1.0-0 \
+            libstdc++6 \
+            libx11-6 \
+            libx11-xcb1 \
+            libxcb1 \
+            libxcomposite1 \
+            libxcursor1 \
+            libxdamage1 \
+            libxext6 \
+            libxfixes3 \
+            libxi6 \
+            libxrandr2 \
+            libxrender1 \
+            libxss1 \
+            libxtst6 \
+            lsb-release \
+            wget \
+            xdg-utils
+
       - name: Run start command
+        timeout-minutes: 30
         run: |
           echo "▶️ Testing start command..."
-          timeout 30s npm start || echo "Start command completed (timeout or success)"
+          npm start
           echo "✅ Start command test completed"

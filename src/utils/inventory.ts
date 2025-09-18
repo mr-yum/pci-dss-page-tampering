@@ -6,6 +6,7 @@ export function copyInventory(inventory: Inventory, args?: { newScripts: Invento
   return {
     fileName: inventory.fileName,
     target: inventory.target,
+    alerts: inventory.alerts,
     scripts: args ? args.newScripts : inventory.scripts,
     headers: inventory.headers,
   }
@@ -25,6 +26,7 @@ export function inventoryToRawInventory(inventory: Inventory): RawInventory {
         workflow: inventory.target.detection.workflow.fileName,
       },
     },
+    alerts: inventory.alerts,
     scripts: inventory.scripts.map(inventoryScriptInfoToRawInventoryScriptInfo),
     headers: inventory.headers.map(inventoryHeaderInfoToRawInventoryHeaderInfo),
   }

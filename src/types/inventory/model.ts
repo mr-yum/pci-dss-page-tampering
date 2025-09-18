@@ -14,7 +14,8 @@ export type InventoryScriptHashInfo = {
 }
 
 export type InventoryScriptInfo = {
-  matcher: RegExp
+  nameMatcher: RegExp
+  contentMatcher?: RegExp | undefined
   hashes: InventoryScriptHashInfo[]
   authorisationInfo: InventoryAuthorisationInfo
 }
@@ -30,9 +31,30 @@ export type InventoryTarget = {
   detection: TargetDetection
 }
 
+export type AlertDestination = {
+  destination: string
+}
+
+export type AlertInventory = {
+  newScriptIdentified: AlertDestination
+  newHeaderIdentified: AlertDestination
+}
+
+export type AlertDetection = {
+  newScriptDetected: AlertDestination
+  scriptMismatchDetected: AlertDestination
+  newHeaderDetected: AlertDestination
+}
+
+export type InventoryAlert = {
+  inventory: AlertInventory
+  detection: AlertDetection
+}
+
 export type Inventory = {
   fileName: string
   target: InventoryTarget
+  alerts: InventoryAlert
   scripts: InventoryScriptInfo[]
   headers: InventoryHeaderInfo[]
 }

@@ -64,7 +64,7 @@ export class ScriptInventoryService implements IInventoryService {
     if (newHashesToAdd.length !== 0) {
       // Add new hash to inventory script known hashes
       newHashesToAdd.forEach((script) => {
-        const inventoryScript = newInventoryWithNewHashes.scripts.find((inventoryScript) => inventoryScript.matcher.test(getScriptSource(script)))
+        const inventoryScript = newInventoryWithNewHashes.scripts.find((inventoryScript) => inventoryScript.nameMatcher.test(getScriptSource(script)))
 
         // We always expect to have an inventory script entry from the comparison stage
         if (!inventoryScript) {
@@ -90,6 +90,7 @@ export class ScriptInventoryService implements IInventoryService {
     return {
       fileName: inventory.fileName,
       target: inventory.target,
+      alerts: inventory.alerts,
       scripts: inventory.scripts,
       headers: headers,
     }

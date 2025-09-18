@@ -3,8 +3,10 @@ import type { ScriptInfo } from '../types/script'
 
 import { createSha256Hash } from './hash'
 import type { PageScriptElement } from '../types/page'
+import { tryGetIdFromInLineScriptCode } from './script/inline'
+import type { ScriptMatcher } from '../types/matcher'
 
-export async function getInlineScriptsFromPage(page: Page): Promise<ScriptInfo[]> {
+export async function getInlineScriptsFromPage(page: Page, scriptContentMatchers: ScriptMatcher[]): Promise<ScriptInfo[]> {
   const detectedScripts: ScriptInfo[] = []
 
   const inlineScripts = await page.evaluate(() => {
@@ -18,7 +20,9 @@ export async function getInlineScriptsFromPage(page: Page): Promise<ScriptInfo[]
   })
 
   inlineScripts.forEach((pageScriptElement) => {
-    const idToUse = pageScriptElement.id ? `inline_script/${pageScriptElement.id}` : 'inline_script/id_not_found'
+    const idToUse = pageScriptElement.id ? `inline_script/${pageScriptElement.id}` : tryGetIdFromInLineScriptCode(pageScriptElement)
+    const maybeContentMatcher = scriptContentMatchers.find((matcher) => matcher.nameMatcher.test(idToUse) && matcher.contentMatcher.test(pageScriptElement.content))
+    const scriptHash = maybeContentMatcher ? createSha256Hash(`${maybeContentMatcher.nameMatcher.source}|${maybeContentMatcher.contentMatcher.source}`) : createSha256Hash(pageScriptElement.content)
 
     if (pageScriptElement.content) {
       detectedScripts.push({
@@ -27,7 +31,7 @@ export async function getInlineScriptsFromPage(page: Page): Promise<ScriptInfo[]
           id: idToUse,
           content: pageScriptElement.content,
         },
-        hash: createSha256Hash(pageScriptElement.content),
+        hash: scriptHash,
       })
     }
   })

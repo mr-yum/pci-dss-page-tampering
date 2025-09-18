@@ -12,6 +12,7 @@ export type PuppeteerLocatorAction = {
   querySelector: string
   locator: Locator<Element>
   action: PuppeteerAction
+  delay: number
 }
 
 export type PuppeteerAction = PuppeteerClickAction | PuppeteerInputAction | PuppeteerEscapeAction | PuppeteerNavigateAction | PuppeteerClickPopupAction

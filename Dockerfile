@@ -3,7 +3,7 @@
 
 ARG SERVE_DOCKER_REGISTRY
 
-FROM ${SERVE_DOCKER_REGISTRY}/mr-yum/base-images-build-22:v2 AS node-dev-deps
+FROM ${SERVE_DOCKER_REGISTRY}/mr-yum/base-images-build-22:v3 AS node-dev-deps
 WORKDIR /workdir
 
 # install all npm dependencies for development
@@ -14,14 +14,14 @@ RUN \
   --mount=type=secret,id=npmrc,dst=/root/.npmrc \
   npm ci
 
-FROM ${SERVE_DOCKER_REGISTRY}/mr-yum/base-images-build-22:v2 AS dev
+FROM ${SERVE_DOCKER_REGISTRY}/mr-yum/base-images-build-22:v3 AS dev
 WORKDIR /workdir
 
 # copy in all npm dependencies for development
 COPY --link --from=node-dev-deps /workdir/node_modules node_modules
 
 
-FROM ${SERVE_DOCKER_REGISTRY}/mr-yum/base-images-build-22:v2 AS node-prod-deps
+FROM ${SERVE_DOCKER_REGISTRY}/mr-yum/base-images-build-22:v3 AS node-prod-deps
 WORKDIR /workdir
 
 # install minimal npm dependencies for production
@@ -42,7 +42,7 @@ COPY --link src ./src
 # build the app code
 RUN npm run build:js
 
-FROM ${SERVE_DOCKER_REGISTRY}/mr-yum/base-images-run-22:v2 AS service
+FROM ${SERVE_DOCKER_REGISTRY}/mr-yum/base-images-run-22:v3 AS service
 WORKDIR /workdir
 
 # copy in the minimal npm dependencies for production
