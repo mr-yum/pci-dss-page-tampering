@@ -20,7 +20,7 @@ export function tryGetIdFromInLineScriptCode(pageScriptElement: PageScriptElemen
  */
 const cloudFlareScriptMatcher: InLineScriptMatcher = {
   resultingIdentifier: 'inline_script/cloudflare-bot-fight',
-  predicate: (script): boolean => {
+  predicate: (script: PageScriptElement): boolean => {
     const innerScriptSrcCode = "a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js'"
     return script.content.includes(innerScriptSrcCode)
   },
