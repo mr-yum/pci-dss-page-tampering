@@ -90,6 +90,7 @@ export class ScriptInventoryService implements IInventoryService {
     return {
       fileName: inventory.fileName,
       target: inventory.target,
+      alerts: inventory.alerts,
       scripts: inventory.scripts,
       headers: headers,
     }

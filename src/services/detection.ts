@@ -22,10 +22,10 @@ export class DetectionService implements IDetectionService {
     let puppeteerWorkflow: any = null
 
     try {
-       // Set timeouts to 120 seconds
-       page.setDefaultTimeout(120000) // 120 seconds for all operations
-       page.setDefaultNavigationTimeout(120000) // 120 seconds for navigation 
-      
+      // Set timeouts to 120 seconds
+      page.setDefaultTimeout(120000) // 120 seconds for all operations
+      page.setDefaultNavigationTimeout(120000) // 120 seconds for navigation
+
       // Bootstrap page
       page.on('response', (response) => scriptResponseHandler(response, externalScripts)).on('response', (response) => headerResponseHandler(response, headers))
 
@@ -132,6 +132,11 @@ export class DetectionService implements IDetectionService {
   }
 
   private async executeAction(page: Page, step: PuppeteerLocatorAction): Promise<void> {
+    // Delay action
+    if (step.delay > 0) {
+      await this.sleep(step.delay)
+    }
+
     // Execute action
     switch (step.action.type) {
       case 'click':
@@ -173,11 +178,11 @@ export class DetectionService implements IDetectionService {
           if (popupPage) {
             try {
               const innerSteps = stepsToPuppeteerLocatorAction(popupPage, action.steps)
-              
+
               for (const [popupIndex, innerStep] of innerSteps.entries()) {
                 const popupStepNumber = popupIndex + 1
                 console.log(`[Detection]: Popup step ${popupStepNumber}/${innerSteps.length}: ${innerStep.description}`)
-                
+
                 try {
                   await innerStep.locator.wait()
                   await this.executeAction(popupPage, innerStep)
@@ -239,5 +244,9 @@ export class DetectionService implements IDetectionService {
   private async detectNewInlineScripts(page: Page, existingScripts: ScriptInfo[], scriptContentMatchers: ScriptMatcher[]): Promise<ScriptInfo[]> {
     const detectedInlineScripts = await getInlineScriptsFromPage(page, scriptContentMatchers)
     return detectedInlineScripts.filter((detectedScript) => !existingScripts.some((existingScript) => existingScript.hash.value === detectedScript.hash.value))
+  }
+
+  private async sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms))
   }
 }
