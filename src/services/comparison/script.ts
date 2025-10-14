@@ -5,7 +5,6 @@ import type { ScriptComparisonResult, ScriptComparisonSummary } from '../../type
 import type { Target } from '../../types/target'
 
 import { getScriptSource } from '../../utils/script'
-import type { ScriptMatcher } from '../../types/matcher'
 
 export class ScriptComparisonService implements IScriptComparisonService {
   /*
@@ -13,13 +12,13 @@ export class ScriptComparisonService implements IScriptComparisonService {
     - Not found in inventory
     - Found in inventory and authorised but hash doesn't exist and doesn't have any content matches
    */
-  compare(target: Target, inventory: Inventory, scriptDetectionSummary: ScriptDetectionSummary, scriptContentMatchers: ScriptMatcher[]): Promise<ScriptComparisonSummary> {
+  compare(target: Target, inventory: Inventory, scriptDetectionSummary: ScriptDetectionSummary): Promise<ScriptComparisonSummary> {
     const inventoryScripts = inventory.scripts
     const detectedExternalScripts = scriptDetectionSummary.externalScripts
     const detectedInlineScripts = scriptDetectionSummary.inlineScripts
 
-    const externalScriptsComparisonResult = this.compareScriptWithInventory(detectedExternalScripts, inventoryScripts, target, scriptContentMatchers)
-    const inlineScriptsComparisonResult = this.compareScriptWithInventory(detectedInlineScripts, inventoryScripts, target, scriptContentMatchers)
+    const externalScriptsComparisonResult = this.compareScriptWithInventory(detectedExternalScripts, inventoryScripts, target)
+    const inlineScriptsComparisonResult = this.compareScriptWithInventory(detectedInlineScripts, inventoryScripts, target)
 
     return Promise.resolve({
       target: target,
@@ -28,36 +27,19 @@ export class ScriptComparisonService implements IScriptComparisonService {
     })
   }
 
-  private compareScriptWithInventory(detectedScripts: ScriptInfo[], inventoryScripts: InventoryScriptInfo[], target: Target, contentMatchers: ScriptMatcher[]): ScriptComparisonResult {
+  private compareScriptWithInventory(detectedScripts: ScriptInfo[], inventoryScripts: InventoryScriptInfo[], target: Target): ScriptComparisonResult {
     const newScripts: ScriptInfo[] = []
     const newHashes: ScriptInfo[] = []
 
     detectedScripts.forEach((script) => {
-      const scriptSourceValue = getScriptSource(script)
-      // Push detected script if there is no existing match found in inventory
-      if (!this.scriptExistsInInventory(script, inventoryScripts)) {
-        console.log(`[Comparison → Script]: Script '${scriptSourceValue}' not found in inventory for target '${target.url}'.`)
+      const comparisonResult = this.compareSingleScriptWithInventory(script, inventoryScripts, target)
+      
+      if (comparisonResult.isNewScript) {
         newScripts.push(script)
       }
-
-      // There is a match found in inventory for the detected script
-      else {
-        const isDetectedScriptAuthorised = this.getScriptFromInventory(script, inventoryScripts)
-
-        // The detected script is authorised, add hash if it doesn't exist
-        if (isDetectedScriptAuthorised) {
-          const hashExists = this.scriptHashExists(script, isDetectedScriptAuthorised)
-          const contentMatchExists = this.scriptContentHasMatch(script, contentMatchers)
-
-          if (!hashExists && !contentMatchExists) {
-            console.log(`[Comparison → Script]: Script '${scriptSourceValue}' found in inventory, but hash '${script.hash.value}' doesn't exist for target '${target.url}'.`)
-            newHashes.push(script)
-          }
-        }
-        // Push script if script isn't authorised
-        else {
-          newScripts.push(script)
-        }
+      
+      if (comparisonResult.isNewHash) {
+        newHashes.push(script)
       }
     })
 
@@ -65,6 +47,35 @@ export class ScriptComparisonService implements IScriptComparisonService {
       newScripts: newScripts,
       newHashes: newHashes,
     }
+  }
+
+  private compareSingleScriptWithInventory(script: ScriptInfo, inventoryScripts: InventoryScriptInfo[], target: Target): { isNewScript: boolean; isNewHash: boolean } {
+    const scriptSourceValue = getScriptSource(script)
+    
+    // Push detected script if there is no existing match found in inventory
+    if (!this.scriptExistsInInventory(script, inventoryScripts)) {
+      console.log(`[Comparison → Script]: Script '${scriptSourceValue}' not found in inventory for target '${target.url}'.`)
+      return { isNewScript: true, isNewHash: false }
+    }
+
+    // There is a match found in inventory for the detected script
+    const authorizedScript = this.getScriptFromInventory(script, inventoryScripts)
+
+    // The detected script is authorised, add hash if it doesn't exist
+    if (authorizedScript) {
+      const hashExists = this.scriptHashExists(script, authorizedScript)
+      const contentMatchExists = authorizedScript.contentMatcher?.test(getScriptSource(script)) ?? false
+
+      if (!hashExists && !contentMatchExists) {
+        console.log(`[Comparison → Script]: Script '${scriptSourceValue}' found in inventory, but hash '${script.hash.value}' doesn't exist for target '${target.url}'.`)
+        return { isNewScript: false, isNewHash: true }
+      }
+      
+      return { isNewScript: false, isNewHash: false }
+    }
+    
+    // Push script if script isn't authorised
+    return { isNewScript: true, isNewHash: false }
   }
 
   private scriptExistsInInventory(scriptInfo: ScriptInfo, inventoryScripts: InventoryScriptInfo[]): boolean {
@@ -79,7 +90,4 @@ export class ScriptComparisonService implements IScriptComparisonService {
     return inventoryScript.hashes.some((hashInfo) => hashInfo.hash.value === scriptInfo.hash.value)
   }
 
-  private scriptContentHasMatch(scriptInfo: ScriptInfo, scriptContentMatchers: ScriptMatcher[]): ScriptMatcher | undefined {
-    return scriptContentMatchers.find((matcher) => matcher.nameMatcher.test(getScriptSource(scriptInfo)) && matcher.contentMatcher.test(getScriptSource(scriptInfo)))
-  }
 }
