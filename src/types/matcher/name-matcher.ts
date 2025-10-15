@@ -7,7 +7,6 @@
  * @see ../../../specs/001-refactor-script-identification/data-model.md for design
  */
 
-import type { SHA256Hash } from '../hash'
 import type { Matcher, DetectedScript } from './matcher.interface'
 import type { AuthorizationResult } from './authorization-result'
 

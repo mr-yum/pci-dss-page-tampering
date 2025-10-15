@@ -59,23 +59,50 @@ export class ScriptInventoryService implements IInventoryService {
 
   private getUpdatedInventoryWithNewHashes(scriptComparisonResult: ScriptComparisonResult, inventory: Inventory, updateDate: Date): Inventory {
     const newHashesToAdd = scriptComparisonResult.newHashes
-    const newInventoryWithNewHashes = copyInventory(inventory)
 
-    if (newHashesToAdd.length !== 0) {
-      // Add new hash to inventory script known hashes
-      newHashesToAdd.forEach((script) => {
-        const inventoryScript = newInventoryWithNewHashes.scripts.find((inventoryScript) => inventoryScript.nameMatcher.test(getScriptSource(script)))
-
-        // We always expect to have an inventory script entry from the comparison stage
-        if (!inventoryScript) {
-          throw new Error("[Inventory → Service] Expected to find inventory script entry for new script hash, but it doesn't exist!")
-        }
-
-        inventoryScript.hashes.push(scriptHashToInventoryHashInfo(script, updateDate))
-      })
+    if (newHashesToAdd.length === 0) {
+      return copyInventory(inventory)
     }
 
-    return newInventoryWithNewHashes
+    // Phase 4 Update: Work with matcher-based inventory structure
+    // Need to find matching entries and update their authoriseWith matchers with new hashes
+    const { inventoryScriptInfoToRawInventoryScriptInfo, rawInventoryScriptInfoToInventoryScriptInfo } = require('../utils/script')
+
+    const updatedScripts = inventory.scripts.map((inventoryScript) => {
+      // Check if any of the new hashes belong to this inventory entry
+      const matchingNewHashScripts = newHashesToAdd.filter((script) => {
+        const detectedScript = {
+          name: getScriptSource(script),
+          content: script.source.type === 'inline' ? script.source.content : getScriptSource(script),
+          hash: script.hash
+        }
+        return inventoryScript.identifyWith.identify(detectedScript)
+      })
+
+      if (matchingNewHashScripts.length === 0) {
+        // No new hashes for this entry, return as-is
+        return inventoryScript
+      }
+
+      // Convert to raw format to access matcher patterns/hashes
+      const rawInventoryScript = inventoryScriptInfoToRawInventoryScriptInfo(inventoryScript)
+
+      // Add new hashes to the authoriseWith configuration
+      // Only add if authoriseWith is a hash matcher
+      if ('hashes' in rawInventoryScript.authoriseWith) {
+        const newHashInfos = matchingNewHashScripts.map((script) => scriptHashToInventoryHashInfo(script, updateDate))
+        rawInventoryScript.authoriseWith.hashes.push(...newHashInfos)
+      } else {
+        // authoriseWith is not a hash matcher (it's content or name matcher)
+        // This shouldn't happen in normal flow, but log a warning
+        console.warn(`[Inventory → Service] Script identified but authoriseWith is not a hash matcher. Cannot add new hash. Entry: ${JSON.stringify(rawInventoryScript.identifyWith)}`)
+      }
+
+      // Convert back to InventoryScriptInfo with updated matchers
+      return rawInventoryScriptInfoToInventoryScriptInfo(rawInventoryScript)
+    })
+
+    return copyInventory(inventory, { newScripts: updatedScripts })
   }
 
   private getUpdatedInventoryWithNewHeaders(headerComparisonSummary: HeaderComparisonSummary, inventory: Inventory, updateDate: Date): Inventory {

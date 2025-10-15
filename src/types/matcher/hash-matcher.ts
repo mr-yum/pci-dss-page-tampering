@@ -45,7 +45,7 @@ export class HashMatcher implements Matcher {
     return this.authorizedHashes
   }
 
-  identify(script: DetectedScript): boolean {
+  identify(_script: DetectedScript): boolean {
     // Hashes cannot identify scripts, only authorize them
     return false
   }

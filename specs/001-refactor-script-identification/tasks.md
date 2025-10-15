@@ -113,25 +113,25 @@ description: "Task list for Script Identification and Authorisation Refactor"
 
 ### Comparison Service Refactoring
 
-- [ ] T035 [US2] Refactor ScriptComparisonService.compareSingleScriptWithInventory() in src/services/comparison/script.ts to use matcher pipeline for identification (iterate inventory.scripts, call identifyWith.identify())
-- [ ] T036 [US2] Update ScriptComparisonService to implement first-match-wins logic (return first inventory entry where identifyWith.identify() returns true)
-- [ ] T037 [US2] Refactor authorization logic in ScriptComparisonService to call authoriseWith.authorize() on matched inventory entry
-- [ ] T038 [US2] Add null/empty content handling in ScriptComparisonService (treat as newScript per clarification Q3)
-- [ ] T039 [US2] Remove hardcoded nameMatcher.test() and contentMatcher?.test() logic from private methods (replaced by matcher abstraction)
-- [ ] T040 [US2] Add matcher execution logging with matcher type, pattern, result, and execution time in ScriptComparisonService
+- [X] T035 [US2] Refactor ScriptComparisonService.compareSingleScriptWithInventory() in src/services/comparison/script.ts to use matcher pipeline for identification (iterate inventory.scripts, call identifyWith.identify())
+- [X] T036 [US2] Update ScriptComparisonService to implement first-match-wins logic (return first inventory entry where identifyWith.identify() returns true)
+- [X] T037 [US2] Refactor authorization logic in ScriptComparisonService to call authoriseWith.authorize() on matched inventory entry
+- [X] T038 [US2] Add null/empty content handling in ScriptComparisonService (treat as newScript per clarification Q3)
+- [X] T039 [US2] Remove hardcoded nameMatcher.test() and contentMatcher?.test() logic from private methods (replaced by matcher abstraction)
+- [X] T040 [US2] Add matcher execution logging with matcher type, pattern, result, and execution time in ScriptComparisonService
 
 ### Refactoring Verification Tests
 
-- [ ] T041 [US2] Run all pre-refactoring tests (T001-T009) and verify they still PASS with refactored implementation (zero behavior change)
-- [ ] T042 [P] [US2] Add integration test for matcher pipeline in src/services/comparison/script.test.ts covering identification → authorization flow
-- [ ] T043 [P] [US2] Add integration test for first-match-wins with multiple overlapping inventory entries
-- [ ] T044 [P] [US2] Add integration test for null content handling (should return newScript)
-- [ ] T045 [US2] Run all comparison service tests and verify matcher pipeline produces identical results to original implementation
+- [X] T041 [US2] Run all pre-refactoring tests (T001-T009) and verify they still PASS with refactored implementation (zero behavior change)
+- [X] T042 [P] [US2] Add integration test for matcher pipeline in src/services/comparison/script.test.ts covering identification → authorization flow
+- [X] T043 [P] [US2] Add integration test for first-match-wins with multiple overlapping inventory entries
+- [X] T044 [P] [US2] Add integration test for null content handling (should return newScript)
+- [X] T045 [US2] Run all comparison service tests and verify matcher pipeline produces identical results to original implementation
 
 ### Interface Updates
 
-- [ ] T046 [US2] Update IScriptComparisonService interface in src/interfaces/comparison.ts if method signatures changed (likely no changes needed)
-- [ ] T047 [US2] Update ScriptComparisonResult type in src/types/comparison.ts to include matcher execution context if needed for logging
+- [X] T046 [US2] Update IScriptComparisonService interface in src/interfaces/comparison.ts if method signatures changed (likely no changes needed)
+- [X] T047 [US2] Update ScriptComparisonResult type in src/types/comparison.ts to include matcher execution context if needed for logging
 
 **Checkpoint**: At this point, User Story 2 is complete - matcher system is fully modular and independently testable ✅
 
