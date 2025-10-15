@@ -11,7 +11,60 @@ import { PullTarget, type Target } from './types/target'
 import { HeaderComparisonService } from './services/comparison/header'
 
 import type { Inventory, InventoryDifferenceResult } from './types/inventory/model'
+import type { ComparisonResultType, ScriptComparisonSummary } from './types/comparison'
 import { getScriptContentMatchersFromInventory } from './utils/script/matcher'
+
+/**
+ * T061: Temporary conversion function for backward compatibility with InventoryService.
+ * Converts typed comparison results back to old ScriptComparisonSummary format.
+ *
+ * TODO: Remove this once InventoryService is updated to use typed results.
+ */
+function convertTypedResultsToSummary(results: ComparisonResultType[], target: Target): ScriptComparisonSummary {
+  const newScripts: any[] = []
+  const newHashes: any[] = []
+
+  results.forEach(result => {
+    if (result.type === 'unknown_script_found') {
+      // Convert DetectedScript to ScriptInfo
+      const scriptInfo = {
+        source: result.script.name.startsWith('http')
+          ? { type: 'external' as const, url: result.script.name }
+          : { type: 'inline' as const, id: result.script.name, content: result.script.content ?? '' },
+        hash: result.script.hash
+      }
+      newScripts.push(scriptInfo)
+    } else if (result.type === 'known_script_unauthorised_content') {
+      // Script known but content changed
+      const scriptInfo = {
+        source: result.script.name.startsWith('http')
+          ? { type: 'external' as const, url: result.script.name }
+          : { type: 'inline' as const, id: result.script.name, content: result.script.content ?? '' },
+        hash: result.script.hash
+      }
+      newHashes.push(scriptInfo)
+    }
+    // AuthorizedScriptFound doesn't need to be added to summary (compliant script)
+  })
+
+  // Separate by type
+  const externalNewScripts = newScripts.filter(s => s.source.type === 'external')
+  const inlineNewScripts = newScripts.filter(s => s.source.type === 'inline')
+  const externalNewHashes = newHashes.filter(s => s.source.type === 'external')
+  const inlineNewHashes = newHashes.filter(s => s.source.type === 'inline')
+
+  return {
+    target,
+    externalScripts: {
+      newScripts: externalNewScripts,
+      newHashes: externalNewHashes
+    },
+    inlineScripts: {
+      newScripts: inlineNewScripts,
+      newHashes: inlineNewHashes
+    }
+  }
+}
 
 // Just to test the CI run-on-github workflow
 async function main() {
@@ -50,18 +103,23 @@ async function main() {
       // Run resource detection
       const detectionSummaryForTarget = await detectResourcesForTarget
 
-      // Run script comparison with inventory
-      const scriptComparisonSummaryForTarget = await scriptComparisonService.compare(detectionSummaryForTarget.target, payload, detectionSummaryForTarget.scriptSummary)
+      // Run script comparison with inventory (returns typed results)
+      const scriptComparisonResults = await scriptComparisonService.compare(detectionSummaryForTarget.target, payload, detectionSummaryForTarget.scriptSummary)
 
       // Run header comparison with inventory
       const headerComparisonSummaryForTarget = await headerComparisonService.compare(detectionSummaryForTarget.target, payload, detectionSummaryForTarget.headerSummary)
 
-      // Alert for inventory and target
-      await slackAlertService.alertForScripts(scriptComparisonSummaryForTarget, target, payload.alerts)
+      // Alert for inventory and target using new typed results
+      await slackAlertService.alertForTypedResults(scriptComparisonResults, target, payload.alerts)
       await slackAlertService.alertForHeaders(headerComparisonSummaryForTarget, target, payload.alerts)
 
       // Run inventory sanity check and return to push to inventory
+      // Note: InventoryService.diff() still expects old ScriptComparisonSummary format
+      // TODO: Update InventoryService to use typed results (future task)
+      // For now, we convert typed results back to summary format
       if (target.type === 'inventory') {
+        // Convert typed results back to old summary format for backward compatibility
+        const scriptComparisonSummaryForTarget = convertTypedResultsToSummary(scriptComparisonResults, target)
         return await scriptInventoryService.diff(payload, scriptComparisonSummaryForTarget, headerComparisonSummaryForTarget)
       } else {
         return null

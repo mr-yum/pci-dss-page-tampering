@@ -102,7 +102,7 @@ describe('ScriptComparisonService', () => {
 
   describe('compareSingleScriptWithInventory', () => {
     describe('script exists in inventory with content matcher and empty hashes', () => {
-      it('should return no flags when content matcher matches', () => {
+      it('should return AuthorizedScriptFound when content matcher matches', () => {
         const detectedScript = createScriptInfo('https://cdn.example.com/payment.js', 'hash123')
 
         const inventoryScripts = [
@@ -111,11 +111,10 @@ describe('ScriptComparisonService', () => {
 
         const result = (service as any).compareSingleScriptWithInventory(detectedScript, inventoryScripts, mockTarget)
 
-        expect(result.isNewScript).toBe(false)
-        expect(result.isNewHash).toBe(false)
+        expect(result.type).toBe('authorized_script')
       })
 
-      it('should return new hash when content matcher does not match and no hashes exist', () => {
+      it('should return KnownScriptWithUnauthorisedContentFound when content matcher does not match', () => {
         const detectedScript = createScriptInfo('https://cdn.example.com/payment.js', 'hash123')
 
         const inventoryScripts = [
@@ -124,25 +123,23 @@ describe('ScriptComparisonService', () => {
 
         const result = (service as any).compareSingleScriptWithInventory(detectedScript, inventoryScripts, mockTarget)
 
-        expect(result.isNewScript).toBe(false)
-        expect(result.isNewHash).toBe(true)
+        expect(result.type).toBe('known_script_unauthorised_content')
       })
     })
 
     describe('script not in inventory', () => {
-      it('should return new script when not found in inventory', () => {
+      it('should return UnknownScriptFound when not found in inventory', () => {
         const detectedScript = createScriptInfo('https://unknown.com/script.js', 'hash123')
         const inventoryScripts: InventoryScriptInfo[] = []
 
         const result = (service as any).compareSingleScriptWithInventory(detectedScript, inventoryScripts, mockTarget)
 
-        expect(result.isNewScript).toBe(true)
-        expect(result.isNewHash).toBe(false)
+        expect(result.type).toBe('unknown_script_found')
       })
     })
 
     describe('script exists in inventory with matching hash', () => {
-      it('should return no flags when hash matches existing inventory', () => {
+      it('should return AuthorizedScriptFound when hash matches', () => {
         const hashValue = 'hash123'
         const detectedScript = createScriptInfo('https://cdn.example.com/script.js', hashValue)
 
@@ -152,8 +149,7 @@ describe('ScriptComparisonService', () => {
 
         const result = (service as any).compareSingleScriptWithInventory(detectedScript, inventoryScripts, mockTarget)
 
-        expect(result.isNewScript).toBe(false)
-        expect(result.isNewHash).toBe(false)
+        expect(result.type).toBe('authorized_script')
       })
 
       // T003: External script with dynamic query parameters (nameMatcher with wildcard)
@@ -167,13 +163,12 @@ describe('ScriptComparisonService', () => {
 
         const result = (service as any).compareSingleScriptWithInventory(detectedScript, inventoryScripts, mockTarget)
 
-        expect(result.isNewScript).toBe(false)
-        expect(result.isNewHash).toBe(false)
+        expect(result.type).toBe('authorized_script')
       })
     })
 
     describe('script exists in inventory with different hash', () => {
-      it('should return new hash when hash does not match', () => {
+      it('should return KnownScriptWithUnauthorisedContentFound when hash does not match', () => {
         const detectedScript = createScriptInfo('https://cdn.example.com/script.js', 'newHash456')
 
         const inventoryScripts = [
@@ -182,13 +177,12 @@ describe('ScriptComparisonService', () => {
 
         const result = (service as any).compareSingleScriptWithInventory(detectedScript, inventoryScripts, mockTarget)
 
-        expect(result.isNewScript).toBe(false)
-        expect(result.isNewHash).toBe(true)
+        expect(result.type).toBe('known_script_unauthorised_content')
       })
     })
 
     describe('script exists but not authorized', () => {
-      it('should return new script when found in inventory but not authorized', () => {
+      it('should return UnknownScriptFound when found in inventory but not authorized', () => {
         const detectedScript = createScriptInfo('https://cdn.example.com/script.js', 'hash123')
 
         const inventoryScripts = [
@@ -197,8 +191,7 @@ describe('ScriptComparisonService', () => {
 
         const result = (service as any).compareSingleScriptWithInventory(detectedScript, inventoryScripts, mockTarget)
 
-        expect(result.isNewScript).toBe(true)
-        expect(result.isNewHash).toBe(false)
+        expect(result.type).toBe('unknown_script_found')
       })
     })
 
@@ -212,11 +205,10 @@ describe('ScriptComparisonService', () => {
 
         const result = (service as any).compareSingleScriptWithInventory(detectedInlineScript, inventoryScripts, mockTarget)
 
-        expect(result.isNewScript).toBe(false)
-        expect(result.isNewHash).toBe(false)
+        expect(result.type).toBe('authorized_script')
       })
 
-      it('should return new hash for inline script when no content match and no hash match', () => {
+      it('should return KnownScriptWithUnauthorisedContentFound for inline script when authorization fails', () => {
         const detectedInlineScript = createInlineScriptInfo('inline-123', 'different.code()', 'hash456')
 
         const inventoryScripts = [
@@ -225,14 +217,13 @@ describe('ScriptComparisonService', () => {
 
         const result = (service as any).compareSingleScriptWithInventory(detectedInlineScript, inventoryScripts, mockTarget)
 
-        expect(result.isNewScript).toBe(false)
-        expect(result.isNewHash).toBe(true)
+        expect(result.type).toBe('known_script_unauthorised_content')
       })
     })
 
     // T044: Null content handling
     describe('null/empty content handling', () => {
-      it('should treat external script with null content as new script', () => {
+      it('should treat external script correctly (URL as content)', () => {
         // Create a script info with null content (simulating external script fetch failure)
         const scriptInfo: ScriptInfo = {
           source: { type: 'external', url: 'https://cdn.example.com/script.js' },
@@ -250,11 +241,10 @@ describe('ScriptComparisonService', () => {
 
         // With our implementation, external scripts use URL as content
         // So this test actually verifies the URL-as-content behavior
-        expect(result.isNewScript).toBe(false)
-        expect(result.isNewHash).toBe(false)
+        expect(result.type).toBe('authorized_script')
       })
 
-      it('should treat inline script with empty content as new script', () => {
+      it('should treat inline script with empty content as UnknownScriptFound (fail-secure)', () => {
         const detectedInlineScript = createInlineScriptInfo('inline-123', '', 'hash456')
 
         const inventoryScripts = [
@@ -263,14 +253,13 @@ describe('ScriptComparisonService', () => {
 
         const result = (service as any).compareSingleScriptWithInventory(detectedInlineScript, inventoryScripts, mockTarget)
 
-        // Empty content should trigger new script (fail-secure)
-        expect(result.isNewScript).toBe(true)
-        expect(result.isNewHash).toBe(false)
+        // Empty content should trigger UnknownScriptFound (fail-secure)
+        expect(result.type).toBe('unknown_script_found')
       })
     })
 
     describe('content matcher edge cases', () => {
-      it('should prioritize content matcher over hash when both name and content match', () => {
+      it('should prioritize content matcher over hash when both match', () => {
         const detectedScript = createScriptInfo('https://cdn.example.com/analytics.js', 'differentHash')
 
         const inventoryScripts = [
@@ -279,11 +268,10 @@ describe('ScriptComparisonService', () => {
 
         const result = (service as any).compareSingleScriptWithInventory(detectedScript, inventoryScripts, mockTarget)
 
-        expect(result.isNewScript).toBe(false)
-        expect(result.isNewHash).toBe(false)
+        expect(result.type).toBe('authorized_script')
       })
 
-      it('should not match content matcher when content does not match', () => {
+      it('should return KnownScriptWithUnauthorisedContentFound when content does not match', () => {
         const detectedScript = createScriptInfo('https://cdn.example.com/different.js', 'hash123')
 
         const inventoryScripts = [
@@ -292,24 +280,22 @@ describe('ScriptComparisonService', () => {
 
         const result = (service as any).compareSingleScriptWithInventory(detectedScript, inventoryScripts, mockTarget)
 
-        expect(result.isNewScript).toBe(false)
-        expect(result.isNewHash).toBe(true)
+        expect(result.type).toBe('known_script_unauthorised_content')
       })
 
-      it('should handle script with content matcher in inventory but no hash exists', () => {
+      it('should return AuthorizedScriptFound when content matcher matches', () => {
         const detectedScript = createScriptInfo('https://cdn.example.com/tracking.js', 'hash123')
-        
+
         const inventoryScripts = [
           createInventoryScriptInfo('https://cdn\\.example\\.com/tracking\\.js', [], true, 'tracking')
         ]
 
         const result = (service as any).compareSingleScriptWithInventory(detectedScript, inventoryScripts, mockTarget)
 
-        expect(result.isNewScript).toBe(false)
-        expect(result.isNewHash).toBe(false)
+        expect(result.type).toBe('authorized_script')
       })
 
-      it('should handle script without content matcher in inventory', () => {
+      it('should return KnownScriptWithUnauthorisedContentFound without content matcher', () => {
         const detectedScript = createScriptInfo('https://cdn.example.com/simple.js', 'hash123')
 
         const inventoryScripts = [
@@ -318,8 +304,7 @@ describe('ScriptComparisonService', () => {
 
         const result = (service as any).compareSingleScriptWithInventory(detectedScript, inventoryScripts, mockTarget)
 
-        expect(result.isNewScript).toBe(false)
-        expect(result.isNewHash).toBe(true)
+        expect(result.type).toBe('known_script_unauthorised_content')
       })
     })
 
@@ -336,9 +321,8 @@ describe('ScriptComparisonService', () => {
 
         const result = (service as any).compareSingleScriptWithInventory(detectedScript, inventoryScripts, mockTarget)
 
-        // Should match first entry's hash
-        expect(result.isNewScript).toBe(false)
-        expect(result.isNewHash).toBe(true) // 'hash123' doesn't match 'firstHash' from first entry
+        // Should match first entry but hash doesn't match
+        expect(result.type).toBe('known_script_unauthorised_content')
       })
 
       it('should skip non-authorized entries and match next authorized entry', () => {
@@ -351,11 +335,8 @@ describe('ScriptComparisonService', () => {
 
         const result = (service as any).compareSingleScriptWithInventory(detectedScript, inventoryScripts, mockTarget)
 
-        // Current behavior: scriptExistsInInventory checks first pattern (matches)
-        // But getScriptFromInventory filters by authorised=true, so first is skipped
-        // Second entry is used instead
-        expect(result.isNewScript).toBe(false)
-        expect(result.isNewHash).toBe(false)
+        // Second entry is used since first is not authorized
+        expect(result.type).toBe('authorized_script')
       })
 
       it('should stop checking after first match even if later entries have better hash match', () => {
@@ -369,14 +350,13 @@ describe('ScriptComparisonService', () => {
         const result = (service as any).compareSingleScriptWithInventory(detectedScript, inventoryScripts, mockTarget)
 
         // First entry matches and has content matcher that matches 'analytics' in URL
-        expect(result.isNewScript).toBe(false)
-        expect(result.isNewHash).toBe(false) // Content matcher succeeds, so no new hash
+        expect(result.type).toBe('authorized_script')
       })
     })
   })
 
   describe('compare method integration tests', () => {
-    it('should handle multiple scripts with different conditions', async () => {
+    it('should return typed results for multiple scripts with different conditions', async () => {
       const knownScript = createScriptInfo('https://known.com/script.js', 'knownHash')
       const newScript = createScriptInfo('https://new.com/script.js', 'newHash')
       const changedScript = createScriptInfo('https://changed.com/script.js', 'changedHash')
@@ -391,12 +371,22 @@ describe('ScriptComparisonService', () => {
         inlineScripts: []
       }
 
-      const result = await service.compare(mockTarget, mockInventory, scriptDetectionSummary)
+      const results = await service.compare(mockTarget, mockInventory, scriptDetectionSummary)
 
-      expect(result.externalScripts.newScripts).toHaveLength(1)
-      expect(result.externalScripts.newScripts[0]).toBe(newScript)
-      expect(result.externalScripts.newHashes).toHaveLength(1)
-      expect(result.externalScripts.newHashes[0]).toBe(changedScript)
+      // Should return array of 3 typed results
+      expect(results).toHaveLength(3)
+
+      // Known script should be authorized
+      const knownResult = results.find(r => r.script.name === 'https://known.com/script.js')
+      expect(knownResult?.type).toBe('authorized_script')
+
+      // New script should be unknown
+      const newResult = results.find(r => r.script.name === 'https://new.com/script.js')
+      expect(newResult?.type).toBe('unknown_script_found')
+
+      // Changed script should be known but unauthorized
+      const changedResult = results.find(r => r.script.name === 'https://changed.com/script.js')
+      expect(changedResult?.type).toBe('known_script_unauthorised_content')
     })
 
     it('should handle mixed external and inline scripts', async () => {
@@ -410,23 +400,30 @@ describe('ScriptComparisonService', () => {
         inlineScripts: [inlineScript]
       }
 
-      const result = await service.compare(mockTarget, mockInventory, scriptDetectionSummary)
+      const results = await service.compare(mockTarget, mockInventory, scriptDetectionSummary)
 
-      expect(result.externalScripts.newScripts).toHaveLength(1)
-      expect(result.externalScripts.newScripts[0]).toBe(externalScript)
-      expect(result.inlineScripts.newScripts).toHaveLength(1)
-      expect(result.inlineScripts.newScripts[0]).toBe(inlineScript)
+      // Should have 2 results, both unknown
+      expect(results).toHaveLength(2)
+      expect(results.every(r => r.type === 'unknown_script_found')).toBe(true)
+
+      // Verify both scripts are present
+      const externalResult = results.find(r => r.script.name === 'https://example.com/script.js')
+      expect(externalResult).toBeDefined()
+
+      const inlineResult = results.find(r => r.script.name === 'inline-script')
+      expect(inlineResult).toBeDefined()
     })
 
-    it('should return correct target in comparison result', async () => {
+    it('should include target in all comparison results', async () => {
       const scriptDetectionSummary: ScriptDetectionSummary = {
-        externalScripts: [],
+        externalScripts: [createScriptInfo('https://test.com/script.js', 'hash1')],
         inlineScripts: []
       }
 
-      const result = await service.compare(mockTarget, mockInventory, scriptDetectionSummary)
+      const results = await service.compare(mockTarget, mockInventory, scriptDetectionSummary)
 
-      expect(result.target).toBe(mockTarget)
+      expect(results).toHaveLength(1)
+      expect(results[0].target).toBe(mockTarget)
     })
   })
 })

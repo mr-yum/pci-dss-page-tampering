@@ -6,6 +6,7 @@ import type { HeaderInfo, HeaderName, HeaderValues } from '../../types/header'
 import type { AlertDestination, InventoryAlert } from '../../types/inventory/model'
 
 import { AlertType } from '../../types/alert'
+import type { ComparisonResultType, UnknownScriptFound, KnownScriptWithUnauthorisedContentFound } from '../../types/comparison'
 import axios from 'axios'
 
 export class SlackAlertService implements IAlertService {
@@ -14,6 +15,33 @@ export class SlackAlertService implements IAlertService {
 
   constructor(slackToken: string) {
     this.oAuthToken = slackToken
+  }
+
+  /**
+   * T058, T059, T060: Updated to handle typed comparison results.
+   * Switches on result.type to route to appropriate alert method.
+   */
+  async alertForTypedResults(comparisonResults: ComparisonResultType[], target: Target, alertDestinations: InventoryAlert): Promise<void> {
+    // Filter results by type
+    const unknownScripts = comparisonResults.filter((r): r is UnknownScriptFound => r.type === 'unknown_script_found')
+    const unauthorizedScripts = comparisonResults.filter((r): r is KnownScriptWithUnauthorisedContentFound => r.type === 'known_script_unauthorised_content')
+
+    // Send alerts based on target type and result type
+    switch (target.type) {
+      case 'inventory':
+        if (unknownScripts.length > 0) {
+          await this.alertOnUnknownScripts(unknownScripts, target, alertDestinations.inventory.newScriptIdentified)
+        }
+        break
+      case 'detection':
+        if (unknownScripts.length > 0) {
+          await this.alertOnUnknownScripts(unknownScripts, target, alertDestinations.detection.newScriptDetected)
+        }
+        if (unauthorizedScripts.length > 0) {
+          await this.alertOnUnauthorizedScripts(unauthorizedScripts, target, alertDestinations.detection.scriptMismatchDetected)
+        }
+        break
+    }
   }
 
   async alertForScripts(scriptComparisonSummary: ScriptComparisonSummary, target: Target, alertDestinations: InventoryAlert): Promise<void> {
@@ -70,6 +98,65 @@ export class SlackAlertService implements IAlertService {
 
       this.log(AlertType.Script, message)
       await this.sendMessage(messagePayload)
+    }
+  }
+
+  /**
+   * T062, T063: Alert on unknown scripts with complete result context.
+   * Enhanced with matcher details for better incident response.
+   */
+  private async alertOnUnknownScripts(unknownScripts: UnknownScriptFound[], target: Target, destination: AlertDestination): Promise<void> {
+    const message = `Unauthorised scripts detected for target!`
+    const scripts = unknownScripts.map(result => this.detectedScriptToScriptInfo(result.script))
+    const messagePayload = this.createScriptMessagePayload(message, scripts, target, destination)
+
+    this.log(AlertType.Script, message)
+    await this.sendMessage(messagePayload)
+  }
+
+  /**
+   * T062, T063: Alert on unauthorized scripts with matcher failure details.
+   * Includes which matcher failed and why for debugging.
+   */
+  private async alertOnUnauthorizedScripts(unauthorizedScripts: KnownScriptWithUnauthorisedContentFound[], target: Target, destination: AlertDestination): Promise<void> {
+    const message = `Script hash mismatch detected for target!`
+
+    // T063: Enhanced message payload with matcher details
+    const messagePayload = this.createUnauthorizedScriptMessagePayload(
+      message,
+      unauthorizedScripts,
+      target,
+      destination
+    )
+
+    this.log(AlertType.Script, message)
+    await this.sendMessage(messagePayload)
+  }
+
+  /**
+   * Converts DetectedScript from comparison result to ScriptInfo for legacy alert compatibility.
+   */
+  private detectedScriptToScriptInfo(detectedScript: any): ScriptInfo {
+    // Parse script name to determine type (URL vs inline ID)
+    const isUrl = detectedScript.name.startsWith('http://') || detectedScript.name.startsWith('https://')
+
+    if (isUrl) {
+      return {
+        source: {
+          type: 'external',
+          url: detectedScript.name
+        },
+        hash: detectedScript.hash
+      }
+    } else {
+      return {
+        source: {
+          type: 'inline',
+          id: detectedScript.name,
+          content: detectedScript.content ?? ''
+        },
+        hash: detectedScript.hash
+      }
     }
   }
 
@@ -200,6 +287,208 @@ export class SlackAlertService implements IAlertService {
         },
       ],
     }
+  }
+
+  /**
+   * T063: Enhanced message payload with matcher failure details for better debugging.
+   * Includes which matcher type failed, the pattern/hashes used, and the failure reason.
+   */
+  private createUnauthorizedScriptMessagePayload(
+    title: string,
+    unauthorizedScripts: KnownScriptWithUnauthorisedContentFound[],
+    target: Target,
+    destination: AlertDestination
+  ): object {
+    const scripts = unauthorizedScripts.map(result => this.detectedScriptToScriptInfo(result.script))
+
+    return {
+      channel: destination.destination,
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `:warning: *${title}* :warning:`,
+          },
+        },
+        {
+          type: 'divider',
+        },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*Target Type*: \`${target.type}\``,
+          },
+        },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*Target Source*: \`${target.url}\``,
+          },
+        },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*Number of Detected Changes*: ${scripts.length}`,
+          },
+        },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*Detection Summary with Matcher Details (Max of 20)*`,
+          },
+        },
+        {
+          type: 'table',
+          rows: [
+            [
+              {
+                type: 'rich_text',
+                elements: [
+                  {
+                    type: 'rich_text_section',
+                    elements: [
+                      {
+                        type: 'text',
+                        text: 'Identifier',
+                        style: {
+                          bold: true,
+                        },
+                      },
+                    ],
+                  },
+                ],
+              },
+              {
+                type: 'rich_text',
+                elements: [
+                  {
+                    type: 'rich_text_section',
+                    elements: [
+                      {
+                        type: 'text',
+                        text: 'Hash',
+                        style: {
+                          bold: true,
+                        },
+                      },
+                    ],
+                  },
+                ],
+              },
+              {
+                type: 'rich_text',
+                elements: [
+                  {
+                    type: 'rich_text_section',
+                    elements: [
+                      {
+                        type: 'text',
+                        text: 'Failure Reason',
+                        style: {
+                          bold: true,
+                        },
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+            ...unauthorizedScripts.slice(0, 19).map((result) => this.unauthorizedScriptToTableItem(result)),
+          ],
+        },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: 'Please review the changes as soon as possible:',
+          },
+        },
+        {
+          type: 'actions',
+          elements: [
+            {
+              type: 'button',
+              text: {
+                type: 'plain_text',
+                text: 'Review changes',
+              },
+              url: 'https://github.com/mr-yum/script-inventory/compare/update/scripts?expand=1',
+            },
+          ],
+        },
+      ],
+    }
+  }
+
+  /**
+   * T063: Converts unauthorized script result to table row with matcher details.
+   */
+  private unauthorizedScriptToTableItem(result: KnownScriptWithUnauthorisedContentFound) {
+    const scriptInfo = this.detectedScriptToScriptInfo(result.script)
+    let scriptIdentifier: string
+
+    switch (scriptInfo.source.type) {
+      case 'external':
+        scriptIdentifier = scriptInfo.source.url
+        break
+      case 'inline':
+        scriptIdentifier = scriptInfo.source.id
+        break
+    }
+
+    const matcherType = result.authorizationMatcher.getType()
+    const pattern = JSON.stringify(result.authorizationMatcher.getPattern())
+    const failureReason = `${matcherType}Matcher failed: ${result.failureReason} (expected: ${pattern})`
+
+    return [
+      {
+        type: 'rich_text',
+        elements: [
+          {
+            type: 'rich_text_section',
+            elements: [
+              {
+                type: 'text',
+                text: this.truncateText(scriptIdentifier),
+              },
+            ],
+          },
+        ],
+      },
+      {
+        type: 'rich_text',
+        elements: [
+          {
+            type: 'rich_text_section',
+            elements: [
+              {
+                type: 'text',
+                text: this.truncateText(scriptInfo.hash.value),
+              },
+            ],
+          },
+        ],
+      },
+      {
+        type: 'rich_text',
+        elements: [
+          {
+            type: 'rich_text_section',
+            elements: [
+              {
+                type: 'text',
+                text: this.truncateText(failureReason),
+              },
+            ],
+          },
+        ],
+      },
+    ]
   }
 
   private createHeaderMessagePayload(title: string, headers: HeaderInfo[], target: Target, destination: AlertDestination): object {
