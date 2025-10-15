@@ -15,7 +15,7 @@ describe('ContentMatcher', () => {
   const createDetectedScript = (name: string, content: string | null, hashValue: string = 'hash123'): DetectedScript => ({
     name,
     content,
-    hash: { value: hashValue } as SHA256Hash
+    hash: { value: hashValue } as SHA256Hash,
   })
 
   describe('getType', () => {
@@ -27,7 +27,7 @@ describe('ContentMatcher', () => {
 
   describe('getPattern', () => {
     it('should return the regex pattern source', () => {
-      const pattern = 'fbq\\(\'init\''
+      const pattern = "fbq\\('init'"
       const matcher = new ContentMatcher(pattern)
       expect(matcher.getPattern()).toBe(pattern)
     })
@@ -52,31 +52,22 @@ describe('ContentMatcher', () => {
 
     describe('regex patterns', () => {
       it('should match content with partial regex match', () => {
-        const matcher = new ContentMatcher('fbq\\(\'init\'')
-        const script = createDetectedScript(
-          'inline-facebook',
-          'fbq(\'init\', \'1234567890\'); fbq(\'track\', \'PageView\');'
-        )
+        const matcher = new ContentMatcher("fbq\\('init'")
+        const script = createDetectedScript('inline-facebook', "fbq('init', '1234567890'); fbq('track', 'PageView');")
 
         expect(matcher.identify(script)).toBe(true)
       })
 
       it('should match content with complex regex', () => {
         const matcher = new ContentMatcher('https://connect\\.facebook\\.net/en_US/fbevents\\.js')
-        const script = createDetectedScript(
-          'inline-fb',
-          '!function(f,b,e,v,n,t,s){...}(window, document, \'script\', \'https://connect.facebook.net/en_US/fbevents.js\');'
-        )
+        const script = createDetectedScript('inline-fb', "!function(f,b,e,v,n,t,s){...}(window, document, 'script', 'https://connect.facebook.net/en_US/fbevents.js');")
 
         expect(matcher.identify(script)).toBe(true)
       })
 
       it('should support character class patterns', () => {
         const matcher = new ContentMatcher('a\\.src=[\'"]?/cdn-cgi/challenge-platform')
-        const script = createDetectedScript(
-          'inline-cloudflare',
-          'a.src=\'/cdn-cgi/challenge-platform/scripts/jsd/main.js\''
-        )
+        const script = createDetectedScript('inline-cloudflare', "a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js'")
 
         expect(matcher.identify(script)).toBe(true)
       })
@@ -93,7 +84,7 @@ describe('ContentMatcher', () => {
                 console.log(event)
               }
             }
-          `
+          `,
         )
 
         expect(matcher.identify(script)).toBe(true)

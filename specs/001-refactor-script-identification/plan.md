@@ -23,9 +23,10 @@ Refactor the PCI DSS page tampering detection system to separate script identifi
 
 ## Constitution Check
 
-*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
+_GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 
 ### I. Security-First Development (NON-NEGOTIABLE)
+
 - ✅ **Maintains hash verification**: Refactoring enhances matcher modularity without weakening SHA-256 verification (HashMatcher implementation)
 - ✅ **No alert coverage reduction**: Typed comparison results increase alert context and specificity
 - ✅ **Git audit trail preserved**: Inventory schema change does not affect Git commit workflow
@@ -33,22 +34,27 @@ Refactor the PCI DSS page tampering detection system to separate script identifi
 - ✅ **Cryptographic hashing unchanged**: SHA-256 remains standard, hash computation logic untouched
 
 ### II. Dual-Workflow Integrity
+
 - ✅ **Inventory/detection separation maintained**: Refactoring targets comparison logic; InventoryService and DetectionService responsibilities unchanged
 - ✅ **Alert categories preserved**: Typed results map directly to existing alert types (newScriptIdentified, scriptMismatchDetected, etc.)
 
 ### III. Git-Based Audit Trail
+
 - ✅ **Inventory changes still committed**: Schema migration requires manual update, preserving audit trail
 - ✅ **Commit message requirements unchanged**: Handler behavior for inventory updates unaffected by refactoring
 
 ### IV. Alert Completeness and Routing
+
 - ✅ **Alert coverage enhanced**: Typed comparison results include more context (matcher details, failure reason) than current implementation
 - ✅ **Alert routing preserved**: Handlers updated to consume typed results, destination configuration unchanged
 
 ### V. Test Coverage for Security Logic
+
 - ✅ **Test coverage required**: FR-012 mandates independent testability for each matcher; refactoring protocol in constitution enforced
 - ⚠️ **Refactoring protocol compliance**: MUST write tests capturing current behavior BEFORE refactoring (see Refactoring Strategy below)
 
 ### VI. Minimal Complexity
+
 - ✅ **Zod schemas retained**: Inventory validation continues using established Zod pattern
 - ✅ **Justified abstractions**: Matcher abstraction necessary to eliminate hardcoded logic and enable extensibility (see Complexity Tracking)
 - ✅ **No unnecessary dependencies**: Refactoring uses existing tools (Zod, TypeScript)
@@ -108,9 +114,9 @@ tests/
 
 ## Complexity Tracking
 
-| Violation | Why Needed | Simpler Alternative Rejected Because |
-|-----------|------------|-------------------------------------|
-| Matcher abstraction (new interface + 3 implementations) | Eliminate hardcoded script matching logic; enable independent testing and extensibility | Direct if/else logic in comparison service: requires changes for every new matcher type, cannot be unit tested in isolation, violates Open/Closed Principle |
+| Violation                                                  | Why Needed                                                                                          | Simpler Alternative Rejected Because                                                                                                                          |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Matcher abstraction (new interface + 3 implementations)    | Eliminate hardcoded script matching logic; enable independent testing and extensibility             | Direct if/else logic in comparison service: requires changes for every new matcher type, cannot be unit tested in isolation, violates Open/Closed Principle   |
 | Typed comparison result classes (UnknownScriptFound, etc.) | Provide complete context to handlers without additional queries; enable type-safe result processing | Returning generic objects or tuples: loses type safety, requires handlers to know internal structure, increases coupling between comparison and handler logic |
 
 **Justification**: Both abstractions directly address core requirements (FR-002 matcher separation, FR-008 typed results, FR-009 complete context). Constitution Principle VI permits abstractions when "existing patterns are demonstrably insufficient" - current hardcoded logic cannot satisfy modularity (P2) and typed results (P3) user stories without these changes.

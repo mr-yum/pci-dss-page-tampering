@@ -54,20 +54,18 @@ export class HashMatcher implements Matcher {
     if (!script.content || script.content.trim() === '') {
       return {
         authorized: false,
-        reason: 'content is null or empty'
+        reason: 'content is null or empty',
       }
     }
 
     // Check if the script's computed hash matches any authorized hash
-    const isAuthorized = this.authorizedHashes.some(
-      (authorizedHashInfo) => authorizedHashInfo.hash.value === script.hash.value
-    )
+    const isAuthorized = this.authorizedHashes.some((authorizedHashInfo) => authorizedHashInfo.hash.value === script.hash.value)
 
     return isAuthorized
       ? { authorized: true }
       : {
           authorized: false,
-          reason: `hash ${script.hash.value} not in authorized list`
+          reason: `hash ${script.hash.value} not in authorized list`,
         }
   }
 }

@@ -1,5 +1,5 @@
 ---
-description: "Task list for Script Identification and Authorisation Refactor"
+description: 'Task list for Script Identification and Authorisation Refactor'
 ---
 
 # Tasks: Script Identification and Authorisation Refactor
@@ -12,11 +12,13 @@ description: "Task list for Script Identification and Authorisation Refactor"
 **Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
 
 ## Format: `- [ ] [ID] [P?] [Story] Description`
+
 - **[P]**: Can run in parallel (different files, no dependencies)
 - **[Story]**: Which user story this task belongs to (e.g., US1, US2, US3)
 - Include exact file paths in descriptions
 
 ## Path Conventions
+
 - **Single project**: `src/`, at repository root (no `tests/` directory - tests colocated with source files)
 - Paths follow existing codebase structure
 
@@ -28,15 +30,15 @@ description: "Task list for Script Identification and Authorisation Refactor"
 
 **⚠️ CRITICAL**: Write tests that CAPTURE CURRENT BEHAVIOR and verify they PASS before any refactoring
 
-- [X] T001 Create test file for current ScriptComparisonService behavior in src/services/comparison/script.test.ts
-- [X] T002 [P] Add test case: external script with exact URL match and hash verification
-- [X] T003 [P] Add test case: external script with dynamic query parameters (nameMatcher with wildcard)
-- [X] T004 [P] Add test case: inline script identified by content pattern
-- [X] T005 [P] Add test case: script found in inventory but hash doesn't exist (should return newHash)
-- [X] T006 [P] Add test case: script not in inventory (should return newScript)
-- [X] T007 [P] Add test case: authorized script with contentMatcher authorization (no hash check)
-- [X] T008 [P] Add test case: first-match-wins with overlapping name patterns
-- [X] T009 Run all pre-refactoring tests and verify they PASS with current implementation (green baseline)
+- [x] T001 Create test file for current ScriptComparisonService behavior in src/services/comparison/script.test.ts
+- [x] T002 [P] Add test case: external script with exact URL match and hash verification
+- [x] T003 [P] Add test case: external script with dynamic query parameters (nameMatcher with wildcard)
+- [x] T004 [P] Add test case: inline script identified by content pattern
+- [x] T005 [P] Add test case: script found in inventory but hash doesn't exist (should return newHash)
+- [x] T006 [P] Add test case: script not in inventory (should return newScript)
+- [x] T007 [P] Add test case: authorized script with contentMatcher authorization (no hash check)
+- [x] T008 [P] Add test case: first-match-wins with overlapping name patterns
+- [x] T009 Run all pre-refactoring tests and verify they PASS with current implementation (green baseline)
 
 **Checkpoint**: Pre-refactoring test suite passes - current behavior captured ✅
 
@@ -50,24 +52,24 @@ description: "Task list for Script Identification and Authorisation Refactor"
 
 ### Core Matcher Types
 
-- [X] T010 Create Matcher interface in src/types/matcher/matcher.interface.ts with identify(), authorize(), getType(), and getPattern() methods
-- [X] T011 Create AuthorizationResult type in src/types/matcher/authorization-result.ts with authorized flag and optional reason field
-- [X] T012 Create Hash type export in src/types/hash.ts (if not already exported) for matcher usage
-- [X] T013 Create DetectedScript type in src/types/script.ts with name, content, hash, and context fields
+- [x] T010 Create Matcher interface in src/types/matcher/matcher.interface.ts with identify(), authorize(), getType(), and getPattern() methods
+- [x] T011 Create AuthorizationResult type in src/types/matcher/authorization-result.ts with authorized flag and optional reason field
+- [x] T012 Create Hash type export in src/types/hash.ts (if not already exported) for matcher usage
+- [x] T013 Create DetectedScript type in src/types/script.ts with name, content, hash, and context fields
 
 ### Matcher Implementations
 
-- [X] T014 [P] Implement NameMatcher class in src/types/matcher/name-matcher.ts with regex pattern matching on script.name
-- [X] T015 [P] Implement ContentMatcher class in src/types/matcher/content-matcher.ts with regex pattern matching on script.content and null/empty content handling
-- [X] T016 [P] Implement HashMatcher class in src/types/matcher/hash-matcher.ts with SHA-256 hash comparison against authorized hash array
-- [X] T017 Create matcher factory function in src/types/matcher/matcher-factory.ts that creates matcher instances from MatcherConfig
+- [x] T014 [P] Implement NameMatcher class in src/types/matcher/name-matcher.ts with regex pattern matching on script.name
+- [x] T015 [P] Implement ContentMatcher class in src/types/matcher/content-matcher.ts with regex pattern matching on script.content and null/empty content handling
+- [x] T016 [P] Implement HashMatcher class in src/types/matcher/hash-matcher.ts with SHA-256 hash comparison against authorized hash array
+- [x] T017 Create matcher factory function in src/types/matcher/matcher-factory.ts that creates matcher instances from MatcherConfig
 
 ### Unit Tests for Matchers
 
-- [X] T018 [P] Create NameMatcher unit tests in src/types/matcher/name-matcher.test.ts covering exact URL match, wildcard patterns, non-matching URLs, null/empty names
-- [X] T019 [P] Create ContentMatcher unit tests in src/types/matcher/content-matcher.test.ts covering exact content match, regex patterns, null/empty content, multi-line content
-- [X] T020 [P] Create HashMatcher unit tests in src/types/matcher/hash-matcher.test.ts covering single hash match, multiple hashes, no match, null content
-- [X] T021 Run all matcher unit tests and verify they PASS independently (matcher isolation verified)
+- [x] T018 [P] Create NameMatcher unit tests in src/types/matcher/name-matcher.test.ts covering exact URL match, wildcard patterns, non-matching URLs, null/empty names
+- [x] T019 [P] Create ContentMatcher unit tests in src/types/matcher/content-matcher.test.ts covering exact content match, regex patterns, null/empty content, multi-line content
+- [x] T020 [P] Create HashMatcher unit tests in src/types/matcher/hash-matcher.test.ts covering single hash match, multiple hashes, no match, null content
+- [x] T021 Run all matcher unit tests and verify they PASS independently (matcher isolation verified)
 
 **Checkpoint**: Foundation ready - matcher system fully tested and operational ✅
 
@@ -81,25 +83,25 @@ description: "Task list for Script Identification and Authorisation Refactor"
 
 ### Zod Schema Updates for User Story 1
 
-- [X] T022 [P] [US1] Create MatcherConfig union type schema in src/types/inventory/matcher-config-schema.ts with nameMatcher, contentMatcher, and hashes variants
-- [X] T023 [P] [US1] Add regex validation custom refinement to MatcherConfig schema with detailed error messages showing pattern and error location
-- [X] T024 [US1] Update ScriptInventoryEntry schema in src/types/inventory/zod.ts to replace nameMatcher/contentMatcher/hashes fields with identifyWith and authoriseWith MatcherConfig fields
-- [X] T025 [US1] Update RawInventoryScriptInfoSchema in src/types/inventory/zod.ts to use new schema structure
-- [X] T026 [US1] Update InventoryScriptInfo type in src/types/inventory/model.ts to include identifyWith and authoriseWith as Matcher instances instead of raw regex
+- [x] T022 [P] [US1] Create MatcherConfig union type schema in src/types/inventory/matcher-config-schema.ts with nameMatcher, contentMatcher, and hashes variants
+- [x] T023 [P] [US1] Add regex validation custom refinement to MatcherConfig schema with detailed error messages showing pattern and error location
+- [x] T024 [US1] Update ScriptInventoryEntry schema in src/types/inventory/zod.ts to replace nameMatcher/contentMatcher/hashes fields with identifyWith and authoriseWith MatcherConfig fields
+- [x] T025 [US1] Update RawInventoryScriptInfoSchema in src/types/inventory/zod.ts to use new schema structure
+- [x] T026 [US1] Update InventoryScriptInfo type in src/types/inventory/model.ts to include identifyWith and authoriseWith as Matcher instances instead of raw regex
 
 ### Schema Validation Tests
 
-- [X] T027 [P] [US1] Create Zod schema validation tests in src/types/inventory/zod.test.ts covering invalid regex patterns, missing identifyWith/authoriseWith fields, empty hashes array
-- [X] T028 [P] [US1] Add test case: old schema format (without identifyWith/authoriseWith) should fail with clear error message
-- [X] T029 [P] [US1] Add test case: valid schema with nameMatcher for identify and hashes for authorize
-- [X] T030 [P] [US1] Add test case: valid schema with same matcher type for both identifyWith and authoriseWith
-- [X] T031 [US1] Run schema validation tests and verify all edge cases are detected correctly
+- [x] T027 [P] [US1] Create Zod schema validation tests in src/types/inventory/zod.test.ts covering invalid regex patterns, missing identifyWith/authoriseWith fields, empty hashes array
+- [x] T028 [P] [US1] Add test case: old schema format (without identifyWith/authoriseWith) should fail with clear error message
+- [x] T029 [P] [US1] Add test case: valid schema with nameMatcher for identify and hashes for authorize
+- [x] T030 [P] [US1] Add test case: valid schema with same matcher type for both identifyWith and authoriseWith
+- [x] T031 [US1] Run schema validation tests and verify all edge cases are detected correctly
 
 ### Repository Layer Updates
 
-- [X] T032 [US1] Update InventoryRepository in src/repositories/inventory.ts to parse new schema and create Matcher instances from MatcherConfig using matcher factory
-- [X] T033 [US1] Update GitInventoryStore in src/stores/inventory/git.ts to handle Zod validation errors and provide context about which inventory file failed
-- [X] T034 [US1] Update InMemoryInventoryStore in src/stores/inventory/in-memory.ts to use new schema structure for test fixtures
+- [x] T032 [US1] Update InventoryRepository in src/repositories/inventory.ts to parse new schema and create Matcher instances from MatcherConfig using matcher factory
+- [x] T033 [US1] Update GitInventoryStore in src/stores/inventory/git.ts to handle Zod validation errors and provide context about which inventory file failed
+- [x] T034 [US1] Update InMemoryInventoryStore in src/stores/inventory/in-memory.ts to use new schema structure for test fixtures
 
 **Checkpoint**: At this point, User Story 1 schema updates are complete - inventories can be loaded with new matcher structure ✅
 
@@ -113,25 +115,25 @@ description: "Task list for Script Identification and Authorisation Refactor"
 
 ### Comparison Service Refactoring
 
-- [X] T035 [US2] Refactor ScriptComparisonService.compareSingleScriptWithInventory() in src/services/comparison/script.ts to use matcher pipeline for identification (iterate inventory.scripts, call identifyWith.identify())
-- [X] T036 [US2] Update ScriptComparisonService to implement first-match-wins logic (return first inventory entry where identifyWith.identify() returns true)
-- [X] T037 [US2] Refactor authorization logic in ScriptComparisonService to call authoriseWith.authorize() on matched inventory entry
-- [X] T038 [US2] Add null/empty content handling in ScriptComparisonService (treat as newScript per clarification Q3)
-- [X] T039 [US2] Remove hardcoded nameMatcher.test() and contentMatcher?.test() logic from private methods (replaced by matcher abstraction)
-- [X] T040 [US2] Add matcher execution logging with matcher type, pattern, result, and execution time in ScriptComparisonService
+- [x] T035 [US2] Refactor ScriptComparisonService.compareSingleScriptWithInventory() in src/services/comparison/script.ts to use matcher pipeline for identification (iterate inventory.scripts, call identifyWith.identify())
+- [x] T036 [US2] Update ScriptComparisonService to implement first-match-wins logic (return first inventory entry where identifyWith.identify() returns true)
+- [x] T037 [US2] Refactor authorization logic in ScriptComparisonService to call authoriseWith.authorize() on matched inventory entry
+- [x] T038 [US2] Add null/empty content handling in ScriptComparisonService (treat as newScript per clarification Q3)
+- [x] T039 [US2] Remove hardcoded nameMatcher.test() and contentMatcher?.test() logic from private methods (replaced by matcher abstraction)
+- [x] T040 [US2] Add matcher execution logging with matcher type, pattern, result, and execution time in ScriptComparisonService
 
 ### Refactoring Verification Tests
 
-- [X] T041 [US2] Run all pre-refactoring tests (T001-T009) and verify they still PASS with refactored implementation (zero behavior change)
-- [X] T042 [P] [US2] Add integration test for matcher pipeline in src/services/comparison/script.test.ts covering identification → authorization flow
-- [X] T043 [P] [US2] Add integration test for first-match-wins with multiple overlapping inventory entries
-- [X] T044 [P] [US2] Add integration test for null content handling (should return newScript)
-- [X] T045 [US2] Run all comparison service tests and verify matcher pipeline produces identical results to original implementation
+- [x] T041 [US2] Run all pre-refactoring tests (T001-T009) and verify they still PASS with refactored implementation (zero behavior change)
+- [x] T042 [P] [US2] Add integration test for matcher pipeline in src/services/comparison/script.test.ts covering identification → authorization flow
+- [x] T043 [P] [US2] Add integration test for first-match-wins with multiple overlapping inventory entries
+- [x] T044 [P] [US2] Add integration test for null content handling (should return newScript)
+- [x] T045 [US2] Run all comparison service tests and verify matcher pipeline produces identical results to original implementation
 
 ### Interface Updates
 
-- [X] T046 [US2] Update IScriptComparisonService interface in src/interfaces/comparison.ts if method signatures changed (likely no changes needed)
-- [X] T047 [US2] Update ScriptComparisonResult type in src/types/comparison.ts to include matcher execution context if needed for logging
+- [x] T046 [US2] Update IScriptComparisonService interface in src/interfaces/comparison.ts if method signatures changed (likely no changes needed)
+- [x] T047 [US2] Update ScriptComparisonResult type in src/types/comparison.ts to include matcher execution context if needed for logging
 
 **Checkpoint**: At this point, User Story 2 is complete - matcher system is fully modular and independently testable ✅
 
@@ -187,11 +189,13 @@ description: "Task list for Script Identification and Authorisation Refactor"
 
 **Purpose**: Ensure smooth transition for existing inventories
 
-- [ ] T069 [P] Verify quickstart.md migration guide is accurate and complete (already exists in design docs)
-- [ ] T070 [P] Create inventory schema migration validation script in src/utils/inventory/validate-migration.ts that runs Zod schema validation
-- [ ] T071 Test migration validation script against example old and new inventory formats
-- [ ] T072 Update README.md with migration instructions and link to quickstart.md
-- [ ] T073 Create example inventory files in specs/001-refactor-script-identification/examples/ demonstrating all matcher combinations
+- [x] T069 [P] Verify quickstart.md migration guide is accurate and complete (already exists in design docs)
+- [x] T070 [P] Create inventory schema migration validation script in src/utils/inventory/validate-migration.ts that runs Zod schema validation
+- [x] T071 Test migration validation script against example old and new inventory formats
+- [x] T072 Update README.md with migration instructions and link to quickstart.md
+- [x] T073 Create example inventory files in specs/001-refactor-script-identification/examples/ demonstrating all matcher combinations
+
+**Checkpoint**: Migration documentation and validation complete ✅
 
 ---
 
@@ -341,6 +345,7 @@ With multiple developers:
 
 **Parallel opportunities**: 32 tasks marked [P] can run concurrently
 **Independent test criteria**:
+
 - User Story 1: Load inventory with new schema, verify matchers created correctly
 - User Story 2: Add test matcher type, verify integration without code changes
 - User Story 3: Trigger each result type, verify complete context in handlers
@@ -355,7 +360,7 @@ Before deployment:
 
 - [ ] All 82 tasks completed
 - [ ] All pre-refactoring tests still pass (zero regressions)
-- [ ] >90% code coverage for matchers and comparison service
+- [ ] > 90% code coverage for matchers and comparison service
 - [ ] Schema validation detects all invalid configurations
 - [ ] Typed results contain sufficient context (no additional queries in handlers)
 - [ ] Migration guide tested against real inventory

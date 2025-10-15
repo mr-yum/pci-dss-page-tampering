@@ -40,6 +40,7 @@ This guide provides step-by-step instructions for migrating existing inventory J
 ```
 
 **Issues**:
+
 - `matcher` field was used for identification only
 - `hashes` field was used for authorization, but not always present
 - No clear separation between identification and authorization strategies
@@ -72,6 +73,7 @@ This guide provides step-by-step instructions for migrating existing inventory J
 ```
 
 **Benefits**:
+
 - Clear separation: `identifyWith` for matching, `authoriseWith` for validation
 - Flexible: Can use different matcher types for each phase
 - Extensible: Same matcher logic for external and inline scripts
@@ -108,6 +110,7 @@ For each script entry in the old inventory, determine:
 #### Example 1: External Script with Hash Verification
 
 **Old**:
+
 ```json
 {
   "matcher": {
@@ -121,6 +124,7 @@ For each script entry in the old inventory, determine:
 ```
 
 **New**:
+
 ```json
 {
   "identifyWith": {
@@ -142,6 +146,7 @@ For each script entry in the old inventory, determine:
 #### Example 2: Inline Script (Content-Based)
 
 **Old**:
+
 ```json
 {
   "matcher": {
@@ -155,6 +160,7 @@ For each script entry in the old inventory, determine:
 ```
 
 **New**:
+
 ```json
 {
   "identifyWith": {
@@ -176,6 +182,7 @@ For each script entry in the old inventory, determine:
 #### Example 3: Same Matcher for Both (Allowed)
 
 **Old**:
+
 ```json
 {
   "matcher": {
@@ -186,6 +193,7 @@ For each script entry in the old inventory, determine:
 ```
 
 **New**:
+
 ```json
 {
   "identifyWith": {
@@ -205,6 +213,7 @@ For each script entry in the old inventory, determine:
 #### Example 4: Flexible Authorization
 
 **Old**:
+
 ```json
 {
   "matcher": {
@@ -217,6 +226,7 @@ For each script entry in the old inventory, determine:
 (No hashes in old schema - content was not strictly validated)
 
 **New**:
+
 ```json
 {
   "identifyWith": {
@@ -309,6 +319,7 @@ node validate-inventory.js inventories/your-target.json
 ```
 
 **Expected Output**:
+
 ```
 ✅ Inventory is valid!
 ```
@@ -316,15 +327,19 @@ node validate-inventory.js inventories/your-target.json
 **Common Validation Errors**:
 
 1. **Missing `identifyWith` or `authoriseWith`**:
+
    ```
    Required at "identifyWith"
    ```
+
    → Add the missing field to each script entry
 
 2. **Invalid regex pattern**:
+
    ```
    Invalid regex in nameMatcher: "^https://[abc". Error: Unterminated character class
    ```
+
    → Fix the regex pattern (e.g., close the bracket: `^https://[abc]`)
 
 3. **Empty hashes array**:
@@ -449,9 +464,10 @@ Once staging tests pass:
 **Cause**: Regex pattern has syntax error (unclosed bracket, invalid escape sequence, etc.)
 
 **Solution**: Validate regex in Node.js REPL or online regex tester:
+
 ```javascript
-new RegExp("^https://example[abc");  // Throws: Unterminated character class
-new RegExp("^https://example[abc]"); // OK
+new RegExp('^https://example[abc') // Throws: Unterminated character class
+new RegExp('^https://example[abc]') // OK
 ```
 
 ---
@@ -469,12 +485,13 @@ new RegExp("^https://example[abc]"); // OK
 **Cause**: Identification pattern doesn't match detected script name/content
 
 **Solution**:
+
 1. Check detected script name in alert
 2. Test identification pattern against script name:
    ```javascript
-   const pattern = /^https:\/\/example\.com\/script\.js\?.*$/;
-   const scriptName = "https://example.com/script.js?v=123";
-   console.log(pattern.test(scriptName)); // Should be true
+   const pattern = /^https:\/\/example\.com\/script\.js\?.*$/
+   const scriptName = 'https://example.com/script.js?v=123'
+   console.log(pattern.test(scriptName)) // Should be true
    ```
 3. Adjust pattern if needed (escape special characters, check wildcards)
 
@@ -485,6 +502,7 @@ new RegExp("^https://example[abc]"); // OK
 **Cause**: Authorization pattern/hashes don't match detected script content
 
 **Solution**:
+
 1. Check detected script hash in alert
 2. Compare against `authoriseWith.hashes` array
 3. If hash mismatch is expected (script updated), add new hash to array
@@ -495,6 +513,7 @@ new RegExp("^https://example[abc]"); // OK
 ## Reference: Example from refactor-plan.md
 
 See `refactor-plan.md` lines 46-132 for complete example inventory demonstrating all matcher combinations:
+
 - reCAPTCHA: `nameMatcher` (identify) + `contentMatcher: ".*"` (authorize)
 - hCaptcha: `nameMatcher` (identify) + `hashes` (authorize)
 - Facebook Pixel: `contentMatcher` (identify) + `hashes` (authorize)

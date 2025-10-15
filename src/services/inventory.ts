@@ -74,7 +74,7 @@ export class ScriptInventoryService implements IInventoryService {
         const detectedScript = {
           name: getScriptSource(script),
           content: script.source.type === 'inline' ? script.source.content : getScriptSource(script),
-          hash: script.hash
+          hash: script.hash,
         }
         return inventoryScript.identifyWith.identify(detectedScript)
       })

@@ -20,10 +20,7 @@ import { HashMatcher } from './hash-matcher'
  * Note: This type is duplicated from matcher-config-schema.ts (RawMatcherConfig)
  * to avoid circular dependencies. The Zod schema is the source of truth for validation.
  */
-export type MatcherConfig =
-  | { nameMatcher: string }
-  | { contentMatcher: string }
-  | { hashes: InventoryScriptHashInfo[] }
+export type MatcherConfig = { nameMatcher: string } | { contentMatcher: string } | { hashes: InventoryScriptHashInfo[] }
 
 /**
  * Factory function for creating matcher instances from configuration.

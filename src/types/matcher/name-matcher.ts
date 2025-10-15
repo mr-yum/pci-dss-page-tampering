@@ -48,7 +48,7 @@ export class NameMatcher implements Matcher {
     if (!script.content || script.content.trim() === '') {
       return {
         authorized: false,
-        reason: 'content is null or empty'
+        reason: 'content is null or empty',
       }
     }
 
@@ -57,7 +57,7 @@ export class NameMatcher implements Matcher {
       ? { authorized: true }
       : {
           authorized: false,
-          reason: `content does not match pattern: ${this.pattern.source}`
+          reason: `content does not match pattern: ${this.pattern.source}`,
         }
   }
 }

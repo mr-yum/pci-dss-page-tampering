@@ -17,13 +17,13 @@ describe('HashMatcher', () => {
 
   const createHashInfo = (value: string): InventoryScriptHashInfo => ({
     timestamp: new Date('2025-10-15T00:00:00.000Z'),
-    hash: createHash(value)
+    hash: createHash(value),
   })
 
   const createDetectedScript = (name: string, content: string | null, hashValue: string): DetectedScript => ({
     name,
     content,
-    hash: createHash(hashValue)
+    hash: createHash(hashValue),
   })
 
   describe('constructor', () => {
@@ -108,11 +108,7 @@ describe('HashMatcher', () => {
 
     describe('multiple hashes', () => {
       it('should authorize when script hash matches any of the authorized hashes', () => {
-        const hashes = [
-          createHashInfo('hash1'),
-          createHashInfo('hash2'),
-          createHashInfo('hash3')
-        ]
+        const hashes = [createHashInfo('hash1'), createHashInfo('hash2'), createHashInfo('hash3')]
         const matcher = new HashMatcher(hashes)
         const script = createDetectedScript('https://example.com/script.js', 'content', 'hash2')
 
@@ -122,10 +118,7 @@ describe('HashMatcher', () => {
       })
 
       it('should authorize when script hash matches the first hash', () => {
-        const hashes = [
-          createHashInfo('first-hash'),
-          createHashInfo('second-hash')
-        ]
+        const hashes = [createHashInfo('first-hash'), createHashInfo('second-hash')]
         const matcher = new HashMatcher(hashes)
         const script = createDetectedScript('https://example.com/script.js', 'content', 'first-hash')
 
@@ -135,11 +128,7 @@ describe('HashMatcher', () => {
       })
 
       it('should authorize when script hash matches the last hash', () => {
-        const hashes = [
-          createHashInfo('first-hash'),
-          createHashInfo('second-hash'),
-          createHashInfo('last-hash')
-        ]
+        const hashes = [createHashInfo('first-hash'), createHashInfo('second-hash'), createHashInfo('last-hash')]
         const matcher = new HashMatcher(hashes)
         const script = createDetectedScript('https://example.com/script.js', 'content', 'last-hash')
 
@@ -149,11 +138,7 @@ describe('HashMatcher', () => {
       })
 
       it('should not authorize when script hash does not match any hash', () => {
-        const hashes = [
-          createHashInfo('hash1'),
-          createHashInfo('hash2'),
-          createHashInfo('hash3')
-        ]
+        const hashes = [createHashInfo('hash1'), createHashInfo('hash2'), createHashInfo('hash3')]
         const matcher = new HashMatcher(hashes)
         const script = createDetectedScript('https://example.com/script.js', 'content', 'unknown-hash')
 

@@ -24,23 +24,19 @@ function convertTypedResultsToSummary(results: ComparisonResultType[], target: T
   const newScripts: any[] = []
   const newHashes: any[] = []
 
-  results.forEach(result => {
+  results.forEach((result) => {
     if (result.type === 'unknown_script_found') {
       // Convert DetectedScript to ScriptInfo
       const scriptInfo = {
-        source: result.script.name.startsWith('http')
-          ? { type: 'external' as const, url: result.script.name }
-          : { type: 'inline' as const, id: result.script.name, content: result.script.content ?? '' },
-        hash: result.script.hash
+        source: result.script.name.startsWith('http') ? { type: 'external' as const, url: result.script.name } : { type: 'inline' as const, id: result.script.name, content: result.script.content ?? '' },
+        hash: result.script.hash,
       }
       newScripts.push(scriptInfo)
     } else if (result.type === 'known_script_unauthorised_content') {
       // Script known but content changed
       const scriptInfo = {
-        source: result.script.name.startsWith('http')
-          ? { type: 'external' as const, url: result.script.name }
-          : { type: 'inline' as const, id: result.script.name, content: result.script.content ?? '' },
-        hash: result.script.hash
+        source: result.script.name.startsWith('http') ? { type: 'external' as const, url: result.script.name } : { type: 'inline' as const, id: result.script.name, content: result.script.content ?? '' },
+        hash: result.script.hash,
       }
       newHashes.push(scriptInfo)
     }
@@ -48,21 +44,21 @@ function convertTypedResultsToSummary(results: ComparisonResultType[], target: T
   })
 
   // Separate by type
-  const externalNewScripts = newScripts.filter(s => s.source.type === 'external')
-  const inlineNewScripts = newScripts.filter(s => s.source.type === 'inline')
-  const externalNewHashes = newHashes.filter(s => s.source.type === 'external')
-  const inlineNewHashes = newHashes.filter(s => s.source.type === 'inline')
+  const externalNewScripts = newScripts.filter((s) => s.source.type === 'external')
+  const inlineNewScripts = newScripts.filter((s) => s.source.type === 'inline')
+  const externalNewHashes = newHashes.filter((s) => s.source.type === 'external')
+  const inlineNewHashes = newHashes.filter((s) => s.source.type === 'inline')
 
   return {
     target,
     externalScripts: {
       newScripts: externalNewScripts,
-      newHashes: externalNewHashes
+      newHashes: externalNewHashes,
     },
     inlineScripts: {
       newScripts: inlineNewScripts,
-      newHashes: inlineNewHashes
-    }
+      newHashes: inlineNewHashes,
+    },
   }
 }
 

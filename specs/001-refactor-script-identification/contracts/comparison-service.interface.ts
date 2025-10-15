@@ -7,10 +7,10 @@
  * @see research.md (R4) for first-match-wins implementation
  */
 
-import { DetectedScript } from '../../../src/types/script';
-import { ScriptInventoryEntry } from '../../../src/types/inventory/model';
-import { Target } from '../../../src/types/target';
-import { ComparisonResultType } from './comparison-result.interface';
+import { DetectedScript } from '../../../src/types/script'
+import { ScriptInventoryEntry } from '../../../src/types/inventory/model'
+import { Target } from '../../../src/types/target'
+import { ComparisonResultType } from './comparison-result.interface'
 
 /**
  * Service responsible for comparing detected scripts against inventory.
@@ -55,11 +55,7 @@ export interface IScriptComparisonService {
    *   }
    * });
    */
-  compare(
-    detectedScripts: DetectedScript[],
-    inventory: ScriptInventoryEntry[],
-    target: Target
-  ): ComparisonResultType[];
+  compare(detectedScripts: DetectedScript[], inventory: ScriptInventoryEntry[], target: Target): ComparisonResultType[]
 
   /**
    * Finds the first matching inventory entry for a detected script.
@@ -75,8 +71,5 @@ export interface IScriptComparisonService {
    * - Returns first entry where matcher.identify(script) is true
    * - Returns null if no match found
    */
-  findMatchingInventoryEntry(
-    script: DetectedScript,
-    inventory: ScriptInventoryEntry[]
-  ): ScriptInventoryEntry | null;
+  findMatchingInventoryEntry(script: DetectedScript, inventory: ScriptInventoryEntry[]): ScriptInventoryEntry | null
 }

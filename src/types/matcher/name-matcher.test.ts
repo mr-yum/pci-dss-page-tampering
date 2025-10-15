@@ -15,7 +15,7 @@ describe('NameMatcher', () => {
   const createDetectedScript = (name: string, content: string | null, hashValue: string = 'hash123'): DetectedScript => ({
     name,
     content,
-    hash: { value: hashValue } as SHA256Hash
+    hash: { value: hashValue } as SHA256Hash,
   })
 
   describe('getType', () => {
@@ -55,10 +55,7 @@ describe('NameMatcher', () => {
     describe('wildcard patterns', () => {
       it('should match URL with dynamic query parameters', () => {
         const matcher = new NameMatcher('^https://hcaptcha\\.com/1/api\\.js\\?.*$')
-        const script = createDetectedScript(
-          'https://hcaptcha.com/1/api.js?render=explicit&onload=onHCaptchaLoad',
-          'content'
-        )
+        const script = createDetectedScript('https://hcaptcha.com/1/api.js?render=explicit&onload=onHCaptchaLoad', 'content')
 
         expect(matcher.identify(script)).toBe(true)
       })

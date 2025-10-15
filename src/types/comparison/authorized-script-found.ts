@@ -6,10 +6,10 @@
  * @see specs/001-refactor-script-identification/data-model.md for entity definitions
  */
 
-import { ComparisonResult } from './comparison-result';
-import type { DetectedScript } from '../matcher/matcher.interface';
-import type { Target } from '../target';
-import type { InventoryScriptInfo } from '../inventory/model';
+import { ComparisonResult } from './comparison-result'
+import type { DetectedScript } from '../matcher/matcher.interface'
+import type { Target } from '../target'
+import type { InventoryScriptInfo } from '../inventory/model'
 
 /**
  * Result indicating a script that is both identified and authorized.
@@ -22,26 +22,21 @@ import type { InventoryScriptInfo } from '../inventory/model';
  * - No alert generated (compliant script)
  */
 export class AuthorizedScriptFound extends ComparisonResult {
-  readonly type = 'authorized_script';
+  readonly type = 'authorized_script'
 
   /**
    * Full details of the authorized script.
    */
-  public readonly script: DetectedScript;
+  public readonly script: DetectedScript
 
   /**
    * The inventory entry that matched and authorized this script.
    */
-  public readonly inventoryEntry: InventoryScriptInfo;
+  public readonly inventoryEntry: InventoryScriptInfo
 
-  constructor(
-    target: Target,
-    timestamp: Date,
-    script: DetectedScript,
-    inventoryEntry: InventoryScriptInfo
-  ) {
-    super(target, timestamp);
-    this.script = script;
-    this.inventoryEntry = inventoryEntry;
+  constructor(target: Target, timestamp: Date, script: DetectedScript, inventoryEntry: InventoryScriptInfo) {
+    super(target, timestamp)
+    this.script = script
+    this.inventoryEntry = inventoryEntry
   }
 }

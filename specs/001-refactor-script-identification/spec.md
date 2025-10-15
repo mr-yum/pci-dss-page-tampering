@@ -15,7 +15,7 @@
 - Q: When the new schema with identifyWith/authoriseWith is deployed, how should existing inventory files be migrated? → A: Reject old schema, require manual update
 - Q: When an inventory entry uses the same matcher type for both identifyWith and authoriseWith (e.g., contentMatcher for both), is this allowed? → A: Allow same matcher type (valid use case)
 
-## User Scenarios & Testing *(mandatory)*
+## User Scenarios & Testing _(mandatory)_
 
 ### User Story 1 - Flexible Script Matching (Priority: P1)
 
@@ -77,7 +77,7 @@ Alert handlers need complete context about what was detected and why it violated
 - How does the system handle inventory entries missing required matcher properties?
 - What happens when a nameMatcher pattern matches both external and inline scripts?
 
-## Requirements *(mandatory)*
+## Requirements _(mandatory)_
 
 ### Functional Requirements
 
@@ -106,7 +106,7 @@ Alert handlers need complete context about what was detected and why it violated
 - **Comparison Result**: Typed outcome of comparing a detected script against inventory. Types: UnknownScriptFound (script not in inventory), KnownScriptWithUnauthorisedContentFound (script identified but authorization failed), AuthorizedScriptFound (script fully compliant). Each includes full context for handlers
 - **Alert Configuration**: Maps comparison result types to alert destinations. Different destinations for inventory workflow (newScriptIdentified) versus detection workflow (newScriptDetected, scriptMismatchDetected)
 
-## Success Criteria *(mandatory)*
+## Success Criteria _(mandatory)_
 
 ### Measurable Outcomes
 

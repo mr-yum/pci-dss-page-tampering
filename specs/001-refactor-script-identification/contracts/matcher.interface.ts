@@ -8,8 +8,8 @@
  * @see research.md (R1) for pattern selection rationale
  */
 
-import { DetectedScript } from '../../../src/types/script';
-import { Hash } from '../../../src/types/hash';
+import { DetectedScript } from '../../../src/types/script'
+import { Hash } from '../../../src/types/hash'
 
 /**
  * Result of an authorization check.
@@ -18,7 +18,7 @@ export interface AuthorizationResult {
   /**
    * Whether the script content is authorized.
    */
-  authorized: boolean;
+  authorized: boolean
 
   /**
    * Human-readable reason for authorization failure.
@@ -28,7 +28,7 @@ export interface AuthorizationResult {
    * - "hash not in authorized list"
    * - "content is null or empty"
    */
-  reason?: string;
+  reason?: string
 }
 
 /**
@@ -44,14 +44,14 @@ export interface Matcher {
    * Returns the matcher type discriminator.
    * Used for logging, debugging, and type narrowing.
    */
-  getType(): 'name' | 'content' | 'hash';
+  getType(): 'name' | 'content' | 'hash'
 
   /**
    * Returns the pattern or hashes used by this matcher.
    * For NameMatcher/ContentMatcher: regex pattern string
    * For HashMatcher: array of authorized hashes
    */
-  getPattern(): string | Hash[];
+  getPattern(): string | Hash[]
 
   /**
    * Determines if the given script matches this matcher's identification criteria.
@@ -68,7 +68,7 @@ export interface Matcher {
    * - Null/empty script.name (NameMatcher): returns false
    * - Null/empty script.content (ContentMatcher): returns false
    */
-  identify(script: DetectedScript): boolean;
+  identify(script: DetectedScript): boolean
 
   /**
    * Determines if the given script's content is authorized.
@@ -85,17 +85,14 @@ export interface Matcher {
    * - Null/empty script.content: returns { authorized: false, reason: "content is null or empty" }
    * - Invalid regex (should be caught by Zod schema): not applicable (matchers receive valid patterns)
    */
-  authorize(script: DetectedScript): AuthorizationResult;
+  authorize(script: DetectedScript): AuthorizationResult
 }
 
 /**
  * Configuration for creating a matcher instance.
  * Corresponds to inventory JSON schema.
  */
-export type MatcherConfig =
-  | { nameMatcher: string }
-  | { contentMatcher: string }
-  | { hashes: Hash[] };
+export type MatcherConfig = { nameMatcher: string } | { contentMatcher: string } | { hashes: Hash[] }
 
 /**
  * Factory function for creating matcher instances from configuration.
@@ -105,4 +102,4 @@ export type MatcherConfig =
  *
  * @throws Error if config is invalid (should be prevented by Zod schema validation)
  */
-export function createMatcher(config: MatcherConfig): Matcher;
+export function createMatcher(config: MatcherConfig): Matcher

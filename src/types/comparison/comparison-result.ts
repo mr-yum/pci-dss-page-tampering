@@ -8,7 +8,7 @@
  * @see specs/001-refactor-script-identification/research.md (R3) for design rationale
  */
 
-import type { Target } from '../target';
+import type { Target } from '../target'
 
 /**
  * Base class for all comparison results.
@@ -19,20 +19,20 @@ export abstract class ComparisonResult {
    * Discriminator for TypeScript discriminated unions.
    * Enables exhaustive type checking in handlers.
    */
-  abstract readonly type: string;
+  abstract readonly type: string
 
   /**
    * The target being processed (inventory or detection URL).
    */
-  public readonly target: Target;
+  public readonly target: Target
 
   /**
    * When the comparison occurred (UTC).
    */
-  public readonly timestamp: Date;
+  public readonly timestamp: Date
 
   constructor(target: Target, timestamp: Date) {
-    this.target = target;
-    this.timestamp = timestamp;
+    this.target = target
+    this.timestamp = timestamp
   }
 }

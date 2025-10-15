@@ -7,14 +7,14 @@
  * @see specs/001-refactor-script-identification/research.md (R3) for design rationale
  */
 
-export { ComparisonResult } from './comparison-result';
-export { UnknownScriptFound } from './unknown-script-found';
-export { KnownScriptWithUnauthorisedContentFound } from './known-script-unauthorised-content-found';
-export { AuthorizedScriptFound } from './authorized-script-found';
+export { ComparisonResult } from './comparison-result'
+export { UnknownScriptFound } from './unknown-script-found'
+export { KnownScriptWithUnauthorisedContentFound } from './known-script-unauthorised-content-found'
+export { AuthorizedScriptFound } from './authorized-script-found'
 
-import type { UnknownScriptFound } from './unknown-script-found';
-import type { KnownScriptWithUnauthorisedContentFound } from './known-script-unauthorised-content-found';
-import type { AuthorizedScriptFound } from './authorized-script-found';
+import type { UnknownScriptFound } from './unknown-script-found'
+import type { KnownScriptWithUnauthorisedContentFound } from './known-script-unauthorised-content-found'
+import type { AuthorizedScriptFound } from './authorized-script-found'
 
 /**
  * Union type for all possible comparison results.
@@ -44,7 +44,4 @@ import type { AuthorizedScriptFound } from './authorized-script-found';
  * }
  * ```
  */
-export type ComparisonResultType =
-  | UnknownScriptFound
-  | KnownScriptWithUnauthorisedContentFound
-  | AuthorizedScriptFound;
+export type ComparisonResultType = UnknownScriptFound | KnownScriptWithUnauthorisedContentFound | AuthorizedScriptFound

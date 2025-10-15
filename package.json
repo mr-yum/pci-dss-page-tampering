@@ -40,6 +40,7 @@
     "check:typing": "node-builder check typing",
     "develop": "node-builder build --watch",
     "build:js": "node-builder build",
+    "validate-inventory": "node dist/utils/inventory/validate-migration.js",
     "build:docker": "docker-tools compose --file docker-compose.build.yml build service",
     "test:unit": "node-builder test --suite=unit",
     "test:integration": "docker-tools compose --file docker-compose.integration.yml --file docker-compose.common.yml run tests -- npm x -- node-builder test --suite=integration",

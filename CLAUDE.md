@@ -7,16 +7,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 This is a PCI DSS compliance system implementing **requirements 6.4.3 (Script Management)** and **11.6.1 (Detection and Alerting)** to prevent page tampering and e-skimming attacks on payment pages. The system provides:
 
 ### PCI DSS Compliance Goals
+
 - **6.4.3 Script Management**: Maintain authorized inventory of all payment page scripts with justification and integrity verification
 - **11.6.1 Detection and Alerting**: Continuous monitoring and alerting for unauthorized script/header modifications
 
 ### System Components
+
 - **Inventory Service**: Updates baseline inventory of approved scripts and headers, alerts on new discoveries
 - **Detection Service**: Monitors live applications against inventory, alerts on violations without modifying inventory
 - **Dual Workflows**: Each target has both inventory and detection URLs for comprehensive coverage
 - **Git-based Storage**: Inventories stored in separate Git repository for audit trail and version control
 
 ### Monitored Resources
+
 - **External scripts** loaded from remote URLs with hash verification
 - **Inline scripts** dynamically added during page execution
 - **Security-impacting HTTP headers** (CSP, security headers)
@@ -25,17 +28,20 @@ This is a PCI DSS compliance system implementing **requirements 6.4.3 (Script Ma
 ## Commands
 
 ### Development
+
 - `npm run start` - Run the main detection process
 - `npm run develop` - Build in watch mode for development
 - `npm run build:js` - Build TypeScript to JavaScript
 
 ### Testing
+
 - `npm run test:unit` - Run unit tests
 - `npm run test:integration` - Run integration tests in Docker
 - `npm run test:integration:watch` - Watch integration tests
 - `npm run test:smoke` - Run smoke tests in Docker
 
 ### Code Quality
+
 - `npm run check:formatting` - Check code formatting with Prettier
 - `npm run fix:formatting` - Auto-fix formatting issues
 - `npm run check:linting` - Run ESLint checks
@@ -43,10 +49,12 @@ This is a PCI DSS compliance system implementing **requirements 6.4.3 (Script Ma
 - `npm run check:typing` - Run TypeScript type checking
 
 ### Setup
+
 - `npm run setup` - Initialize project with Husky hooks
 - `npm run secrets:pull` - Pull environment secrets (requires dotenv-tools)
 
 ### Local Testing with GitHub Actions
+
 ```bash
 # Requires .env.secrets file with INVENTORY_REPO_PAT and NPMRC_RO_FILE
 act push --container-architecture linux/amd64 --secret-file .env.secrets
@@ -72,14 +80,14 @@ act push --container-architecture linux/amd64 --secret-file .env.secrets
 
 ### Data Flow
 
-1. **Inventory Workflow**: 
+1. **Inventory Workflow**:
    - Executes against staging/inventory targets
    - Updates baseline inventory with newly discovered scripts
    - Alerts on unidentified scripts (requires manual authorization)
    - Pushes changes to Git repository
 
-2. **Detection Workflow**: 
-   - Executes against production/detection targets  
+2. **Detection Workflow**:
+   - Executes against production/detection targets
    - Compares findings against existing inventory (read-only)
    - Alerts on uninventoried or hash-mismatched scripts
    - No inventory modifications
@@ -103,6 +111,7 @@ act push --container-architecture linux/amd64 --secret-file .env.secrets
 ### Workflows
 
 Workflows are defined as step-by-step instructions for Puppeteer in `src/workflows/`:
+
 - Each step includes element selectors and actions (click, input, navigate)
 - Steps are converted to PuppeteerLocatorActions for execution
 - Support for popup handling and complex user flows
@@ -129,6 +138,7 @@ Workflows are defined as step-by-step instructions for Puppeteer in `src/workflo
 ## Scheduled Execution
 
 The system runs on CRON schedules:
+
 - **Daily execution** at 12:00 PM UTC via GitHub Actions
 - **Inventory workflow** runs first to update baselines
 - **Detection workflow** follows to monitor against updated inventory
@@ -137,6 +147,7 @@ The system runs on CRON schedules:
 ## Build System
 
 Uses `@mr-yum/node-builder` for:
+
 - TypeScript compilation
 - ESLint configuration (extends `.node-builder/eslint-config.cjs`)
 - Prettier configuration

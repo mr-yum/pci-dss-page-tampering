@@ -8,10 +8,10 @@
  * @see research.md (R3) for design rationale
  */
 
-import { DetectedScript } from '../../../src/types/script';
-import { Target } from '../../../src/types/target';
-import { ScriptInventoryEntry } from '../../../src/types/inventory/model';
-import { Matcher } from './matcher.interface';
+import { DetectedScript } from '../../../src/types/script'
+import { Target } from '../../../src/types/target'
+import { ScriptInventoryEntry } from '../../../src/types/inventory/model'
+import { Matcher } from './matcher.interface'
 
 /**
  * Base class for all comparison results.
@@ -22,21 +22,21 @@ export abstract class ComparisonResult {
    * Discriminator for TypeScript discriminated unions.
    * Enables exhaustive type checking in handlers.
    */
-  abstract readonly type: string;
+  abstract readonly type: string
 
   /**
    * The target being processed (inventory or detection URL).
    */
-  public readonly target: Target;
+  public readonly target: Target
 
   /**
    * When the comparison occurred (UTC).
    */
-  public readonly timestamp: Date;
+  public readonly timestamp: Date
 
   constructor(target: Target, timestamp: Date) {
-    this.target = target;
-    this.timestamp = timestamp;
+    this.target = target
+    this.timestamp = timestamp
   }
 }
 
@@ -52,21 +52,17 @@ export abstract class ComparisonResult {
  * - Detection workflow → newScriptDetected
  */
 export class UnknownScriptFound extends ComparisonResult {
-  readonly type = 'unknown_script_found';
+  readonly type = 'unknown_script_found'
 
   /**
    * Full details of the unknown script (name, content, hash).
    * Handlers use this to generate alerts with script context.
    */
-  public readonly script: DetectedScript;
+  public readonly script: DetectedScript
 
-  constructor(
-    target: Target,
-    timestamp: Date,
-    script: DetectedScript
-  ) {
-    super(target, timestamp);
-    this.script = script;
+  constructor(target: Target, timestamp: Date, script: DetectedScript) {
+    super(target, timestamp)
+    this.script = script
   }
 }
 
@@ -83,24 +79,24 @@ export class UnknownScriptFound extends ComparisonResult {
  * This is a critical security event - script is known but content has changed.
  */
 export class KnownScriptWithUnauthorisedContentFound extends ComparisonResult {
-  readonly type = 'known_script_unauthorised_content';
+  readonly type = 'known_script_unauthorised_content'
 
   /**
    * Full details of the detected script.
    */
-  public readonly script: DetectedScript;
+  public readonly script: DetectedScript
 
   /**
    * The inventory entry that identified this script.
    * Includes authorisationInfo for alert context.
    */
-  public readonly inventoryEntry: ScriptInventoryEntry;
+  public readonly inventoryEntry: ScriptInventoryEntry
 
   /**
    * The matcher that failed authorization.
    * Handlers use getPattern() to show what was expected.
    */
-  public readonly authorizationMatcher: Matcher;
+  public readonly authorizationMatcher: Matcher
 
   /**
    * Human-readable explanation of why authorization failed.
@@ -108,21 +104,14 @@ export class KnownScriptWithUnauthorisedContentFound extends ComparisonResult {
    * - "content does not match pattern"
    * - "hash abc123... not in authorized list"
    */
-  public readonly failureReason: string;
+  public readonly failureReason: string
 
-  constructor(
-    target: Target,
-    timestamp: Date,
-    script: DetectedScript,
-    inventoryEntry: ScriptInventoryEntry,
-    authorizationMatcher: Matcher,
-    failureReason: string
-  ) {
-    super(target, timestamp);
-    this.script = script;
-    this.inventoryEntry = inventoryEntry;
-    this.authorizationMatcher = authorizationMatcher;
-    this.failureReason = failureReason;
+  constructor(target: Target, timestamp: Date, script: DetectedScript, inventoryEntry: ScriptInventoryEntry, authorizationMatcher: Matcher, failureReason: string) {
+    super(target, timestamp)
+    this.script = script
+    this.inventoryEntry = inventoryEntry
+    this.authorizationMatcher = authorizationMatcher
+    this.failureReason = failureReason
   }
 }
 
@@ -137,27 +126,22 @@ export class KnownScriptWithUnauthorisedContentFound extends ComparisonResult {
  * - No alert generated (compliant script)
  */
 export class AuthorizedScriptFound extends ComparisonResult {
-  readonly type = 'authorized_script';
+  readonly type = 'authorized_script'
 
   /**
    * Full details of the authorized script.
    */
-  public readonly script: DetectedScript;
+  public readonly script: DetectedScript
 
   /**
    * The inventory entry that matched and authorized this script.
    */
-  public readonly inventoryEntry: ScriptInventoryEntry;
+  public readonly inventoryEntry: ScriptInventoryEntry
 
-  constructor(
-    target: Target,
-    timestamp: Date,
-    script: DetectedScript,
-    inventoryEntry: ScriptInventoryEntry
-  ) {
-    super(target, timestamp);
-    this.script = script;
-    this.inventoryEntry = inventoryEntry;
+  constructor(target: Target, timestamp: Date, script: DetectedScript, inventoryEntry: ScriptInventoryEntry) {
+    super(target, timestamp)
+    this.script = script
+    this.inventoryEntry = inventoryEntry
   }
 }
 
@@ -189,7 +173,4 @@ export class AuthorizedScriptFound extends ComparisonResult {
  * }
  * ```
  */
-export type ComparisonResultType =
-  | UnknownScriptFound
-  | KnownScriptWithUnauthorisedContentFound
-  | AuthorizedScriptFound;
+export type ComparisonResultType = UnknownScriptFound | KnownScriptWithUnauthorisedContentFound | AuthorizedScriptFound

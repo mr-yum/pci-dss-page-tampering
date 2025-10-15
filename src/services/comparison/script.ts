@@ -60,7 +60,7 @@ export class ScriptComparisonService implements IScriptComparisonService {
     return {
       name,
       content,
-      hash: scriptInfo.hash
+      hash: scriptInfo.hash,
     }
   }
 
@@ -110,19 +110,14 @@ export class ScriptComparisonService implements IScriptComparisonService {
 
     // Log authorization result with matcher details
     const authorizeMatcher = matchedEntry.authoriseWith
-    console.log(`[Comparison → Script]: Script '${scriptSourceValue}' authorization via ${authorizeMatcher.getType()}Matcher with pattern '${JSON.stringify(authorizeMatcher.getPattern())}': ${authorizationResult.authorized ? 'AUTHORIZED' : 'UNAUTHORIZED (' + authorizationResult.reason + ')'} in ${authorizationTime}ms.`)
+    console.log(
+      `[Comparison → Script]: Script '${scriptSourceValue}' authorization via ${authorizeMatcher.getType()}Matcher with pattern '${JSON.stringify(authorizeMatcher.getPattern())}': ${authorizationResult.authorized ? 'AUTHORIZED' : 'UNAUTHORIZED (' + authorizationResult.reason + ')'} in ${authorizationTime}ms.`,
+    )
 
     // T056: Known script but unauthorized content
     if (!authorizationResult.authorized) {
       console.log(`[Comparison → Script]: Script '${scriptSourceValue}' found in inventory but authorization failed: ${authorizationResult.reason} for target '${target.url}'.`)
-      return new KnownScriptWithUnauthorisedContentFound(
-        target,
-        timestamp,
-        detectedScript,
-        matchedEntry,
-        authorizeMatcher,
-        authorizationResult.reason ?? 'Unknown authorization failure'
-      )
+      return new KnownScriptWithUnauthorisedContentFound(target, timestamp, detectedScript, matchedEntry, authorizeMatcher, authorizationResult.reason ?? 'Unknown authorization failure')
     }
 
     // T057: Script is both identified and authorized
@@ -151,5 +146,4 @@ export class ScriptComparisonService implements IScriptComparisonService {
     }
     return undefined
   }
-
 }

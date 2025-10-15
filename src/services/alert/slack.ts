@@ -107,7 +107,7 @@ export class SlackAlertService implements IAlertService {
    */
   private async alertOnUnknownScripts(unknownScripts: UnknownScriptFound[], target: Target, destination: AlertDestination): Promise<void> {
     const message = `Unauthorised scripts detected for target!`
-    const scripts = unknownScripts.map(result => this.detectedScriptToScriptInfo(result.script))
+    const scripts = unknownScripts.map((result) => this.detectedScriptToScriptInfo(result.script))
     const messagePayload = this.createScriptMessagePayload(message, scripts, target, destination)
 
     this.log(AlertType.Script, message)
@@ -122,12 +122,7 @@ export class SlackAlertService implements IAlertService {
     const message = `Script hash mismatch detected for target!`
 
     // T063: Enhanced message payload with matcher details
-    const messagePayload = this.createUnauthorizedScriptMessagePayload(
-      message,
-      unauthorizedScripts,
-      target,
-      destination
-    )
+    const messagePayload = this.createUnauthorizedScriptMessagePayload(message, unauthorizedScripts, target, destination)
 
     this.log(AlertType.Script, message)
     await this.sendMessage(messagePayload)
@@ -144,18 +139,18 @@ export class SlackAlertService implements IAlertService {
       return {
         source: {
           type: 'external',
-          url: detectedScript.name
+          url: detectedScript.name,
         },
-        hash: detectedScript.hash
+        hash: detectedScript.hash,
       }
     } else {
       return {
         source: {
           type: 'inline',
           id: detectedScript.name,
-          content: detectedScript.content ?? ''
+          content: detectedScript.content ?? '',
         },
-        hash: detectedScript.hash
+        hash: detectedScript.hash,
       }
     }
   }
@@ -293,13 +288,8 @@ export class SlackAlertService implements IAlertService {
    * T063: Enhanced message payload with matcher failure details for better debugging.
    * Includes which matcher type failed, the pattern/hashes used, and the failure reason.
    */
-  private createUnauthorizedScriptMessagePayload(
-    title: string,
-    unauthorizedScripts: KnownScriptWithUnauthorisedContentFound[],
-    target: Target,
-    destination: AlertDestination
-  ): object {
-    const scripts = unauthorizedScripts.map(result => this.detectedScriptToScriptInfo(result.script))
+  private createUnauthorizedScriptMessagePayload(title: string, unauthorizedScripts: KnownScriptWithUnauthorisedContentFound[], target: Target, destination: AlertDestination): object {
+    const scripts = unauthorizedScripts.map((result) => this.detectedScriptToScriptInfo(result.script))
 
     return {
       channel: destination.destination,

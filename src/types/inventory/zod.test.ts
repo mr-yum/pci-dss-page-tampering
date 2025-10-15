@@ -31,7 +31,7 @@ describe('MatcherConfigSchema', () => {
     })
 
     it('should reject contentMatcher with invalid regex (unclosed parenthesis)', () => {
-      const result = MatcherConfigSchema.safeParse({ contentMatcher: 'fbq(\'init' })
+      const result = MatcherConfigSchema.safeParse({ contentMatcher: "fbq('init" })
 
       expect(result.success).toBe(false)
       if (!result.success) {
@@ -87,7 +87,7 @@ describe('MatcherConfigSchema', () => {
     })
 
     it('should accept valid contentMatcher', () => {
-      const result = MatcherConfigSchema.safeParse({ contentMatcher: 'fbq\\(\'init\'' })
+      const result = MatcherConfigSchema.safeParse({ contentMatcher: "fbq\\('init'" })
 
       expect(result.success).toBe(true)
     })
@@ -209,7 +209,7 @@ describe('RawInventoryScriptInfoSchema', () => {
 
     it('should accept contentMatcher for identify and hashes for authorize', () => {
       const validSchema = {
-        identifyWith: { contentMatcher: 'fbq\\(\'init\'' },
+        identifyWith: { contentMatcher: "fbq\\('init'" },
         authoriseWith: {
           hashes: [
             {

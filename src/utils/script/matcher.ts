@@ -16,9 +16,7 @@ export function getScriptContentMatchersFromInventory(payload: Inventory): Scrip
     })
     .map<ScriptMatcher>((script) => {
       const identifyPattern = script.identifyWith.getPattern() as string
-      const authorizePattern = script.authoriseWith.getType() === 'content'
-        ? (script.authoriseWith.getPattern() as string)
-        : identifyPattern // Fallback to identify pattern if authorize is not content-based
+      const authorizePattern = script.authoriseWith.getType() === 'content' ? (script.authoriseWith.getPattern() as string) : identifyPattern // Fallback to identify pattern if authorize is not content-based
 
       return {
         nameMatcher: new RegExp(identifyPattern),

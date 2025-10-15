@@ -1,13 +1,13 @@
-Refactor plan
-================
+# Refactor plan
 
 We want to refactor this system to be more modular and robust. We will concentrate on two interleaving concerns:
 
 1. Updating the script inventories to separate how scripts are identified vs how their content is authorised. See below for example update to the inventory schema to support. Key difference is that each script will have separate identifyWith & authoriseWith properties which can each be a name matcher, a content matcher or a hashes based matcher. This will enable us to use the same logic for matching inline scripts and external scripts without hardcoded identification code. It would also enable us to have modularised, testable and extendable selection of matchers.
 
-2. Refactor the flow for comparing so that the comparison service returns an array of meaningful and typed comparison results, that later can be handled by handlers.  Each comparison results should have the full context required for the handler to act on it. Example comparison results: UnknownScriptFound with the relevant script info and target. KnownScriptWithUnauthorisedContentFound with the relevant script info, including content, and target and the and the authorisation matcher that it failed.
+2. Refactor the flow for comparing so that the comparison service returns an array of meaningful and typed comparison results, that later can be handled by handlers. Each comparison results should have the full context required for the handler to act on it. Example comparison results: UnknownScriptFound with the relevant script info and target. KnownScriptWithUnauthorisedContentFound with the relevant script info, including content, and target and the and the authorisation matcher that it failed.
 
 Example inventory schema:
+
 ```json
 {
   "target": {

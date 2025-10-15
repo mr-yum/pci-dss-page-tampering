@@ -22,6 +22,7 @@ All code changes MUST maintain or enhance security posture. This system protects
 **Rationale**: PCI DSS requirements 6.4.3 and 11.6.1 are legally mandated compliance requirements. Any security regression could expose payment card data to theft, resulting in regulatory violations, financial penalties, and customer harm.
 
 **Requirements**:
+
 - No code may bypass, disable, or weaken script hash verification
 - No code may reduce alert coverage or sensitivity without explicit security review
 - All inventory modifications must maintain full audit trail in Git
@@ -35,6 +36,7 @@ The system MUST maintain strict separation between inventory updates (staging/ba
 **Rationale**: Mixing these workflows could allow compromised production scripts to auto-authorize themselves into the inventory, defeating the entire security control.
 
 **Requirements**:
+
 - Each target MUST define both `inventoryUrl` and `detectionUrl`
 - `InventoryService` may push Git commits only when processing inventory targets
 - `DetectionService` MUST never modify inventories, only compare and alert
@@ -48,6 +50,7 @@ All inventory changes MUST be committed to the Git repository with descriptive c
 **Rationale**: PCI DSS auditors require proof that script authorization is tracked, reviewed, and justified over time. Git commits provide timestamped, immutable evidence.
 
 **Requirements**:
+
 - Every new script added to inventory MUST have a Git commit
 - Commit messages MUST reference the alert or ticket that triggered the update
 - No force-pushes to main/master branches (preserve history)
@@ -61,6 +64,7 @@ All security-relevant events MUST generate alerts to appropriate channels. Missi
 **Rationale**: PCI DSS 11.6.1 requires detection AND alerting. Detection without notification fails compliance.
 
 **Requirements**:
+
 - `new_inventory_script_identified`: New script found during inventory update
 - `uninventoried_script_detected`: Unknown script found during detection
 - `mismatched_script_detected`: Known script with changed hash (tampering indicator)
@@ -75,6 +79,7 @@ All comparison logic, hash validation, and alert generation MUST be covered by a
 **Rationale**: Bugs in comparison logic could cause false negatives (missed attacks) or false positives (alert fatigue leading to ignored real attacks).
 
 **Requirements**:
+
 - Unit tests MUST cover: ScriptComparisonService, HeaderComparisonService, hash utilities
 - Integration tests MUST cover: Full workflows with mock Puppeteer responses
 - Test scenarios MUST include: New scripts, hash mismatches, missing headers, malformed data
@@ -88,6 +93,7 @@ Introduce new abstractions, dependencies, or patterns ONLY when existing pattern
 **Rationale**: Security systems should be comprehensible to auditors and maintainers. Unnecessary abstraction layers hide bugs and make code reviews harder.
 
 **Requirements**:
+
 - Use Zod schemas for all inventory validation (already established pattern)
 - Prefer functional utilities over class hierarchies unless state management required
 - Document any non-obvious patterns (e.g., matcher comparison in script inventory)
@@ -103,6 +109,7 @@ This section maps constitution principles to specific PCI DSS requirements.
 **Requirement**: All payment page scripts must be inventoried, authorized, and integrity-verified.
 
 **Implementation**:
+
 - Inventory stored in Git repository (Principle III)
 - Each script has: URL, hash history, justification
 - Hash verification on every detection run (Principle I)
@@ -113,6 +120,7 @@ This section maps constitution principles to specific PCI DSS requirements.
 **Requirement**: Automated mechanism to detect and alert on unauthorized changes to payment pages.
 
 **Implementation**:
+
 - DetectionService runs on schedule (daily at 12:00 PM UTC)
 - Compares live page state against authorized inventory
 - Generates categorized alerts (Principle IV)
@@ -123,6 +131,7 @@ This section maps constitution principles to specific PCI DSS requirements.
 ### Code Quality Gates
 
 All changes MUST pass before merge:
+
 1. `npm run check:formatting` - Prettier formatting
 2. `npm run check:linting` - ESLint rules
 3. `npm run check:typing` - TypeScript type checking
@@ -132,6 +141,7 @@ All changes MUST pass before merge:
 ### Refactoring Protocol
 
 When refactoring comparison or detection logic:
+
 1. Write tests that capture current behavior FIRST
 2. Verify tests pass with current implementation
 3. Refactor code
@@ -157,6 +167,7 @@ When refactoring comparison or detection logic:
 This constitution supersedes all conflicting practices, patterns, or conveniences. When in doubt, prioritize security and compliance over convenience.
 
 **Amendment Procedure**:
+
 1. Propose change via pull request to `constitution.md`
 2. Document rationale: What problem? Why can't existing rules address it?
 3. Identify affected code and update plan (migration tasks if needed)
@@ -165,11 +176,13 @@ This constitution supersedes all conflicting practices, patterns, or convenience
 6. Require approval from security/compliance stakeholder (not just development team)
 
 **Versioning Policy**:
+
 - **MAJOR**: Principle removed, redefined, or backward-incompatible governance change
 - **MINOR**: New principle added, section expanded, new requirement introduced
 - **PATCH**: Clarifications, typo fixes, non-semantic wording improvements
 
 **Compliance Review**:
+
 - All PRs MUST include constitution compliance check in description
 - Reviewer MUST verify: "Does this change maintain dual-workflow integrity? Preserve audit trail? Maintain alert coverage?"
 - Complexity violations MUST be explicitly justified (document in PR or refactor to comply)
