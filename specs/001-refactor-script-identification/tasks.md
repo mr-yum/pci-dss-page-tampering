@@ -50,24 +50,24 @@ description: "Task list for Script Identification and Authorisation Refactor"
 
 ### Core Matcher Types
 
-- [ ] T010 Create Matcher interface in src/types/matcher/matcher.interface.ts with identify(), authorize(), getType(), and getPattern() methods
-- [ ] T011 Create AuthorizationResult type in src/types/matcher/authorization-result.ts with authorized flag and optional reason field
-- [ ] T012 Create Hash type export in src/types/hash.ts (if not already exported) for matcher usage
-- [ ] T013 Create DetectedScript type in src/types/script.ts with name, content, hash, and context fields
+- [X] T010 Create Matcher interface in src/types/matcher/matcher.interface.ts with identify(), authorize(), getType(), and getPattern() methods
+- [X] T011 Create AuthorizationResult type in src/types/matcher/authorization-result.ts with authorized flag and optional reason field
+- [X] T012 Create Hash type export in src/types/hash.ts (if not already exported) for matcher usage
+- [X] T013 Create DetectedScript type in src/types/script.ts with name, content, hash, and context fields
 
 ### Matcher Implementations
 
-- [ ] T014 [P] Implement NameMatcher class in src/types/matcher/name-matcher.ts with regex pattern matching on script.name
-- [ ] T015 [P] Implement ContentMatcher class in src/types/matcher/content-matcher.ts with regex pattern matching on script.content and null/empty content handling
-- [ ] T016 [P] Implement HashMatcher class in src/types/matcher/hash-matcher.ts with SHA-256 hash comparison against authorized hash array
-- [ ] T017 Create matcher factory function in src/types/matcher/matcher-factory.ts that creates matcher instances from MatcherConfig
+- [X] T014 [P] Implement NameMatcher class in src/types/matcher/name-matcher.ts with regex pattern matching on script.name
+- [X] T015 [P] Implement ContentMatcher class in src/types/matcher/content-matcher.ts with regex pattern matching on script.content and null/empty content handling
+- [X] T016 [P] Implement HashMatcher class in src/types/matcher/hash-matcher.ts with SHA-256 hash comparison against authorized hash array
+- [X] T017 Create matcher factory function in src/types/matcher/matcher-factory.ts that creates matcher instances from MatcherConfig
 
 ### Unit Tests for Matchers
 
-- [ ] T018 [P] Create NameMatcher unit tests in src/types/matcher/name-matcher.test.ts covering exact URL match, wildcard patterns, non-matching URLs, null/empty names
-- [ ] T019 [P] Create ContentMatcher unit tests in src/types/matcher/content-matcher.test.ts covering exact content match, regex patterns, null/empty content, multi-line content
-- [ ] T020 [P] Create HashMatcher unit tests in src/types/matcher/hash-matcher.test.ts covering single hash match, multiple hashes, no match, null content
-- [ ] T021 Run all matcher unit tests and verify they PASS independently (matcher isolation verified)
+- [X] T018 [P] Create NameMatcher unit tests in src/types/matcher/name-matcher.test.ts covering exact URL match, wildcard patterns, non-matching URLs, null/empty names
+- [X] T019 [P] Create ContentMatcher unit tests in src/types/matcher/content-matcher.test.ts covering exact content match, regex patterns, null/empty content, multi-line content
+- [X] T020 [P] Create HashMatcher unit tests in src/types/matcher/hash-matcher.test.ts covering single hash match, multiple hashes, no match, null content
+- [X] T021 Run all matcher unit tests and verify they PASS independently (matcher isolation verified)
 
 **Checkpoint**: Foundation ready - matcher system fully tested and operational ✅
 
