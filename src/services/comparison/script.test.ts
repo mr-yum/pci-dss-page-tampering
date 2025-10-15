@@ -127,6 +127,21 @@ describe('ScriptComparisonService', () => {
         expect(result.isNewScript).toBe(false)
         expect(result.isNewHash).toBe(false)
       })
+
+      // T003: External script with dynamic query parameters (nameMatcher with wildcard)
+      it('should match external script with dynamic query parameters using wildcard pattern', () => {
+        const hashValue = 'hash123'
+        const detectedScript = createScriptInfo('https://hcaptcha.com/1/api.js?render=explicit&onload=onHCaptchaLoad', hashValue)
+
+        const inventoryScripts = [
+          createInventoryScriptInfo('^https:\\/\\/hcaptcha\\.com\\/1\\/api\\.js\\?.*$', [hashValue])
+        ]
+
+        const result = (service as any).compareSingleScriptWithInventory(detectedScript, inventoryScripts, mockTarget)
+
+        expect(result.isNewScript).toBe(false)
+        expect(result.isNewHash).toBe(false)
+      })
     })
 
     describe('script exists in inventory with different hash', () => {
@@ -229,7 +244,7 @@ describe('ScriptComparisonService', () => {
 
       it('should handle script without content matcher in inventory', () => {
         const detectedScript = createScriptInfo('https://cdn.example.com/simple.js', 'hash123')
-        
+
         const inventoryScripts = [
           createInventoryScriptInfo('https://cdn\\.example\\.com/simple\\.js', [], true)
         ]
@@ -238,6 +253,57 @@ describe('ScriptComparisonService', () => {
 
         expect(result.isNewScript).toBe(false)
         expect(result.isNewHash).toBe(true)
+      })
+    })
+
+    // T008: First-match-wins with overlapping name patterns
+    describe('first-match-wins pattern matching', () => {
+      it('should use first matching inventory entry when multiple patterns match', () => {
+        const detectedScript = createScriptInfo('https://www.facebook.net/signals/config/123456', 'hash123')
+
+        // Both patterns would match, but first one should win
+        const inventoryScripts = [
+          createInventoryScriptInfo('.*facebook.*', ['firstHash'], true), // Broad pattern - matches first
+          createInventoryScriptInfo('https://www\\.facebook\\.net/signals/config/.*', ['secondHash'], true) // Specific pattern - should not be used
+        ]
+
+        const result = (service as any).compareSingleScriptWithInventory(detectedScript, inventoryScripts, mockTarget)
+
+        // Should match first entry's hash
+        expect(result.isNewScript).toBe(false)
+        expect(result.isNewHash).toBe(true) // 'hash123' doesn't match 'firstHash' from first entry
+      })
+
+      it('should skip non-authorized entries and match next authorized entry', () => {
+        const detectedScript = createScriptInfo('https://cdn.example.com/script.js', 'hash123')
+
+        const inventoryScripts = [
+          createInventoryScriptInfo('.*example.*', ['hash123'], false), // Matches but not authorized - will be skipped
+          createInventoryScriptInfo('https://cdn\\.example\\.com/script\\.js', ['hash123'], true) // Matches and authorized - will be used
+        ]
+
+        const result = (service as any).compareSingleScriptWithInventory(detectedScript, inventoryScripts, mockTarget)
+
+        // Current behavior: scriptExistsInInventory checks first pattern (matches)
+        // But getScriptFromInventory filters by authorised=true, so first is skipped
+        // Second entry is used instead
+        expect(result.isNewScript).toBe(false)
+        expect(result.isNewHash).toBe(false)
+      })
+
+      it('should stop checking after first match even if later entries have better hash match', () => {
+        const detectedScript = createScriptInfo('https://cdn.example.com/analytics.js', 'exactHash')
+
+        const inventoryScripts = [
+          createInventoryScriptInfo('.*example.*', ['wrongHash'], true, 'analytics'), // First match - has content matcher
+          createInventoryScriptInfo('https://cdn\\.example\\.com/analytics\\.js', ['exactHash'], true) // Second - exact hash match
+        ]
+
+        const result = (service as any).compareSingleScriptWithInventory(detectedScript, inventoryScripts, mockTarget)
+
+        // First entry matches and has content matcher that matches 'analytics' in URL
+        expect(result.isNewScript).toBe(false)
+        expect(result.isNewHash).toBe(false) // Content matcher succeeds, so no new hash
       })
     })
   })
