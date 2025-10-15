@@ -10,9 +10,15 @@
 import { HashMatcher } from './hash-matcher'
 import type { DetectedScript } from './matcher.interface'
 import type { SHA256Hash } from '../hash'
+import type { InventoryScriptHashInfo } from '../inventory/model'
 
 describe('HashMatcher', () => {
   const createHash = (value: string): SHA256Hash => ({ value })
+
+  const createHashInfo = (value: string): InventoryScriptHashInfo => ({
+    timestamp: new Date('2025-10-15T00:00:00.000Z'),
+    hash: createHash(value)
+  })
 
   const createDetectedScript = (name: string, content: string | null, hashValue: string): DetectedScript => ({
     name,
@@ -22,7 +28,7 @@ describe('HashMatcher', () => {
 
   describe('constructor', () => {
     it('should create HashMatcher with valid hashes', () => {
-      const hashes = [createHash('hash123'), createHash('hash456')]
+      const hashes = [createHashInfo('hash123'), createHashInfo('hash456')]
       const matcher = new HashMatcher(hashes)
 
       expect(matcher.getType()).toBe('hash')
@@ -43,14 +49,14 @@ describe('HashMatcher', () => {
 
   describe('getType', () => {
     it('should return "hash" as matcher type', () => {
-      const matcher = new HashMatcher([createHash('hash123')])
+      const matcher = new HashMatcher([createHashInfo('hash123')])
       expect(matcher.getType()).toBe('hash')
     })
   })
 
   describe('getPattern', () => {
     it('should return the authorized hashes array', () => {
-      const hashes = [createHash('hash123'), createHash('hash456')]
+      const hashes = [createHashInfo('hash123'), createHashInfo('hash456')]
       const matcher = new HashMatcher(hashes)
 
       const pattern = matcher.getPattern()
@@ -62,14 +68,14 @@ describe('HashMatcher', () => {
 
   describe('identify', () => {
     it('should always return false (hashes cannot identify scripts)', () => {
-      const matcher = new HashMatcher([createHash('hash123')])
+      const matcher = new HashMatcher([createHashInfo('hash123')])
       const script = createDetectedScript('https://example.com/script.js', 'content', 'hash123')
 
       expect(matcher.identify(script)).toBe(false)
     })
 
     it('should return false even when hash matches', () => {
-      const matcher = new HashMatcher([createHash('matching-hash')])
+      const matcher = new HashMatcher([createHashInfo('matching-hash')])
       const script = createDetectedScript('https://example.com/script.js', 'content', 'matching-hash')
 
       expect(matcher.identify(script)).toBe(false)
@@ -80,7 +86,7 @@ describe('HashMatcher', () => {
     describe('single hash match', () => {
       it('should authorize when script hash matches the authorized hash', () => {
         const authorizedHash = 'abc123def456'
-        const matcher = new HashMatcher([createHash(authorizedHash)])
+        const matcher = new HashMatcher([createHashInfo(authorizedHash)])
         const script = createDetectedScript('https://example.com/script.js', 'console.log("hello")', authorizedHash)
 
         const result = matcher.authorize(script)
@@ -90,7 +96,7 @@ describe('HashMatcher', () => {
       })
 
       it('should not authorize when script hash does not match', () => {
-        const matcher = new HashMatcher([createHash('authorized-hash')])
+        const matcher = new HashMatcher([createHashInfo('authorized-hash')])
         const script = createDetectedScript('https://example.com/script.js', 'console.log("hello")', 'different-hash')
 
         const result = matcher.authorize(script)
@@ -103,9 +109,9 @@ describe('HashMatcher', () => {
     describe('multiple hashes', () => {
       it('should authorize when script hash matches any of the authorized hashes', () => {
         const hashes = [
-          createHash('hash1'),
-          createHash('hash2'),
-          createHash('hash3')
+          createHashInfo('hash1'),
+          createHashInfo('hash2'),
+          createHashInfo('hash3')
         ]
         const matcher = new HashMatcher(hashes)
         const script = createDetectedScript('https://example.com/script.js', 'content', 'hash2')
@@ -117,8 +123,8 @@ describe('HashMatcher', () => {
 
       it('should authorize when script hash matches the first hash', () => {
         const hashes = [
-          createHash('first-hash'),
-          createHash('second-hash')
+          createHashInfo('first-hash'),
+          createHashInfo('second-hash')
         ]
         const matcher = new HashMatcher(hashes)
         const script = createDetectedScript('https://example.com/script.js', 'content', 'first-hash')
@@ -130,9 +136,9 @@ describe('HashMatcher', () => {
 
       it('should authorize when script hash matches the last hash', () => {
         const hashes = [
-          createHash('first-hash'),
-          createHash('second-hash'),
-          createHash('last-hash')
+          createHashInfo('first-hash'),
+          createHashInfo('second-hash'),
+          createHashInfo('last-hash')
         ]
         const matcher = new HashMatcher(hashes)
         const script = createDetectedScript('https://example.com/script.js', 'content', 'last-hash')
@@ -144,9 +150,9 @@ describe('HashMatcher', () => {
 
       it('should not authorize when script hash does not match any hash', () => {
         const hashes = [
-          createHash('hash1'),
-          createHash('hash2'),
-          createHash('hash3')
+          createHashInfo('hash1'),
+          createHashInfo('hash2'),
+          createHashInfo('hash3')
         ]
         const matcher = new HashMatcher(hashes)
         const script = createDetectedScript('https://example.com/script.js', 'content', 'unknown-hash')
@@ -160,7 +166,7 @@ describe('HashMatcher', () => {
 
     describe('null/empty content', () => {
       it('should not authorize when content is null', () => {
-        const matcher = new HashMatcher([createHash('hash123')])
+        const matcher = new HashMatcher([createHashInfo('hash123')])
         const script = createDetectedScript('https://example.com/script.js', null, 'hash123')
 
         const result = matcher.authorize(script)
@@ -170,7 +176,7 @@ describe('HashMatcher', () => {
       })
 
       it('should not authorize when content is empty string', () => {
-        const matcher = new HashMatcher([createHash('hash123')])
+        const matcher = new HashMatcher([createHashInfo('hash123')])
         const script = createDetectedScript('https://example.com/script.js', '', 'hash123')
 
         const result = matcher.authorize(script)
@@ -180,7 +186,7 @@ describe('HashMatcher', () => {
       })
 
       it('should not authorize when content is whitespace-only', () => {
-        const matcher = new HashMatcher([createHash('hash123')])
+        const matcher = new HashMatcher([createHashInfo('hash123')])
         const script = createDetectedScript('https://example.com/script.js', '   ', 'hash123')
 
         const result = matcher.authorize(script)
@@ -193,7 +199,7 @@ describe('HashMatcher', () => {
     describe('hash format validation', () => {
       it('should handle long SHA-256 hash values', () => {
         const longHash = 'a'.repeat(64) // SHA-256 is 64 hex characters
-        const matcher = new HashMatcher([createHash(longHash)])
+        const matcher = new HashMatcher([createHashInfo(longHash)])
         const script = createDetectedScript('https://example.com/script.js', 'content', longHash)
 
         const result = matcher.authorize(script)
@@ -202,7 +208,7 @@ describe('HashMatcher', () => {
       })
 
       it('should handle hash comparison case-sensitively', () => {
-        const matcher = new HashMatcher([createHash('AbC123')])
+        const matcher = new HashMatcher([createHashInfo('AbC123')])
         const script = createDetectedScript('https://example.com/script.js', 'content', 'abc123')
 
         const result = matcher.authorize(script)

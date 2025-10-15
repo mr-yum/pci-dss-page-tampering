@@ -51,11 +51,17 @@ export class GitInventoryStore implements IInventoryStore {
     const pullResponse = await Promise.all(
       files.map(async (fileName) => {
         const filePath = `${TARGET_PATH}/${fileName}`
-        const rawInventory = await getRawInventoryFromFile(filePath)
 
-        return {
-          fileName: fileName,
-          rawInventory: rawInventory,
+        try {
+          const rawInventory = await getRawInventoryFromFile(filePath)
+          return {
+            fileName: fileName,
+            rawInventory: rawInventory,
+          }
+        } catch (error) {
+          // Enhanced error message with file context for Zod validation failures
+          const errorMessage = error instanceof Error ? error.message : String(error)
+          throw new Error(`[Inventory → Store] Validation failed for inventory file '${fileName}': ${errorMessage}`)
         }
       }),
     )

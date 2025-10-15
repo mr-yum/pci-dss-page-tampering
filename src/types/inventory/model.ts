@@ -1,6 +1,7 @@
 import type { SHA256Hash } from '../hash'
 import type { TargetDetection, TargetInventory } from '../target'
 import type { RawInventory } from './raw'
+import type { Matcher } from '../matcher/matcher.interface'
 
 export type InventoryAuthorisationInfo = {
   description: string
@@ -13,10 +14,17 @@ export type InventoryScriptHashInfo = {
   hash: SHA256Hash
 }
 
+/**
+ * Processed inventory script information with Matcher instances.
+ *
+ * Updated model (Phase 3):
+ * - identifyWith: Matcher instance created from MatcherConfig (for script identification)
+ * - authoriseWith: Matcher instance created from MatcherConfig (for content authorization)
+ * - No longer uses raw regex fields; matchers encapsulate all matching logic
+ */
 export type InventoryScriptInfo = {
-  nameMatcher: RegExp
-  contentMatcher?: RegExp | undefined
-  hashes: InventoryScriptHashInfo[]
+  identifyWith: Matcher
+  authoriseWith: Matcher
   authorisationInfo: InventoryAuthorisationInfo
 }
 

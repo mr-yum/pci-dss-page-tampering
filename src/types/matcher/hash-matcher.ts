@@ -7,7 +7,7 @@
  * @see ../../../specs/001-refactor-script-identification/data-model.md for design
  */
 
-import type { SHA256Hash } from '../hash'
+import type { InventoryScriptHashInfo } from '../inventory/model'
 import type { Matcher, DetectedScript } from './matcher.interface'
 import type { AuthorizationResult } from './authorization-result'
 
@@ -24,13 +24,13 @@ import type { AuthorizationResult } from './authorization-result'
  * - Returns false for null/empty content (cannot compute hash)
  *
  * Validation:
- * - authorizedHashes array must contain at least 1 hash
- * - Each hash must have value (hex string)
+ * - authorizedHashes array must contain at least 1 hash (with timestamp)
+ * - Each hash must have value (hex string) and timestamp
  */
 export class HashMatcher implements Matcher {
-  private readonly authorizedHashes: SHA256Hash[]
+  private readonly authorizedHashes: InventoryScriptHashInfo[]
 
-  constructor(hashes: SHA256Hash[]) {
+  constructor(hashes: InventoryScriptHashInfo[]) {
     if (!hashes || hashes.length === 0) {
       throw new Error('HashMatcher requires at least one authorized hash')
     }
@@ -41,7 +41,7 @@ export class HashMatcher implements Matcher {
     return 'hash'
   }
 
-  getPattern(): SHA256Hash[] {
+  getPattern(): InventoryScriptHashInfo[] {
     return this.authorizedHashes
   }
 
@@ -60,7 +60,7 @@ export class HashMatcher implements Matcher {
 
     // Check if the script's computed hash matches any authorized hash
     const isAuthorized = this.authorizedHashes.some(
-      (authorizedHash) => authorizedHash.value === script.hash.value
+      (authorizedHashInfo) => authorizedHashInfo.hash.value === script.hash.value
     )
 
     return isAuthorized

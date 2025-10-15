@@ -8,8 +8,9 @@
  * @see ../../../specs/001-refactor-script-identification/data-model.md for design rationale
  */
 
-import type { SHA256Hash } from '../hash'
+import type { InventoryScriptHashInfo } from '../inventory/model'
 import type { AuthorizationResult } from './authorization-result'
+import type { SHA256Hash } from '../hash'
 
 /**
  * Detected script structure for matcher operations.
@@ -52,9 +53,9 @@ export interface Matcher {
   /**
    * Returns the pattern or hashes used by this matcher.
    * For NameMatcher/ContentMatcher: regex pattern string
-   * For HashMatcher: array of authorized hashes
+   * For HashMatcher: array of authorized hashes with timestamps
    */
-  getPattern(): string | SHA256Hash[]
+  getPattern(): string | InventoryScriptHashInfo[]
 
   /**
    * Determines if the given script matches this matcher's identification criteria.

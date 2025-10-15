@@ -7,7 +7,7 @@
  * @see ../../../specs/001-refactor-script-identification/data-model.md for MatcherConfig schema
  */
 
-import type { SHA256Hash } from '../hash'
+import type { InventoryScriptHashInfo } from '../inventory/model'
 import type { Matcher } from './matcher.interface'
 import { NameMatcher } from './name-matcher'
 import { ContentMatcher } from './content-matcher'
@@ -16,11 +16,14 @@ import { HashMatcher } from './hash-matcher'
 /**
  * Configuration for creating a matcher instance.
  * Corresponds to inventory JSON schema.
+ *
+ * Note: This type is duplicated from matcher-config-schema.ts (RawMatcherConfig)
+ * to avoid circular dependencies. The Zod schema is the source of truth for validation.
  */
 export type MatcherConfig =
   | { nameMatcher: string }
   | { contentMatcher: string }
-  | { hashes: SHA256Hash[] }
+  | { hashes: InventoryScriptHashInfo[] }
 
 /**
  * Factory function for creating matcher instances from configuration.

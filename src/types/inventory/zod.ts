@@ -4,6 +4,7 @@ import type { RawTargetDetection, RawTargetInventory } from '../target/raw'
 
 import { SHA256HashSchema } from '../zod'
 import { z } from 'zod'
+import { MatcherConfigSchema } from './matcher-config-schema'
 
 export const AlertDestinationSchema: z.ZodType<AlertDestination> = z.object({
   destination: z.string(),
@@ -77,11 +78,15 @@ export const InventoryScriptHashInfoSchema: z.ZodType<InventoryScriptHashInfo> =
 /**
  * Schema for information about an inventory script.
  * Corresponds to `RawInventoryScriptInfo`.
+ *
+ * Updated schema (Phase 3):
+ * - Replaces nameMatcher/contentMatcher/hashes with identifyWith/authoriseWith
+ * - Each field uses MatcherConfig union type (nameMatcher | contentMatcher | hashes)
+ * - Old schema format is rejected (no backward compatibility per clarification Q4)
  */
 export const RawInventoryScriptInfoSchema: z.ZodType<RawInventoryScriptInfo> = z.object({
-  nameMatcher: z.string(),
-  contentMatcher: z.optional(z.string()),
-  hashes: z.array(InventoryScriptHashInfoSchema),
+  identifyWith: MatcherConfigSchema,
+  authoriseWith: MatcherConfigSchema,
   authorisationInfo: InventoryAuthorisationInfoSchema,
 })
 

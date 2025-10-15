@@ -81,25 +81,25 @@ description: "Task list for Script Identification and Authorisation Refactor"
 
 ### Zod Schema Updates for User Story 1
 
-- [ ] T022 [P] [US1] Create MatcherConfig union type schema in src/types/inventory/matcher-config-schema.ts with nameMatcher, contentMatcher, and hashes variants
-- [ ] T023 [P] [US1] Add regex validation custom refinement to MatcherConfig schema with detailed error messages showing pattern and error location
-- [ ] T024 [US1] Update ScriptInventoryEntry schema in src/types/inventory/zod.ts to replace nameMatcher/contentMatcher/hashes fields with identifyWith and authoriseWith MatcherConfig fields
-- [ ] T025 [US1] Update RawInventoryScriptInfoSchema in src/types/inventory/zod.ts to use new schema structure
-- [ ] T026 [US1] Update InventoryScriptInfo type in src/types/inventory/model.ts to include identifyWith and authoriseWith as Matcher instances instead of raw regex
+- [X] T022 [P] [US1] Create MatcherConfig union type schema in src/types/inventory/matcher-config-schema.ts with nameMatcher, contentMatcher, and hashes variants
+- [X] T023 [P] [US1] Add regex validation custom refinement to MatcherConfig schema with detailed error messages showing pattern and error location
+- [X] T024 [US1] Update ScriptInventoryEntry schema in src/types/inventory/zod.ts to replace nameMatcher/contentMatcher/hashes fields with identifyWith and authoriseWith MatcherConfig fields
+- [X] T025 [US1] Update RawInventoryScriptInfoSchema in src/types/inventory/zod.ts to use new schema structure
+- [X] T026 [US1] Update InventoryScriptInfo type in src/types/inventory/model.ts to include identifyWith and authoriseWith as Matcher instances instead of raw regex
 
 ### Schema Validation Tests
 
-- [ ] T027 [P] [US1] Create Zod schema validation tests in src/types/inventory/zod.test.ts covering invalid regex patterns, missing identifyWith/authoriseWith fields, empty hashes array
-- [ ] T028 [P] [US1] Add test case: old schema format (without identifyWith/authoriseWith) should fail with clear error message
-- [ ] T029 [P] [US1] Add test case: valid schema with nameMatcher for identify and hashes for authorize
-- [ ] T030 [P] [US1] Add test case: valid schema with same matcher type for both identifyWith and authoriseWith
-- [ ] T031 [US1] Run schema validation tests and verify all edge cases are detected correctly
+- [X] T027 [P] [US1] Create Zod schema validation tests in src/types/inventory/zod.test.ts covering invalid regex patterns, missing identifyWith/authoriseWith fields, empty hashes array
+- [X] T028 [P] [US1] Add test case: old schema format (without identifyWith/authoriseWith) should fail with clear error message
+- [X] T029 [P] [US1] Add test case: valid schema with nameMatcher for identify and hashes for authorize
+- [X] T030 [P] [US1] Add test case: valid schema with same matcher type for both identifyWith and authoriseWith
+- [X] T031 [US1] Run schema validation tests and verify all edge cases are detected correctly
 
 ### Repository Layer Updates
 
-- [ ] T032 [US1] Update InventoryRepository in src/repositories/inventory.ts to parse new schema and create Matcher instances from MatcherConfig using matcher factory
-- [ ] T033 [US1] Update GitInventoryStore in src/stores/inventory/git.ts to handle Zod validation errors and provide context about which inventory file failed
-- [ ] T034 [US1] Update InMemoryInventoryStore in src/stores/inventory/in-memory.ts to use new schema structure for test fixtures
+- [X] T032 [US1] Update InventoryRepository in src/repositories/inventory.ts to parse new schema and create Matcher instances from MatcherConfig using matcher factory
+- [X] T033 [US1] Update GitInventoryStore in src/stores/inventory/git.ts to handle Zod validation errors and provide context about which inventory file failed
+- [X] T034 [US1] Update InMemoryInventoryStore in src/stores/inventory/in-memory.ts to use new schema structure for test fixtures
 
 **Checkpoint**: At this point, User Story 1 schema updates are complete - inventories can be loaded with new matcher structure ✅
 
