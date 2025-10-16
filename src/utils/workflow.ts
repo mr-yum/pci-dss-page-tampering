@@ -1,9 +1,10 @@
 import type { Page } from 'puppeteer'
+
 import type { PuppeteerAction, PuppeteerLocatorAction, PuppeteerWorkflow } from '../types/puppeteer'
-import type { Workflow, WorkflowActionType, WorkflowStep, WorkflowWaitForDefinition } from '../types/workflow'
 import type { Target } from '../types/target'
-import { getWorkflowDefinitionFromFile } from './file'
+import type { Workflow, WorkflowActionType, WorkflowStep, WorkflowWaitForDefinition } from '../types/workflow'
 import { WORKFLOW_PATH } from './constants'
+import { getWorkflowDefinitionFromFile } from './file'
 
 export async function getWorkflowFromFile(fileName: string): Promise<Workflow> {
   const workflowFilePath = `${WORKFLOW_PATH}/${fileName}`

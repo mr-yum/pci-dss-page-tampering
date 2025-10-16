@@ -8,10 +8,10 @@
  */
 
 import type { InventoryScriptHashInfo } from '../inventory/model'
-import type { Matcher } from './matcher.interface'
-import { NameMatcher } from './name-matcher'
 import { ContentMatcher } from './content-matcher'
 import { HashMatcher } from './hash-matcher'
+import type { Matcher } from './matcher.interface'
+import { NameMatcher } from './name-matcher'
 
 /**
  * Configuration for creating a matcher instance.

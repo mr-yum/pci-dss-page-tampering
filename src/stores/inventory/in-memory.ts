@@ -1,10 +1,9 @@
 import type { IInventoryStore } from '../../interfaces/inventory'
-
 import type { Inventory, InventoryPullResult } from '../../types/inventory/model'
-import type { RawInventory, RawInventoryScriptInfo, RawInventoryHeaderInfo } from '../../types/inventory/raw'
+import type { RawInventory, RawInventoryHeaderInfo,RawInventoryScriptInfo } from '../../types/inventory/raw'
 
 export class InMemoryInventoryStore implements IInventoryStore {
-  // @ts-ignore - This is unused test data, but kept for reference
+  // @ts-expect-error - This is unused test data, but kept for reference
   private _inventory: RawInventory[] = [
     {
       target: {

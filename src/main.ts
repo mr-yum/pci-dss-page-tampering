@@ -1,17 +1,16 @@
-import simpleGit from 'simple-git'
 import puppeteer, { type Browser } from 'puppeteer'
+import simpleGit from 'simple-git'
 
 import { ScriptInventoryRepository } from './repositories/inventory'
 import { SlackAlertService } from './services/alert/slack'
+import { HeaderComparisonService } from './services/comparison/header'
 import { ScriptComparisonService } from './services/comparison/script'
 import { DetectionService } from './services/detection'
 import { ScriptInventoryService } from './services/inventory'
 import { GitInventoryStore } from './stores/inventory/git'
-import { PullTarget, type Target } from './types/target'
-import { HeaderComparisonService } from './services/comparison/header'
-
-import type { Inventory, InventoryDifferenceResult } from './types/inventory/model'
 import type { ComparisonResultType, ScriptComparisonSummary } from './types/comparison'
+import type { Inventory, InventoryDifferenceResult } from './types/inventory/model'
+import { PullTarget, type Target } from './types/target'
 import { getScriptContentMatchersFromInventory } from './utils/script/matcher'
 
 /**

@@ -1,4 +1,4 @@
-import type { Inventory, InventoryScriptInfo, InventoryHeaderInfo } from '../types/inventory/model'
+import type { Inventory, InventoryHeaderInfo,InventoryScriptInfo } from '../types/inventory/model'
 import type { RawInventory, RawInventoryHeaderInfo } from '../types/inventory/raw'
 import { inventoryScriptInfoToRawInventoryScriptInfo } from './script'
 

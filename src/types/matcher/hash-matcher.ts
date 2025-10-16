@@ -8,8 +8,8 @@
  */
 
 import type { InventoryScriptHashInfo } from '../inventory/model'
-import type { Matcher, DetectedScript } from './matcher.interface'
 import type { AuthorizationResult } from './authorization-result'
+import type { DetectedScript,Matcher } from './matcher.interface'
 
 /**
  * Matches scripts by cryptographic hash (SHA-256).
@@ -30,6 +30,12 @@ import type { AuthorizationResult } from './authorization-result'
 export class HashMatcher implements Matcher {
   private readonly authorizedHashes: InventoryScriptHashInfo[]
 
+  /**
+   * Creates a new HashMatcher with an array of authorized hash values.
+   *
+   * @param hashes - Array of authorized hashes with timestamps (must have at least 1 entry)
+   * @throws {Error} If hashes array is empty or null
+   */
   constructor(hashes: InventoryScriptHashInfo[]) {
     if (!hashes || hashes.length === 0) {
       throw new Error('HashMatcher requires at least one authorized hash')
@@ -37,19 +43,43 @@ export class HashMatcher implements Matcher {
     this.authorizedHashes = hashes
   }
 
+  /**
+   * Returns the matcher type discriminator.
+   *
+   * @returns The string 'hash' for type-based dispatch
+   */
   getType(): 'hash' {
     return 'hash'
   }
 
+  /**
+   * Returns the array of authorized hashes for logging and debugging.
+   *
+   * @returns The authorized hashes with timestamps
+   */
   getPattern(): InventoryScriptHashInfo[] {
     return this.authorizedHashes
   }
 
+  /**
+   * Identifies scripts - always returns false for HashMatcher.
+   * Hashes cannot identify scripts (requires known content), only authorize them.
+   *
+   * @param _script - The detected script (unused)
+   * @returns Always false - use NameMatcher or ContentMatcher for identification
+   */
   identify(_script: DetectedScript): boolean {
     // Hashes cannot identify scripts, only authorize them
     return false
   }
 
+  /**
+   * Authorizes a detected script by comparing its computed hash against authorized hashes.
+   * Uses SHA-256 hash comparison for cryptographic integrity verification.
+   *
+   * @param script - The detected script with pre-computed hash
+   * @returns AuthorizationResult with authorized=true if hash matches any authorized hash, authorized=false with reason otherwise
+   */
   authorize(script: DetectedScript): AuthorizationResult {
     if (!script.content || script.content.trim() === '') {
       return {

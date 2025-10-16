@@ -7,8 +7,8 @@
  * @see research.md (R4) for first-match-wins implementation
  */
 
-import { DetectedScript } from '../../../src/types/script'
 import { ScriptInventoryEntry } from '../../../src/types/inventory/model'
+import { DetectedScript } from '../../../src/types/script'
 import { Target } from '../../../src/types/target'
 import { ComparisonResultType } from './comparison-result.interface'
 

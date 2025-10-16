@@ -203,15 +203,15 @@ description: 'Task list for Script Identification and Authorisation Refactor'
 
 **Purpose**: Final improvements affecting multiple components
 
-- [ ] T074 [P] Run type checking (npm run check:typing) and resolve any TypeScript errors
-- [ ] T075 [P] Run linting (npm run check:linting) and fix any ESLint issues
-- [ ] T076 [P] Run formatting (npm run fix:formatting) to ensure code consistency
-- [ ] T077 Run all unit tests (npm run test:unit) and verify 100% pass rate
-- [ ] T078 Review code coverage report and ensure >90% coverage for matcher implementations and comparison service per plan.md
-- [ ] T079 [P] Add JSDoc comments to all new matcher classes and comparison result types
-- [ ] T080 [P] Update architecture documentation in CLAUDE.md to reflect new matcher system
-- [ ] T081 Perform security review: verify hash verification unchanged, alert coverage maintained, no security regressions
-- [ ] T082 Run quickstart.md validation scenarios to verify migration guide is executable
+- [x] T074 [P] Run type checking (npm run check:typing) and resolve any TypeScript errors
+- [x] T075 [P] Run linting (npm run check:linting) and fix any ESLint issues
+- [x] T076 [P] Run formatting (npm run fix:formatting) to ensure code consistency
+- [x] T077 Run all unit tests (npm run test:unit) and verify 100% pass rate
+- [x] T078 Review code coverage report and ensure >90% coverage for matcher implementations and comparison service per plan.md
+- [x] T079 [P] Add JSDoc comments to all new matcher classes and comparison result types
+- [x] T080 [P] Update architecture documentation in CLAUDE.md to reflect new matcher system
+- [x] T081 Perform security review: verify hash verification unchanged, alert coverage maintained, no security regressions
+- [x] T082 Run quickstart.md validation scenarios to verify migration guide is executable
 
 ---
 

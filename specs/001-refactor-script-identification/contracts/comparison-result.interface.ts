@@ -8,9 +8,9 @@
  * @see research.md (R3) for design rationale
  */
 
+import { ScriptInventoryEntry } from '../../../src/types/inventory/model'
 import { DetectedScript } from '../../../src/types/script'
 import { Target } from '../../../src/types/target'
-import { ScriptInventoryEntry } from '../../../src/types/inventory/model'
 import { Matcher } from './matcher.interface'
 
 /**

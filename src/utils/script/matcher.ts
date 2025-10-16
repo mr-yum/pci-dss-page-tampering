@@ -1,5 +1,5 @@
-import type { ScriptMatcher } from '../../types/matcher'
 import type { Inventory } from '../../types/inventory/model'
+import type { ScriptMatcher } from '../../types/matcher'
 
 /**
  * Extracts content matchers from inventory for inline script detection.

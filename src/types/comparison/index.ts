@@ -12,9 +12,9 @@ export { UnknownScriptFound } from './unknown-script-found'
 export { KnownScriptWithUnauthorisedContentFound } from './known-script-unauthorised-content-found'
 export { AuthorizedScriptFound } from './authorized-script-found'
 
-import type { UnknownScriptFound } from './unknown-script-found'
-import type { KnownScriptWithUnauthorisedContentFound } from './known-script-unauthorised-content-found'
 import type { AuthorizedScriptFound } from './authorized-script-found'
+import type { KnownScriptWithUnauthorisedContentFound } from './known-script-unauthorised-content-found'
+import type { UnknownScriptFound } from './unknown-script-found'
 
 /**
  * Union type for all possible comparison results.

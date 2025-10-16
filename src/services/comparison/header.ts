@@ -1,7 +1,7 @@
 import type { IHeaderComparisonService } from '../../interfaces/comparison'
-import type { Inventory } from '../../types/inventory/model'
-import type { HeaderDetectionSummary, HeaderName, HeaderValues } from '../../types/header'
 import type { HeaderComparisonSummary } from '../../types/comparison'
+import type { HeaderDetectionSummary, HeaderName, HeaderValues } from '../../types/header'
+import type { Inventory } from '../../types/inventory/model'
 import type { Target } from '../../types/target'
 
 export class HeaderComparisonService implements IHeaderComparisonService {

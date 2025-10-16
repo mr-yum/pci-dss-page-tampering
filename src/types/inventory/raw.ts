@@ -1,6 +1,6 @@
-import type { Inventory, InventoryHeaderInfo, InventoryScriptInfo, InventoryTarget } from './model'
 import type { RawTargetDetection, RawTargetInventory } from '../target/raw'
 import type { RawMatcherConfig } from './matcher-config-schema'
+import type { Inventory, InventoryHeaderInfo, InventoryScriptInfo, InventoryTarget } from './model'
 
 /**
  * Raw (JSON-serializable) version of InventoryScriptInfo.

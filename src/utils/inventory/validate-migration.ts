@@ -17,9 +17,10 @@
  * @see ../../../specs/001-refactor-script-identification/quickstart.md for migration guide
  */
 
-import { RawInventorySchema } from '../../types/inventory/zod'
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
+
+import { RawInventorySchema } from '../../types/inventory/zod'
 
 interface ValidationResult {
   success: boolean

@@ -1,10 +1,9 @@
 import type { InventoryScriptInfo } from '../types/inventory/model'
 import type { RawInventoryScriptInfo } from '../types/inventory/raw'
+import { createMatcher } from '../types/matcher/matcher-factory'
 import type { ScriptInfo } from '../types/script'
-
 import { scriptHashToInventoryHashInfo } from '../utils/hash'
 import { escapeRegex } from './string'
-import { createMatcher } from '../types/matcher/matcher-factory'
 
 /**
  * Converts a ScriptInfo to InventoryScriptInfo for new script discovery.

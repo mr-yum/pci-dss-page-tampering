@@ -7,10 +7,10 @@
  * @see ../../../specs/001-refactor-script-identification/research.md (R7) for test strategy
  */
 
-import { HashMatcher } from './hash-matcher'
-import type { DetectedScript } from './matcher.interface'
 import type { SHA256Hash } from '../hash'
 import type { InventoryScriptHashInfo } from '../inventory/model'
+import { HashMatcher } from './hash-matcher'
+import type { DetectedScript } from './matcher.interface'
 
 describe('HashMatcher', () => {
   const createHash = (value: string): SHA256Hash => ({ value })

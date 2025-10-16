@@ -6,9 +6,9 @@
  * @see specs/001-refactor-script-identification/data-model.md for entity definitions
  */
 
-import { ComparisonResult } from './comparison-result'
 import type { DetectedScript } from '../matcher/matcher.interface'
 import type { Target } from '../target'
+import { ComparisonResult } from './comparison-result'
 
 /**
  * Result indicating a detected script with no matching inventory entry.
@@ -30,6 +30,13 @@ export class UnknownScriptFound extends ComparisonResult {
    */
   public readonly script: DetectedScript
 
+  /**
+   * Creates a new UnknownScriptFound result.
+   *
+   * @param target - The target being processed
+   * @param timestamp - When the comparison occurred
+   * @param script - The detected script that was not found in inventory
+   */
   constructor(target: Target, timestamp: Date, script: DetectedScript) {
     super(target, timestamp)
     this.script = script

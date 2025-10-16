@@ -8,8 +8,8 @@
  * @see research.md (R1) for pattern selection rationale
  */
 
-import { DetectedScript } from '../../../src/types/script'
 import { Hash } from '../../../src/types/hash'
+import { DetectedScript } from '../../../src/types/script'
 
 /**
  * Result of an authorization check.

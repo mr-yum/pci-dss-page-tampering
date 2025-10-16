@@ -1,8 +1,8 @@
-import { ScriptComparisonService } from './script'
+import type { SHA256Hash } from '../../types/hash'
 import type { Inventory, InventoryScriptInfo } from '../../types/inventory/model'
 import type { ScriptDetectionSummary, ScriptInfo } from '../../types/script'
 import type { Target } from '../../types/target'
-import type { SHA256Hash } from '../../types/hash'
+import { ScriptComparisonService } from './script'
 
 describe('ScriptComparisonService', () => {
   let service: ScriptComparisonService
@@ -387,7 +387,7 @@ describe('ScriptComparisonService', () => {
       const results = await service.compare(mockTarget, mockInventory, scriptDetectionSummary)
 
       expect(results).toHaveLength(1)
-      expect(results[0].target).toBe(mockTarget)
+      expect(results[0]!.target).toBe(mockTarget)
     })
   })
 })

@@ -1,4 +1,5 @@
 import type { HTTPResponse } from 'puppeteer'
+
 import type { HeaderName, HeaderValues } from '../types/header'
 
 export async function headerResponseHandler(response: HTTPResponse, detectedHeaders: Map<HeaderName, HeaderValues>): Promise<void> {
@@ -12,7 +13,7 @@ export async function headerResponseHandler(response: HTTPResponse, detectedHead
         const headerValue = headers[cspHeaderName]
         const splitHeaderValues = headerValue
           .split(';')
-          .map((splitValue) => splitValue.replace('\n', '\s').trim())
+          .map((splitValue) => splitValue.replace('\n', ' ').trim())
           .filter((value) => value.length !== 0)
 
         for (const value of splitHeaderValues) {

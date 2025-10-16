@@ -70,8 +70,8 @@ act push --container-architecture linux/amd64 --secret-file .env.secrets
    - Captures scripts and headers during page navigation
    - Returns detection summaries for comparison
 
-2. **ComparisonServices** - Compare detected resources against inventory:
-   - `ScriptComparisonService` (`src/services/comparison/script.ts`)
+2. **ComparisonServices** - Compare detected resources against inventory using matcher pipeline:
+   - `ScriptComparisonService` (`src/services/comparison/script.ts`) - Uses modular matcher system for flexible script identification and authorization
    - `HeaderComparisonService` (`src/services/comparison/header.ts`)
 
 3. **InventoryService** (`src/services/inventory.ts`) - Manages resource inventories stored in Git
@@ -92,7 +92,14 @@ act push --container-architecture linux/amd64 --secret-file .env.secrets
    - Alerts on uninventoried or hash-mismatched scripts
    - No inventory modifications
 
-3. **Alert Categories**:
+3. **Script Comparison Flow** (Matcher Pipeline):
+   - **Identification**: Iterate inventory entries in order, test `identifyWith` matcher against detected script
+   - **First-Match-Wins**: Return first inventory entry where `identifyWith.identify()` returns true
+   - **Authorization**: If identified, test `authoriseWith` matcher against script content
+   - **Result**: Return typed comparison result (UnknownScriptFound, KnownScriptWithUnauthorisedContentFound, or AuthorizedScriptFound)
+   - **Fail-Secure**: Null/empty content triggers UnknownScriptFound (cannot be safely matched)
+
+4. **Alert Categories**:
    - `new_inventory_script_identified`: New script found during inventory (needs authorization)
    - `uninventoried_script_detected`: Unknown script found during detection
    - `mismatched_script_detected`: Known script with changed hash (potential tampering)
@@ -103,10 +110,31 @@ act push --container-architecture linux/amd64 --secret-file .env.secrets
 - **ScriptInfo** (`src/types/script.ts`) - Represents detected scripts with hash validation
 - **DetectionSummary** (`src/types/detection.ts`) - Results from a detection run
 - **Inventory** (`src/types/inventory/`) - Zod-validated inventory structures with:
-  - `scripts[]`: Array of authorized scripts with hash history and justification
+  - `scripts[]`: Array of authorized scripts with `identifyWith` and `authoriseWith` matcher configurations
   - `headers{}`: Key-value map of expected security headers
   - `alerts{}`: Configuration for different violation alert destinations
   - `target`: Dual URLs for inventory and detection workflows
+
+#### Matcher System (Refactored 2025-10)
+
+- **Matcher Interface** (`src/types/matcher/matcher.interface.ts`) - Strategy pattern for script matching with `identify()` and `authorize()` methods
+- **NameMatcher** (`src/types/matcher/name-matcher.ts`) - Matches scripts by URL using regex patterns (for external scripts with dynamic parameters)
+- **ContentMatcher** (`src/types/matcher/content-matcher.ts`) - Matches scripts by content using regex patterns (for inline scripts with identifying code snippets)
+- **HashMatcher** (`src/types/matcher/hash-matcher.ts`) - Matches scripts by SHA-256 hash (for strict integrity verification)
+
+Each inventory entry now specifies:
+- `identifyWith`: How to identify the script among detected scripts (NameMatcher, ContentMatcher, or HashMatcher)
+- `authoriseWith`: How to authorize the script's content (NameMatcher, ContentMatcher, or HashMatcher)
+
+This separation enables flexible matching strategies (e.g., identify by URL pattern, authorize by hash).
+
+#### Comparison Result Types (Refactored 2025-10)
+
+- **UnknownScriptFound** (`src/types/comparison/unknown-script-found.ts`) - Script not in inventory or has null/empty content
+- **KnownScriptWithUnauthorisedContentFound** (`src/types/comparison/known-script-unauthorised-content-found.ts`) - Script identified but authorization failed (includes matcher details and failure reason)
+- **AuthorizedScriptFound** (`src/types/comparison/authorized-script-found.ts`) - Script both identified and authorized (compliant, no alert)
+
+These typed results provide complete context to alert handlers without additional queries.
 
 ### Workflows
 

@@ -1,10 +1,10 @@
+import { z } from 'zod'
+
+import type { RawTargetDetection, RawTargetInventory } from '../target/raw'
+import { SHA256HashSchema } from '../zod'
+import { MatcherConfigSchema } from './matcher-config-schema'
 import type { AlertDestination, AlertDetection, AlertInventory, InventoryAlert, InventoryAuthorisationInfo, InventoryScriptHashInfo } from './model'
 import type { RawInventory, RawInventoryHeaderInfo, RawInventoryScriptInfo, RawInventoryTarget } from './raw'
-import type { RawTargetDetection, RawTargetInventory } from '../target/raw'
-
-import { SHA256HashSchema } from '../zod'
-import { z } from 'zod'
-import { MatcherConfigSchema } from './matcher-config-schema'
 
 export const AlertDestinationSchema: z.ZodType<AlertDestination> = z.object({
   destination: z.string(),

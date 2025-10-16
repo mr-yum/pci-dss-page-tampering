@@ -13,7 +13,8 @@
  * @see ../../../specs/001-refactor-script-identification/research.md R6 for error message requirements
  */
 
-import { describe, it, expect } from '@jest/globals'
+import { describe, expect,it } from '@jest/globals'
+
 import { MatcherConfigSchema } from './matcher-config-schema'
 import { RawInventoryScriptInfoSchema } from './zod'
 
@@ -24,9 +25,9 @@ describe('MatcherConfigSchema', () => {
 
       expect(result.success).toBe(false)
       if (!result.success) {
-        expect(result.error.issues[0].message).toContain('Invalid regex in nameMatcher')
-        expect(result.error.issues[0].message).toContain('^https://example.com/[')
-        expect(result.error.issues[0].message).toContain('Ensure all brackets are closed')
+        expect(result.error.issues[0]!.message).toContain('Invalid regex in nameMatcher')
+        expect(result.error.issues[0]!.message).toContain('^https://example.com/[')
+        expect(result.error.issues[0]!.message).toContain('Ensure all brackets are closed')
       }
     })
 
@@ -35,8 +36,8 @@ describe('MatcherConfigSchema', () => {
 
       expect(result.success).toBe(false)
       if (!result.success) {
-        expect(result.error.issues[0].message).toContain('Invalid regex in contentMatcher')
-        expect(result.error.issues[0].message).toContain('fbq')
+        expect(result.error.issues[0]!.message).toContain('Invalid regex in contentMatcher')
+        expect(result.error.issues[0]!.message).toContain('fbq')
       }
     })
 
@@ -45,7 +46,7 @@ describe('MatcherConfigSchema', () => {
 
       expect(result.success).toBe(false)
       if (!result.success) {
-        expect(result.error.issues[0].message).toContain('Invalid regex in nameMatcher')
+        expect(result.error.issues[0]!.message).toContain('Invalid regex in nameMatcher')
       }
     })
   })
@@ -56,7 +57,7 @@ describe('MatcherConfigSchema', () => {
 
       expect(result.success).toBe(false)
       if (!result.success) {
-        expect(result.error.issues[0].message).toContain('must not be empty')
+        expect(result.error.issues[0]!.message).toContain('must not be empty')
       }
     })
 
@@ -65,7 +66,7 @@ describe('MatcherConfigSchema', () => {
 
       expect(result.success).toBe(false)
       if (!result.success) {
-        expect(result.error.issues[0].message).toContain('must not be empty')
+        expect(result.error.issues[0]!.message).toContain('must not be empty')
       }
     })
 
@@ -74,7 +75,7 @@ describe('MatcherConfigSchema', () => {
 
       expect(result.success).toBe(false)
       if (!result.success) {
-        expect(result.error.issues[0].message).toContain('at least 1 hash')
+        expect(result.error.issues[0]!.message).toContain('at least 1 hash')
       }
     })
   })
@@ -316,7 +317,7 @@ describe('RawInventoryScriptInfoSchema', () => {
 
       expect(result.success).toBe(false)
       if (!result.success) {
-        const errorMessage = result.error.issues[0].message
+        const errorMessage = result.error.issues[0]!.message
         // Error message includes the matcher type and the invalid pattern
         expect(errorMessage).toContain('nameMatcher')
         expect(errorMessage).toContain('^[unclosed')

@@ -1,13 +1,12 @@
+import axios from 'axios'
+
 import type { IAlertService } from '../../interfaces/alert'
-import type { HeaderComparisonSummary, ScriptComparisonSummary } from '../../types/comparison'
-import type { Target } from '../../types/target'
-import type { ScriptInfo } from '../../types/script'
+import { AlertType } from '../../types/alert'
+import type { ComparisonResultType, HeaderComparisonSummary, KnownScriptWithUnauthorisedContentFound,ScriptComparisonSummary , UnknownScriptFound } from '../../types/comparison'
 import type { HeaderInfo, HeaderName, HeaderValues } from '../../types/header'
 import type { AlertDestination, InventoryAlert } from '../../types/inventory/model'
-
-import { AlertType } from '../../types/alert'
-import type { ComparisonResultType, UnknownScriptFound, KnownScriptWithUnauthorisedContentFound } from '../../types/comparison'
-import axios from 'axios'
+import type { ScriptInfo } from '../../types/script'
+import type { Target } from '../../types/target'
 
 export class SlackAlertService implements IAlertService {
   private readonly oAuthToken: string

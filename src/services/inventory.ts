@@ -1,13 +1,12 @@
-import type { IScriptInventoryRepository, IInventoryService } from '../interfaces/inventory'
+import type { IInventoryService,IScriptInventoryRepository } from '../interfaces/inventory'
+import type { HeaderComparisonSummary, ScriptComparisonResult, ScriptComparisonSummary } from '../types/comparison'
 import type { Inventory, InventoryDifferenceResult, InventoryHeaderInfo } from '../types/inventory/model'
 import type { InventoryServiceProps } from '../types/inventory/props'
-import type { HeaderComparisonSummary, ScriptComparisonResult, ScriptComparisonSummary } from '../types/comparison'
-
-import { getScriptSource, scriptInfoToInventoryScriptInfo } from '../utils/script'
-import { scriptHashToInventoryHashInfo } from '../utils/hash'
-import { copyInventory } from '../utils/inventory'
 import type { PullTarget } from '../types/target'
+import { scriptHashToInventoryHashInfo } from '../utils/hash'
 import { unauthorisedHeadersToInventoryHeaderInfo } from '../utils/header'
+import { copyInventory } from '../utils/inventory'
+import { getScriptSource, scriptInfoToInventoryScriptInfo } from '../utils/script'
 
 export class ScriptInventoryService implements IInventoryService {
   private _repository: IScriptInventoryRepository

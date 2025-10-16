@@ -1,13 +1,12 @@
+import { rm, writeFile } from 'fs/promises'
+
 import type { IInventoryStore, IScriptInventoryRepository } from '../interfaces/inventory'
 import type { Inventory } from '../types/inventory/model'
 import type { InventoryRepositoryProps } from '../types/inventory/props'
-
+import type { PullTarget } from '../types/target'
+import { GIT_CLONE_PATH, TARGET_PATH } from '../utils/constants'
 import { inventoryToRawInventory, rawInventoryHeaderInfoToInventoryHeaderInfo } from '../utils/inventory'
 import { rawInventoryScriptInfoToInventoryScriptInfo } from '../utils/script'
-import { rm, writeFile } from 'fs/promises'
-
-import { GIT_CLONE_PATH, TARGET_PATH } from '../utils/constants'
-import type { PullTarget } from '../types/target'
 import { getWorkflowFromFile } from '../utils/workflow'
 
 export class ScriptInventoryRepository implements IScriptInventoryRepository {

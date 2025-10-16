@@ -1,13 +1,13 @@
+import { readdir } from 'fs/promises'
+import type { SimpleGit } from 'simple-git'
+import { simpleGit } from 'simple-git'
+
 import type { IInventoryStore } from '../../interfaces/inventory'
 import type { Inventory, InventoryPullResult } from '../../types/inventory/model'
 import type { GitInventoryStoreProps } from '../../types/inventory/props'
-import type { SimpleGit } from 'simple-git'
-
-import { simpleGit } from 'simple-git'
-import { readdir } from 'fs/promises'
-import { getInventoryFileNames, getRawInventoryFromFile } from '../../utils/file'
-import { GIT_CLONE_PATH, GIT_UPDATED_SCRIPTS_BRANCH_NAME, TARGET_DIRECTORY_NAME, TARGET_PATH, WORKFLOW_DIRECTORY_NAME } from '../../utils/constants'
 import { PullTarget } from '../../types/target'
+import { GIT_CLONE_PATH, GIT_UPDATED_SCRIPTS_BRANCH_NAME, TARGET_DIRECTORY_NAME, TARGET_PATH, WORKFLOW_DIRECTORY_NAME } from '../../utils/constants'
+import { getInventoryFileNames, getRawInventoryFromFile } from '../../utils/file'
 
 export class GitInventoryStore implements IInventoryStore {
   private readonly initialGitClient: SimpleGit
@@ -71,7 +71,7 @@ export class GitInventoryStore implements IInventoryStore {
     }
   }
 
-  // @ts-ignore
+  // @ts-expect-error - inventory parameter not used but required by interface
   async push(inventory: Inventory[]): Promise<void> {
     console.log(`[Inventory → Store] Setting user.name and user.email for the local repo.`)
     await this.repositoryGitClient?.addConfig('user.name', 'me&u (formerly Mr Yum) Dev [bot]')

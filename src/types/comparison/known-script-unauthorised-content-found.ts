@@ -7,10 +7,10 @@
  * @see specs/001-refactor-script-identification/data-model.md for entity definitions
  */
 
-import { ComparisonResult } from './comparison-result'
+import type { InventoryScriptInfo } from '../inventory/model'
 import type { DetectedScript, Matcher } from '../matcher/matcher.interface'
 import type { Target } from '../target'
-import type { InventoryScriptInfo } from '../inventory/model'
+import { ComparisonResult } from './comparison-result'
 
 /**
  * Result indicating a script matched by identification but failed authorization.
@@ -52,6 +52,16 @@ export class KnownScriptWithUnauthorisedContentFound extends ComparisonResult {
    */
   public readonly failureReason: string
 
+  /**
+   * Creates a new KnownScriptWithUnauthorisedContentFound result.
+   *
+   * @param target - The target being processed
+   * @param timestamp - When the comparison occurred
+   * @param script - The detected script that was identified but failed authorization
+   * @param inventoryEntry - The inventory entry that identified this script
+   * @param authorizationMatcher - The matcher that failed authorization
+   * @param failureReason - Human-readable explanation of why authorization failed
+   */
   constructor(target: Target, timestamp: Date, script: DetectedScript, inventoryEntry: InventoryScriptInfo, authorizationMatcher: Matcher, failureReason: string) {
     super(target, timestamp)
     this.script = script

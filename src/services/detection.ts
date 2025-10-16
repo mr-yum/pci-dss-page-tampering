@@ -1,16 +1,16 @@
 import type { Browser, Page } from 'puppeteer'
-import type { PuppeteerClickAction, PuppeteerClickPopupAction, PuppeteerInputAction, PuppeteerLocatorAction, PuppeteerNavigateAction } from '../types/puppeteer'
-import type { DetectionSummary } from '../types/detection'
+
+import { headerResponseHandler } from '../handlers/header'
+import { scriptResponseHandler } from '../handlers/script'
 import type { IDetectionService } from '../interfaces/detection'
+import type { DetectionSummary } from '../types/detection'
 import type { HeaderName, HeaderValues } from '../types/header'
+import type { ScriptMatcher } from '../types/matcher'
+import type { PuppeteerClickAction, PuppeteerClickPopupAction, PuppeteerInputAction, PuppeteerLocatorAction, PuppeteerNavigateAction } from '../types/puppeteer'
 import type { ScriptInfo } from '../types/script'
 import type { Target } from '../types/target'
-
 import { getInlineScriptsFromPage } from '../utils/page'
 import { getPuppeteerWorkflowFromTarget, stepsToPuppeteerLocatorAction } from '../utils/workflow'
-import { scriptResponseHandler } from '../handlers/script'
-import { headerResponseHandler } from '../handlers/header'
-import type { ScriptMatcher } from '../types/matcher'
 
 export class DetectionService implements IDetectionService {
   async detect(browser: Browser, target: Target, scriptContentMatchers: ScriptMatcher[]): Promise<DetectionSummary> {

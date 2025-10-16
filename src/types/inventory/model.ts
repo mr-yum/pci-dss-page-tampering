@@ -1,7 +1,7 @@
 import type { SHA256Hash } from '../hash'
+import type { Matcher } from '../matcher/matcher.interface'
 import type { TargetDetection, TargetInventory } from '../target'
 import type { RawInventory } from './raw'
-import type { Matcher } from '../matcher/matcher.interface'
 
 export type InventoryAuthorisationInfo = {
   description: string

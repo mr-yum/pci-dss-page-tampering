@@ -7,8 +7,8 @@
  * @see ../../../specs/001-refactor-script-identification/data-model.md for design
  */
 
-import type { Matcher, DetectedScript } from './matcher.interface'
 import type { AuthorizationResult } from './authorization-result'
+import type { DetectedScript,Matcher } from './matcher.interface'
 
 /**
  * Matches scripts by name/URL using regex patterns.
@@ -25,18 +25,39 @@ import type { AuthorizationResult } from './authorization-result'
 export class NameMatcher implements Matcher {
   private readonly pattern: RegExp
 
+  /**
+   * Creates a new NameMatcher with the specified regex pattern.
+   *
+   * @param patternString - Regex pattern string (validated by Zod schema before instantiation)
+   */
   constructor(patternString: string) {
     this.pattern = new RegExp(patternString)
   }
 
+  /**
+   * Returns the matcher type discriminator.
+   *
+   * @returns The string 'name' for type-based dispatch
+   */
   getType(): 'name' {
     return 'name'
   }
 
+  /**
+   * Returns the regex pattern source for logging and debugging.
+   *
+   * @returns The regex pattern as a string
+   */
   getPattern(): string {
     return this.pattern.source
   }
 
+  /**
+   * Identifies if a detected script matches this pattern by testing the script name.
+   *
+   * @param script - The detected script to test
+   * @returns true if script.name matches the pattern, false otherwise
+   */
   identify(script: DetectedScript): boolean {
     if (!script.name || script.name.trim() === '') {
       return false
@@ -44,6 +65,12 @@ export class NameMatcher implements Matcher {
     return this.pattern.test(script.name)
   }
 
+  /**
+   * Authorizes a detected script by testing the script content against the pattern.
+   *
+   * @param script - The detected script to authorize
+   * @returns AuthorizationResult with authorized=true if content matches, authorized=false with reason otherwise
+   */
   authorize(script: DetectedScript): AuthorizationResult {
     if (!script.content || script.content.trim() === '') {
       return {
