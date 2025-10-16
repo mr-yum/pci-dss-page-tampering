@@ -1,9 +1,9 @@
 <!--
 Sync Impact Report:
-- Version change: None → 1.0.0
-- New constitution created from template
-- Principles defined: 6 core principles aligned with PCI DSS compliance requirements
-- Added sections: PCI DSS Compliance Requirements, Development Workflow
+- Version change: 1.0.0 → 1.1.0
+- Updated to reflect 2025-10 refactor: matcher system and typed comparison results
+- Modified sections: Principle I (fail-secure behavior), Principle VI (matcher patterns), PCI DSS Compliance Requirements
+- Architecture updates: NameMatcher/ContentMatcher/HashMatcher strategy pattern, identifyWith/authoriseWith separation
 - Templates requiring updates:
   ✅ plan-template.md - Constitution Check section present, ready for use
   ✅ spec-template.md - Aligned with user scenario testing requirements
@@ -28,6 +28,7 @@ All code changes MUST maintain or enhance security posture. This system protects
 - All inventory modifications must maintain full audit trail in Git
 - Detection workflow MUST remain read-only (no inventory mutations)
 - Cryptographic hashing (SHA-256 or stronger) required for all script integrity checks
+- Fail-secure behavior: Null or empty script content MUST trigger UnknownScriptFound (cannot be safely matched or authorized)
 
 ### II. Dual-Workflow Integrity
 
@@ -94,9 +95,11 @@ Introduce new abstractions, dependencies, or patterns ONLY when existing pattern
 
 **Requirements**:
 
-- Use Zod schemas for all inventory validation (already established pattern)
+- Use Zod schemas for all inventory validation (established pattern)
+- Use matcher strategy pattern for script identification and authorization (NameMatcher, ContentMatcher, HashMatcher)
+- Each inventory entry MUST specify both `identifyWith` and `authoriseWith` matchers for separation of concerns
 - Prefer functional utilities over class hierarchies unless state management required
-- Document any non-obvious patterns (e.g., matcher comparison in script inventory)
+- Document any non-obvious patterns with inline comments and type annotations
 - New dependencies MUST be justified (What problem? Why can't we solve it with existing tools?)
 - YAGNI: Don't build extension points "for future flexibility" without concrete need
 
@@ -111,9 +114,11 @@ This section maps constitution principles to specific PCI DSS requirements.
 **Implementation**:
 
 - Inventory stored in Git repository (Principle III)
-- Each script has: URL, hash history, justification
+- Each script entry has: identification matcher, authorization matcher, justification
+- Matcher pipeline provides flexible identification (by URL pattern, content, or hash) with separate authorization logic
 - Hash verification on every detection run (Principle I)
 - Dual workflow prevents auto-authorization (Principle II)
+- Typed comparison results (UnknownScriptFound, KnownScriptWithUnauthorisedContentFound, AuthorizedScriptFound) provide complete context for alerting
 
 ### 11.6.1 Detection and Alerting
 
@@ -188,4 +193,4 @@ This constitution supersedes all conflicting practices, patterns, or convenience
 - Complexity violations MUST be explicitly justified (document in PR or refactor to comply)
 - Use CLAUDE.md for agent-specific runtime development guidance
 
-**Version**: 1.0.0 | **Ratified**: 2025-10-15 | **Last Amended**: 2025-10-15
+**Version**: 1.1.0 | **Ratified**: 2025-10-15 | **Last Amended**: 2025-10-16
