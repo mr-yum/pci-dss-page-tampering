@@ -6,7 +6,7 @@ import type { IInventoryStore } from '../../interfaces/inventory'
 import type { Inventory, InventoryPullResult } from '../../types/inventory/model'
 import type { GitInventoryStoreProps } from '../../types/inventory/props'
 import { PullTarget } from '../../types/target'
-import { GIT_CLONE_PATH, GIT_UPDATED_SCRIPTS_BRANCH_NAME, TARGET_DIRECTORY_NAME, TARGET_PATH, WORKFLOW_DIRECTORY_NAME } from '../../utils/constants'
+import { GIT_CLONE_PATH, GIT_DETECTION_SCRIPTS_BRANCH_NAME, GIT_UPDATED_SCRIPTS_BRANCH_NAME, TARGET_DIRECTORY_NAME, TARGET_PATH, WORKFLOW_DIRECTORY_NAME } from '../../utils/constants'
 import { getInventoryFileNames, getRawInventoryFromFile } from '../../utils/file'
 
 export class GitInventoryStore implements IInventoryStore {
@@ -40,6 +40,7 @@ export class GitInventoryStore implements IInventoryStore {
         await this.switchBranch(this.repositoryGitClient, GIT_UPDATED_SCRIPTS_BRANCH_NAME)
         break
       case PullTarget.Detection:
+        await this.switchBranch(this.repositoryGitClient, GIT_DETECTION_SCRIPTS_BRANCH_NAME)
         break
     }
 
