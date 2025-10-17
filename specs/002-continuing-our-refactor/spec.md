@@ -54,15 +54,18 @@ The alert service has both legacy alert methods (`alertForScripts`, `alertForHea
 
 The header comparison service currently uses inline regex matching logic without the matcher abstraction pattern used for scripts. To maintain consistency and enable future extensibility, headers should use the same Matcher interface pattern (NameMatcher for header names, ContentMatcher for header values).
 
+**Important Distinction**: While headers will use the same architectural pattern as scripts (`identifyWith` and `authoriseWith` properties in inventory entries), the concrete matcher implementations will likely differ. For example, a `HeaderNameMatcher` will perform case-insensitive matching against HTTP header names, while a `ScriptNameMatcher` performs case-sensitive matching against script URLs. Both implement the Matcher interface but have different matching behavior appropriate to their domain. This allows the system to maintain architectural consistency while accommodating the different semantics of header vs script identification.
+
 **Why this priority**: Architectural consistency enables easier maintenance and future enhancements. While not immediately critical, mismatched patterns create technical debt.
 
 **Independent Test**: Can be tested by configuring inventory entries with HeaderMatcher instances and verifying the comparison service correctly identifies and authorizes headers using the matcher pattern.
 
 **Acceptance Scenarios**:
 
-1. **Given** an inventory with header entries using NameMatcher for header name matching, **When** headers are compared, **Then** the matcher's identify method is used instead of inline regex logic
+1. **Given** an inventory with header entries using HeaderNameMatcher (or similar header-specific name matcher) for header name matching, **When** headers are compared, **Then** the matcher's identify method performs case-insensitive matching instead of inline regex logic
 2. **Given** an inventory with header entries using ContentMatcher for header value authorization, **When** headers are compared, **Then** the matcher's authorize method is used instead of inline content validation
 3. **Given** a header matcher that fails, **When** the failure is logged, **Then** the matcher type and pattern are included for debugging (consistent with script matchers)
+4. **Given** both HeaderNameMatcher and ScriptNameMatcher implementations exist, **When** each is used in their respective domains, **Then** both correctly implement the Matcher interface while providing domain-appropriate matching behavior (case-insensitive for headers, case-sensitive for script URLs)
 
 ---
 
@@ -89,8 +92,9 @@ The header comparison service currently uses inline regex matching logic without
 - **FR-008**: Alert service MUST remove legacy methods `alertForScripts` and `alertForHeaders` after migration to typed results
 - **FR-009**: Alert service typed handler MUST support both script and header result types through discriminated union pattern
 - **FR-010**: Header comparison service MUST support matchers for header name identification and content authorization (matching script matcher architecture)
-- **FR-010a**: System MUST perform case-insensitive matching for header names (per HTTP RFC 7230) while maintaining case-sensitive matching for header content values
-- **FR-010b**: System MUST use first-match-wins logic when multiple inventory header entries have overlapping name patterns; the first matching entry in array order is selected and subsequent matches are ignored
+- **FR-010a**: System MUST implement distinct matcher classes for headers and scripts (e.g., HeaderNameMatcher vs ScriptNameMatcher) that share the Matcher interface but provide domain-appropriate matching behavior; both headers and scripts use `identifyWith` and `authoriseWith` properties but reference different concrete matcher implementations
+- **FR-010b**: System MUST perform case-insensitive matching for header names (per HTTP RFC 7230) while maintaining case-sensitive matching for header content values
+- **FR-010c**: System MUST use first-match-wins logic when multiple inventory header entries have overlapping name patterns; the first matching entry in array order is selected and subsequent matches are ignored
 - **FR-011**: System MUST maintain existing alert destinations and routing logic (inventory workflow → newHeaderIdentified, detection workflow → newHeaderDetected)
 - **FR-012**: Typed header results MUST include sufficient context that alert handlers require zero additional queries to generate alerts
 - **FR-013**: System MUST handle headers with multiple values by generating one comparison result per value; each value is independently matched and authorized (a header with 3 values produces 3 separate comparison results)
@@ -119,6 +123,7 @@ The header comparison service currently uses inline regex matching logic without
 ## Assumptions
 
 - The header comparison system will adopt the same Matcher interface pattern used for scripts (NameMatcher, ContentMatcher)
+- While the architectural pattern is shared (using `identifyWith` and `authoriseWith`), concrete matcher implementations will differ between headers and scripts to accommodate their different matching semantics (e.g., `HeaderNameMatcher` for case-insensitive header names vs `ScriptNameMatcher` for case-sensitive script URLs)
 - Header inventory entries will follow a similar schema structure to script entries (identifyWith, authoriseWith)
 - Existing header inventory data will need migration to the new typed schema format
 - Alert destinations (Slack channels) remain unchanged
