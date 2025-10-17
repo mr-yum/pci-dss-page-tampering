@@ -8,16 +8,14 @@
  * @see ../data-model.md E6: ComparisonResultType
  */
 
-import type { Target } from '../../../src/types/target'
-import type { InventoryAlert } from '../../../src/types/inventory/model'
-
 // Import script result types
 import type {
   AuthorizedScriptFound,
   KnownScriptWithUnauthorisedContentFound,
   UnknownScriptFound,
 } from '../../../src/types/comparison'
-
+import type { InventoryAlert } from '../../../src/types/inventory/model'
+import type { Target } from '../../../src/types/target'
 // Import header result types
 import type {
   AuthorizedHeaderFound,

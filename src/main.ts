@@ -102,24 +102,39 @@ async function main() {
       const scriptComparisonResults = await scriptComparisonService.compare(detectionSummaryForTarget.target, payload, detectionSummaryForTarget.scriptSummary)
 
       // Run header comparison with inventory (returns typed results per Phase 3)
-      // @ts-expect-error TODO Phase 4: Use _headerComparisonResults with alert handler
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const _headerComparisonResults = await headerComparisonService.compare(detectionSummaryForTarget.target, payload, detectionSummaryForTarget.headerSummary)
+      const headerComparisonResults = await headerComparisonService.compare(detectionSummaryForTarget.target, payload, detectionSummaryForTarget.headerSummary)
 
       // Alert for inventory and target using new typed results
+      // T034, T035: Alert for both scripts and headers using unified typed handler
       await slackAlertService.alertForTypedResults(scriptComparisonResults, target, payload.alerts)
-      // TODO Phase 4: Update alert handler to process header results
-      // await slackAlertService.alertForTypedResults(_headerComparisonResults, target, payload.alerts)
+      await slackAlertService.alertForTypedResults(headerComparisonResults, target, payload.alerts)
 
       // Run inventory sanity check and return to push to inventory
-      // Note: InventoryService.diff() still expects old ScriptComparisonSummary format
-      // TODO: Update InventoryService to use typed results (future task)
-      // For now, we convert typed results back to summary format
+      // Note: InventoryService.diff() still expects old summary formats
+      // For now, we convert typed results back to summary format for backward compatibility
       if (target.type === 'inventory') {
         // Convert typed results back to old summary format for backward compatibility
         const scriptComparisonSummaryForTarget = convertTypedResultsToSummary(scriptComparisonResults, target)
-        // TODO Phase 4: Convert header results back to summary format for backward compatibility
-        const headerComparisonSummaryForTarget = { target, unauthorisedHeaders: undefined }
+
+        // T034: Convert header typed results back to old HeaderComparisonSummary format
+        // Collect unauthorized headers (unknown or known with unauthorized content)
+        const unauthorisedHeadersMap = new Map<string, Set<string>>()
+        headerComparisonResults.forEach((result) => {
+          if (result.type === 'unknown_header_found' || result.type === 'known_header_unauthorised_content') {
+            const headerName = result.header.name
+            const headerValue = result.header.value
+            if (!unauthorisedHeadersMap.has(headerName)) {
+              unauthorisedHeadersMap.set(headerName, new Set())
+            }
+            unauthorisedHeadersMap.get(headerName)!.add(headerValue)
+          }
+        })
+
+        const headerComparisonSummaryForTarget = {
+          target,
+          unauthorisedHeaders: unauthorisedHeadersMap.size > 0 ? unauthorisedHeadersMap : undefined
+        }
+
         return await scriptInventoryService.diff(payload, scriptComparisonSummaryForTarget, headerComparisonSummaryForTarget)
       } else {
         return null

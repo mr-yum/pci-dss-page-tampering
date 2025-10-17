@@ -98,26 +98,26 @@
 
 ### Tests for User Story 2 (REQUIRED per Constitution Principle V)
 
-- [ ] T023 [P] [US2] Write unit test for SlackAlertService.alertForTypedResults handling UnknownHeaderFound in test/unit/services/alert/slack.test.ts - verify alert category is workflow-appropriate (newHeaderIdentified vs uninventoriedHeaderDetected per FR-011)
-- [ ] T024 [P] [US2] Write unit test for SlackAlertService.alertForTypedResults handling KnownHeaderWithUnauthorisedContentFound in test/unit/services/alert/slack.test.ts - verify alert includes matcher details and failure reason
-- [ ] T025 [P] [US2] Write unit test for SlackAlertService.alertForTypedResults handling AuthorizedHeaderFound in test/unit/services/alert/slack.test.ts - verify no alert generated
-- [ ] T026 [P] [US2] Write unit test for SlackAlertService.alertForTypedResults handling all script result types in test/unit/services/alert/slack.test.ts - verify scripts still work after header support added
-- [ ] T027 [US2] Write unit test for SlackAlertService.alertForTypedResults switch statement exhaustive checking in test/unit/services/alert/slack.test.ts - verify TypeScript never type catches missing cases (per FR-009)
+- [X] T023 [P] [US2] Write unit test for SlackAlertService.alertForTypedResults handling UnknownHeaderFound in test/unit/services/alert/slack.test.ts - verify alert category is workflow-appropriate (newHeaderIdentified vs uninventoriedHeaderDetected per FR-011)
+- [X] T024 [P] [US2] Write unit test for SlackAlertService.alertForTypedResults handling KnownHeaderWithUnauthorisedContentFound in test/unit/services/alert/slack.test.ts - verify alert includes matcher details and failure reason
+- [X] T025 [P] [US2] Write unit test for SlackAlertService.alertForTypedResults handling AuthorizedHeaderFound in test/unit/services/alert/slack.test.ts - verify no alert generated
+- [X] T026 [P] [US2] Write unit test for SlackAlertService.alertForTypedResults handling all script result types in test/unit/services/alert/slack.test.ts - verify scripts still work after header support added
+- [X] T027 [US2] Write unit test for SlackAlertService.alertForTypedResults switch statement exhaustive checking in test/unit/services/alert/slack.test.ts - verify TypeScript never type catches missing cases (per FR-009)
 
 **Run tests - ALL MUST FAIL at this point (no implementation yet)**
 
 ### Implementation for User Story 2
 
-- [ ] T028 [US2] Update SlackAlertService.alertForTypedResults() switch statement in src/services/alert/slack.ts to add case 'unknown_header_found' calling alertForUnknownHeader() (per FR-007)
-- [ ] T029 [US2] Update SlackAlertService.alertForTypedResults() switch statement in src/services/alert/slack.ts to add case 'known_header_unauthorised_content' calling alertForKnownHeaderUnauthorised() (per FR-007)
-- [ ] T030 [US2] Update SlackAlertService.alertForTypedResults() switch statement in src/services/alert/slack.ts to add case 'authorized_header' with no-op (no alert)
-- [ ] T031 [P] [US2] Implement alertForUnknownHeader() private method in src/services/alert/slack.ts with workflow-based routing (inventory → newHeaderIdentified, detection → uninventoriedHeaderDetected per FR-011)
-- [ ] T032 [P] [US2] Implement alertForKnownHeaderUnauthorised() private method in src/services/alert/slack.ts including matcher pattern and failure reason in alert
-- [ ] T033 [US2] Add try-catch to each case in SlackAlertService.alertForTypedResults() in src/services/alert/slack.ts to log errors without blocking (per constitution principle IV)
-- [ ] T034 [US2] Update InventoryService in src/services/inventory.ts to call alertForTypedResults() with header comparison results from HeaderComparisonService
-- [ ] T035 [US2] Update DetectionService in src/services/detection.ts to call alertForTypedResults() with header comparison results from HeaderComparisonService
-- [ ] T036 [US2] Mark alertForScripts() method as @deprecated in src/services/alert/slack.ts with comment "Use alertForTypedResults instead"
-- [ ] T037 [US2] Mark alertForHeaders() method as @deprecated in src/services/alert/slack.ts with comment "Use alertForTypedResults instead"
+- [X] T028 [US2] Update SlackAlertService.alertForTypedResults() switch statement in src/services/alert/slack.ts to add case 'unknown_header_found' calling alertForUnknownHeader() (per FR-007)
+- [X] T029 [US2] Update SlackAlertService.alertForTypedResults() switch statement in src/services/alert/slack.ts to add case 'known_header_unauthorised_content' calling alertForKnownHeaderUnauthorised() (per FR-007)
+- [X] T030 [US2] Update SlackAlertService.alertForTypedResults() switch statement in src/services/alert/slack.ts to add case 'authorized_header' with no-op (no alert)
+- [X] T031 [P] [US2] Implement alertForUnknownHeader() private method in src/services/alert/slack.ts with workflow-based routing (inventory → newHeaderIdentified, detection → uninventoriedHeaderDetected per FR-011)
+- [X] T032 [P] [US2] Implement alertForKnownHeaderUnauthorised() private method in src/services/alert/slack.ts including matcher pattern and failure reason in alert
+- [X] T033 [US2] Add try-catch to each case in SlackAlertService.alertForTypedResults() in src/services/alert/slack.ts to log errors without blocking (per constitution principle IV)
+- [X] T034 [US2] Update main.ts to call alertForTypedResults() with header comparison results from HeaderComparisonService (InventoryService/DetectionService don't call alerts directly)
+- [X] T035 [US2] Update main.ts to call alertForTypedResults() with header comparison results from HeaderComparisonService (InventoryService/DetectionService don't call alerts directly)
+- [X] T036 [US2] Mark alertForScripts() method as @deprecated in src/services/alert/slack.ts with comment "Use alertForTypedResults instead"
+- [X] T037 [US2] Mark alertForHeaders() method as @deprecated in src/services/alert/slack.ts with comment "Use alertForTypedResults instead"
 
 **Run tests - ALL MUST PASS at this point (implementation complete for US2)**
 

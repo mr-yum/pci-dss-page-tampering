@@ -8,9 +8,9 @@
  * @see ../data-model.md E1-E3: Header comparison result entities
  */
 
-import type { Target } from '../../../src/types/target'
-import type { Inventory } from '../../../src/types/inventory/model'
 import type { HeaderDetectionSummary } from '../../../src/types/header'
+import type { Inventory } from '../../../src/types/inventory/model'
+import type { Target } from '../../../src/types/target'
 import type { HeaderComparisonResultType } from './header-comparison-results'
 
 /**

@@ -8,9 +8,9 @@
  * @see ../research.md for design decisions and rationale
  */
 
-import type { Target } from '../../../src/types/target'
-import type { Matcher } from '../../../src/types/matcher/matcher.interface'
 import type { ComparisonResult } from '../../../src/types/comparison/comparison-result'
+import type { Matcher } from '../../../src/types/matcher/matcher.interface'
+import type { Target } from '../../../src/types/target'
 
 /**
  * Represents a single detected header name-value pair.

@@ -19,12 +19,12 @@ export { KnownHeaderWithUnauthorisedContentFound as KnownHeaderWithUnauthorisedC
 export { AuthorizedHeaderFound } from './authorized-header-found'
 
 // Type imports for union
-import type { AuthorizedScriptFound } from './authorized-script-found'
-import type { KnownScriptWithUnauthorisedContentFound } from './known-script-unauthorised-content-found'
-import type { UnknownScriptFound } from './unknown-script-found'
 import type { AuthorizedHeaderFound } from './authorized-header-found'
+import type { AuthorizedScriptFound } from './authorized-script-found'
 import type { KnownHeaderWithUnauthorisedContentFound as KnownHeaderWithUnauthorisedContentFound_Header } from './known-header-unauthorised-content-found'
+import type { KnownScriptWithUnauthorisedContentFound } from './known-script-unauthorised-content-found'
 import type { UnknownHeaderFound } from './unknown-header-found'
+import type { UnknownScriptFound } from './unknown-script-found'
 
 /**
  * Union type for all possible comparison results.
