@@ -341,15 +341,15 @@ describe('ScriptComparisonService', () => {
       expect(results).toHaveLength(3)
 
       // Known script should be authorized
-      const knownResult = results.find((r) => r.script.name === 'https://known.com/script.js')
+      const knownResult = results.find((r) => 'script' in r && r.script.name === 'https://known.com/script.js')
       expect(knownResult?.type).toBe('authorized_script')
 
       // New script should be unknown
-      const newResult = results.find((r) => r.script.name === 'https://new.com/script.js')
+      const newResult = results.find((r) => 'script' in r && r.script.name === 'https://new.com/script.js')
       expect(newResult?.type).toBe('unknown_script_found')
 
       // Changed script should be known but unauthorized
-      const changedResult = results.find((r) => r.script.name === 'https://changed.com/script.js')
+      const changedResult = results.find((r) => 'script' in r && r.script.name === 'https://changed.com/script.js')
       expect(changedResult?.type).toBe('known_script_unauthorised_content')
     })
 
@@ -371,10 +371,10 @@ describe('ScriptComparisonService', () => {
       expect(results.every((r) => r.type === 'unknown_script_found')).toBe(true)
 
       // Verify both scripts are present
-      const externalResult = results.find((r) => r.script.name === 'https://example.com/script.js')
+      const externalResult = results.find((r) => 'script' in r && r.script.name === 'https://example.com/script.js')
       expect(externalResult).toBeDefined()
 
-      const inlineResult = results.find((r) => r.script.name === 'inline-script')
+      const inlineResult = results.find((r) => 'script' in r && r.script.name === 'inline-script')
       expect(inlineResult).toBeDefined()
     })
 

@@ -101,12 +101,15 @@ async function main() {
       // Run script comparison with inventory (returns typed results)
       const scriptComparisonResults = await scriptComparisonService.compare(detectionSummaryForTarget.target, payload, detectionSummaryForTarget.scriptSummary)
 
-      // Run header comparison with inventory
-      const headerComparisonSummaryForTarget = await headerComparisonService.compare(detectionSummaryForTarget.target, payload, detectionSummaryForTarget.headerSummary)
+      // Run header comparison with inventory (returns typed results per Phase 3)
+      // @ts-expect-error TODO Phase 4: Use _headerComparisonResults with alert handler
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const _headerComparisonResults = await headerComparisonService.compare(detectionSummaryForTarget.target, payload, detectionSummaryForTarget.headerSummary)
 
       // Alert for inventory and target using new typed results
       await slackAlertService.alertForTypedResults(scriptComparisonResults, target, payload.alerts)
-      await slackAlertService.alertForHeaders(headerComparisonSummaryForTarget, target, payload.alerts)
+      // TODO Phase 4: Update alert handler to process header results
+      // await slackAlertService.alertForTypedResults(_headerComparisonResults, target, payload.alerts)
 
       // Run inventory sanity check and return to push to inventory
       // Note: InventoryService.diff() still expects old ScriptComparisonSummary format
@@ -115,6 +118,8 @@ async function main() {
       if (target.type === 'inventory') {
         // Convert typed results back to old summary format for backward compatibility
         const scriptComparisonSummaryForTarget = convertTypedResultsToSummary(scriptComparisonResults, target)
+        // TODO Phase 4: Convert header results back to summary format for backward compatibility
+        const headerComparisonSummaryForTarget = { target, unauthorisedHeaders: undefined }
         return await scriptInventoryService.diff(payload, scriptComparisonSummaryForTarget, headerComparisonSummaryForTarget)
       } else {
         return null

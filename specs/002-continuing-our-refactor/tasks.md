@@ -39,8 +39,8 @@
 
 ### Base Type Infrastructure
 
-- [ ] T001 [P] Define DetectedHeader interface in src/types/header.ts with properties: name (string), value (string), target (Target), workflow (string)
-- [ ] T002 [P] Update ComparisonResultType union in src/types/comparison/index.ts to prepare for header result types (add placeholder comment for header types)
+- [X] T001 [P] Define DetectedHeader interface in src/types/header.ts with properties: name (string), value (string), target (Target), workflow (string)
+- [X] T002 [P] Update ComparisonResultType union in src/types/comparison/index.ts to prepare for header result types (add placeholder comment for header types)
 
 **Checkpoint**: Foundation ready - user story implementation can now begin
 
@@ -70,17 +70,17 @@
 
 ### Implementation for User Story 1
 
-- [ ] T012 [P] [US1] Create UnknownHeaderFound class in src/types/comparison/unknown-header-found.ts extending ComparisonResult with type="unknown_header_found", header property (per FR-001, FR-003)
-- [ ] T013 [P] [US1] Create KnownHeaderWithUnauthorisedContentFound class in src/types/comparison/known-header-unauthorised-content-found.ts extending ComparisonResult with type="known_header_unauthorised_content", header, inventoryEntry, authorizationMatcher, failureReason properties (per FR-001, FR-004)
-- [ ] T014 [P] [US1] Create AuthorizedHeaderFound class in src/types/comparison/authorized-header-found.ts extending ComparisonResult with type="authorized_header", header, inventoryEntry properties (per FR-001, FR-005)
-- [ ] T015 [US1] Update ComparisonResultType union in src/types/comparison/index.ts to include UnknownHeaderFound, KnownHeaderWithUnauthorisedContentFound, AuthorizedHeaderFound (per FR-014)
-- [ ] T016 [US1] Export new header result types from src/types/comparison/index.ts
-- [ ] T017 [US1] Update IHeaderComparisonService interface in src/interfaces/comparison.ts to return Promise<ComparisonResultType[]> instead of Promise<HeaderComparisonSummary> (per FR-006)
-- [ ] T018 [US1] Refactor HeaderComparisonService.compare() in src/services/comparison/header.ts to iterate over header Map entries and expand Set<values> to individual DetectedHeader instances (one result per value per FR-013, data-model.md BR-1)
-- [ ] T019 [US1] Implement compareSingleHeader() private method in src/services/comparison/header.ts with logic: normalize name to lowercase (per FR-010b), find matching inventory entry (first-match-wins per FR-010c), create appropriate typed result
-- [ ] T020 [US1] Implement findMatchingInventoryEntry() private method in src/services/comparison/header.ts with first-match-wins logic iterating inventory entries in array order (per data-model.md BR-2)
-- [ ] T021 [US1] Add logging to HeaderComparisonService in src/services/comparison/header.ts for identification and authorization results (matcher type, pattern, success/failure, timing)
-- [ ] T022 [US1] Handle empty string values in HeaderComparisonService in src/services/comparison/header.ts - do NOT skip, pass to ContentMatcher per FR-013a and data-model.md BR-5
+- [X] T012 [P] [US1] Create UnknownHeaderFound class in src/types/comparison/unknown-header-found.ts extending ComparisonResult with type="unknown_header_found", header property (per FR-001, FR-003)
+- [X] T013 [P] [US1] Create KnownHeaderWithUnauthorisedContentFound class in src/types/comparison/known-header-unauthorised-content-found.ts extending ComparisonResult with type="known_header_unauthorised_content", header, inventoryEntry, authorizationMatcher, failureReason properties (per FR-001, FR-004)
+- [X] T014 [P] [US1] Create AuthorizedHeaderFound class in src/types/comparison/authorized-header-found.ts extending ComparisonResult with type="authorized_header", header, inventoryEntry properties (per FR-001, FR-005)
+- [X] T015 [US1] Update ComparisonResultType union in src/types/comparison/index.ts to include UnknownHeaderFound, KnownHeaderWithUnauthorisedContentFound, AuthorizedHeaderFound (per FR-014)
+- [X] T016 [US1] Export new header result types from src/types/comparison/index.ts
+- [X] T017 [US1] Update IHeaderComparisonService interface in src/interfaces/comparison.ts to return Promise<ComparisonResultType[]> instead of Promise<HeaderComparisonSummary> (per FR-006)
+- [X] T018 [US1] Refactor HeaderComparisonService.compare() in src/services/comparison/header.ts to iterate over header Map entries and expand Set<values> to individual DetectedHeader instances (one result per value per FR-013, data-model.md BR-1)
+- [X] T019 [US1] Implement compareSingleHeader() private method in src/services/comparison/header.ts with logic: normalize name to lowercase (per FR-010b), find matching inventory entry (first-match-wins per FR-010c), create appropriate typed result
+- [X] T020 [US1] Implement findMatchingInventoryEntry() private method in src/services/comparison/header.ts with first-match-wins logic iterating inventory entries in array order (per data-model.md BR-2)
+- [X] T021 [US1] Add logging to HeaderComparisonService in src/services/comparison/header.ts for identification and authorization results (matcher type, pattern, success/failure, timing)
+- [X] T022 [US1] Handle empty string values in HeaderComparisonService in src/services/comparison/header.ts - do NOT skip, pass to ContentMatcher per FR-013a and data-model.md BR-5
 
 **Run tests - ALL MUST PASS at this point (implementation complete for US1)**
 
