@@ -132,7 +132,7 @@ async function main() {
 
         const headerComparisonSummaryForTarget = {
           target,
-          unauthorisedHeaders: unauthorisedHeadersMap.size > 0 ? unauthorisedHeadersMap : undefined
+          unauthorisedHeaders: unauthorisedHeadersMap.size > 0 ? unauthorisedHeadersMap : undefined,
         }
 
         return await scriptInventoryService.diff(payload, scriptComparisonSummaryForTarget, headerComparisonSummaryForTarget)

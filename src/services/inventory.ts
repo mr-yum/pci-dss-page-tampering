@@ -1,4 +1,4 @@
-import type { IInventoryService,IScriptInventoryRepository } from '../interfaces/inventory'
+import type { IInventoryService, IScriptInventoryRepository } from '../interfaces/inventory'
 import type { HeaderComparisonSummary, ScriptComparisonResult, ScriptComparisonSummary } from '../types/comparison'
 import type { Inventory, InventoryDifferenceResult, InventoryHeaderInfo } from '../types/inventory/model'
 import type { InventoryServiceProps } from '../types/inventory/props'

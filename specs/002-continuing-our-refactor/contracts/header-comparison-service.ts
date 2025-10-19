@@ -59,11 +59,7 @@ export interface IHeaderComparisonService {
    * @see data-model.md BR-4: Case-Sensitive Value Authorization
    * @see data-model.md BR-5: Empty Value Handling
    */
-  compare(
-    target: Target,
-    inventory: Inventory,
-    headerDetectionSummary: HeaderDetectionSummary
-  ): Promise<HeaderComparisonResultType[]>
+  compare(target: Target, inventory: Inventory, headerDetectionSummary: HeaderDetectionSummary): Promise<HeaderComparisonResultType[]>
 }
 
 /**

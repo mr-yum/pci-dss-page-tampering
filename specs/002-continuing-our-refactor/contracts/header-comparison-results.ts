@@ -96,7 +96,7 @@ export interface InventoryHeaderInfo {
   readonly authorisationInfo: {
     readonly authorised: boolean
     readonly justification: string
-    readonly authorisedAt: string  // ISO 8601
+    readonly authorisedAt: string // ISO 8601
   }
 }
 
@@ -143,14 +143,7 @@ export class KnownHeaderWithUnauthorisedContentFound extends ComparisonResult {
    */
   public readonly failureReason: string
 
-  constructor(
-    target: Target,
-    timestamp: Date,
-    header: DetectedHeader,
-    inventoryEntry: InventoryHeaderInfo,
-    authorizationMatcher: Matcher,
-    failureReason: string
-  ) {
+  constructor(target: Target, timestamp: Date, header: DetectedHeader, inventoryEntry: InventoryHeaderInfo, authorizationMatcher: Matcher, failureReason: string) {
     super(target, timestamp)
     this.header = header
     this.inventoryEntry = inventoryEntry
@@ -197,7 +190,4 @@ export class AuthorizedHeaderFound extends ComparisonResult {
  *
  * @see data-model.md E6: ComparisonResultType (extended with header types)
  */
-export type HeaderComparisonResultType =
-  | UnknownHeaderFound
-  | KnownHeaderWithUnauthorisedContentFound
-  | AuthorizedHeaderFound
+export type HeaderComparisonResultType = UnknownHeaderFound | KnownHeaderWithUnauthorisedContentFound | AuthorizedHeaderFound

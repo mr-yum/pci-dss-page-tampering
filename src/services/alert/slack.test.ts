@@ -81,7 +81,7 @@ describe('SlackAlertService - Typed Results Handling (Phase 4)', () => {
       expect(sendMessageSpy).toHaveBeenCalledWith(
         expect.objectContaining({
           channel: 'inventory-header-channel',
-        })
+        }),
       )
     })
 
@@ -95,7 +95,7 @@ describe('SlackAlertService - Typed Results Handling (Phase 4)', () => {
       expect(sendMessageSpy).toHaveBeenCalledWith(
         expect.objectContaining({
           channel: 'detection-header-channel',
-        })
+        }),
       )
     })
 
@@ -106,17 +106,32 @@ describe('SlackAlertService - Typed Results Handling (Phase 4)', () => {
 
       await service.alertForTypedResults([result], mockTarget, mockAlertDestinations)
 
+      // Verify the message was sent with the header name in the table
       expect(sendMessageSpy).toHaveBeenCalledWith(
         expect.objectContaining({
           blocks: expect.arrayContaining([
             expect.objectContaining({
-              type: 'section',
-              text: expect.objectContaining({
-                text: expect.stringContaining('x-custom-header'),
-              }),
+              type: 'table',
+              rows: expect.arrayContaining([
+                expect.any(Array), // Table header row
+                expect.arrayContaining([
+                  // Table data row with header name
+                  expect.objectContaining({
+                    elements: expect.arrayContaining([
+                      expect.objectContaining({
+                        elements: expect.arrayContaining([
+                          expect.objectContaining({
+                            text: 'x-custom-header',
+                          }),
+                        ]),
+                      }),
+                    ]),
+                  }),
+                ]),
+              ]),
             }),
           ]),
-        })
+        }),
       )
     })
   })
@@ -138,8 +153,13 @@ describe('SlackAlertService - Typed Results Handling (Phase 4)', () => {
       }
 
       const mockInventoryEntry: InventoryHeaderInfo = {
-        nameMatcher: /^x-frame-options$/i,
-        contentMatcher: /^(DENY|SAMEORIGIN)$/,
+        identifyWith: {
+          identify: () => true,
+          authorize: () => ({ authorized: true }),
+          getType: () => 'header-name',
+          getPattern: () => '^x-frame-options$',
+        },
+        authoriseWith: mockMatcher,
         authorisationInfo: {
           description: 'Frame protection header',
           authorised: true,
@@ -147,30 +167,40 @@ describe('SlackAlertService - Typed Results Handling (Phase 4)', () => {
         },
       }
 
-      const result = new KnownHeaderWithUnauthorisedContentFound(
-        mockTarget,
-        new Date(),
-        header,
-        mockInventoryEntry,
-        mockMatcher,
-        'value does not match pattern: ^(DENY|SAMEORIGIN)$'
-      )
+      const result = new KnownHeaderWithUnauthorisedContentFound(mockTarget, new Date(), header, mockInventoryEntry, mockMatcher, 'value does not match pattern: ^(DENY|SAMEORIGIN)$')
 
       const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
 
       await service.alertForTypedResults([result], mockTarget, mockAlertDestinations)
 
+      // Verify the failure reason is in the table with matcher details
       expect(sendMessageSpy).toHaveBeenCalledWith(
         expect.objectContaining({
           blocks: expect.arrayContaining([
             expect.objectContaining({
-              type: 'section',
-              text: expect.objectContaining({
-                text: expect.stringMatching(/matcher.*failed/i),
-              }),
+              type: 'table',
+              rows: expect.arrayContaining([
+                expect.any(Array), // Table header row
+                expect.arrayContaining([
+                  // Table data row with failure reason containing "matcher failed"
+                  expect.any(Object), // Header name cell
+                  expect.any(Object), // Header value cell
+                  expect.objectContaining({
+                    elements: expect.arrayContaining([
+                      expect.objectContaining({
+                        elements: expect.arrayContaining([
+                          expect.objectContaining({
+                            text: expect.stringMatching(/matcher.*failed/i),
+                          }),
+                        ]),
+                      }),
+                    ]),
+                  }),
+                ]),
+              ]),
             }),
           ]),
-        })
+        }),
       )
     })
 
@@ -190,8 +220,13 @@ describe('SlackAlertService - Typed Results Handling (Phase 4)', () => {
       }
 
       const mockInventoryEntry: InventoryHeaderInfo = {
-        nameMatcher: /^content-security-policy$/i,
-        contentMatcher: /^default-src 'self'$/,
+        identifyWith: {
+          identify: () => true,
+          authorize: () => ({ authorized: true }),
+          getType: () => 'header-name',
+          getPattern: () => '^content-security-policy$',
+        },
+        authoriseWith: mockMatcher,
         authorisationInfo: {
           description: 'CSP header',
           authorised: true,
@@ -199,14 +234,7 @@ describe('SlackAlertService - Typed Results Handling (Phase 4)', () => {
         },
       }
 
-      const result = new KnownHeaderWithUnauthorisedContentFound(
-        mockTarget,
-        new Date(),
-        header,
-        mockInventoryEntry,
-        mockMatcher,
-        'value does not match pattern'
-      )
+      const result = new KnownHeaderWithUnauthorisedContentFound(mockTarget, new Date(), header, mockInventoryEntry, mockMatcher, 'value does not match pattern')
 
       const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
 
@@ -215,7 +243,7 @@ describe('SlackAlertService - Typed Results Handling (Phase 4)', () => {
       expect(sendMessageSpy).toHaveBeenCalledWith(
         expect.objectContaining({
           channel: 'script-mismatch-channel', // Note: using scriptMismatchDetected for headers too
-        })
+        }),
       )
     })
   })
@@ -229,9 +257,21 @@ describe('SlackAlertService - Typed Results Handling (Phase 4)', () => {
         workflow: mockTarget.workflow,
       }
 
+      const mockMatcher: Matcher = {
+        identify: () => true,
+        authorize: () => ({ authorized: true }),
+        getType: () => 'content',
+        getPattern: () => '^(DENY|SAMEORIGIN)$',
+      }
+
       const mockInventoryEntry: InventoryHeaderInfo = {
-        nameMatcher: /^x-frame-options$/i,
-        contentMatcher: /^(DENY|SAMEORIGIN)$/,
+        identifyWith: {
+          identify: () => true,
+          authorize: () => ({ authorized: true }),
+          getType: () => 'header-name',
+          getPattern: () => '^x-frame-options$',
+        },
+        authoriseWith: mockMatcher,
         authorisationInfo: {
           description: 'Frame protection header',
           authorised: true,
@@ -290,14 +330,7 @@ describe('SlackAlertService - Typed Results Handling (Phase 4)', () => {
         },
       }
 
-      const result = new KnownScriptWithUnauthorisedContentFound(
-        mockTarget,
-        new Date(),
-        script,
-        mockInventoryEntry,
-        mockMatcher,
-        'hash mismatch'
-      )
+      const result = new KnownScriptWithUnauthorisedContentFound(mockTarget, new Date(), script, mockInventoryEntry, mockMatcher, 'hash mismatch')
 
       const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
 
@@ -374,9 +407,7 @@ describe('SlackAlertService - Typed Results Handling (Phase 4)', () => {
       const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation()
       const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation()
 
-      jest
-        .spyOn(service as any, 'sendMessage')
-        .mockRejectedValue(new Error('Slack API error'))
+      jest.spyOn(service as any, 'sendMessage').mockRejectedValue(new Error('Slack API error'))
 
       const header: DetectedHeader = {
         name: 'x-custom-header',
@@ -388,9 +419,7 @@ describe('SlackAlertService - Typed Results Handling (Phase 4)', () => {
       const result = new UnknownHeaderFound(mockTarget, new Date(), header)
 
       // Should not throw
-      await expect(
-        service.alertForTypedResults([result], mockTarget, mockAlertDestinations)
-      ).resolves.not.toThrow()
+      await expect(service.alertForTypedResults([result], mockTarget, mockAlertDestinations)).resolves.not.toThrow()
 
       consoleLogSpy.mockRestore()
       consoleErrorSpy.mockRestore()

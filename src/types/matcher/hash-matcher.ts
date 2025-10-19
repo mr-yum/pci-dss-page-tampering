@@ -9,7 +9,7 @@
 
 import type { InventoryScriptHashInfo } from '../inventory/model'
 import type { AuthorizationResult } from './authorization-result'
-import type { DetectedScript,Matcher } from './matcher.interface'
+import type { DetectedScript, Matcher } from './matcher.interface'
 
 /**
  * Matches scripts by cryptographic hash (SHA-256).

@@ -32,6 +32,7 @@
 ## Notes
 
 All validation items pass. The specification:
+
 - Clearly extends the typed comparison pattern from scripts to headers
 - Maintains technology-agnostic language throughout (no TypeScript/code specifics in requirements)
 - Provides measurable success criteria (100% coverage, zero additional queries, zero legacy references)

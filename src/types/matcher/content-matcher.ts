@@ -8,7 +8,7 @@
  */
 
 import type { AuthorizationResult } from './authorization-result'
-import type { DetectedScript,Matcher } from './matcher.interface'
+import type { DetectedScript, Matcher } from './matcher.interface'
 
 /**
  * Matches scripts by content using regex patterns.

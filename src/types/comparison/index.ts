@@ -54,10 +54,4 @@ import type { UnknownScriptFound } from './unknown-script-found'
  * }
  * ```
  */
-export type ComparisonResultType =
-  | UnknownScriptFound
-  | KnownScriptWithUnauthorisedContentFound
-  | AuthorizedScriptFound
-  | UnknownHeaderFound
-  | KnownHeaderWithUnauthorisedContentFound_Header
-  | AuthorizedHeaderFound
+export type ComparisonResultType = UnknownScriptFound | KnownScriptWithUnauthorisedContentFound | AuthorizedScriptFound | UnknownHeaderFound | KnownHeaderWithUnauthorisedContentFound_Header | AuthorizedHeaderFound

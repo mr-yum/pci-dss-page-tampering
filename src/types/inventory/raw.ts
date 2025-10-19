@@ -14,14 +14,22 @@ export type RawInventoryScriptInfo = Omit<InventoryScriptInfo, 'identifyWith' | 
   authoriseWith: RawMatcherConfig
 }
 
+/**
+ * Raw (JSON-serializable) version of InventoryHeaderInfo.
+ *
+ * Updated schema (Phase 5 - US3):
+ * - Uses identifyWith/authoriseWith matcher-based structure (aligned with scripts)
+ * - Each field is a RawMatcherConfig union type (before conversion to Matcher instances)
+ * - Replaces old nameMatcher/contentMatcher RegExp structure
+ */
+export type RawInventoryHeaderInfo = Omit<InventoryHeaderInfo, 'identifyWith' | 'authoriseWith'> & {
+  identifyWith: RawMatcherConfig
+  authoriseWith: RawMatcherConfig
+}
+
 export type RawInventoryTarget = Omit<InventoryTarget, 'inventory' | 'detection'> & {
   inventory: RawTargetInventory
   detection: RawTargetDetection
-}
-
-export type RawInventoryHeaderInfo = Omit<InventoryHeaderInfo, 'nameMatcher' | 'contentMatcher'> & {
-  nameMatcher: string
-  contentMatcher: string
 }
 
 export type RawInventory = Omit<Inventory, 'target' | 'fileName' | 'scripts' | 'headers'> & {

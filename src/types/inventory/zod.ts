@@ -99,9 +99,18 @@ export const RawInventoryTargetSchema: z.ZodType<RawInventoryTarget> = z.object(
   detection: RawTargetDetectionSchema,
 })
 
+/**
+ * Schema for information about an inventory header.
+ * Corresponds to `RawInventoryHeaderInfo`.
+ *
+ * Updated schema (Phase 5 - US3):
+ * - Uses identifyWith/authoriseWith matcher-based structure (aligned with scripts)
+ * - Each field uses MatcherConfig union type (typically headerNameMatcher | contentMatcher)
+ * - Replaces old nameMatcher/contentMatcher RegExp structure
+ */
 export const RawInventoryHeaderInfoSchema: z.ZodType<RawInventoryHeaderInfo> = z.object({
-  nameMatcher: z.string(),
-  contentMatcher: z.string(),
+  identifyWith: MatcherConfigSchema,
+  authoriseWith: MatcherConfigSchema,
   authorisationInfo: InventoryAuthorisationInfoSchema,
 })
 

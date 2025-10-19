@@ -1,6 +1,6 @@
 import type { IScriptComparisonService } from '../../interfaces/comparison'
 import type { ComparisonResultType } from '../../types/comparison'
-import { AuthorizedScriptFound,KnownScriptWithUnauthorisedContentFound, UnknownScriptFound } from '../../types/comparison'
+import { AuthorizedScriptFound, KnownScriptWithUnauthorisedContentFound, UnknownScriptFound } from '../../types/comparison'
 import type { Inventory, InventoryScriptInfo } from '../../types/inventory/model'
 import type { DetectedScript } from '../../types/matcher/matcher.interface'
 import type { ScriptDetectionSummary, ScriptInfo } from '../../types/script'
@@ -111,9 +111,7 @@ export class ScriptComparisonService implements IScriptComparisonService {
     const authorizeMatcher = matchedEntry.authoriseWith
     const authStatus = authorizationResult.authorized ? 'AUTHORIZED' : `UNAUTHORIZED (${authorizationResult.reason})`
     const matcherPattern = JSON.stringify(authorizeMatcher.getPattern())
-    console.log(
-      `[Comparison → Script]: Script '${scriptSourceValue}' authorization via ${authorizeMatcher.getType()}Matcher with pattern '${matcherPattern}': ${authStatus} in ${authorizationTime}ms.`,
-    )
+    console.log(`[Comparison → Script]: Script '${scriptSourceValue}' authorization via ${authorizeMatcher.getType()}Matcher with pattern '${matcherPattern}': ${authStatus} in ${authorizationTime}ms.`)
 
     // T056: Known script but unauthorized content
     if (!authorizationResult.authorized) {

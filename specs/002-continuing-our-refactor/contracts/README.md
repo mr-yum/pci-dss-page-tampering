@@ -21,6 +21,7 @@ Defines the three typed header comparison result classes and supporting types:
 - **HeaderComparisonResultType**: Discriminated union of header results
 
 **Key design decisions:**
+
 - Extends ComparisonResult base class for consistency with scripts
 - Includes complete context (no additional queries needed by handlers)
 - Uses readonly properties for immutability
@@ -34,6 +35,7 @@ Defines the unified alert service interface processing both script and header re
 - **ComparisonResultType**: Discriminated union of ALL result types (scripts + headers)
 
 **Key design decisions:**
+
 - Single method replaces legacy alertForScripts and alertForHeaders
 - Discriminated union enables exhaustive type checking
 - TypeScript narrowing provides type safety in switch cases
@@ -48,6 +50,7 @@ Defines the updated header comparison service interface:
 - **IHeaderComparisonService**: Service interface returning typed results
 
 **Key design decisions:**
+
 - Returns `HeaderComparisonResultType[]` instead of `HeaderComparisonSummary`
 - One result per header value (N values → N results)
 - Case-insensitive name matching, case-sensitive value matching

@@ -13,9 +13,9 @@ import type { ComparisonResultType } from '../../types/comparison'
 import { AuthorizedHeaderFound } from '../../types/comparison/authorized-header-found'
 import { KnownHeaderWithUnauthorisedContentFound as KnownHeaderWithUnauthorisedContentFound_Header } from '../../types/comparison/known-header-unauthorised-content-found'
 import { UnknownHeaderFound } from '../../types/comparison/unknown-header-found'
+import type { SHA256Hash } from '../../types/hash'
 import type { DetectedHeader, HeaderDetectionSummary } from '../../types/header'
 import type { Inventory, InventoryHeaderInfo } from '../../types/inventory/model'
-import type { Matcher } from '../../types/matcher/matcher.interface'
 import type { Target } from '../../types/target'
 
 export class HeaderComparisonService implements IHeaderComparisonService {
@@ -76,12 +76,7 @@ export class HeaderComparisonService implements IHeaderComparisonService {
    * @param timestamp - When the comparison occurred
    * @returns Typed comparison result
    */
-  private compareSingleHeader(
-    header: DetectedHeader,
-    inventoryHeaders: InventoryHeaderInfo[],
-    target: Target,
-    timestamp: Date,
-  ): ComparisonResultType {
+  private compareSingleHeader(header: DetectedHeader, inventoryHeaders: InventoryHeaderInfo[], target: Target, timestamp: Date): ComparisonResultType {
     // T020: Find matching inventory entry (first-match-wins per BR-2)
     const matchedEntry = this.findMatchingInventoryEntry(header.name, inventoryHeaders)
 
@@ -91,36 +86,38 @@ export class HeaderComparisonService implements IHeaderComparisonService {
       return new UnknownHeaderFound(target, timestamp, header)
     }
 
-    // Log identification (T021)
-    this.log(`Header '${header.name}' identified using nameMatcher pattern '${matchedEntry.nameMatcher.source}'.`)
+    // Log identification (T065: use matcher.getType() and matcher.getPattern())
+    const identifyMatcherType = matchedEntry.identifyWith.getType()
+    const identifyPattern = matchedEntry.identifyWith.getPattern()
+    this.log(`Header '${header.name}' identified using ${identifyMatcherType} matcher with pattern '${JSON.stringify(identifyPattern)}'.`)
 
-    // Authorize value using contentMatcher (BR-4: case-sensitive value matching)
-    const isAuthorized =
-      matchedEntry.authorisationInfo.authorised && matchedEntry.contentMatcher.test(header.value)
+    // T064: Authorize value using authoriseWith matcher (BR-4: case-sensitive value matching)
+    // Note: Matcher interface uses DetectedScript shape, so map header fields:
+    // - name stays as name
+    // - value → content (matcher expects content field)
+    // - hash is not used for headers but required by interface
+    const authorizationResult = matchedEntry.authoriseWith.authorize({
+      name: header.name,
+      content: header.value,
+      hash: '' as unknown as SHA256Hash, // Not used for header matching
+    })
+    const isAuthorized = matchedEntry.authorisationInfo.authorised && authorizationResult.authorized
 
-    // Log authorization result (T021)
-    const authStatus = isAuthorized
-      ? 'AUTHORIZED'
-      : `UNAUTHORIZED (value does not match pattern: ${matchedEntry.contentMatcher.source})`
-    this.log(`Header '${header.name}' authorization via contentMatcher: ${authStatus}.`)
+    // T065: Log authorization result with matcher details
+    const authorizeMatcherType = matchedEntry.authoriseWith.getType()
+    const authorizePattern = matchedEntry.authoriseWith.getPattern()
+    const authStatus = isAuthorized ? 'AUTHORIZED' : `UNAUTHORIZED (${authorizationResult.reason || 'authorization failed'})`
+    this.log(`Header '${header.name}' authorization via ${authorizeMatcherType} matcher with pattern '${JSON.stringify(authorizePattern)}': ${authStatus}.`)
 
     // Return appropriate result
     if (!isAuthorized) {
-      // Create a temporary Matcher-like object for compatibility (will be replaced in US3)
-      const tempMatcher: Matcher = {
-        identify: () => false,
-        authorize: () => ({ authorized: false, reason: `value does not match pattern: ${matchedEntry.contentMatcher.source}` }),
-        getType: () => 'content',
-        getPattern: () => matchedEntry.contentMatcher.source,
-      }
-
       return new KnownHeaderWithUnauthorisedContentFound_Header(
         target,
         timestamp,
         header,
         matchedEntry,
-        tempMatcher,
-        `value does not match pattern: ${matchedEntry.contentMatcher.source}`,
+        matchedEntry.authoriseWith, // T064: Use the actual matcher instance
+        authorizationResult.reason || 'authorization failed',
       )
     }
 
@@ -128,13 +125,13 @@ export class HeaderComparisonService implements IHeaderComparisonService {
   }
 
   /**
-   * Find the first matching inventory entry for a header name.
+   * Find the first matching inventory entry for a header name (T063).
    *
-   * Implementation (T020):
+   * Implementation (T020, updated in US3):
    * - First-match-wins logic (BR-2, FR-010c)
    * - Iterate inventory entries in array order
    * - Skip non-authorized entries (legacy compatibility)
-   * - Test nameMatcher against header name (case-insensitive via normalization)
+   * - Use entry.identifyWith.identify() instead of inline regex test (FR-010)
    *
    * @param headerName - Normalized header name (lowercase)
    * @param inventoryHeaders - Array of authorized headers
@@ -145,8 +142,9 @@ export class HeaderComparisonService implements IHeaderComparisonService {
       // Skip non-authorized entries (legacy compatibility)
       if (!entry.authorisationInfo.authorised) continue
 
-      // Test nameMatcher (case-insensitive due to pre-normalization of headerName)
-      if (entry.nameMatcher.test(headerName)) {
+      // T063: Use matcher's identify method instead of inline regex test
+      // Note: Matcher interface uses DetectedScript shape, so pass name in name field
+      if (entry.identifyWith.identify({ name: headerName, content: '', hash: '' as unknown as SHA256Hash })) {
         return entry // First match wins (BR-2)
       }
     }

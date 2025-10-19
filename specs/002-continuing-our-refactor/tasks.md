@@ -39,8 +39,8 @@
 
 ### Base Type Infrastructure
 
-- [X] T001 [P] Define DetectedHeader interface in src/types/header.ts with properties: name (string), value (string), target (Target), workflow (string)
-- [X] T002 [P] Update ComparisonResultType union in src/types/comparison/index.ts to prepare for header result types (add placeholder comment for header types)
+- [x] T001 [P] Define DetectedHeader interface in src/types/header.ts with properties: name (string), value (string), target (Target), workflow (string)
+- [x] T002 [P] Update ComparisonResultType union in src/types/comparison/index.ts to prepare for header result types (add placeholder comment for header types)
 
 **Checkpoint**: Foundation ready - user story implementation can now begin
 
@@ -70,17 +70,17 @@
 
 ### Implementation for User Story 1
 
-- [X] T012 [P] [US1] Create UnknownHeaderFound class in src/types/comparison/unknown-header-found.ts extending ComparisonResult with type="unknown_header_found", header property (per FR-001, FR-003)
-- [X] T013 [P] [US1] Create KnownHeaderWithUnauthorisedContentFound class in src/types/comparison/known-header-unauthorised-content-found.ts extending ComparisonResult with type="known_header_unauthorised_content", header, inventoryEntry, authorizationMatcher, failureReason properties (per FR-001, FR-004)
-- [X] T014 [P] [US1] Create AuthorizedHeaderFound class in src/types/comparison/authorized-header-found.ts extending ComparisonResult with type="authorized_header", header, inventoryEntry properties (per FR-001, FR-005)
-- [X] T015 [US1] Update ComparisonResultType union in src/types/comparison/index.ts to include UnknownHeaderFound, KnownHeaderWithUnauthorisedContentFound, AuthorizedHeaderFound (per FR-014)
-- [X] T016 [US1] Export new header result types from src/types/comparison/index.ts
-- [X] T017 [US1] Update IHeaderComparisonService interface in src/interfaces/comparison.ts to return Promise<ComparisonResultType[]> instead of Promise<HeaderComparisonSummary> (per FR-006)
-- [X] T018 [US1] Refactor HeaderComparisonService.compare() in src/services/comparison/header.ts to iterate over header Map entries and expand Set<values> to individual DetectedHeader instances (one result per value per FR-013, data-model.md BR-1)
-- [X] T019 [US1] Implement compareSingleHeader() private method in src/services/comparison/header.ts with logic: normalize name to lowercase (per FR-010b), find matching inventory entry (first-match-wins per FR-010c), create appropriate typed result
-- [X] T020 [US1] Implement findMatchingInventoryEntry() private method in src/services/comparison/header.ts with first-match-wins logic iterating inventory entries in array order (per data-model.md BR-2)
-- [X] T021 [US1] Add logging to HeaderComparisonService in src/services/comparison/header.ts for identification and authorization results (matcher type, pattern, success/failure, timing)
-- [X] T022 [US1] Handle empty string values in HeaderComparisonService in src/services/comparison/header.ts - do NOT skip, pass to ContentMatcher per FR-013a and data-model.md BR-5
+- [x] T012 [P] [US1] Create UnknownHeaderFound class in src/types/comparison/unknown-header-found.ts extending ComparisonResult with type="unknown_header_found", header property (per FR-001, FR-003)
+- [x] T013 [P] [US1] Create KnownHeaderWithUnauthorisedContentFound class in src/types/comparison/known-header-unauthorised-content-found.ts extending ComparisonResult with type="known_header_unauthorised_content", header, inventoryEntry, authorizationMatcher, failureReason properties (per FR-001, FR-004)
+- [x] T014 [P] [US1] Create AuthorizedHeaderFound class in src/types/comparison/authorized-header-found.ts extending ComparisonResult with type="authorized_header", header, inventoryEntry properties (per FR-001, FR-005)
+- [x] T015 [US1] Update ComparisonResultType union in src/types/comparison/index.ts to include UnknownHeaderFound, KnownHeaderWithUnauthorisedContentFound, AuthorizedHeaderFound (per FR-014)
+- [x] T016 [US1] Export new header result types from src/types/comparison/index.ts
+- [x] T017 [US1] Update IHeaderComparisonService interface in src/interfaces/comparison.ts to return Promise<ComparisonResultType[]> instead of Promise<HeaderComparisonSummary> (per FR-006)
+- [x] T018 [US1] Refactor HeaderComparisonService.compare() in src/services/comparison/header.ts to iterate over header Map entries and expand Set<values> to individual DetectedHeader instances (one result per value per FR-013, data-model.md BR-1)
+- [x] T019 [US1] Implement compareSingleHeader() private method in src/services/comparison/header.ts with logic: normalize name to lowercase (per FR-010b), find matching inventory entry (first-match-wins per FR-010c), create appropriate typed result
+- [x] T020 [US1] Implement findMatchingInventoryEntry() private method in src/services/comparison/header.ts with first-match-wins logic iterating inventory entries in array order (per data-model.md BR-2)
+- [x] T021 [US1] Add logging to HeaderComparisonService in src/services/comparison/header.ts for identification and authorization results (matcher type, pattern, success/failure, timing)
+- [x] T022 [US1] Handle empty string values in HeaderComparisonService in src/services/comparison/header.ts - do NOT skip, pass to ContentMatcher per FR-013a and data-model.md BR-5
 
 **Run tests - ALL MUST PASS at this point (implementation complete for US1)**
 
@@ -98,26 +98,26 @@
 
 ### Tests for User Story 2 (REQUIRED per Constitution Principle V)
 
-- [X] T023 [P] [US2] Write unit test for SlackAlertService.alertForTypedResults handling UnknownHeaderFound in test/unit/services/alert/slack.test.ts - verify alert category is workflow-appropriate (newHeaderIdentified vs uninventoriedHeaderDetected per FR-011)
-- [X] T024 [P] [US2] Write unit test for SlackAlertService.alertForTypedResults handling KnownHeaderWithUnauthorisedContentFound in test/unit/services/alert/slack.test.ts - verify alert includes matcher details and failure reason
-- [X] T025 [P] [US2] Write unit test for SlackAlertService.alertForTypedResults handling AuthorizedHeaderFound in test/unit/services/alert/slack.test.ts - verify no alert generated
-- [X] T026 [P] [US2] Write unit test for SlackAlertService.alertForTypedResults handling all script result types in test/unit/services/alert/slack.test.ts - verify scripts still work after header support added
-- [X] T027 [US2] Write unit test for SlackAlertService.alertForTypedResults switch statement exhaustive checking in test/unit/services/alert/slack.test.ts - verify TypeScript never type catches missing cases (per FR-009)
+- [x] T023 [P] [US2] Write unit test for SlackAlertService.alertForTypedResults handling UnknownHeaderFound in test/unit/services/alert/slack.test.ts - verify alert category is workflow-appropriate (newHeaderIdentified vs uninventoriedHeaderDetected per FR-011)
+- [x] T024 [P] [US2] Write unit test for SlackAlertService.alertForTypedResults handling KnownHeaderWithUnauthorisedContentFound in test/unit/services/alert/slack.test.ts - verify alert includes matcher details and failure reason
+- [x] T025 [P] [US2] Write unit test for SlackAlertService.alertForTypedResults handling AuthorizedHeaderFound in test/unit/services/alert/slack.test.ts - verify no alert generated
+- [x] T026 [P] [US2] Write unit test for SlackAlertService.alertForTypedResults handling all script result types in test/unit/services/alert/slack.test.ts - verify scripts still work after header support added
+- [x] T027 [US2] Write unit test for SlackAlertService.alertForTypedResults switch statement exhaustive checking in test/unit/services/alert/slack.test.ts - verify TypeScript never type catches missing cases (per FR-009)
 
 **Run tests - ALL MUST FAIL at this point (no implementation yet)**
 
 ### Implementation for User Story 2
 
-- [X] T028 [US2] Update SlackAlertService.alertForTypedResults() switch statement in src/services/alert/slack.ts to add case 'unknown_header_found' calling alertForUnknownHeader() (per FR-007)
-- [X] T029 [US2] Update SlackAlertService.alertForTypedResults() switch statement in src/services/alert/slack.ts to add case 'known_header_unauthorised_content' calling alertForKnownHeaderUnauthorised() (per FR-007)
-- [X] T030 [US2] Update SlackAlertService.alertForTypedResults() switch statement in src/services/alert/slack.ts to add case 'authorized_header' with no-op (no alert)
-- [X] T031 [P] [US2] Implement alertForUnknownHeader() private method in src/services/alert/slack.ts with workflow-based routing (inventory → newHeaderIdentified, detection → uninventoriedHeaderDetected per FR-011)
-- [X] T032 [P] [US2] Implement alertForKnownHeaderUnauthorised() private method in src/services/alert/slack.ts including matcher pattern and failure reason in alert
-- [X] T033 [US2] Add try-catch to each case in SlackAlertService.alertForTypedResults() in src/services/alert/slack.ts to log errors without blocking (per constitution principle IV)
-- [X] T034 [US2] Update main.ts to call alertForTypedResults() with header comparison results from HeaderComparisonService (InventoryService/DetectionService don't call alerts directly)
-- [X] T035 [US2] Update main.ts to call alertForTypedResults() with header comparison results from HeaderComparisonService (InventoryService/DetectionService don't call alerts directly)
-- [X] T036 [US2] Mark alertForScripts() method as @deprecated in src/services/alert/slack.ts with comment "Use alertForTypedResults instead"
-- [X] T037 [US2] Mark alertForHeaders() method as @deprecated in src/services/alert/slack.ts with comment "Use alertForTypedResults instead"
+- [x] T028 [US2] Update SlackAlertService.alertForTypedResults() switch statement in src/services/alert/slack.ts to add case 'unknown_header_found' calling alertForUnknownHeader() (per FR-007)
+- [x] T029 [US2] Update SlackAlertService.alertForTypedResults() switch statement in src/services/alert/slack.ts to add case 'known_header_unauthorised_content' calling alertForKnownHeaderUnauthorised() (per FR-007)
+- [x] T030 [US2] Update SlackAlertService.alertForTypedResults() switch statement in src/services/alert/slack.ts to add case 'authorized_header' with no-op (no alert)
+- [x] T031 [P] [US2] Implement alertForUnknownHeader() private method in src/services/alert/slack.ts with workflow-based routing (inventory → newHeaderIdentified, detection → uninventoriedHeaderDetected per FR-011)
+- [x] T032 [P] [US2] Implement alertForKnownHeaderUnauthorised() private method in src/services/alert/slack.ts including matcher pattern and failure reason in alert
+- [x] T033 [US2] Add try-catch to each case in SlackAlertService.alertForTypedResults() in src/services/alert/slack.ts to log errors without blocking (per constitution principle IV)
+- [x] T034 [US2] Update main.ts to call alertForTypedResults() with header comparison results from HeaderComparisonService (InventoryService/DetectionService don't call alerts directly)
+- [x] T035 [US2] Update main.ts to call alertForTypedResults() with header comparison results from HeaderComparisonService (InventoryService/DetectionService don't call alerts directly)
+- [x] T036 [US2] Mark alertForScripts() method as @deprecated in src/services/alert/slack.ts with comment "Use alertForTypedResults instead"
+- [x] T037 [US2] Mark alertForHeaders() method as @deprecated in src/services/alert/slack.ts with comment "Use alertForTypedResults instead"
 
 **Run tests - ALL MUST PASS at this point (implementation complete for US2)**
 
@@ -314,21 +314,25 @@ With multiple developers:
 **CRITICAL**: This is a refactor of security logic. Follow the refactoring protocol from research.md R9:
 
 ### Phase 1: Capture Current Behavior (Before Implementation)
+
 - Write tests for current HeaderComparisonService behavior
 - Write tests for current alert methods
 - Verify all tests pass with current implementation
 
 ### Phase 2: Refactor with Test Protection
+
 - Implement typed header result classes (US1)
 - Update HeaderComparisonService to return typed results
 - Verify tests still pass (behavior unchanged)
 
 ### Phase 3: Extend Coverage
+
 - Add tests for new functionality (multiple values, empty values, case sensitivity)
 - Add tests for unified alert handler
 - Run integration tests for full workflows
 
 **Test execution order for each story**:
+
 1. Write tests FIRST (mark them to skip if needed)
 2. Run tests - confirm they FAIL (no implementation yet)
 3. Implement feature
@@ -340,28 +344,34 @@ With multiple developers:
 ## Key Spec Alignments
 
 ### FR-010a: Distinct Matcher Implementations
+
 - **T052-T056**: Create HeaderNameMatcher as distinct class from ScriptNameMatcher
 - **T047**: Test both matchers implement Matcher interface with domain-appropriate behaviors
 - **T066**: Document the distinction in CLAUDE.md
 
 ### FR-010b: Case-Insensitive Header Names
+
 - **T053**: HeaderNameMatcher.identify() normalizes to lowercase
 - **T045**: Test case-insensitive matching
 - **T007**: Test HeaderComparisonService case-insensitive behavior
 
 ### FR-010c: First-Match-Wins Logic
+
 - **T009**: Test first-match-wins for overlapping patterns
 - **T020**: Implement findMatchingInventoryEntry with first-match-wins
 
 ### FR-013: Multiple Values → Multiple Results
+
 - **T011**: Test header with 3 values produces 3 results
 - **T018**: Implement value expansion in HeaderComparisonService.compare()
 
 ### FR-013a: Empty Values Valid
+
 - **T010**: Test empty string is valid input
 - **T022**: Handle empty values without skipping
 
 ### Spec Acceptance Scenario 4 (US3)
+
 - **T047**: Test HeaderNameMatcher and ScriptNameMatcher both implement Matcher with different behaviors
 - **T052-T056**: Implement HeaderNameMatcher with case-insensitive semantics
 - **T066**: Document distinction between matcher types
@@ -387,6 +397,7 @@ With multiple developers:
 ## Total Task Count: 78 tasks
 
 **Breakdown by User Story:**
+
 - Foundational (Phase 2): 2 tasks
 - User Story 1 (P1): 20 tasks (9 tests + 11 implementation)
 - User Story 2 (P2): 22 tasks (5 tests + 12 implementation + 5 verification)
@@ -394,6 +405,7 @@ With multiple developers:
 - Polish (Phase 6): 10 tasks
 
 **Parallel Opportunities Identified:**
+
 - Foundational: 2 parallel tasks
 - US1: 5 parallel opportunities (3 tests, 3 types)
 - US2: 5 parallel opportunities (4 tests, 2 methods) + US2 and US3 can proceed in parallel after US1
@@ -401,6 +413,7 @@ With multiple developers:
 - Polish: 6 parallel tasks
 
 **MVP Scope (Recommended)**: User Story 1 only (T001-T022 = 22 tasks)
+
 - Delivers: Typed header comparison results with complete context
 - Independent test: Verify HeaderComparisonService returns appropriate result types
 - Value: Foundation for consistent alert handling, eliminates ambiguous header summaries

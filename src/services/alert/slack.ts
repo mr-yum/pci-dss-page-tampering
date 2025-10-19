@@ -41,9 +41,7 @@ export class SlackAlertService implements IAlertService {
     try {
       // Handle unknown scripts
       if (unknownScripts.length > 0) {
-        const destination = target.type === 'inventory'
-          ? alertDestinations.inventory.newScriptIdentified
-          : alertDestinations.detection.newScriptDetected
+        const destination = target.type === 'inventory' ? alertDestinations.inventory.newScriptIdentified : alertDestinations.detection.newScriptDetected
         await this.alertOnUnknownScripts(unknownScripts, target, destination)
       }
     } catch (error) {
@@ -62,9 +60,7 @@ export class SlackAlertService implements IAlertService {
     try {
       // T031: Handle unknown headers with workflow-based routing
       if (unknownHeaders.length > 0) {
-        const destination = target.type === 'inventory'
-          ? alertDestinations.inventory.newHeaderIdentified
-          : alertDestinations.detection.newHeaderDetected
+        const destination = target.type === 'inventory' ? alertDestinations.inventory.newHeaderIdentified : alertDestinations.detection.newHeaderDetected
         await this.alertOnUnknownHeaders(unknownHeaders, target, destination)
       }
     } catch (error) {
@@ -185,7 +181,7 @@ export class SlackAlertService implements IAlertService {
     const message = `Unauthorised headers detected for target!`
 
     // Convert typed results to HeaderInfo for alert payload
-    const headers: HeaderInfo[] = unknownHeaders.map(result => ({
+    const headers: HeaderInfo[] = unknownHeaders.map((result) => ({
       name: result.header.name,
       value: result.header.value,
     }))

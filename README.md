@@ -23,6 +23,7 @@ GIT_UPDATED_SCRIPTS_BRANCH_NAME=<branch name for pushing script updates> SLACK_O
 ```
 
 If you also want a different branch for detection stage:
+
 ```
 source .env.secrets
 GIT_DETECTION_SCRIPTS_BRANCH_NAME=<branch name for detection stage> GIT_UPDATED_SCRIPTS_BRANCH_NAME=<branch name for pushing script updates> SLACK_OAUTH_TOKEN=$SLACK_OAUTH_TOKEN INVENTORY_REPO_PAT=$INVENTORY_REPO_PAT npm run start

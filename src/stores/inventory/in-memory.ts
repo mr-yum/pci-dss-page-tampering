@@ -1,6 +1,6 @@
 import type { IInventoryStore } from '../../interfaces/inventory'
 import type { Inventory, InventoryPullResult } from '../../types/inventory/model'
-import type { RawInventory, RawInventoryHeaderInfo,RawInventoryScriptInfo } from '../../types/inventory/raw'
+import type { RawInventory, RawInventoryHeaderInfo, RawInventoryScriptInfo } from '../../types/inventory/raw'
 
 export class InMemoryInventoryStore implements IInventoryStore {
   // @ts-expect-error - This is unused test data, but kept for reference
@@ -87,10 +87,18 @@ export class InMemoryInventoryStore implements IInventoryStore {
     }
   }
 
+  /**
+   * Creates a default inventory header entry for testing.
+   *
+   * Updated for Phase 5 - US3:
+   * - identifyWith: Uses headerNameMatcher with the provided name regex pattern
+   * - authoriseWith: Uses contentMatcher with the provided content regex pattern
+   * - This matches the common pattern of header name/value matching
+   */
   private createDefaultInventoryHeader(nameRegex: RegExp, contentRegex: RegExp): RawInventoryHeaderInfo {
     return {
-      nameMatcher: nameRegex.source,
-      contentMatcher: contentRegex.source,
+      identifyWith: { headerNameMatcher: nameRegex.source },
+      authoriseWith: { contentMatcher: contentRegex.source },
       authorisationInfo: {
         description: 'Default header for testing',
         authorised: true,

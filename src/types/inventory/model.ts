@@ -28,9 +28,20 @@ export type InventoryScriptInfo = {
   authorisationInfo: InventoryAuthorisationInfo
 }
 
+/**
+ * Processed inventory header information with Matcher instances.
+ *
+ * Updated model (Phase 5 - US3):
+ * - identifyWith: Matcher instance (typically HeaderNameMatcher for case-insensitive name matching)
+ * - authoriseWith: Matcher instance (typically ContentMatcher for case-sensitive value matching)
+ * - Aligns with InventoryScriptInfo structure for consistency
+ *
+ * @see ./header-entry.ts for schema and processing logic
+ * @deprecated The old structure with nameMatcher/contentMatcher RegExp fields is replaced by this
+ */
 export type InventoryHeaderInfo = {
-  nameMatcher: RegExp
-  contentMatcher: RegExp
+  identifyWith: Matcher
+  authoriseWith: Matcher
   authorisationInfo: InventoryAuthorisationInfo
 }
 

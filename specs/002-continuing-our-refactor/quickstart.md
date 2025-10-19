@@ -69,6 +69,7 @@ Follow this sequence to minimize integration issues:
 Create three new files in `src/types/comparison/`:
 
 **File: `unknown-header-found.ts`**
+
 ```typescript
 import type { DetectedHeader } from '../header'
 import type { Target } from '../target'
@@ -86,6 +87,7 @@ export class UnknownHeaderFound extends ComparisonResult {
 ```
 
 **File: `known-header-unauthorised-content-found.ts`**
+
 ```typescript
 import type { InventoryHeaderInfo } from '../inventory/model'
 import type { DetectedHeader } from '../header'
@@ -100,14 +102,7 @@ export class KnownHeaderWithUnauthorisedContentFound extends ComparisonResult {
   public readonly authorizationMatcher: Matcher
   public readonly failureReason: string
 
-  constructor(
-    target: Target,
-    timestamp: Date,
-    header: DetectedHeader,
-    inventoryEntry: InventoryHeaderInfo,
-    authorizationMatcher: Matcher,
-    failureReason: string
-  ) {
+  constructor(target: Target, timestamp: Date, header: DetectedHeader, inventoryEntry: InventoryHeaderInfo, authorizationMatcher: Matcher, failureReason: string) {
     super(target, timestamp)
     this.header = header
     this.inventoryEntry = inventoryEntry
@@ -118,6 +113,7 @@ export class KnownHeaderWithUnauthorisedContentFound extends ComparisonResult {
 ```
 
 **File: `authorized-header-found.ts`**
+
 ```typescript
 import type { InventoryHeaderInfo } from '../inventory/model'
 import type { DetectedHeader } from '../header'
@@ -138,19 +134,14 @@ export class AuthorizedHeaderFound extends ComparisonResult {
 ```
 
 **Update `src/types/comparison/index.ts`:**
+
 ```typescript
 export * from './unknown-header-found'
 export * from './known-header-unauthorised-content-found'
 export * from './authorized-header-found'
 
 // Update ComparisonResultType union
-export type ComparisonResultType =
-  | AuthorizedScriptFound
-  | KnownScriptWithUnauthorisedContentFound
-  | UnknownScriptFound
-  | AuthorizedHeaderFound
-  | KnownHeaderWithUnauthorisedContentFound
-  | UnknownHeaderFound
+export type ComparisonResultType = AuthorizedScriptFound | KnownScriptWithUnauthorisedContentFound | UnknownScriptFound | AuthorizedHeaderFound | KnownHeaderWithUnauthorisedContentFound | UnknownHeaderFound
 ```
 
 **Write unit tests** for each class before proceeding.
@@ -163,8 +154,8 @@ export type ComparisonResultType =
 
 ```typescript
 export interface DetectedHeader {
-  readonly name: string       // Normalized to lowercase
-  readonly value: string      // Single value (may be empty string)
+  readonly name: string // Normalized to lowercase
+  readonly value: string // Single value (may be empty string)
   readonly target: Target
   readonly workflow: string
 }
@@ -185,11 +176,7 @@ import { AuthorizedHeaderFound, KnownHeaderWithUnauthorisedContentFound, Unknown
 import type { ComparisonResultType } from '../../types/comparison'
 
 export class HeaderComparisonService implements IHeaderComparisonService {
-  compare(
-    target: Target,
-    inventory: Inventory,
-    headerDetectionSummary: HeaderDetectionSummary
-  ): Promise<ComparisonResultType[]> {
+  compare(target: Target, inventory: Inventory, headerDetectionSummary: HeaderDetectionSummary): Promise<ComparisonResultType[]> {
     const inventoryHeaders = inventory.headers
     const detectedHeaders = headerDetectionSummary.headers
     const results: ComparisonResultType[] = []
@@ -205,15 +192,10 @@ export class HeaderComparisonService implements IHeaderComparisonService {
           name: normalizedName,
           value,
           target,
-          workflow: headerDetectionSummary.workflow
+          workflow: headerDetectionSummary.workflow,
         }
 
-        const result = this.compareSingleHeader(
-          detectedHeader,
-          inventoryHeaders,
-          target,
-          timestamp
-        )
+        const result = this.compareSingleHeader(detectedHeader, inventoryHeaders, target, timestamp)
         results.push(result)
       }
     }
@@ -221,12 +203,7 @@ export class HeaderComparisonService implements IHeaderComparisonService {
     return Promise.resolve(results)
   }
 
-  private compareSingleHeader(
-    header: DetectedHeader,
-    inventoryHeaders: InventoryHeaderInfo[],
-    target: Target,
-    timestamp: Date
-  ): ComparisonResultType {
+  private compareSingleHeader(header: DetectedHeader, inventoryHeaders: InventoryHeaderInfo[], target: Target, timestamp: Date): ComparisonResultType {
     // Find matching inventory entry (first-match-wins)
     const matchedEntry = this.findMatchingInventoryEntry(header.name, inventoryHeaders)
 
@@ -238,10 +215,7 @@ export class HeaderComparisonService implements IHeaderComparisonService {
 
     // Log identification
     const identifyMatcher = matchedEntry.identifyWith
-    console.log(
-      `[Comparison → Header]: Header '${header.name}' identified using ` +
-      `${identifyMatcher.getType()}Matcher with pattern '${JSON.stringify(identifyMatcher.getPattern())}'.`
-    )
+    console.log(`[Comparison → Header]: Header '${header.name}' identified using ` + `${identifyMatcher.getType()}Matcher with pattern '${JSON.stringify(identifyMatcher.getPattern())}'.`)
 
     // Authorize value using authoriseWith matcher
     const authResult = matchedEntry.authoriseWith.authorize({ content: header.value })
@@ -249,37 +223,24 @@ export class HeaderComparisonService implements IHeaderComparisonService {
     // Log authorization result
     const authorizeMatcher = matchedEntry.authoriseWith
     const authStatus = authResult.authorized ? 'AUTHORIZED' : `UNAUTHORIZED (${authResult.reason})`
-    console.log(
-      `[Comparison → Header]: Header '${header.name}' authorization via ` +
-      `${authorizeMatcher.getType()}Matcher: ${authStatus}.`
-    )
+    console.log(`[Comparison → Header]: Header '${header.name}' authorization via ` + `${authorizeMatcher.getType()}Matcher: ${authStatus}.`)
 
     // Return appropriate result
     if (!authResult.authorized) {
-      return new KnownHeaderWithUnauthorisedContentFound(
-        target,
-        timestamp,
-        header,
-        matchedEntry,
-        authorizeMatcher,
-        authResult.reason ?? 'Unknown authorization failure'
-      )
+      return new KnownHeaderWithUnauthorisedContentFound(target, timestamp, header, matchedEntry, authorizeMatcher, authResult.reason ?? 'Unknown authorization failure')
     }
 
     return new AuthorizedHeaderFound(target, timestamp, header, matchedEntry)
   }
 
-  private findMatchingInventoryEntry(
-    headerName: string,
-    inventoryHeaders: InventoryHeaderInfo[]
-  ): InventoryHeaderInfo | undefined {
+  private findMatchingInventoryEntry(headerName: string, inventoryHeaders: InventoryHeaderInfo[]): InventoryHeaderInfo | undefined {
     for (const entry of inventoryHeaders) {
       // Skip non-authorized entries (legacy compatibility)
       if (!entry.authorisationInfo.authorised) continue
 
       // Test identifyWith matcher (NameMatcher expects { name: string })
       if (entry.identifyWith.identify({ name: headerName })) {
-        return entry  // First match wins
+        return entry // First match wins
       }
     }
     return undefined
@@ -288,13 +249,10 @@ export class HeaderComparisonService implements IHeaderComparisonService {
 ```
 
 **Update interface** in `src/interfaces/comparison.ts`:
+
 ```typescript
 export interface IHeaderComparisonService {
-  compare(
-    target: Target,
-    inventory: Inventory,
-    headerDetectionSummary: HeaderDetectionSummary
-  ): Promise<ComparisonResultType[]>  // Changed from HeaderComparisonSummary
+  compare(target: Target, inventory: Inventory, headerDetectionSummary: HeaderDetectionSummary): Promise<ComparisonResultType[]> // Changed from HeaderComparisonSummary
 }
 ```
 
@@ -386,6 +344,7 @@ private async alertForKnownHeaderUnauthorised(
 ```
 
 **Mark legacy methods deprecated:**
+
 ```typescript
 /** @deprecated Use alertForTypedResults instead */
 async alertForScripts(...) { ... }
@@ -407,13 +366,13 @@ import { z } from 'zod'
 import { MatcherSchema } from '../matcher/matcher-factory'
 
 export const InventoryHeaderInfoSchema = z.object({
-  identifyWith: MatcherSchema,  // Must be NameMatcher
+  identifyWith: MatcherSchema, // Must be NameMatcher
   authoriseWith: MatcherSchema, // Must be ContentMatcher
   authorisationInfo: z.object({
     authorised: z.boolean(),
     justification: z.string().min(1),
-    authorisedAt: z.string().datetime()
-  })
+    authorisedAt: z.string().datetime(),
+  }),
 })
 
 export type InventoryHeaderInfo = z.infer<typeof InventoryHeaderInfoSchema>
@@ -451,40 +410,48 @@ export type InventoryHeaderInfo = z.infer<typeof InventoryHeaderInfoSchema>
 ## Common Pitfalls
 
 ### Pitfall 1: Not Iterating Values Separately
+
 **Wrong:**
+
 ```typescript
 for (const [name, values] of headers.entries()) {
   // Processing entire Set as one result
-  const result = compare(name, values)  // ❌
+  const result = compare(name, values) // ❌
 }
 ```
 
 **Correct:**
+
 ```typescript
 for (const [name, values] of headers.entries()) {
   for (const value of values) {
     // One result per value
-    const result = compare(name, value)  // ✅
+    const result = compare(name, value) // ✅
   }
 }
 ```
 
 ### Pitfall 2: Case-Sensitive Name Matching
+
 **Wrong:**
+
 ```typescript
 // Direct regex test without normalization
-entry.identifyWith.identify({ name: "Content-Type" })  // ❌ May fail
+entry.identifyWith.identify({ name: 'Content-Type' }) // ❌ May fail
 ```
 
 **Correct:**
+
 ```typescript
 // Normalize to lowercase first
 const normalized = headerName.toLowerCase()
-entry.identifyWith.identify({ name: normalized })  // ✅
+entry.identifyWith.identify({ name: normalized }) // ✅
 ```
 
 ### Pitfall 3: Not Handling Empty Values
+
 **Wrong:**
+
 ```typescript
 if (!value || value.trim() === '') {
   return new UnknownHeaderFound(...)  // ❌ Incorrectly rejects valid empty
@@ -492,13 +459,16 @@ if (!value || value.trim() === '') {
 ```
 
 **Correct:**
+
 ```typescript
 // Let ContentMatcher decide if empty is authorized
-const authResult = entry.authoriseWith.authorize({ content: value })  // ✅
+const authResult = entry.authoriseWith.authorize({ content: value }) // ✅
 ```
 
 ### Pitfall 4: Missing Exhaustive Check
+
 **Wrong:**
+
 ```typescript
 switch (result.type) {
   case 'unknown_header_found': ...
@@ -509,6 +479,7 @@ switch (result.type) {
 ```
 
 **Correct:**
+
 ```typescript
 switch (result.type) {
   case 'unknown_header_found': ...
@@ -522,6 +493,7 @@ switch (result.type) {
 ## Debugging Tips
 
 ### Verify Typed Results
+
 ```typescript
 console.log('Result type:', result.type)
 console.log('Has header?', 'header' in result)
@@ -529,6 +501,7 @@ console.log('Has inventoryEntry?', 'inventoryEntry' in result)
 ```
 
 ### Check Matcher Execution
+
 ```typescript
 console.log('Matcher type:', matcher.getType())
 console.log('Matcher pattern:', JSON.stringify(matcher.getPattern()))
@@ -537,8 +510,9 @@ console.log('Authorize result:', matcher.authorize(input))
 ```
 
 ### Validate Case Handling
+
 ```typescript
-const original = "Content-Type"
+const original = 'Content-Type'
 const normalized = original.toLowerCase()
 console.log('Original:', original)
 console.log('Normalized:', normalized)

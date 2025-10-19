@@ -72,7 +72,7 @@ act push --container-architecture linux/amd64 --secret-file .env.secrets
 
 2. **ComparisonServices** - Compare detected resources against inventory using matcher pipeline:
    - `ScriptComparisonService` (`src/services/comparison/script.ts`) - Uses modular matcher system for flexible script identification and authorization
-   - `HeaderComparisonService` (`src/services/comparison/header.ts`)
+   - `HeaderComparisonService` (`src/services/comparison/header.ts`) - Uses matcher system for header identification (case-insensitive names) and authorization (case-sensitive values)
 
 3. **InventoryService** (`src/services/inventory.ts`) - Manages resource inventories stored in Git
 
@@ -117,16 +117,24 @@ act push --container-architecture linux/amd64 --secret-file .env.secrets
 
 #### Matcher System (Refactored 2025-10)
 
-- **Matcher Interface** (`src/types/matcher/matcher.interface.ts`) - Strategy pattern for script matching with `identify()` and `authorize()` methods
-- **NameMatcher** (`src/types/matcher/name-matcher.ts`) - Matches scripts by URL using regex patterns (for external scripts with dynamic parameters)
-- **ContentMatcher** (`src/types/matcher/content-matcher.ts`) - Matches scripts by content using regex patterns (for inline scripts with identifying code snippets)
-- **HashMatcher** (`src/types/matcher/hash-matcher.ts`) - Matches scripts by SHA-256 hash (for strict integrity verification)
+- **Matcher Interface** (`src/types/matcher/matcher.interface.ts`) - Strategy pattern for script and header matching with `identify()` and `authorize()` methods
+- **NameMatcher** (`src/types/matcher/name-matcher.ts`) - Matches scripts by URL using regex patterns (case-sensitive, for external scripts with dynamic parameters)
+- **HeaderNameMatcher** (`src/types/matcher/header-name-matcher.ts`) - Matches headers by name using regex patterns (case-insensitive per RFC 7230, for HTTP header identification)
+- **ContentMatcher** (`src/types/matcher/content-matcher.ts`) - Matches by content using regex patterns (case-sensitive, for inline scripts or header values)
+- **HashMatcher** (`src/types/matcher/hash-matcher.ts`) - Matches scripts by SHA-256 hash (scripts only, for strict integrity verification)
 
-Each inventory entry now specifies:
-- `identifyWith`: How to identify the script among detected scripts (NameMatcher, ContentMatcher, or HashMatcher)
-- `authoriseWith`: How to authorize the script's content (NameMatcher, ContentMatcher, or HashMatcher)
+**Important Distinction**: `NameMatcher` and `HeaderNameMatcher` are distinct implementations with different matching semantics:
 
-This separation enables flexible matching strategies (e.g., identify by URL pattern, authorize by hash).
+- **NameMatcher** (for scripts): Case-sensitive URL/name matching (e.g., "https://Example.com" ≠ "https://example.com")
+- **HeaderNameMatcher** (for headers): Case-insensitive name matching per RFC 7230 (e.g., "Content-Type" = "content-type")
+- Both implement the same `Matcher` interface but with domain-appropriate behaviors
+
+Each inventory entry (scripts and headers) specifies:
+
+- `identifyWith`: How to identify the resource among detected resources (NameMatcher/HeaderNameMatcher/ContentMatcher/HashMatcher)
+- `authoriseWith`: How to authorize the resource's content (NameMatcher/HeaderNameMatcher/ContentMatcher/HashMatcher)
+
+This separation enables flexible matching strategies (e.g., identify header by name pattern, authorize by value pattern).
 
 #### Comparison Result Types (Refactored 2025-10)
 

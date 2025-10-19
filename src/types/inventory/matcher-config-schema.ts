@@ -30,7 +30,7 @@ const InventoryScriptHashInfoSchema = z.object({
  * - Hash arrays have at least 1 element
  *
  * Error messages include:
- * - Which field has the invalid regex (nameMatcher vs contentMatcher)
+ * - Which field has the invalid regex (nameMatcher vs headerNameMatcher vs contentMatcher)
  * - The invalid pattern itself
  * - JavaScript RegExp error message
  * - Suggestion to check bracket matching and escape sequences
@@ -38,6 +38,7 @@ const InventoryScriptHashInfoSchema = z.object({
 export const MatcherConfigSchema = z
   .union([
     z.object({ nameMatcher: z.string().min(1, 'nameMatcher must not be empty') }),
+    z.object({ headerNameMatcher: z.string().min(1, 'headerNameMatcher must not be empty') }),
     z.object({ contentMatcher: z.string().min(1, 'contentMatcher must not be empty') }),
     z.object({ hashes: z.array(InventoryScriptHashInfoSchema).min(1, 'hashes array must contain at least 1 hash') }),
   ])
@@ -52,6 +53,20 @@ export const MatcherConfigSchema = z
           code: 'custom',
           message: `Invalid regex in nameMatcher: "${val.nameMatcher}". Error: ${errorMessage}. Ensure all brackets are closed and escape sequences are valid.`,
           path: ['nameMatcher'],
+        })
+      }
+    }
+
+    // Validate regex syntax for headerNameMatcher
+    if ('headerNameMatcher' in val) {
+      try {
+        new RegExp(val.headerNameMatcher)
+      } catch (e: unknown) {
+        const errorMessage = e instanceof Error ? e.message : 'Unknown regex error'
+        ctx.addIssue({
+          code: 'custom',
+          message: `Invalid regex in headerNameMatcher: "${val.headerNameMatcher}". Error: ${errorMessage}. Ensure all brackets are closed and escape sequences are valid.`,
+          path: ['headerNameMatcher'],
         })
       }
     }

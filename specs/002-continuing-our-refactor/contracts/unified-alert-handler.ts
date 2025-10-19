@@ -9,19 +9,11 @@
  */
 
 // Import script result types
-import type {
-  AuthorizedScriptFound,
-  KnownScriptWithUnauthorisedContentFound,
-  UnknownScriptFound,
-} from '../../../src/types/comparison'
+import type { AuthorizedScriptFound, KnownScriptWithUnauthorisedContentFound, UnknownScriptFound } from '../../../src/types/comparison'
 import type { InventoryAlert } from '../../../src/types/inventory/model'
 import type { Target } from '../../../src/types/target'
 // Import header result types
-import type {
-  AuthorizedHeaderFound,
-  KnownHeaderWithUnauthorisedContentFound,
-  UnknownHeaderFound,
-} from './header-comparison-results'
+import type { AuthorizedHeaderFound, KnownHeaderWithUnauthorisedContentFound, UnknownHeaderFound } from './header-comparison-results'
 
 /**
  * Discriminated union of ALL comparison result types (scripts + headers).
@@ -69,11 +61,7 @@ export interface IAlertService {
    *
    * @see data-model.md BR-6: Alert Routing by Workflow
    */
-  alertForTypedResults(
-    comparisonResults: ComparisonResultType[],
-    target: Target,
-    alertDestinations: InventoryAlert
-  ): Promise<void>
+  alertForTypedResults(comparisonResults: ComparisonResultType[], target: Target, alertDestinations: InventoryAlert): Promise<void>
 
   /**
    * @deprecated Use alertForTypedResults instead.

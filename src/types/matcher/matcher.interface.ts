@@ -34,12 +34,13 @@ export type DetectedScript = {
 }
 
 /**
- * Strategy interface for script matching operations.
+ * Strategy interface for script and header matching operations.
  *
  * Implementations:
- * - NameMatcher: Matches by script name/URL using regex
- * - ContentMatcher: Matches by script content using regex
- * - HashMatcher: Matches by cryptographic hash (SHA-256)
+ * - NameMatcher: Matches by script name/URL using regex (case-sensitive)
+ * - HeaderNameMatcher: Matches by header name using regex (case-insensitive per RFC 7230)
+ * - ContentMatcher: Matches by script/header content using regex
+ * - HashMatcher: Matches by cryptographic hash (SHA-256, scripts only)
  *
  * Pattern: Strategy Pattern (per research.md R1)
  */
@@ -48,7 +49,7 @@ export interface Matcher {
    * Returns the matcher type discriminator.
    * Used for logging, debugging, and type narrowing.
    */
-  getType(): 'name' | 'content' | 'hash'
+  getType(): 'name' | 'header-name' | 'content' | 'hash'
 
   /**
    * Returns the pattern or hashes used by this matcher.

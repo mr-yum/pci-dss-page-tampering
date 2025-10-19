@@ -61,14 +61,7 @@ export class KnownHeaderWithUnauthorisedContentFound extends ComparisonResult {
    * @param authorizationMatcher - The matcher that failed
    * @param failureReason - Why authorization failed
    */
-  constructor(
-    target: Target,
-    timestamp: Date,
-    header: DetectedHeader,
-    inventoryEntry: InventoryHeaderInfo,
-    authorizationMatcher: Matcher,
-    failureReason: string,
-  ) {
+  constructor(target: Target, timestamp: Date, header: DetectedHeader, inventoryEntry: InventoryHeaderInfo, authorizationMatcher: Matcher, failureReason: string) {
     super(target, timestamp)
     this.header = header
     this.inventoryEntry = inventoryEntry
