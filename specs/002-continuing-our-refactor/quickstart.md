@@ -157,7 +157,7 @@ export interface DetectedHeader {
   readonly name: string // Normalized to lowercase
   readonly value: string // Single value (may be empty string)
   readonly target: Target
-  readonly workflow: string
+  readonly workflow: Workflow
 }
 ```
 
@@ -192,7 +192,7 @@ export class HeaderComparisonService implements IHeaderComparisonService {
           name: normalizedName,
           value,
           target,
-          workflow: headerDetectionSummary.workflow,
+          workflow: target.workflow,
         }
 
         const result = this.compareSingleHeader(detectedHeader, inventoryHeaders, target, timestamp)
@@ -218,7 +218,12 @@ export class HeaderComparisonService implements IHeaderComparisonService {
     console.log(`[Comparison → Header]: Header '${header.name}' identified using ` + `${identifyMatcher.getType()}Matcher with pattern '${JSON.stringify(identifyMatcher.getPattern())}'.`)
 
     // Authorize value using authoriseWith matcher
-    const authResult = matchedEntry.authoriseWith.authorize({ content: header.value })
+    // Note: Matcher interface uses DetectedScript shape, so map header fields
+    const authResult = matchedEntry.authoriseWith.authorize({
+      name: header.name,
+      content: header.value,
+      hash: '' as unknown as SHA256Hash, // Not used for header matching
+    })
 
     // Log authorization result
     const authorizeMatcher = matchedEntry.authoriseWith
@@ -238,8 +243,8 @@ export class HeaderComparisonService implements IHeaderComparisonService {
       // Skip non-authorized entries (legacy compatibility)
       if (!entry.authorisationInfo.authorised) continue
 
-      // Test identifyWith matcher (NameMatcher expects { name: string })
-      if (entry.identifyWith.identify({ name: headerName })) {
+      // Use matcher's identify method (DetectedScript shape)
+      if (entry.identifyWith.identify({ name: headerName, content: '', hash: '' as unknown as SHA256Hash })) {
         return entry // First match wins
       }
     }
