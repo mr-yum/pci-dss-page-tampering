@@ -6,7 +6,7 @@ import type { PullTarget } from '../types/target'
 import { scriptHashToInventoryHashInfo } from '../utils/hash'
 import { unauthorisedHeadersToInventoryHeaderInfo } from '../utils/header'
 import { copyInventory } from '../utils/inventory'
-import { getScriptSource, scriptInfoToInventoryScriptInfo } from '../utils/script'
+import { getScriptSource, inventoryScriptInfoToRawInventoryScriptInfo, rawInventoryScriptInfoToInventoryScriptInfo, scriptInfoToInventoryScriptInfo } from '../utils/script'
 
 export class ScriptInventoryService implements IInventoryService {
   private _repository: IScriptInventoryRepository
@@ -65,8 +65,6 @@ export class ScriptInventoryService implements IInventoryService {
 
     // Phase 4 Update: Work with matcher-based inventory structure
     // Need to find matching entries and update their authoriseWith matchers with new hashes
-    const { inventoryScriptInfoToRawInventoryScriptInfo, rawInventoryScriptInfoToInventoryScriptInfo } = require('../utils/script')
-
     const updatedScripts = inventory.scripts.map((inventoryScript) => {
       // Check if any of the new hashes belong to this inventory entry
       const matchingNewHashScripts = newHashesToAdd.filter((script) => {

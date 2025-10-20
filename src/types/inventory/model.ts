@@ -37,7 +37,6 @@ export type InventoryScriptInfo = {
  * - Aligns with InventoryScriptInfo structure for consistency
  *
  * @see ./header-entry.ts for schema and processing logic
- * @deprecated The old structure with nameMatcher/contentMatcher RegExp fields is replaced by this
  */
 export type InventoryHeaderInfo = {
   identifyWith: Matcher

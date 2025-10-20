@@ -147,13 +147,13 @@
 
 ### Tests for User Story 3 (REQUIRED per Constitution Principle V)
 
-- [ ] T045 [P] [US3] Write unit test for HeaderNameMatcher.identify() in test/unit/types/matcher/header-name-matcher.test.ts - verify case-insensitive matching ("Content-Type" matches "content-type" per FR-010b and spec acceptance scenario 1)
-- [ ] T046 [P] [US3] Write unit test for HeaderNameMatcher.authorize() in test/unit/types/matcher/header-name-matcher.test.ts - verify case-sensitive content matching (reuses pattern logic but for header values)
-- [ ] T047 [P] [US3] Write unit test for HeaderNameMatcher and ScriptNameMatcher both implementing Matcher interface in test/unit/types/matcher/matcher-interface.test.ts - verify domain-appropriate behaviors (per FR-010a and spec acceptance scenario 4)
-- [ ] T048 [US3] Write unit test for InventoryHeaderInfo Zod schema validation in test/unit/types/inventory/header-entry.test.ts - verify identifyWith accepts HeaderNameMatcher and authoriseWith accepts ContentMatcher
-- [ ] T049 [US3] Write unit test for HeaderComparisonService using HeaderNameMatcher.identify() in test/unit/services/comparison/header.test.ts - verify matcher's identify method called instead of inline regex
-- [ ] T050 [US3] Write unit test for HeaderComparisonService using ContentMatcher.authorize() in test/unit/services/comparison/header.test.ts - verify matcher's authorize method called instead of inline content validation
-- [ ] T051 [US3] Write unit test for HeaderComparisonService logging matcher type and pattern on failure in test/unit/services/comparison/header.test.ts - verify debug information includes getType() and getPattern() (per spec acceptance scenario 3)
+- [x] T045 [P] [US3] Write unit test for HeaderNameMatcher.identify() in test/unit/types/matcher/header-name-matcher.test.ts - verify case-insensitive matching ("Content-Type" matches "content-type" per FR-010b and spec acceptance scenario 1)
+- [x] T046 [P] [US3] Write unit test for HeaderNameMatcher.authorize() in test/unit/types/matcher/header-name-matcher.test.ts - verify case-sensitive content matching (reuses pattern logic but for header values)
+- [x] T047 [P] [US3] Write unit test for HeaderNameMatcher and ScriptNameMatcher both implementing Matcher interface in test/unit/types/matcher/matcher-interface.test.ts - verify domain-appropriate behaviors (per FR-010a and spec acceptance scenario 4)
+- [x] T048 [US3] Write unit test for InventoryHeaderInfo Zod schema validation in test/unit/types/inventory/header-entry.test.ts - verify identifyWith accepts HeaderNameMatcher and authoriseWith accepts ContentMatcher
+- [x] T049 [US3] Write unit test for HeaderComparisonService using HeaderNameMatcher.identify() in test/unit/services/comparison/header.test.ts - verify matcher's identify method called instead of inline regex
+- [x] T050 [US3] Write unit test for HeaderComparisonService using ContentMatcher.authorize() in test/unit/services/comparison/header.test.ts - verify matcher's authorize method called instead of inline content validation
+- [x] T051 [US3] Write unit test for HeaderComparisonService logging matcher type and pattern on failure in test/unit/services/comparison/header.test.ts - verify debug information includes getType() and getPattern() (per spec acceptance scenario 3)
 
 **Run tests - WILL FAIL initially, PASS after implementation**
 
@@ -161,33 +161,33 @@
 
 #### Matcher Implementation
 
-- [ ] T052 [P] [US3] Create HeaderNameMatcher class in src/types/matcher/header-name-matcher.ts implementing Matcher interface with case-insensitive identify() method for HTTP header names per RFC 7230 (per FR-010a, FR-010b)
-- [ ] T053 [P] [US3] Implement HeaderNameMatcher.identify() in src/types/matcher/header-name-matcher.ts to normalize input name to lowercase before regex test (per data-model.md BR-3)
-- [ ] T054 [P] [US3] Implement HeaderNameMatcher.authorize() in src/types/matcher/header-name-matcher.ts for case-sensitive content matching (same pattern as NameMatcher but header-specific semantics)
-- [ ] T055 [P] [US3] Implement HeaderNameMatcher.getType() in src/types/matcher/header-name-matcher.ts to return 'header-name' as discriminator
-- [ ] T056 [P] [US3] Implement HeaderNameMatcher.getPattern() in src/types/matcher/header-name-matcher.ts to return regex pattern string for logging
-- [ ] T057 [US3] Add HeaderNameMatcher to MatcherFactory in src/types/matcher/matcher-factory.ts for deserialization from JSON inventory with type discriminator 'header-name'
-- [ ] T058 [US3] Update Matcher.getType() return type in src/types/matcher/matcher.interface.ts to include 'header-name' | 'name' | 'content' | 'hash' (currently only 'name' | 'content' | 'hash')
+- [x] T052 [P] [US3] Create HeaderNameMatcher class in src/types/matcher/header-name-matcher.ts implementing Matcher interface with case-insensitive identify() method for HTTP header names per RFC 7230 (per FR-010a, FR-010b)
+- [x] T053 [P] [US3] Implement HeaderNameMatcher.identify() in src/types/matcher/header-name-matcher.ts to normalize input name to lowercase before regex test (per data-model.md BR-3)
+- [x] T054 [P] [US3] Implement HeaderNameMatcher.authorize() in src/types/matcher/header-name-matcher.ts for case-sensitive content matching (same pattern as NameMatcher but header-specific semantics)
+- [x] T055 [P] [US3] Implement HeaderNameMatcher.getType() in src/types/matcher/header-name-matcher.ts to return 'header-name' as discriminator
+- [x] T056 [P] [US3] Implement HeaderNameMatcher.getPattern() in src/types/matcher/header-name-matcher.ts to return regex pattern string for logging
+- [x] T057 [US3] Add HeaderNameMatcher to MatcherFactory in src/types/matcher/matcher-factory.ts for deserialization from JSON inventory with type discriminator 'header-name'
+- [x] T058 [US3] Update Matcher.getType() return type in src/types/matcher/matcher.interface.ts to include 'header-name' | 'name' | 'content' | 'hash' (currently only 'name' | 'content' | 'hash')
 
 #### Inventory Schema
 
-- [ ] T059 [P] [US3] Define InventoryHeaderInfo Zod schema in src/types/inventory/header-entry.ts with identifyWith (HeaderNameMatcher), authoriseWith (ContentMatcher), authorisationInfo fields (per FR-010a)
-- [ ] T060 [P] [US3] Export InventoryHeaderInfo type from src/types/inventory/header-entry.ts using z.infer<typeof InventoryHeaderInfoSchema>
-- [ ] T061 [US3] Update Inventory model in src/types/inventory/model.ts to include headers property as InventoryHeaderInfo[] array
-- [ ] T062 [US3] Export InventoryHeaderInfo from src/types/inventory/index.ts for external use
+- [x] T059 [P] [US3] Define InventoryHeaderInfo Zod schema in src/types/inventory/header-entry.ts with identifyWith (HeaderNameMatcher), authoriseWith (ContentMatcher), authorisationInfo fields (per FR-010a)
+- [x] T060 [P] [US3] Export InventoryHeaderInfo type from src/types/inventory/header-entry.ts using z.infer<typeof InventoryHeaderInfoSchema>
+- [x] T061 [US3] Update Inventory model in src/types/inventory/model.ts to include headers property as InventoryHeaderInfo[] array
+- [x] T062 [US3] Export InventoryHeaderInfo from src/types/inventory/index.ts for external use
 
 #### Service Integration
 
-- [ ] T063 [US3] Update HeaderComparisonService.findMatchingInventoryEntry() in src/services/comparison/header.ts to call entry.identifyWith.identify({ name: headerName }) instead of inline regex test (per FR-010)
-- [ ] T064 [US3] Update HeaderComparisonService.compareSingleHeader() in src/services/comparison/header.ts to call matchedEntry.authoriseWith.authorize({ content: header.value }) instead of inline content test (per FR-010)
-- [ ] T065 [US3] Update logging in HeaderComparisonService in src/services/comparison/header.ts to use matcher.getType() and JSON.stringify(matcher.getPattern()) for identification and authorization log messages
+- [x] T063 [US3] Update HeaderComparisonService.findMatchingInventoryEntry() in src/services/comparison/header.ts to call entry.identifyWith.identify({ name: headerName }) instead of inline regex test (per FR-010)
+- [x] T064 [US3] Update HeaderComparisonService.compareSingleHeader() in src/services/comparison/header.ts to call matchedEntry.authoriseWith.authorize({ content: header.value }) instead of inline content test (per FR-010)
+- [x] T065 [US3] Update logging in HeaderComparisonService in src/services/comparison/header.ts to use matcher.getType() and JSON.stringify(matcher.getPattern()) for identification and authorization log messages
 
 **Run tests - ALL MUST PASS at this point (implementation complete for US3)**
 
 ### Documentation and Migration for User Story 3
 
-- [ ] T066 [P] [US3] Document HeaderNameMatcher vs ScriptNameMatcher distinction in CLAUDE.md - clarify both implement Matcher but have different matching semantics (per FR-010a)
-- [ ] T067 [P] [US3] Create migration guide in specs/002-continuing-our-refactor/migration.md for converting existing header inventory entries from nameMatcher/contentMatcher RegExp to identifyWith/authoriseWith Matcher instances
+- [x] T066 [P] [US3] Document HeaderNameMatcher vs ScriptNameMatcher distinction in CLAUDE.md - clarify both implement Matcher but have different matching semantics (per FR-010a)
+- [x] T067 [P] [US3] Create migration guide in specs/002-continuing-our-refactor/migration.md for converting existing header inventory entries from nameMatcher/contentMatcher RegExp to identifyWith/authoriseWith Matcher instances
 - [ ] T068 [US3] Create optional migration script in scripts/migrate-header-inventory.ts to automate conversion of existing inventory (if applicable) - convert nameMatcher RegExp → HeaderNameMatcher, contentMatcher RegExp → ContentMatcher
 
 **Checkpoint**: All user stories should now be independently functional. Headers use consistent Matcher pattern with scripts while accommodating domain-specific matching semantics (per SC-005, FR-010a).
@@ -198,10 +198,10 @@
 
 **Purpose**: Improvements that affect multiple user stories and ensure production readiness
 
-- [ ] T069 [P] Run npm run check:formatting to verify code formatting across all modified files
-- [ ] T070 [P] Run npm run check:linting to verify ESLint rules pass for all modified files
-- [ ] T071 [P] Run npm run check:typing to verify TypeScript compilation with no errors (per SC-007)
-- [ ] T072 Run npm run test:unit to verify all unit tests pass (scripts + headers)
+- [x] T069 [P] Run npm run check:formatting to verify code formatting across all modified files
+- [x] T070 [P] Run npm run check:linting to verify ESLint rules pass for all modified files
+- [x] T071 [P] Run npm run check:typing to verify TypeScript compilation with no errors (per SC-007)
+- [x] T072 Run npm run test:unit to verify all unit tests pass (scripts + headers)
 - [ ] T073 Run npm run test:integration to verify integration tests pass in Docker environment
 - [ ] T074 [P] Update CLAUDE.md if any new patterns or conventions were established during implementation
 - [ ] T075 [P] Verify constitution compliance checklist in specs/002-continuing-our-refactor/plan.md - confirm all gates still pass

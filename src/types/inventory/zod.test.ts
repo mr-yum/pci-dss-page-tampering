@@ -13,8 +13,6 @@
  * @see ../../../specs/001-refactor-script-identification/research.md R6 for error message requirements
  */
 
-import { describe, expect, it } from '@jest/globals'
-
 import { MatcherConfigSchema } from './matcher-config-schema'
 import { RawInventoryScriptInfoSchema } from './zod'
 

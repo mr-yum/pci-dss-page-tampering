@@ -72,8 +72,7 @@ export class GitInventoryStore implements IInventoryStore {
     }
   }
 
-  // @ts-expect-error - inventory parameter not used but required by interface
-  async push(inventory: Inventory[]): Promise<void> {
+  async push(_inventory: Inventory[]): Promise<void> {
     console.log(`[Inventory → Store] Setting user.name and user.email for the local repo.`)
     await this.repositoryGitClient?.addConfig('user.name', 'me&u (formerly Mr Yum) Dev [bot]')
     await this.repositoryGitClient?.addConfig('user.email', 'dev@mryum.com')

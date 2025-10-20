@@ -139,7 +139,7 @@ export class DetectionService implements IDetectionService {
 
     // Execute action
     switch (step.action.type) {
-      case 'click':
+      case 'click': {
         const action: PuppeteerClickAction = step.action
         await this.evalClick(page, step)
 
@@ -147,6 +147,7 @@ export class DetectionService implements IDetectionService {
           await page.waitForNavigation()
         }
         break
+      }
 
       case 'input': {
         const action: PuppeteerInputAction = step.action

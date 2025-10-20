@@ -1,5 +1,6 @@
 import type { Inventory, InventoryHeaderInfo, InventoryScriptInfo } from '../types/inventory/model'
 import type { RawInventory, RawInventoryHeaderInfo } from '../types/inventory/raw'
+import { createMatcher } from '../types/matcher/matcher-factory'
 import { inventoryScriptInfoToRawInventoryScriptInfo } from './script'
 
 export function copyInventory(inventory: Inventory, args?: { newScripts: InventoryScriptInfo[] }): Inventory {
@@ -41,8 +42,6 @@ export function inventoryToRawInventory(inventory: Inventory): RawInventory {
  * - Replaces old nameMatcher/contentMatcher field conversion
  */
 export function rawInventoryHeaderInfoToInventoryHeaderInfo(rawHeaderInfo: RawInventoryHeaderInfo): InventoryHeaderInfo {
-  const { createMatcher } = require('../types/matcher/matcher-factory')
-
   return {
     identifyWith: createMatcher(rawHeaderInfo.identifyWith),
     authoriseWith: createMatcher(rawHeaderInfo.authoriseWith),

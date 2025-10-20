@@ -1,5 +1,6 @@
 import type { SHA256Hash } from '../../types/hash'
 import type { Inventory, InventoryScriptInfo } from '../../types/inventory/model'
+import { createMatcher } from '../../types/matcher/matcher-factory'
 import type { ScriptDetectionSummary, ScriptInfo } from '../../types/script'
 import type { Target } from '../../types/target'
 import { ScriptComparisonService } from './script'
@@ -54,9 +55,6 @@ describe('ScriptComparisonService', () => {
   })
 
   const createInventoryScriptInfo = (namePattern: string, hashes: string[] = [], authorised: boolean = true, contentPattern?: string): InventoryScriptInfo => {
-    // Import createMatcher for Phase 4 matcher-based inventory
-    const { createMatcher } = require('../../types/matcher/matcher-factory')
-
     // Phase 4 Update: Use new identifyWith/authoriseWith structure with Matcher instances
     // Identification: Use nameMatcher for identifying scripts by URL/ID
     const identifyWith = createMatcher({ nameMatcher: namePattern })
