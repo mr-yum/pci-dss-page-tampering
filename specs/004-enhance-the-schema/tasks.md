@@ -320,11 +320,11 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 
 **Tasks**:
 
-- [ ] T056 [US2] Create migration script in scripts/migrate-inventory-schema.js
-- [ ] T057 [US2] Implement script migration logic (spread authoriseWith, nest authorisationInfo)
-- [ ] T058 [US2] Implement header migration logic
-- [ ] T059 [US2] Add validation after migration
-- [ ] T060 [US2] Test migration script on sample inventory files
+- [x] T056 [US2] Create migration script in scripts/migrate-inventory-schema.js
+- [x] T057 [US2] Implement script migration logic (spread authoriseWith, nest authorisationInfo)
+- [x] T058 [US2] Implement header migration logic
+- [x] T059 [US2] Add validation after migration
+- [x] T060 [US2] Test migration script on sample inventory files
 
 **Verification**:
 
