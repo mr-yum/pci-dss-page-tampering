@@ -31,10 +31,47 @@ const path = require('path')
 
 /**
  * Migrate a single script/header entry from old to new schema
+ * Handles both:
+ * - Old format: identifyWith/authoriseWith as siblings to authorisationInfo
+ * - Very old format (headers): nameMatcher/contentMatcher directly on object
  * @param {Object} entry - Old format entry
+ * @param {string} type - 'script' or 'header'
  * @returns {Object} - New format entry
  */
-function migrateEntry(entry) {
+function migrateEntry(entry, type = 'script') {
+  // Handle very old header format (pre-refactor 001)
+  // { nameMatcher: "...", contentMatcher: "...", authorisationInfo: {...} }
+  if (!entry.identifyWith && !entry.authoriseWith && entry.authorisationInfo) {
+    // This is the very old format - convert to old format first, then to new format
+    const oldFormat = {
+      identifyWith: {},
+      authoriseWith: {},
+      authorisationInfo: entry.authorisationInfo,
+    }
+
+    // Move matcher fields to appropriate objects
+    if (entry.nameMatcher) {
+      // For headers, nameMatcher becomes headerNameMatcher in identifyWith
+      if (type === 'header') {
+        oldFormat.identifyWith.headerNameMatcher = entry.nameMatcher
+      } else {
+        oldFormat.identifyWith.nameMatcher = entry.nameMatcher
+      }
+    }
+    if (entry.contentMatcher) {
+      oldFormat.authoriseWith.contentMatcher = entry.contentMatcher
+    }
+    if (entry.hashes) {
+      oldFormat.authoriseWith.hashes = entry.hashes
+    }
+    if (entry.headerNameMatcher) {
+      oldFormat.identifyWith.headerNameMatcher = entry.headerNameMatcher
+    }
+
+    // Now migrate from old format to new format
+    entry = oldFormat
+  }
+
   // Validate entry has required fields
   if (!entry.identifyWith) {
     throw new Error('Entry missing identifyWith field')
@@ -75,8 +112,18 @@ function migrateInventory(inventory) {
     })
   }
 
-  // Migrate headers array (stored as object with header names as keys)
-  if (typeof inventory.headers === 'object' && inventory.headers !== null && !Array.isArray(inventory.headers)) {
+  // Migrate headers (can be either array or object)
+  if (Array.isArray(inventory.headers)) {
+    // Headers stored as array
+    migrated.headers = inventory.headers.map((header, index) => {
+      try {
+        return migrateEntry(header)
+      } catch (error) {
+        throw new Error(`Failed to migrate header at index ${index}: ${error.message}`)
+      }
+    })
+  } else if (typeof inventory.headers === 'object' && inventory.headers !== null) {
+    // Headers stored as object with header names as keys
     migrated.headers = {}
     for (const [headerName, headerEntry] of Object.entries(inventory.headers)) {
       try {
@@ -116,8 +163,10 @@ function isInventoryMigrated(inventory) {
     return isAlreadyMigrated(inventory.scripts[0])
   }
 
-  // Check headers
-  if (typeof inventory.headers === 'object' && inventory.headers !== null) {
+  // Check headers (can be array or object)
+  if (Array.isArray(inventory.headers) && inventory.headers.length > 0) {
+    return isAlreadyMigrated(inventory.headers[0])
+  } else if (typeof inventory.headers === 'object' && inventory.headers !== null) {
     const headerEntries = Object.values(inventory.headers)
     if (headerEntries.length > 0) {
       return isAlreadyMigrated(headerEntries[0])
@@ -181,8 +230,12 @@ function validateMigratedInventory(inventory) {
     })
   }
 
-  // Validate headers
-  if (typeof inventory.headers === 'object' && inventory.headers !== null) {
+  // Validate headers (can be array or object)
+  if (Array.isArray(inventory.headers)) {
+    inventory.headers.forEach((header, index) => {
+      validateMigratedEntry(header, `header[${index}]`)
+    })
+  } else if (typeof inventory.headers === 'object' && inventory.headers !== null) {
     for (const [headerName, headerEntry] of Object.entries(inventory.headers)) {
       validateMigratedEntry(headerEntry, `header["${headerName}"]`)
     }
