@@ -9,6 +9,11 @@ export type InventoryAuthorisationInfo = {
   date: Date
 }
 
+export type AuthorizeWithConfig = {
+  matcher: Matcher
+  authorisationInfo: InventoryAuthorisationInfo
+}
+
 export type InventoryScriptHashInfo = {
   timestamp: Date
   hash: SHA256Hash
@@ -19,13 +24,12 @@ export type InventoryScriptHashInfo = {
  *
  * Updated model (Phase 3):
  * - identifyWith: Matcher instance created from MatcherConfig (for script identification)
- * - authoriseWith: Matcher instance created from MatcherConfig (for content authorization)
+ * - authoriseWith: AuthorizeWithConfig composite structure (matcher + authorization metadata)
  * - No longer uses raw regex fields; matchers encapsulate all matching logic
  */
 export type InventoryScriptInfo = {
   identifyWith: Matcher
-  authoriseWith: Matcher
-  authorisationInfo: InventoryAuthorisationInfo
+  authoriseWith: AuthorizeWithConfig
 }
 
 /**
@@ -33,15 +37,14 @@ export type InventoryScriptInfo = {
  *
  * Updated model (Phase 5 - US3):
  * - identifyWith: Matcher instance (typically HeaderNameMatcher for case-insensitive name matching)
- * - authoriseWith: Matcher instance (typically ContentMatcher for case-sensitive value matching)
+ * - authoriseWith: AuthorizeWithConfig composite structure (matcher + authorization metadata)
  * - Aligns with InventoryScriptInfo structure for consistency
  *
  * @see ./header-entry.ts for schema and processing logic
  */
 export type InventoryHeaderInfo = {
   identifyWith: Matcher
-  authoriseWith: Matcher
-  authorisationInfo: InventoryAuthorisationInfo
+  authoriseWith: AuthorizeWithConfig
 }
 
 export type InventoryTarget = {

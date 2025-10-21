@@ -8,7 +8,7 @@ import { escapeRegex } from './string'
  *
  * Updated for Phase 5 - US3:
  * - identifyWith: HeaderNameMatcher with exact header name match (case-insensitive)
- * - authoriseWith: ContentMatcher with escaped exact value match (case-sensitive)
+ * - authoriseWith: AuthorizeWithConfig with ContentMatcher and authorization metadata
  * - This is used during inventory workflow when discovering new headers
  */
 export function unauthorisedHeadersToInventoryHeaderInfo(headers: Map<HeaderName, HeaderValues>, date: Date): InventoryHeaderInfo[] {
@@ -21,11 +21,13 @@ export function unauthorisedHeadersToInventoryHeaderInfo(headers: Map<HeaderName
 
       return {
         identifyWith: createMatcher({ headerNameMatcher: headerNamePattern }),
-        authoriseWith: createMatcher({ contentMatcher: headerValuePattern }),
-        authorisationInfo: {
-          description: 'NO_DESCRIPTION',
-          authorised: false,
-          date: date,
+        authoriseWith: {
+          matcher: createMatcher({ contentMatcher: headerValuePattern }),
+          authorisationInfo: {
+            description: 'NO_DESCRIPTION',
+            authorised: false,
+            date: date,
+          },
         },
       }
     })

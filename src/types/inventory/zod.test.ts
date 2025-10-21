@@ -189,11 +189,11 @@ describe('RawInventoryScriptInfoSchema', () => {
               hash: { value: 'abc123'.padEnd(64, '0') },
             },
           ],
-        },
-        authorisationInfo: {
-          description: 'External CDN script with hash verification',
-          authorised: true,
-          date: '2025-10-15T00:00:00.000Z',
+          authorisationInfo: {
+            description: 'External CDN script with hash verification',
+            authorised: true,
+            date: '2025-10-15T00:00:00.000Z',
+          },
         },
       }
 
@@ -216,11 +216,11 @@ describe('RawInventoryScriptInfoSchema', () => {
               hash: { value: 'def456'.padEnd(64, '0') },
             },
           ],
-        },
-        authorisationInfo: {
-          description: 'Inline script identified by content pattern',
-          authorised: true,
-          date: '2025-10-15T00:00:00.000Z',
+          authorisationInfo: {
+            description: 'Inline script identified by content pattern',
+            authorised: true,
+            date: '2025-10-15T00:00:00.000Z',
+          },
         },
       }
 
@@ -234,11 +234,13 @@ describe('RawInventoryScriptInfoSchema', () => {
     it('should accept nameMatcher for both identifyWith and authoriseWith', () => {
       const validSchema = {
         identifyWith: { nameMatcher: '^https://example\\.com/script\\.js.*$' },
-        authoriseWith: { nameMatcher: '^https://example\\.com/script\\.js\\?v=[0-9]+$' },
-        authorisationInfo: {
-          description: 'Script identified and authorized by name pattern',
-          authorised: true,
-          date: '2025-10-15T00:00:00.000Z',
+        authoriseWith: {
+          nameMatcher: '^https://example\\.com/script\\.js\\?v=[0-9]+$',
+          authorisationInfo: {
+            description: 'Script identified and authorized by name pattern',
+            authorised: true,
+            date: '2025-10-15T00:00:00.000Z',
+          },
         },
       }
 
@@ -250,11 +252,13 @@ describe('RawInventoryScriptInfoSchema', () => {
     it('should accept contentMatcher for both identifyWith and authoriseWith', () => {
       const validSchema = {
         identifyWith: { contentMatcher: '__NEXT_DATA__' },
-        authoriseWith: { contentMatcher: '__NEXT_DATA__.*"environment":"production"' },
-        authorisationInfo: {
-          description: 'Next.js data script with production environment check',
-          authorised: true,
-          date: '2025-10-15T00:00:00.000Z',
+        authoriseWith: {
+          contentMatcher: '__NEXT_DATA__.*"environment":"production"',
+          authorisationInfo: {
+            description: 'Next.js data script with production environment check',
+            authorised: true,
+            date: '2025-10-15T00:00:00.000Z',
+          },
         },
       }
 
@@ -280,11 +284,11 @@ describe('RawInventoryScriptInfoSchema', () => {
               hash: { value: 'a'.repeat(64) },
             },
           ],
-        },
-        authorisationInfo: {
-          description: 'Script with hash-based identification and authorization',
-          authorised: true,
-          date: '2025-10-15T00:00:00.000Z',
+          authorisationInfo: {
+            description: 'Script with hash-based identification and authorization',
+            authorised: true,
+            date: '2025-10-15T00:00:00.000Z',
+          },
         },
       }
 
@@ -321,6 +325,198 @@ describe('RawInventoryScriptInfoSchema', () => {
         expect(errorMessage).toContain('^[unclosed')
         expect(errorMessage).toContain('Invalid regex')
       }
+    })
+  })
+
+  describe('Phase 4 Schema Validation Tests (T030-T035)', () => {
+    describe('T030: Valid nested structure', () => {
+      it('should validate correct nested structure with nameMatcher', () => {
+        const validSchema = {
+          identifyWith: { nameMatcher: '^https://example\\.com/.*$' },
+          authoriseWith: {
+            nameMatcher: '^https://example\\.com/script\\.js$',
+            authorisationInfo: {
+              description: 'Test script',
+              authorised: true,
+              date: '2025-10-21T12:00:00.000Z',
+            },
+          },
+        }
+
+        const result = RawInventoryScriptInfoSchema.safeParse(validSchema)
+        expect(result.success).toBe(true)
+      })
+
+      it('should validate correct nested structure with hashes', () => {
+        const validSchema = {
+          identifyWith: { nameMatcher: '^https://example\\.com/.*$' },
+          authoriseWith: {
+            hashes: [
+              {
+                timestamp: '2025-10-21T12:00:00.000Z',
+                hash: { value: 'a'.repeat(64) },
+              },
+            ],
+            authorisationInfo: {
+              description: 'Test script',
+              authorised: true,
+              date: '2025-10-21T12:00:00.000Z',
+            },
+          },
+        }
+
+        const result = RawInventoryScriptInfoSchema.safeParse(validSchema)
+        expect(result.success).toBe(true)
+      })
+
+      it('should validate correct nested structure with contentMatcher', () => {
+        const validSchema = {
+          identifyWith: { contentMatcher: '__NEXT_DATA__' },
+          authoriseWith: {
+            contentMatcher: '__NEXT_DATA__.*"environment":"production"',
+            authorisationInfo: {
+              description: 'Next.js data script',
+              authorised: true,
+              date: '2025-10-21T12:00:00.000Z',
+            },
+          },
+        }
+
+        const result = RawInventoryScriptInfoSchema.safeParse(validSchema)
+        expect(result.success).toBe(true)
+      })
+    })
+
+    describe('T031: Missing authorisationInfo fails validation', () => {
+      it('should reject authoriseWith without authorisationInfo', () => {
+        const invalidSchema = {
+          identifyWith: { nameMatcher: '^https://example\\.com/.*$' },
+          authoriseWith: {
+            nameMatcher: '^https://example\\.com/script\\.js$',
+            // authorisationInfo missing
+          },
+        }
+
+        const result = RawInventoryScriptInfoSchema.safeParse(invalidSchema)
+        expect(result.success).toBe(false)
+        if (!result.success) {
+          const issues = result.error.issues.map((issue) => issue.path.join('.'))
+          expect(issues).toContain('authoriseWith.authorisationInfo')
+        }
+      })
+    })
+
+    describe('T032: Missing matcher field fails validation', () => {
+      it('should reject authoriseWith with only authorisationInfo (no matcher)', () => {
+        const invalidSchema = {
+          identifyWith: { nameMatcher: '^https://example\\.com/.*$' },
+          authoriseWith: {
+            // No nameMatcher/contentMatcher/hashes/headerNameMatcher
+            authorisationInfo: {
+              description: 'Test script',
+              authorised: true,
+              date: '2025-10-21T12:00:00.000Z',
+            },
+          },
+        }
+
+        const result = RawInventoryScriptInfoSchema.safeParse(invalidSchema)
+        expect(result.success).toBe(false)
+        if (!result.success) {
+          expect(result.error.issues.length).toBeGreaterThan(0)
+        }
+      })
+    })
+
+    describe('T033: Empty description fails validation', () => {
+      it('should reject empty description string', () => {
+        const invalidSchema = {
+          identifyWith: { nameMatcher: '^https://example\\.com/.*$' },
+          authoriseWith: {
+            nameMatcher: '^https://example\\.com/script\\.js$',
+            authorisationInfo: {
+              description: '', // Empty string
+              authorised: true,
+              date: '2025-10-21T12:00:00.000Z',
+            },
+          },
+        }
+
+        const result = RawInventoryScriptInfoSchema.safeParse(invalidSchema)
+        expect(result.success).toBe(false)
+        if (!result.success) {
+          // Verify that one of the issues is about the description field
+          const descriptionIssues = result.error.issues.filter((issue) => issue.path.join('.').includes('description'))
+          expect(descriptionIssues.length).toBeGreaterThan(0)
+        }
+      })
+    })
+
+    describe('T034: Invalid date format fails validation', () => {
+      it('should reject invalid date format', () => {
+        const invalidSchema = {
+          identifyWith: { nameMatcher: '^https://example\\.com/.*$' },
+          authoriseWith: {
+            nameMatcher: '^https://example\\.com/script\\.js$',
+            authorisationInfo: {
+              description: 'Test script',
+              authorised: true,
+              date: 'not-a-valid-date',
+            },
+          },
+        }
+
+        const result = RawInventoryScriptInfoSchema.safeParse(invalidSchema)
+        expect(result.success).toBe(false)
+        if (!result.success) {
+          const errorMessages = result.error.issues.map((issue) => issue.message)
+          expect(errorMessages.some((msg) => msg.includes('datetime') || msg.includes('Invalid'))).toBe(true)
+        }
+      })
+
+      it('should reject non-ISO date format', () => {
+        const invalidSchema = {
+          identifyWith: { nameMatcher: '^https://example\\.com/.*$' },
+          authoriseWith: {
+            nameMatcher: '^https://example\\.com/script\\.js$',
+            authorisationInfo: {
+              description: 'Test script',
+              authorised: true,
+              date: '10/21/2025',
+            },
+          },
+        }
+
+        const result = RawInventoryScriptInfoSchema.safeParse(invalidSchema)
+        expect(result.success).toBe(false)
+      })
+    })
+
+    describe('T035: Unauthorized entry (authorised:false) passes validation', () => {
+      it('should accept authorised:false as valid state', () => {
+        const validSchema = {
+          identifyWith: { nameMatcher: '^https://example\\.com/.*$' },
+          authoriseWith: {
+            hashes: [
+              {
+                timestamp: '2025-10-21T12:00:00.000Z',
+                hash: { value: 'a'.repeat(64) },
+              },
+            ],
+            authorisationInfo: {
+              description: 'NO_DESCRIPTION',
+              authorised: false, // Unauthorized state
+              date: '2025-10-21T12:00:00.000Z',
+            },
+          },
+        }
+
+        const result = RawInventoryScriptInfoSchema.safeParse(validSchema)
+        expect(result.success).toBe(true)
+        if (result.success) {
+          expect(result.data.authoriseWith.authorisationInfo.authorised).toBe(false)
+        }
+      })
     })
   })
 })

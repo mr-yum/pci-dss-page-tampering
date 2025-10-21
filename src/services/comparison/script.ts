@@ -104,11 +104,11 @@ export class ScriptComparisonService implements IScriptComparisonService {
 
     // Authorization using authoriseWith matcher
     const startAuthorizationTime = Date.now()
-    const authorizationResult = matchedEntry.authoriseWith.authorize(detectedScript)
+    const authorizationResult = matchedEntry.authoriseWith.matcher.authorize(detectedScript)
     const authorizationTime = Date.now() - startAuthorizationTime
 
     // Log authorization result with matcher details
-    const authorizeMatcher = matchedEntry.authoriseWith
+    const authorizeMatcher = matchedEntry.authoriseWith.matcher
     const authStatus = authorizationResult.authorized ? 'AUTHORIZED' : `UNAUTHORIZED (${authorizationResult.reason})`
     const matcherPattern = JSON.stringify(authorizeMatcher.getPattern())
     console.log(`[Comparison → Script]: Script '${scriptSourceValue}' authorization via ${authorizeMatcher.getType()}Matcher with pattern '${matcherPattern}': ${authStatus} in ${authorizationTime}ms.`)
@@ -134,7 +134,7 @@ export class ScriptComparisonService implements IScriptComparisonService {
   private findMatchingInventoryEntry(script: DetectedScript, inventoryScripts: InventoryScriptInfo[]): InventoryScriptInfo | undefined {
     for (const inventoryEntry of inventoryScripts) {
       // Skip non-authorized entries (legacy compatibility)
-      if (!inventoryEntry.authorisationInfo.authorised) {
+      if (!inventoryEntry.authoriseWith.authorisationInfo.authorised) {
         continue
       }
 

@@ -76,18 +76,39 @@ export const InventoryScriptHashInfoSchema: z.ZodType<InventoryScriptHashInfo> =
 })
 
 /**
+ * Schema for authorization info in raw (JSON-serializable) format.
+ * Used for nested authorization metadata within RawAuthorizeWithConfig.
+ */
+export const InventoryAuthorisationInfoRawSchema = z.object({
+  description: z.string().min(1),
+  authorised: z.boolean(),
+  date: z.string().datetime(),
+})
+
+/**
+ * Schema for the composite authorization structure in raw (JSON-serializable) format.
+ * Combines matcher configuration with authorization metadata as siblings.
+ * Corresponds to `RawAuthorizeWithConfig`.
+ */
+export const RawAuthorizeWithConfigSchema = z.intersection(
+  MatcherConfigSchema,
+  z.object({
+    authorisationInfo: InventoryAuthorisationInfoRawSchema,
+  }),
+)
+
+/**
  * Schema for information about an inventory script.
  * Corresponds to `RawInventoryScriptInfo`.
  *
  * Updated schema (Phase 3):
  * - Replaces nameMatcher/contentMatcher/hashes with identifyWith/authoriseWith
- * - Each field uses MatcherConfig union type (nameMatcher | contentMatcher | hashes)
+ * - authoriseWith uses RawAuthorizeWithConfigSchema (matcher config + authorization metadata)
  * - Old schema format is rejected (no backward compatibility per clarification Q4)
  */
 export const RawInventoryScriptInfoSchema: z.ZodType<RawInventoryScriptInfo> = z.object({
   identifyWith: MatcherConfigSchema,
-  authoriseWith: MatcherConfigSchema,
-  authorisationInfo: InventoryAuthorisationInfoSchema,
+  authoriseWith: RawAuthorizeWithConfigSchema,
 })
 
 /**
@@ -105,13 +126,12 @@ export const RawInventoryTargetSchema: z.ZodType<RawInventoryTarget> = z.object(
  *
  * Updated schema (Phase 5 - US3):
  * - Uses identifyWith/authoriseWith matcher-based structure (aligned with scripts)
- * - Each field uses MatcherConfig union type (typically headerNameMatcher | contentMatcher)
+ * - authoriseWith uses RawAuthorizeWithConfigSchema (matcher config + authorization metadata)
  * - Replaces old nameMatcher/contentMatcher RegExp structure
  */
 export const RawInventoryHeaderInfoSchema: z.ZodType<RawInventoryHeaderInfo> = z.object({
   identifyWith: MatcherConfigSchema,
-  authoriseWith: MatcherConfigSchema,
-  authorisationInfo: InventoryAuthorisationInfoSchema,
+  authoriseWith: RawAuthorizeWithConfigSchema,
 })
 
 /**

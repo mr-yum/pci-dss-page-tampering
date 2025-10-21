@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        node-version: [22.x]
+        node-version: [24.x]
 
     steps:
       - name: Checkout code
@@ -43,10 +43,17 @@ jobs:
           npm ci
           echo "✅ Dependencies installed successfully"
 
+      - name: Audit dependencies
+        run: |
+          echo "📦 Auditing dependencies..."
+          npm audit
+          echo "✅ Dependencies audited successfully"
+
       - name: Run formatting and linting commands
         timeout-minutes: 30
         run: |
           echo "▶️ Running formatting and linting commands..."
+          npm list prettier
           npm run check:formatting
           npm run check:linting
           npm run check:typing
