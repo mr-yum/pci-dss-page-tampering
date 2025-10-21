@@ -33,7 +33,7 @@
     "secrets:pull": "dotenv-tools pull",
     "setup": "husky && node-builder setup",
     "clean": "node-builder clean",
-    "precommit": "npm run check:formatting && npm run check:linting && npm run check:typing && npm run test:unit",
+    "precommit": "npm audit &&npm run check:formatting && npm run check:linting && npm run check:typing && npm run test:unit",
     "check:formatting": "node-builder check formatting",
     "fix:formatting": "node-builder check formatting --fix",
     "check:linting": "node-builder check linting",

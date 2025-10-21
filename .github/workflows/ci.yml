@@ -43,6 +43,12 @@ jobs:
           npm ci
           echo "✅ Dependencies installed successfully"
 
+      - name: Audit dependencies
+        run: |
+          echo "📦 Auditing dependencies..."
+          npm audit
+          echo "✅ Dependencies audited successfully"
+
       - name: Run formatting and linting commands
         timeout-minutes: 30
         run: |
