@@ -57,9 +57,9 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 
 ### Tasks
 
-- [X] T001 Verify current branch is 004-enhance-the-schema
-- [X] T002 Run baseline test suite to confirm clean starting state (npm run test:unit)
-- [X] T003 Run type checking to confirm no existing errors (npm run check:typing)
+- [x] T001 Verify current branch is 004-enhance-the-schema
+- [x] T002 Run baseline test suite to confirm clean starting state (npm run test:unit)
+- [x] T003 Run type checking to confirm no existing errors (npm run check:typing)
 
 **Verification**:
 
@@ -77,9 +77,9 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 
 ### Tasks
 
-- [X] T004 Create AuthorizeWithConfig runtime type in src/types/inventory/model.ts
-- [X] T005 Create RawAuthorizeWithConfig serializable type in src/types/inventory/raw.ts
-- [X] T006 Run type check to verify new types compile (npm run check:typing)
+- [x] T004 Create AuthorizeWithConfig runtime type in src/types/inventory/model.ts
+- [x] T005 Create RawAuthorizeWithConfig serializable type in src/types/inventory/raw.ts
+- [x] T006 Run type check to verify new types compile (npm run check:typing)
 
 **Verification**:
 
@@ -110,9 +110,9 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 
 **Tasks**:
 
-- [X] T007 [US1] Update InventoryScriptInfo type to use AuthorizeWithConfig in src/types/inventory/model.ts:25-29
-- [X] T008 [US1] Update InventoryHeaderInfo type to use AuthorizeWithConfig in src/types/inventory/model.ts:41-45
-- [X] T009 [US1] Run type check - expect compilation errors in conversion functions and services (npm run check:typing)
+- [x] T007 [US1] Update InventoryScriptInfo type to use AuthorizeWithConfig in src/types/inventory/model.ts:25-29
+- [x] T008 [US1] Update InventoryHeaderInfo type to use AuthorizeWithConfig in src/types/inventory/model.ts:41-45
+- [x] T009 [US1] Run type check - expect compilation errors in conversion functions and services (npm run check:typing)
 
 **Verification**:
 
@@ -123,9 +123,9 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 
 **Tasks**:
 
-- [X] T010 [US1] Update RawInventoryScriptInfo type to use RawAuthorizeWithConfig in src/types/inventory/raw.ts:12-15
-- [X] T011 [US1] Update RawInventoryHeaderInfo type to use RawAuthorizeWithConfig in src/types/inventory/raw.ts:25-28
-- [X] T012 [US1] Remove Omit pattern from raw types (no longer needed) in src/types/inventory/raw.ts
+- [x] T010 [US1] Update RawInventoryScriptInfo type to use RawAuthorizeWithConfig in src/types/inventory/raw.ts:12-15
+- [x] T011 [US1] Update RawInventoryHeaderInfo type to use RawAuthorizeWithConfig in src/types/inventory/raw.ts:25-28
+- [x] T012 [US1] Remove Omit pattern from raw types (no longer needed) in src/types/inventory/raw.ts
 
 **Verification**:
 
@@ -135,10 +135,10 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 
 **Tasks**:
 
-- [X] T013 [US1] Create InventoryAuthorisationInfoRawSchema in src/types/inventory/zod.ts
-- [X] T014 [US1] Create RawAuthorizeWithConfigSchema using intersection pattern in src/types/inventory/zod.ts
-- [X] T015 [US1] Update RawInventoryScriptInfoSchema to use RawAuthorizeWithConfigSchema in src/types/inventory/zod.ts
-- [X] T016 [US1] Update RawInventoryHeaderInfoSchema to use RawAuthorizeWithConfigSchema in src/types/inventory/zod.ts
+- [x] T013 [US1] Create InventoryAuthorisationInfoRawSchema in src/types/inventory/zod.ts
+- [x] T014 [US1] Create RawAuthorizeWithConfigSchema using intersection pattern in src/types/inventory/zod.ts
+- [x] T015 [US1] Update RawInventoryScriptInfoSchema to use RawAuthorizeWithConfigSchema in src/types/inventory/zod.ts
+- [x] T016 [US1] Update RawInventoryHeaderInfoSchema to use RawAuthorizeWithConfigSchema in src/types/inventory/zod.ts
 
 **Verification**:
 
@@ -149,9 +149,9 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 
 **Tasks**:
 
-- [X] T017 [US1] Update scriptInfoToInventoryScriptInfo to create nested authoriseWith structure in src/utils/script.ts:16-28
-- [X] T018 [US1] Update rawInventoryScriptInfoToInventoryScriptInfo with destructuring pattern in src/utils/script.ts:54-59
-- [X] T019 [US1] Update inventoryScriptInfoToRawInventoryScriptInfo with spread pattern in src/utils/script.ts:70-94
+- [x] T017 [US1] Update scriptInfoToInventoryScriptInfo to create nested authoriseWith structure in src/utils/script.ts:16-28
+- [x] T018 [US1] Update rawInventoryScriptInfoToInventoryScriptInfo with destructuring pattern in src/utils/script.ts:54-59
+- [x] T019 [US1] Update inventoryScriptInfoToRawInventoryScriptInfo with spread pattern in src/utils/script.ts:70-94
 
 **Verification**:
 
@@ -163,9 +163,9 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 
 **Tasks**:
 
-- [X] T020 [P] [US1] Update rawInventoryHeaderInfoToInventoryHeaderInfo with destructuring pattern in src/utils/inventory.ts:44-49
-- [X] T021 [P] [US1] Update inventoryHeaderInfoToRawInventoryHeaderInfo with spread pattern in src/utils/inventory.ts:60-86
-- [X] T022 [P] [US1] Update matcherToConfig helper to handle headerNameMatcher in src/utils/inventory.ts:62-79
+- [x] T020 [P] [US1] Update rawInventoryHeaderInfoToInventoryHeaderInfo with destructuring pattern in src/utils/inventory.ts:44-49
+- [x] T021 [P] [US1] Update inventoryHeaderInfoToRawInventoryHeaderInfo with spread pattern in src/utils/inventory.ts:60-86
+- [x] T022 [P] [US1] Update matcherToConfig helper to handle headerNameMatcher in src/utils/inventory.ts:62-79
 
 **Verification**:
 
@@ -177,10 +177,10 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 
 **Tasks**:
 
-- [X] T023 [US1] Update ScriptComparisonService to access authoriseWith.matcher in src/services/comparison/script.ts
-- [X] T024 [US1] Update ScriptComparisonService to access authoriseWith.authorisationInfo in src/services/comparison/script.ts
-- [X] T025 [P] [US1] Update HeaderComparisonService to access authoriseWith.matcher in src/services/comparison/header.ts
-- [X] T026 [P] [US1] Update HeaderComparisonService to access authoriseWith.authorisationInfo in src/services/comparison/header.ts
+- [x] T023 [US1] Update ScriptComparisonService to access authoriseWith.matcher in src/services/comparison/script.ts
+- [x] T024 [US1] Update ScriptComparisonService to access authoriseWith.authorisationInfo in src/services/comparison/script.ts
+- [x] T025 [P] [US1] Update HeaderComparisonService to access authoriseWith.matcher in src/services/comparison/header.ts
+- [x] T026 [P] [US1] Update HeaderComparisonService to access authoriseWith.authorisationInfo in src/services/comparison/header.ts
 
 **Verification**:
 
@@ -192,9 +192,9 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 
 **Tasks**:
 
-- [X] T027 [US1] Run type checking - expect zero errors (npm run check:typing)
-- [X] T028 [US1] Run linting checks (npm run check:linting)
-- [X] T029 [US1] Run formatting checks (npm run check:formatting)
+- [x] T027 [US1] Run type checking - expect zero errors (npm run check:typing)
+- [x] T028 [US1] Run linting checks (npm run check:linting)
+- [x] T029 [US1] Run formatting checks (npm run check:formatting)
 
 **Verification**:
 
@@ -221,12 +221,12 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 
 **Tasks**:
 
-- [ ] T030 [P] [US3] Add test for valid nested structure in src/types/inventory/zod.test.ts
-- [ ] T031 [P] [US3] Add test for missing authorisationInfo fails validation in src/types/inventory/zod.test.ts
-- [ ] T032 [P] [US3] Add test for missing matcher field fails validation in src/types/inventory/zod.test.ts
-- [ ] T033 [P] [US3] Add test for empty description fails validation in src/types/inventory/zod.test.ts
-- [ ] T034 [P] [US3] Add test for invalid date format fails validation in src/types/inventory/zod.test.ts
-- [ ] T035 [P] [US3] Add test for unauthorized entry (authorised:false) passes validation in src/types/inventory/zod.test.ts
+- [x] T030 [P] [US3] Add test for valid nested structure in src/types/inventory/zod.test.ts
+- [x] T031 [P] [US3] Add test for missing authorisationInfo fails validation in src/types/inventory/zod.test.ts
+- [x] T032 [P] [US3] Add test for missing matcher field fails validation in src/types/inventory/zod.test.ts
+- [x] T033 [P] [US3] Add test for empty description fails validation in src/types/inventory/zod.test.ts
+- [x] T034 [P] [US3] Add test for invalid date format fails validation in src/types/inventory/zod.test.ts
+- [x] T035 [P] [US3] Add test for unauthorized entry (authorised:false) passes validation in src/types/inventory/zod.test.ts
 
 **Verification**:
 
@@ -238,12 +238,12 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 
 **Tasks**:
 
-- [ ] T036 [P] [US3] Create test file test/unit/utils/script.test.ts if not exists
-- [ ] T037 [P] [US3] Add round-trip test for script with NameMatcher + HashMatcher in test/unit/utils/script.test.ts
-- [ ] T038 [P] [US3] Add round-trip test for script with ContentMatcher in test/unit/utils/script.test.ts
-- [ ] T039 [P] [US3] Add round-trip test verifying authorisationInfo preservation in test/unit/utils/script.test.ts
-- [ ] T040 [P] [US3] Add round-trip test for header with HeaderNameMatcher + ContentMatcher in test/unit/utils/inventory.test.ts
-- [ ] T041 [P] [US3] Add round-trip test for authorised:false entries in test/unit/utils/script.test.ts
+- [x] T036 [P] [US3] Create test file test/unit/utils/script.test.ts if not exists
+- [x] T037 [P] [US3] Add round-trip test for script with NameMatcher + HashMatcher in test/unit/utils/script.test.ts
+- [x] T038 [P] [US3] Add round-trip test for script with ContentMatcher in test/unit/utils/script.test.ts
+- [x] T039 [P] [US3] Add round-trip test verifying authorisationInfo preservation in test/unit/utils/script.test.ts
+- [x] T040 [P] [US3] Add round-trip test for header with HeaderNameMatcher + ContentMatcher in test/unit/utils/inventory.test.ts
+- [x] T041 [P] [US3] Add round-trip test for authorised:false entries in test/unit/utils/script.test.ts
 
 **Verification**:
 
@@ -256,11 +256,11 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 
 **Tasks**:
 
-- [ ] T042 [P] [US3] Add test for scriptInfoToInventoryScriptInfo creates nested structure in test/unit/utils/script.test.ts
-- [ ] T043 [P] [US3] Add test for rawInventoryScriptInfoToInventoryScriptInfo parses nested JSON in test/unit/utils/script.test.ts
-- [ ] T044 [P] [US3] Add test for inventoryScriptInfoToRawInventoryScriptInfo serializes flat structure in test/unit/utils/script.test.ts
-- [ ] T045 [P] [US3] Add test for header conversion functions (equivalent to script tests) in test/unit/utils/inventory.test.ts
-- [ ] T046 [P] [US3] Add test for Date conversion (ISO string ↔ Date) in test/unit/utils/script.test.ts
+- [x] T042 [P] [US3] Add test for scriptInfoToInventoryScriptInfo creates nested structure in test/unit/utils/script.test.ts
+- [x] T043 [P] [US3] Add test for rawInventoryScriptInfoToInventoryScriptInfo parses nested JSON in test/unit/utils/script.test.ts
+- [x] T044 [P] [US3] Add test for inventoryScriptInfoToRawInventoryScriptInfo serializes flat structure in test/unit/utils/script.test.ts
+- [x] T045 [P] [US3] Add test for header conversion functions (equivalent to script tests) in test/unit/utils/inventory.test.ts
+- [x] T046 [P] [US3] Add test for Date conversion (ISO string ↔ Date) in test/unit/utils/script.test.ts
 
 **Verification**:
 
@@ -272,12 +272,12 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 
 **Tasks**:
 
-- [ ] T047 [P] [US3] Update existing script comparison tests to use new nested structure in test/unit/services/comparison/script.test.ts
-- [ ] T048 [P] [US3] Add test for authorized script returns AuthorizedScriptFound in test/unit/services/comparison/script.test.ts
-- [ ] T049 [P] [US3] Add test for unauthorized content returns KnownScriptWithUnauthorisedContentFound in test/unit/services/comparison/script.test.ts
-- [ ] T050 [P] [US3] Add test for unknown script returns UnknownScriptFound in test/unit/services/comparison/script.test.ts
-- [ ] T051 [P] [US3] Update existing header comparison tests to use new nested structure in test/unit/services/comparison/header.test.ts
-- [ ] T052 [P] [US3] Add test verifying authorisationInfo accessed correctly for alerts in test/unit/services/comparison/script.test.ts
+- [x] T047 [P] [US3] Update existing script comparison tests to use new nested structure in src/services/comparison/script.test.ts
+- [x] T048 [P] [US3] Add test for authorized script returns AuthorizedScriptFound in src/services/comparison/script.test.ts
+- [x] T049 [P] [US3] Add test for unauthorized content returns KnownScriptWithUnauthorisedContentFound in src/services/comparison/script.test.ts
+- [x] T050 [P] [US3] Add test for unknown script returns UnknownScriptFound in src/services/comparison/script.test.ts
+- [x] T051 [P] [US3] Update existing header comparison tests to use new nested structure in test/unit/services/comparison/header-matcher-integration.test.ts
+- [x] T052 [P] [US3] Add test verifying authorisationInfo accessed correctly for alerts in src/services/comparison/script.test.ts
 
 **Verification**:
 
@@ -290,9 +290,9 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 
 **Tasks**:
 
-- [ ] T053 [US3] Run all unit tests (npm run test:unit)
-- [ ] T054 [US3] Verify 100% test pass rate
-- [ ] T055 [US3] Run integration tests if available (npm run test:integration)
+- [X] T053 [US3] Run all unit tests (npm run test:unit)
+- [X] T054 [US3] Verify 100% test pass rate
+- [X] T055 [US3] Run integration tests if available (npm run test:integration)
 
 **Verification**:
 
