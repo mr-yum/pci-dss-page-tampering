@@ -331,6 +331,6 @@ After migration:
 
 ---
 
-**Migration Date**: ******\_******
-**Migrated By**: ******\_******
-**Verification Status**: ******\_******
+**Migration Date**: **\*\***\_**\*\***
+**Migrated By**: **\*\***\_**\*\***
+**Verification Status**: **\*\***\_**\*\***
