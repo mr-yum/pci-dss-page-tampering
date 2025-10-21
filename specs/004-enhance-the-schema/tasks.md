@@ -290,9 +290,9 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 
 **Tasks**:
 
-- [X] T053 [US3] Run all unit tests (npm run test:unit)
-- [X] T054 [US3] Verify 100% test pass rate
-- [X] T055 [US3] Run integration tests if available (npm run test:integration)
+- [x] T053 [US3] Run all unit tests (npm run test:unit)
+- [x] T054 [US3] Verify 100% test pass rate
+- [x] T055 [US3] Run integration tests if available (npm run test:integration)
 
 **Verification**:
 
@@ -347,9 +347,9 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 
 **Tasks**:
 
-- [ ] T061 Run all quality checks in parallel (npm run check:typing && npm run check:linting && npm run check:formatting)
-- [ ] T062 Fix any linting issues (npm run fix:linting)
-- [ ] T063 Fix any formatting issues (npm run fix:formatting)
+- [x] T061 Run all quality checks in parallel (npm run check:typing && npm run check:linting && npm run check:formatting)
+- [x] T062 Fix any linting issues (npm run fix:linting)
+- [x] T063 Fix any formatting issues (npm run fix:formatting)
 
 **Verification**:
 
@@ -361,10 +361,10 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 
 **Tasks**:
 
-- [ ] T064 Create sample inventory JSON with new nested structure
-- [ ] T065 Validate sample inventory using existing validation script (npm run validate-inventory)
-- [ ] T066 Verify sample inventory loads without errors
-- [ ] T067 Delete sample inventory file (cleanup)
+- [x] T064 Create sample inventory JSON with new nested structure
+- [x] T065 Validate sample inventory using existing validation script (npm run validate-inventory)
+- [x] T066 Verify sample inventory loads without errors
+- [x] T067 Delete sample inventory file (cleanup)
 
 **Verification**:
 
@@ -376,8 +376,8 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 
 **Tasks**:
 
-- [ ] T068 Update CLAUDE.md if schema changes affect development guidance
-- [ ] T069 Review constitution compliance (all gates should still pass)
+- [x] T068 Update CLAUDE.md if schema changes affect development guidance
+- [x] T069 Review constitution compliance (all gates should still pass)
 
 **Verification**:
 

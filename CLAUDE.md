@@ -95,9 +95,10 @@ act push --container-architecture linux/amd64 --secret-file .env.secrets
 3. **Script Comparison Flow** (Matcher Pipeline):
    - **Identification**: Iterate inventory entries in order, test `identifyWith` matcher against detected script
    - **First-Match-Wins**: Return first inventory entry where `identifyWith.identify()` returns true
-   - **Authorization**: If identified, test `authoriseWith` matcher against script content
+   - **Authorization**: If identified, test `authoriseWith.matcher` against script content
    - **Result**: Return typed comparison result (UnknownScriptFound, KnownScriptWithUnauthorisedContentFound, or AuthorizedScriptFound)
    - **Fail-Secure**: Null/empty content triggers UnknownScriptFound (cannot be safely matched)
+   - **Metadata Access**: Authorization metadata available via `authoriseWith.authorisationInfo` for alert context
 
 4. **Alert Categories**:
    - `new_inventory_script_identified`: New script found during inventory (needs authorization)
@@ -110,10 +111,40 @@ act push --container-architecture linux/amd64 --secret-file .env.secrets
 - **ScriptInfo** (`src/types/script.ts`) - Represents detected scripts with hash validation
 - **DetectionSummary** (`src/types/detection.ts`) - Results from a detection run
 - **Inventory** (`src/types/inventory/`) - Zod-validated inventory structures with:
-  - `scripts[]`: Array of authorized scripts with `identifyWith` and `authoriseWith` matcher configurations
-  - `headers{}`: Key-value map of expected security headers
+  - `scripts[]`: Array of authorized scripts with `identifyWith` and `authoriseWith` configurations
+  - `headers[]`: Array of authorized headers with `identifyWith` and `authoriseWith` configurations
   - `alerts{}`: Configuration for different violation alert destinations
   - `target`: Dual URLs for inventory and detection workflows
+
+#### Authorization Structure (Enhanced 2025-10)
+
+Each inventory entry (scripts and headers) uses a nested authorization structure:
+
+- `identifyWith`: Matcher for identifying the resource (NameMatcher/HeaderNameMatcher/ContentMatcher/HashMatcher)
+- `authoriseWith`: Composite structure containing:
+  - `matcher`: Matcher for authorizing the resource's content
+  - `authorisationInfo`: Authorization metadata including:
+    - `description`: Human-readable justification
+    - `authorised`: Authorization status (boolean)
+    - `date`: Date of authorization decision
+
+**JSON Structure Example**:
+
+```json
+{
+  "identifyWith": { "nameMatcher": "^https://example\\.com/script\\.js$" },
+  "authoriseWith": {
+    "hashes": [{ "timestamp": "2025-10-21T12:00:00.000Z", "hash": { "value": "abc123..." } }],
+    "authorisationInfo": {
+      "description": "Analytics script for conversion tracking",
+      "authorised": true,
+      "date": "2025-10-21T12:00:00.000Z"
+    }
+  }
+}
+```
+
+This nested structure ensures authorization logic (matcher) and metadata are cohesively linked.
 
 #### Matcher System (Refactored 2025-10)
 
@@ -128,13 +159,6 @@ act push --container-architecture linux/amd64 --secret-file .env.secrets
 - **NameMatcher** (for scripts): Case-sensitive URL/name matching (e.g., "https://Example.com" ≠ "https://example.com")
 - **HeaderNameMatcher** (for headers): Case-insensitive name matching per RFC 7230 (e.g., "Content-Type" = "content-type")
 - Both implement the same `Matcher` interface but with domain-appropriate behaviors
-
-Each inventory entry (scripts and headers) specifies:
-
-- `identifyWith`: How to identify the resource among detected resources (NameMatcher/HeaderNameMatcher/ContentMatcher/HashMatcher)
-- `authoriseWith`: How to authorize the resource's content (NameMatcher/HeaderNameMatcher/ContentMatcher/HashMatcher)
-
-This separation enables flexible matching strategies (e.g., identify header by name pattern, authorize by value pattern).
 
 #### Comparison Result Types (Refactored 2025-10)
 
