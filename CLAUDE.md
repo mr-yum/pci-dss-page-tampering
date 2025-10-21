@@ -139,11 +139,13 @@ This separation enables flexible matching strategies (e.g., identify header by n
 #### Comparison Result Types (Refactored 2025-10)
 
 **Script Comparison Results:**
+
 - **UnknownScriptFound** (`src/types/comparison/unknown-script-found.ts`) - Script not in inventory or has null/empty content
 - **KnownScriptWithUnauthorisedContentFound** (`src/types/comparison/known-script-unauthorised-content-found.ts`) - Script identified but authorization failed (includes matcher details and failure reason)
 - **AuthorizedScriptFound** (`src/types/comparison/authorized-script-found.ts`) - Script both identified and authorized (compliant, no alert)
 
 **Header Comparison Results:**
+
 - **UnknownHeaderFound** (`src/types/comparison/unknown-header-found.ts`) - Header not in inventory
 - **KnownHeaderUnauthorisedContentFound** (`src/types/comparison/known-header-unauthorised-content-found.ts`) - Header identified but authorization failed (includes matcher details and failure reason)
 - **AuthorizedHeaderFound** (`src/types/comparison/authorized-header-found.ts`) - Header both identified and authorized (compliant, no alert)
