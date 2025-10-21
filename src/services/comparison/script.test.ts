@@ -84,11 +84,13 @@ describe('ScriptComparisonService', () => {
 
     return {
       identifyWith,
-      authoriseWith,
-      authorisationInfo: {
-        description: 'Test script',
-        authorised,
-        date: new Date(),
+      authoriseWith: {
+        matcher: authoriseWith,
+        authorisationInfo: {
+          description: 'Test script',
+          authorised,
+          date: new Date(),
+        },
       },
     }
   }

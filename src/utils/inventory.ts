@@ -38,14 +38,24 @@ export function inventoryToRawInventory(inventory: Inventory): RawInventory {
  *
  * Updated for Phase 5 - US3:
  * - Creates Matcher instances from identifyWith and authoriseWith configs using matcher factory
+ * - Destructures authoriseWith to separate matcher config from authorisationInfo
  * - Matchers are validated by Zod schema before this function is called
  * - Replaces old nameMatcher/contentMatcher field conversion
  */
 export function rawInventoryHeaderInfoToInventoryHeaderInfo(rawHeaderInfo: RawInventoryHeaderInfo): InventoryHeaderInfo {
+  // Destructure authoriseWith to separate matcher config from authorisationInfo
+  const { authorisationInfo, ...matcherConfig } = rawHeaderInfo.authoriseWith
+
   return {
     identifyWith: createMatcher(rawHeaderInfo.identifyWith),
-    authoriseWith: createMatcher(rawHeaderInfo.authoriseWith),
-    authorisationInfo: rawHeaderInfo.authorisationInfo,
+    authoriseWith: {
+      matcher: createMatcher(matcherConfig),
+      authorisationInfo: {
+        description: authorisationInfo.description,
+        authorised: authorisationInfo.authorised,
+        date: new Date(authorisationInfo.date),
+      },
+    },
   }
 }
 
@@ -55,6 +65,7 @@ export function rawInventoryHeaderInfoToInventoryHeaderInfo(rawHeaderInfo: RawIn
  * Updated for Phase 5 - US3:
  * - Extracts matcher patterns from Matcher instances using getPattern()
  * - Reconstructs identifyWith and authoriseWith config objects
+ * - Spreads matcher config alongside authorisationInfo in authoriseWith
  * - Used when pushing inventory updates back to Git
  */
 export function inventoryHeaderInfoToRawInventoryHeaderInfo(headerInfo: InventoryHeaderInfo): RawInventoryHeaderInfo {
@@ -78,9 +89,18 @@ export function inventoryHeaderInfoToRawInventoryHeaderInfo(headerInfo: Inventor
     }
   }
 
+  // Convert matcher to config and spread into authoriseWith alongside authorisationInfo
+  const matcherConfig = matcherToConfig(headerInfo.authoriseWith.matcher)
+
   return {
     identifyWith: matcherToConfig(headerInfo.identifyWith),
-    authoriseWith: matcherToConfig(headerInfo.authoriseWith),
-    authorisationInfo: headerInfo.authorisationInfo,
+    authoriseWith: {
+      ...matcherConfig,
+      authorisationInfo: {
+        description: headerInfo.authoriseWith.authorisationInfo.description,
+        authorised: headerInfo.authoriseWith.authorisationInfo.authorised,
+        date: headerInfo.authoriseWith.authorisationInfo.date.toISOString(),
+      },
+    },
   }
 }

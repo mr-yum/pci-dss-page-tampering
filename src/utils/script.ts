@@ -10,7 +10,7 @@ import { escapeRegex } from './string'
  *
  * Updated for Phase 3:
  * - identifyWith: NameMatcher with escaped exact URL/ID match
- * - authoriseWith: HashMatcher with single hash entry
+ * - authoriseWith: AuthorizeWithConfig composite structure (matcher + authorization metadata)
  * - This is used during inventory workflow when discovering new scripts
  */
 export function scriptInfoToInventoryScriptInfo(scriptInfo: ScriptInfo, date: Date): InventoryScriptInfo {
@@ -19,11 +19,13 @@ export function scriptInfoToInventoryScriptInfo(scriptInfo: ScriptInfo, date: Da
 
   return {
     identifyWith: createMatcher({ nameMatcher: escapedPattern }),
-    authoriseWith: createMatcher({ hashes: [scriptHashToInventoryHashInfo(scriptInfo, date)] }),
-    authorisationInfo: {
-      description: 'NO_DESCRIPTION',
-      authorised: false,
-      date: date,
+    authoriseWith: {
+      matcher: createMatcher({ hashes: [scriptHashToInventoryHashInfo(scriptInfo, date)] }),
+      authorisationInfo: {
+        description: 'NO_DESCRIPTION',
+        authorised: false,
+        date: date,
+      },
     },
   }
 }
@@ -48,14 +50,24 @@ export function getScriptSource(scriptInfo: ScriptInfo): string {
  *
  * Updated for Phase 3:
  * - Creates Matcher instances from identifyWith and authoriseWith configs using matcher factory
+ * - Destructures authoriseWith to separate matcher config from authorisationInfo
  * - Matchers are validated by Zod schema before this function is called
  * - Replaces old nameMatcher/contentMatcher/hashes field conversion
  */
 export function rawInventoryScriptInfoToInventoryScriptInfo(rawInventoryScriptInfo: RawInventoryScriptInfo): InventoryScriptInfo {
+  // Destructure authoriseWith to separate matcher config from authorisationInfo
+  const { authorisationInfo, ...matcherConfig } = rawInventoryScriptInfo.authoriseWith
+
   return {
     identifyWith: createMatcher(rawInventoryScriptInfo.identifyWith),
-    authoriseWith: createMatcher(rawInventoryScriptInfo.authoriseWith),
-    authorisationInfo: rawInventoryScriptInfo.authorisationInfo,
+    authoriseWith: {
+      matcher: createMatcher(matcherConfig),
+      authorisationInfo: {
+        description: authorisationInfo.description,
+        authorised: authorisationInfo.authorised,
+        date: new Date(authorisationInfo.date),
+      },
+    },
   }
 }
 
@@ -65,6 +77,7 @@ export function rawInventoryScriptInfoToInventoryScriptInfo(rawInventoryScriptIn
  * Updated for Phase 3:
  * - Extracts matcher patterns/hashes from Matcher instances using getPattern()
  * - Reconstructs identifyWith and authoriseWith config objects
+ * - Spreads matcher config alongside authorisationInfo in authoriseWith
  * - Used when pushing inventory updates back to Git
  */
 export function inventoryScriptInfoToRawInventoryScriptInfo(inventoryScriptInfo: InventoryScriptInfo): RawInventoryScriptInfo {
@@ -86,9 +99,18 @@ export function inventoryScriptInfoToRawInventoryScriptInfo(inventoryScriptInfo:
     }
   }
 
+  // Convert matcher to config and spread into authoriseWith alongside authorisationInfo
+  const matcherConfig = matcherToConfig(inventoryScriptInfo.authoriseWith.matcher)
+
   return {
     identifyWith: matcherToConfig(inventoryScriptInfo.identifyWith),
-    authoriseWith: matcherToConfig(inventoryScriptInfo.authoriseWith),
-    authorisationInfo: inventoryScriptInfo.authorisationInfo,
+    authoriseWith: {
+      ...matcherConfig,
+      authorisationInfo: {
+        description: inventoryScriptInfo.authoriseWith.authorisationInfo.description,
+        authorised: inventoryScriptInfo.authoriseWith.authorisationInfo.authorised,
+        date: inventoryScriptInfo.authoriseWith.authorisationInfo.date.toISOString(),
+      },
+    },
   }
 }

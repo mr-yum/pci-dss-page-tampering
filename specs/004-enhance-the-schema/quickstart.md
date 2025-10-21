@@ -99,7 +99,7 @@ export type RawAuthorizeWithConfig = RawMatcherConfig & {
   authorisationInfo: {
     description: string
     authorised: boolean
-    date: string  // ISO 8601 format
+    date: string // ISO 8601 format
   }
 }
 ```
@@ -161,6 +161,7 @@ export type RawInventoryHeaderInfo = {
 **Command**: `npm run check:typing`
 
 **Expected**: Compilation errors in:
+
 - `src/utils/script.ts` (conversion functions)
 - `src/utils/inventory.ts` (conversion functions)
 - `src/services/comparison/script.ts` (access patterns)
@@ -184,14 +185,14 @@ export type RawInventoryHeaderInfo = {
 const InventoryAuthorisationInfoRawSchema = z.object({
   description: z.string().min(1),
   authorised: z.boolean(),
-  date: z.string().datetime()
+  date: z.string().datetime(),
 })
 
 const RawAuthorizeWithConfigSchema = z.intersection(
   RawMatcherConfigSchema,
   z.object({
-    authorisationInfo: InventoryAuthorisationInfoRawSchema
-  })
+    authorisationInfo: InventoryAuthorisationInfoRawSchema,
+  }),
 )
 ```
 
@@ -210,13 +211,13 @@ const RawAuthorizeWithConfigSchema = z.intersection(
 const RawInventoryScriptInfoSchema = z.object({
   identifyWith: RawMatcherConfigSchema,
   authoriseWith: RawMatcherConfigSchema,
-  authorisationInfo: InventoryAuthorisationInfoRawSchema
+  authorisationInfo: InventoryAuthorisationInfoRawSchema,
 })
 
 // AFTER:
 const RawInventoryScriptInfoSchema = z.object({
   identifyWith: RawMatcherConfigSchema,
-  authoriseWith: RawAuthorizeWithConfigSchema
+  authoriseWith: RawAuthorizeWithConfigSchema,
 })
 ```
 
@@ -233,13 +234,13 @@ const RawInventoryScriptInfoSchema = z.object({
 const RawInventoryHeaderInfoSchema = z.object({
   identifyWith: RawMatcherConfigSchema,
   authoriseWith: RawMatcherConfigSchema,
-  authorisationInfo: InventoryAuthorisationInfoRawSchema
+  authorisationInfo: InventoryAuthorisationInfoRawSchema,
 })
 
 // AFTER:
 const RawInventoryHeaderInfoSchema = z.object({
   identifyWith: RawMatcherConfigSchema,
-  authoriseWith: RawAuthorizeWithConfigSchema
+  authoriseWith: RawAuthorizeWithConfigSchema,
 })
 ```
 
@@ -259,15 +260,15 @@ describe('RawAuthorizeWithConfigSchema', () => {
       authorisationInfo: {
         description: 'Test script',
         authorised: true,
-        date: '2025-10-21T12:00:00.000Z'
-      }
+        date: '2025-10-21T12:00:00.000Z',
+      },
     }
     expect(() => RawAuthorizeWithConfigSchema.parse(valid)).not.toThrow()
   })
 
   it('should fail when authorisationInfo is missing', () => {
     const invalid = {
-      nameMatcher: '^test$'
+      nameMatcher: '^test$',
       // authorisationInfo missing
     }
     expect(() => RawAuthorizeWithConfigSchema.parse(invalid)).toThrow()
@@ -278,8 +279,8 @@ describe('RawAuthorizeWithConfigSchema', () => {
       authorisationInfo: {
         description: 'Test script',
         authorised: true,
-        date: '2025-10-21T12:00:00.000Z'
-      }
+        date: '2025-10-21T12:00:00.000Z',
+      },
       // No nameMatcher/contentMatcher/hashes/headerNameMatcher
     }
     expect(() => RawAuthorizeWithConfigSchema.parse(invalid)).toThrow()
@@ -289,10 +290,10 @@ describe('RawAuthorizeWithConfigSchema', () => {
     const invalid = {
       nameMatcher: '^test$',
       authorisationInfo: {
-        description: '',  // Empty string
+        description: '', // Empty string
         authorised: true,
-        date: '2025-10-21T12:00:00.000Z'
-      }
+        date: '2025-10-21T12:00:00.000Z',
+      },
     }
     expect(() => RawAuthorizeWithConfigSchema.parse(invalid)).toThrow()
   })
@@ -303,8 +304,8 @@ describe('RawAuthorizeWithConfigSchema', () => {
       authorisationInfo: {
         description: 'Test script',
         authorised: true,
-        date: 'not-a-valid-date'
-      }
+        date: 'not-a-valid-date',
+      },
     }
     expect(() => RawAuthorizeWithConfigSchema.parse(invalid)).toThrow()
   })
@@ -348,8 +349,8 @@ return {
       description: 'NO_DESCRIPTION',
       authorised: false,
       date: date,
-    }
-  }
+    },
+  },
 }
 ```
 
@@ -376,13 +377,13 @@ const { authorisationInfo, ...matcherConfig } = rawInventoryScriptInfo.authorise
 return {
   identifyWith: createMatcher(rawInventoryScriptInfo.identifyWith),
   authoriseWith: {
-    matcher: createMatcher(matcherConfig),  // matcherConfig contains nameMatcher/contentMatcher/hashes
+    matcher: createMatcher(matcherConfig), // matcherConfig contains nameMatcher/contentMatcher/hashes
     authorisationInfo: {
       description: authorisationInfo.description,
       authorised: authorisationInfo.authorised,
-      date: new Date(authorisationInfo.date)
-    }
-  }
+      date: new Date(authorisationInfo.date),
+    },
+  },
 }
 ```
 
@@ -409,13 +410,13 @@ const matcherConfig = matcherToConfig(inventoryScriptInfo.authoriseWith.matcher)
 return {
   identifyWith: matcherToConfig(inventoryScriptInfo.identifyWith),
   authoriseWith: {
-    ...matcherConfig,  // Spreads nameMatcher/contentMatcher/hashes as sibling fields
+    ...matcherConfig, // Spreads nameMatcher/contentMatcher/hashes as sibling fields
     authorisationInfo: {
       description: inventoryScriptInfo.authoriseWith.authorisationInfo.description,
       authorised: inventoryScriptInfo.authoriseWith.authorisationInfo.authorised,
-      date: inventoryScriptInfo.authoriseWith.authorisationInfo.date.toISOString()
-    }
-  }
+      date: inventoryScriptInfo.authoriseWith.authorisationInfo.date.toISOString(),
+    },
+  },
 }
 ```
 
@@ -454,9 +455,9 @@ describe('Script conversion functions', () => {
           authorisationInfo: {
             description: 'Analytics script',
             authorised: true,
-            date: new Date('2025-10-21T12:00:00.000Z')
-          }
-        }
+            date: new Date('2025-10-21T12:00:00.000Z'),
+          },
+        },
       }
 
       const raw = inventoryScriptInfoToRawInventoryScriptInfo(original)
@@ -524,9 +525,9 @@ describe('ScriptComparisonService', () => {
         authorisationInfo: {
           description: 'Analytics script',
           authorised: true,
-          date: new Date()
-        }
-      }
+          date: new Date(),
+        },
+      },
     }
 
     const result = service.compare(scriptInfo, [inventoryEntry])
@@ -550,6 +551,7 @@ describe('ScriptComparisonService', () => {
 #### Step 5.1: Run All Tests
 
 **Commands**:
+
 ```bash
 npm run check:typing        # TypeScript compilation
 npm run check:linting       # ESLint
@@ -566,6 +568,7 @@ npm run test:unit           # All unit tests
 **File**: `test-inventory.json` (temporary file)
 
 **Content**:
+
 ```json
 {
   "target": {
@@ -613,6 +616,7 @@ npm run test:unit           # All unit tests
 #### Step 5.4: Clean Up
 
 **Action**: Delete temporary test file:
+
 ```bash
 rm test-inventory.json
 ```
@@ -626,6 +630,7 @@ rm test-inventory.json
 #### Step M.1: Backup Current Inventories
 
 **Command**:
+
 ```bash
 cd /path/to/script-inventory
 git checkout -b pre-schema-migration
@@ -641,39 +646,40 @@ If many inventory files exist, create a migration script:
 **File**: `scripts/migrate-inventory-schema.js`
 
 **Content**:
+
 ```javascript
-const fs = require('fs');
+const fs = require('fs')
 
 function migrateInventory(filePath) {
-  const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  const data = JSON.parse(fs.readFileSync(filePath, 'utf8'))
 
   // Migrate scripts
   if (data.scripts) {
-    data.scripts = data.scripts.map(script => ({
+    data.scripts = data.scripts.map((script) => ({
       identifyWith: script.identifyWith,
       authoriseWith: {
-        ...script.authoriseWith,  // Spread matcher config (nameMatcher/contentMatcher/hashes)
-        authorisationInfo: script.authorisationInfo
-      }
-    }));
+        ...script.authoriseWith, // Spread matcher config (nameMatcher/contentMatcher/hashes)
+        authorisationInfo: script.authorisationInfo,
+      },
+    }))
   }
 
   // Migrate headers
   if (data.headers) {
-    data.headers = data.headers.map(header => ({
+    data.headers = data.headers.map((header) => ({
       identifyWith: header.identifyWith,
       authoriseWith: {
-        ...header.authoriseWith,  // Spread matcher config (headerNameMatcher/contentMatcher)
-        authorisationInfo: header.authorisationInfo
-      }
-    }));
+        ...header.authoriseWith, // Spread matcher config (headerNameMatcher/contentMatcher)
+        authorisationInfo: header.authorisationInfo,
+      },
+    }))
   }
 
-  fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
+  fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8')
 }
 
 // Usage: node scripts/migrate-inventory-schema.js inventory.json
-migrateInventory(process.argv[2]);
+migrateInventory(process.argv[2])
 ```
 
 ---
@@ -681,6 +687,7 @@ migrateInventory(process.argv[2]);
 #### Step M.3: Run Migration
 
 **Command**:
+
 ```bash
 node scripts/migrate-inventory-schema.js /path/to/inventory.json
 ```
@@ -692,6 +699,7 @@ node scripts/migrate-inventory-schema.js /path/to/inventory.json
 #### Step M.4: Validate Migrated Files
 
 **Command**:
+
 ```bash
 npm run validate-inventory /path/to/inventory.json
 ```
@@ -703,6 +711,7 @@ npm run validate-inventory /path/to/inventory.json
 #### Step M.5: Commit Migration
 
 **Commands**:
+
 ```bash
 cd /path/to/script-inventory
 git add .
@@ -738,12 +747,14 @@ git push origin main
 If issues are detected post-deployment:
 
 1. **Code Rollback**:
+
    ```bash
    git revert <commit-hash>
    git push origin main
    ```
 
 2. **Inventory Rollback**:
+
    ```bash
    cd /path/to/script-inventory
    git checkout pre-schema-migration
@@ -762,6 +773,7 @@ If issues are detected post-deployment:
 **Symptom**: Errors like "Property 'authorisationInfo' does not exist on type 'Matcher'"
 
 **Solution**: Ensure all access patterns updated to use nested structure:
+
 - `entry.authoriseWith` → `entry.authoriseWith.matcher`
 - `entry.authorisationInfo` → `entry.authoriseWith.authorisationInfo`
 
@@ -772,6 +784,7 @@ If issues are detected post-deployment:
 **Symptom**: "Required field missing: authorisationInfo"
 
 **Solution**: Check JSON structure - `authorisationInfo` must be nested inside `authoriseWith` alongside matcher config:
+
 ```json
 {
   "authoriseWith": {
@@ -788,6 +801,7 @@ If issues are detected post-deployment:
 **Symptom**: Data lost or changed after serialization → deserialization
 
 **Solution**: Verify date conversion:
+
 - Serialization: `date.toISOString()`
 - Deserialization: `new Date(dateString)`
 
@@ -800,6 +814,7 @@ This quickstart provides a step-by-step implementation guide for the schema enha
 **Estimated Total Time**: 3-4 hours (implementation) + 1-2 hours (migration)
 
 **Key Files Modified**:
+
 - `src/types/inventory/model.ts` (type definitions)
 - `src/types/inventory/raw.ts` (raw types)
 - `src/types/inventory/zod.ts` (validation schemas)

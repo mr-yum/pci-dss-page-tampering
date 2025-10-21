@@ -19,6 +19,7 @@ This document defines the type contracts for the enhanced inventory schema. Thes
 **Consumer**: Comparison services, inventory utilities
 
 **Contract**:
+
 ```typescript
 type AuthorizeWithConfig = {
   matcher: Matcher
@@ -27,6 +28,7 @@ type AuthorizeWithConfig = {
 ```
 
 **Guarantees**:
+
 - `matcher` is a valid Matcher instance (NameMatcher | ContentMatcher | HashMatcher | HeaderNameMatcher)
 - `authorisationInfo` contains valid metadata (non-empty description, boolean authorised, valid Date)
 - Both fields are always present (required)
@@ -44,12 +46,13 @@ type AuthorizeWithConfig = {
 **Consumer**: Git storage, inventory repository
 
 **Contract**:
+
 ```typescript
 type RawAuthorizeWithConfig = RawMatcherConfig & {
   authorisationInfo: {
     description: string
     authorised: boolean
-    date: string  // ISO 8601 format
+    date: string // ISO 8601 format
   }
 }
 ```
@@ -57,6 +60,7 @@ type RawAuthorizeWithConfig = RawMatcherConfig & {
 **Structure**: Intersection type where matcher configuration fields (one of: `nameMatcher`, `contentMatcher`, `hashes`, `headerNameMatcher`) and `authorisationInfo` are siblings in the same object.
 
 **Guarantees**:
+
 - Exactly one matcher field present (nameMatcher OR contentMatcher OR hashes OR headerNameMatcher)
 - Matcher field conforms to RawMatcherConfig discriminated union
 - `authorisationInfo.date` is ISO 8601 formatted string (parseable by `new Date()`)
@@ -77,22 +81,26 @@ type RawAuthorizeWithConfig = RawMatcherConfig & {
 **Consumer**: Comparison services, inventory service
 
 **Contract**:
+
 ```typescript
 type InventoryScriptInfo = {
   identifyWith: Matcher
-  authoriseWith: AuthorizeWithConfig  // CHANGED: Was Matcher
+  authoriseWith: AuthorizeWithConfig // CHANGED: Was Matcher
 }
 ```
 
 **Breaking Changes from Previous Version**:
+
 - `authoriseWith` type changed from `Matcher` to `AuthorizeWithConfig`
 - `authorisationInfo` field removed from top level (now nested in `authoriseWith`)
 
 **Migration Path**:
+
 - Access authorization matcher: `entry.authoriseWith.matcher` (was: `entry.authoriseWith`)
 - Access authorization info: `entry.authoriseWith.authorisationInfo` (was: `entry.authorisationInfo`)
 
 **Guarantees**:
+
 - All authorization-related data accessible from `authoriseWith` field
 - Identification logic unchanged (`identifyWith` remains `Matcher`)
 
@@ -109,21 +117,25 @@ type InventoryScriptInfo = {
 **Consumer**: Comparison services, inventory service
 
 **Contract**:
+
 ```typescript
 type InventoryHeaderInfo = {
   identifyWith: Matcher
-  authoriseWith: AuthorizeWithConfig  // CHANGED: Was Matcher
+  authoriseWith: AuthorizeWithConfig // CHANGED: Was Matcher
 }
 ```
 
 **Breaking Changes from Previous Version**:
+
 - Same breaking changes as InventoryScriptInfo (see Contract 3)
 
 **Migration Path**:
+
 - Access authorization matcher: `entry.authoriseWith.matcher` (was: `entry.authoriseWith`)
 - Access authorization info: `entry.authoriseWith.authorisationInfo` (was: `entry.authorisationInfo`)
 
 **Guarantees**:
+
 - Same guarantees as InventoryScriptInfo (see Contract 3)
 
 **Validation**: TypeScript compiler + Zod schema
@@ -144,37 +156,27 @@ type InventoryHeaderInfo = {
 
 ```typescript
 // Create new inventory entry from detected script
-function scriptInfoToInventoryScriptInfo(
-  scriptInfo: ScriptInfo,
-  date: Date
-): InventoryScriptInfo
+function scriptInfoToInventoryScriptInfo(scriptInfo: ScriptInfo, date: Date): InventoryScriptInfo
 
 // Deserialize from JSON
-function rawInventoryScriptInfoToInventoryScriptInfo(
-  rawInventoryScriptInfo: RawInventoryScriptInfo
-): InventoryScriptInfo
+function rawInventoryScriptInfoToInventoryScriptInfo(rawInventoryScriptInfo: RawInventoryScriptInfo): InventoryScriptInfo
 
 // Serialize to JSON
-function inventoryScriptInfoToRawInventoryScriptInfo(
-  inventoryScriptInfo: InventoryScriptInfo
-): RawInventoryScriptInfo
+function inventoryScriptInfoToRawInventoryScriptInfo(inventoryScriptInfo: InventoryScriptInfo): RawInventoryScriptInfo
 ```
 
 #### Header Conversion Functions
 
 ```typescript
 // Deserialize from JSON
-function rawInventoryHeaderInfoToInventoryHeaderInfo(
-  rawHeaderInfo: RawInventoryHeaderInfo
-): InventoryHeaderInfo
+function rawInventoryHeaderInfoToInventoryHeaderInfo(rawHeaderInfo: RawInventoryHeaderInfo): InventoryHeaderInfo
 
 // Serialize to JSON
-function inventoryHeaderInfoToRawInventoryHeaderInfo(
-  headerInfo: InventoryHeaderInfo
-): RawInventoryHeaderInfo
+function inventoryHeaderInfoToRawInventoryHeaderInfo(headerInfo: InventoryHeaderInfo): RawInventoryHeaderInfo
 ```
 
 **Guarantees**:
+
 - Round-trip conversion preserves data: `deserialize(serialize(x)) ≡ x`
 - Date conversion is reversible: `new Date(date.toISOString()) ≡ date` (millisecond precision)
 - Matcher conversion preserves identification and authorization behavior
@@ -207,10 +209,12 @@ const authInfo: InventoryAuthorisationInfo = inventoryEntry.authoriseWith.author
 ```
 
 **Breaking Changes**:
+
 - Authorization matcher access: `entry.authoriseWith` → `entry.authoriseWith.matcher`
 - Authorization info access: `entry.authorisationInfo` → `entry.authoriseWith.authorisationInfo`
 
 **Guarantees**:
+
 - All authorization context accessible from single `authoriseWith` field
 - No null checks required (fields guaranteed present by type system)
 - Behavior unchanged (matcher and info used identically, just accessed differently)
@@ -236,25 +240,26 @@ const RawAuthorizeWithConfigSchema = z.intersection(
     authorisationInfo: z.object({
       description: z.string().min(1),
       authorised: z.boolean(),
-      date: z.string().datetime()
-    })
-  })
+      date: z.string().datetime(),
+    }),
+  }),
 )
 
 const RawInventoryScriptInfoSchema = z.object({
   identifyWith: RawMatcherConfigSchema,
-  authoriseWith: RawAuthorizeWithConfigSchema
+  authoriseWith: RawAuthorizeWithConfigSchema,
 })
 
 const RawInventoryHeaderInfoSchema = z.object({
   identifyWith: RawMatcherConfigSchema,
-  authoriseWith: RawAuthorizeWithConfigSchema
+  authoriseWith: RawAuthorizeWithConfigSchema,
 })
 ```
 
 **Note**: The intersection combines RawMatcherConfig fields with authorisationInfo as siblings, creating a flat structure where matcher fields and metadata coexist in the same object.
 
 **Guarantees**:
+
 - Invalid JSON fails validation with descriptive error
 - Missing `authorisationInfo` fails validation (required field)
 - Empty `description` fails validation (min 1 character)
@@ -262,6 +267,7 @@ const RawInventoryHeaderInfoSchema = z.object({
 - TypeScript inferred types match runtime validation: `z.infer<typeof Schema> === Type`
 
 **Error Handling**:
+
 - Validation failure throws ZodError with detailed error path
 - Caller (inventory repository) logs error and rejects inventory load
 - No partial data accepted (all-or-nothing validation)
@@ -275,12 +281,14 @@ const RawInventoryHeaderInfoSchema = z.object({
 **Flow**: `InventoryRepository.pull()` → Zod validation → Conversion utilities → `Inventory`
 
 **Contracts Involved**:
+
 - Contract 2: RawAuthorizeWithConfig format
 - Contract 7: Zod schema validation
 - Contract 5: Conversion functions
 - Contract 3/4: InventoryScriptInfo/InventoryHeaderInfo structure
 
 **Failure Modes**:
+
 - Invalid JSON format → Zod validation fails → Error logged, inventory not loaded
 - Missing fields → Zod validation fails → Error logged, inventory not loaded
 - Invalid matcher config → Matcher factory throws → Error logged, inventory not loaded
@@ -292,11 +300,13 @@ const RawInventoryHeaderInfoSchema = z.object({
 **Flow**: `InventoryService.push()` → Conversion utilities → JSON.stringify → Git commit
 
 **Contracts Involved**:
+
 - Contract 5: Conversion functions
 - Contract 2: RawAuthorizeWithConfig format
 - Contract 3/4: InventoryScriptInfo/InventoryHeaderInfo structure
 
 **Failure Modes**:
+
 - Unknown matcher type → Conversion function throws → Error logged, push aborted
 - Invalid date → Conversion function throws → Error logged, push aborted
 
@@ -307,11 +317,13 @@ const RawInventoryHeaderInfoSchema = z.object({
 **Flow**: `DetectionService.detect()` → `ScriptComparisonService.compare()` → Access authorization data
 
 **Contracts Involved**:
+
 - Contract 3: InventoryScriptInfo structure
 - Contract 6: Comparison service access pattern
 - Contract 1: AuthorizeWithConfig structure
 
 **Failure Modes**:
+
 - None (type system guarantees all fields present)
 
 ---
@@ -321,11 +333,13 @@ const RawInventoryHeaderInfoSchema = z.object({
 **Flow**: Detect new script → `scriptInfoToInventoryScriptInfo()` → Add to inventory → Save to Git
 
 **Contracts Involved**:
+
 - Contract 5: Conversion function (scriptInfoToInventoryScriptInfo)
 - Contract 1: AuthorizeWithConfig structure
 - Contract 3: InventoryScriptInfo structure
 
 **Failure Modes**:
+
 - None (function creates valid structure by design)
 
 ---
@@ -339,6 +353,7 @@ const RawInventoryHeaderInfoSchema = z.object({
 **Contract**: `deserialize(serialize(x)) ≡ x`
 
 **Test Cases**:
+
 1. Script entry with NameMatcher + HashMatcher
 2. Script entry with ContentMatcher + ContentMatcher
 3. Header entry with HeaderNameMatcher + ContentMatcher
@@ -346,6 +361,7 @@ const RawInventoryHeaderInfoSchema = z.object({
 5. Entry with `authorised: true`
 
 **Success Criteria**:
+
 - All fields match after round-trip
 - Date precision preserved (milliseconds)
 - Matcher behavior preserved (identify/authorize results identical)
@@ -359,6 +375,7 @@ const RawInventoryHeaderInfoSchema = z.object({
 **Contract**: Valid structure passes, invalid structure fails
 
 **Test Cases**:
+
 1. Valid nested structure → Pass
 2. Missing `authorisationInfo` → Fail
 3. Missing `matcher` → Fail
@@ -367,6 +384,7 @@ const RawInventoryHeaderInfoSchema = z.object({
 6. Extra unknown fields → Pass (Zod strips by default)
 
 **Success Criteria**:
+
 - Valid structures pass without errors
 - Invalid structures fail with descriptive error messages
 
@@ -379,6 +397,7 @@ const RawInventoryHeaderInfoSchema = z.object({
 **Contract**: Services access nested data without errors
 
 **Test Cases**:
+
 1. Authorized script → Return AuthorizedScriptFound
 2. Unauthorized content → Return KnownScriptWithUnauthorisedContentFound
 3. Unknown script → Return UnknownScriptFound
@@ -386,6 +405,7 @@ const RawInventoryHeaderInfoSchema = z.object({
 5. Access `authorisationInfo.description` for alerts → No errors
 
 **Success Criteria**:
+
 - All comparison results generated correctly
 - No runtime errors accessing nested fields
 - Alert context includes authorization metadata
@@ -399,6 +419,7 @@ const RawInventoryHeaderInfoSchema = z.object({
 **Contract**: Functions produce valid output for all valid inputs
 
 **Test Cases**:
+
 1. `scriptInfoToInventoryScriptInfo()` creates nested structure
 2. `rawInventoryScriptInfoToInventoryScriptInfo()` parses nested JSON
 3. `inventoryScriptInfoToRawInventoryScriptInfo()` serializes nested structure
@@ -406,6 +427,7 @@ const RawInventoryHeaderInfoSchema = z.object({
 5. Date conversion (ISO string ↔ Date)
 
 **Success Criteria**:
+
 - Output structure matches expected type
 - No data loss during conversion
 - Edge cases handled (e.g., special characters in description)
@@ -417,16 +439,19 @@ const RawInventoryHeaderInfoSchema = z.object({
 ### Breaking Changes Summary
 
 **Type-Level Changes** (compile-time impact):
+
 - `InventoryScriptInfo.authoriseWith` type changed
 - `InventoryHeaderInfo.authoriseWith` type changed
 - `InventoryScriptInfo.authorisationInfo` field removed (moved to nested location)
 - `InventoryHeaderInfo.authorisationInfo` field removed (moved to nested location)
 
 **Runtime-Level Changes** (runtime impact):
+
 - JSON structure changed (requires manual inventory migration)
 - Access patterns changed (requires code updates in services)
 
 **No Backward Compatibility**:
+
 - Old JSON format will fail Zod validation
 - Old access patterns will fail TypeScript compilation
 - Manual migration required before deployment
@@ -448,9 +473,11 @@ const RawInventoryHeaderInfoSchema = z.object({
 **Version**: 1.0.0 (Initial version with nested authorization)
 
 **Change History**:
+
 - 2025-10-21: Initial contract definition for nested authorization schema
 
 **Future Compatibility**:
+
 - Adding optional fields to `AuthorizeWithConfig`: Minor version bump
 - Changing required fields or structure: Major version bump
 - Changing validation rules: Minor version bump (if loosening), Major (if tightening)

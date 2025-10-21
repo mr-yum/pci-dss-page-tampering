@@ -159,11 +159,13 @@ describe('SlackAlertService - Typed Results Handling (Phase 4)', () => {
           getType: () => 'header-name',
           getPattern: () => '^x-frame-options$',
         },
-        authoriseWith: mockMatcher,
-        authorisationInfo: {
-          description: 'Frame protection header',
-          authorised: true,
-          date: new Date(),
+        authoriseWith: {
+          matcher: mockMatcher,
+          authorisationInfo: {
+            description: 'Frame protection header',
+            authorised: true,
+            date: new Date(),
+          },
         },
       }
 
@@ -226,11 +228,13 @@ describe('SlackAlertService - Typed Results Handling (Phase 4)', () => {
           getType: () => 'header-name',
           getPattern: () => '^content-security-policy$',
         },
-        authoriseWith: mockMatcher,
-        authorisationInfo: {
-          description: 'CSP header',
-          authorised: true,
-          date: new Date(),
+        authoriseWith: {
+          matcher: mockMatcher,
+          authorisationInfo: {
+            description: 'CSP header',
+            authorised: true,
+            date: new Date(),
+          },
         },
       }
 
@@ -271,11 +275,13 @@ describe('SlackAlertService - Typed Results Handling (Phase 4)', () => {
           getType: () => 'header-name',
           getPattern: () => '^x-frame-options$',
         },
-        authoriseWith: mockMatcher,
-        authorisationInfo: {
-          description: 'Frame protection header',
-          authorised: true,
-          date: new Date(),
+        authoriseWith: {
+          matcher: mockMatcher,
+          authorisationInfo: {
+            description: 'Frame protection header',
+            authorised: true,
+            date: new Date(),
+          },
         },
       }
 
@@ -322,11 +328,13 @@ describe('SlackAlertService - Typed Results Handling (Phase 4)', () => {
 
       const mockInventoryEntry = {
         identifyWith: mockMatcher,
-        authoriseWith: mockMatcher,
-        authorisationInfo: {
-          description: 'Test script',
-          authorised: true,
-          date: new Date(),
+        authoriseWith: {
+          matcher: mockMatcher,
+          authorisationInfo: {
+            description: 'Test script',
+            authorised: true,
+            date: new Date(),
+          },
         },
       }
 
@@ -355,11 +363,13 @@ describe('SlackAlertService - Typed Results Handling (Phase 4)', () => {
 
       const mockInventoryEntry = {
         identifyWith: mockMatcher,
-        authoriseWith: mockMatcher,
-        authorisationInfo: {
-          description: 'Test script',
-          authorised: true,
-          date: new Date(),
+        authoriseWith: {
+          matcher: mockMatcher,
+          authorisationInfo: {
+            description: 'Test script',
+            authorised: true,
+            date: new Date(),
+          },
         },
       }
 

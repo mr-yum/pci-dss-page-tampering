@@ -1,17 +1,25 @@
 import type { RawTargetDetection, RawTargetInventory } from '../target/raw'
 import type { RawMatcherConfig } from './matcher-config-schema'
-import type { Inventory, InventoryHeaderInfo, InventoryScriptInfo, InventoryTarget } from './model'
+import type { Inventory, InventoryTarget } from './model'
+
+export type RawAuthorizeWithConfig = RawMatcherConfig & {
+  authorisationInfo: {
+    description: string
+    authorised: boolean
+    date: string // ISO 8601 format
+  }
+}
 
 /**
  * Raw (JSON-serializable) version of InventoryScriptInfo.
  *
  * Updated schema (Phase 3):
  * - Uses identifyWith/authoriseWith instead of nameMatcher/contentMatcher/hashes
- * - Each field is a RawMatcherConfig union type (before conversion to Matcher instances)
+ * - authoriseWith is RawAuthorizeWithConfig (matcher config + authorization metadata)
  */
-export type RawInventoryScriptInfo = Omit<InventoryScriptInfo, 'identifyWith' | 'authoriseWith'> & {
+export type RawInventoryScriptInfo = {
   identifyWith: RawMatcherConfig
-  authoriseWith: RawMatcherConfig
+  authoriseWith: RawAuthorizeWithConfig
 }
 
 /**
@@ -19,12 +27,11 @@ export type RawInventoryScriptInfo = Omit<InventoryScriptInfo, 'identifyWith' | 
  *
  * Updated schema (Phase 5 - US3):
  * - Uses identifyWith/authoriseWith matcher-based structure (aligned with scripts)
- * - Each field is a RawMatcherConfig union type (before conversion to Matcher instances)
- * - Replaces old nameMatcher/contentMatcher RegExp structure
+ * - authoriseWith is RawAuthorizeWithConfig (matcher config + authorization metadata)
  */
-export type RawInventoryHeaderInfo = Omit<InventoryHeaderInfo, 'identifyWith' | 'authoriseWith'> & {
+export type RawInventoryHeaderInfo = {
   identifyWith: RawMatcherConfig
-  authoriseWith: RawMatcherConfig
+  authoriseWith: RawAuthorizeWithConfig
 }
 
 export type RawInventoryTarget = Omit<InventoryTarget, 'inventory' | 'detection'> & {

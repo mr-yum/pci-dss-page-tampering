@@ -72,17 +72,19 @@ export class InMemoryInventoryStore implements IInventoryStore {
    *
    * Updated for Phase 3:
    * - identifyWith: Uses nameMatcher with the provided regex pattern
-   * - authoriseWith: Uses nameMatcher (same pattern for authorization)
+   * - authoriseWith: RawAuthorizeWithConfig with nested authorisationInfo
    * - This matches the common pattern of URL-based script matching
    */
   private createDefaultInventoryScript(regex: RegExp): RawInventoryScriptInfo {
     return {
       identifyWith: { nameMatcher: regex.source },
-      authoriseWith: { nameMatcher: regex.source },
-      authorisationInfo: {
-        description: 'Script that doesnt match with default implementation due to query string',
-        authorised: true,
-        date: new Date(),
+      authoriseWith: {
+        nameMatcher: regex.source,
+        authorisationInfo: {
+          description: 'Script that doesnt match with default implementation due to query string',
+          authorised: true,
+          date: new Date().toISOString(),
+        },
       },
     }
   }
@@ -92,17 +94,19 @@ export class InMemoryInventoryStore implements IInventoryStore {
    *
    * Updated for Phase 5 - US3:
    * - identifyWith: Uses headerNameMatcher with the provided name regex pattern
-   * - authoriseWith: Uses contentMatcher with the provided content regex pattern
+   * - authoriseWith: RawAuthorizeWithConfig with nested authorisationInfo
    * - This matches the common pattern of header name/value matching
    */
   private createDefaultInventoryHeader(nameRegex: RegExp, contentRegex: RegExp): RawInventoryHeaderInfo {
     return {
       identifyWith: { headerNameMatcher: nameRegex.source },
-      authoriseWith: { contentMatcher: contentRegex.source },
-      authorisationInfo: {
-        description: 'Default header for testing',
-        authorised: true,
-        date: new Date(),
+      authoriseWith: {
+        contentMatcher: contentRegex.source,
+        authorisationInfo: {
+          description: 'Default header for testing',
+          authorised: true,
+          date: new Date().toISOString(),
+        },
       },
     }
   }

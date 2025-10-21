@@ -96,16 +96,16 @@ export class HeaderComparisonService implements IHeaderComparisonService {
     // - name stays as name
     // - value → content (matcher expects content field)
     // - hash is not used for headers but required by interface
-    const authorizationResult = matchedEntry.authoriseWith.authorize({
+    const authorizationResult = matchedEntry.authoriseWith.matcher.authorize({
       name: header.name,
       content: header.value,
       hash: '' as unknown as SHA256Hash, // Not used for header matching
     })
-    const isAuthorized = matchedEntry.authorisationInfo.authorised && authorizationResult.authorized
+    const isAuthorized = matchedEntry.authoriseWith.authorisationInfo.authorised && authorizationResult.authorized
 
     // T065: Log authorization result with matcher details
-    const authorizeMatcherType = matchedEntry.authoriseWith.getType()
-    const authorizePattern = matchedEntry.authoriseWith.getPattern()
+    const authorizeMatcherType = matchedEntry.authoriseWith.matcher.getType()
+    const authorizePattern = matchedEntry.authoriseWith.matcher.getPattern()
     const authStatus = isAuthorized ? 'AUTHORIZED' : `UNAUTHORIZED (${authorizationResult.reason || 'authorization failed'})`
     this.log(`Header '${header.name}' authorization via ${authorizeMatcherType} matcher with pattern '${JSON.stringify(authorizePattern)}': ${authStatus}.`)
 
@@ -116,7 +116,7 @@ export class HeaderComparisonService implements IHeaderComparisonService {
         timestamp,
         header,
         matchedEntry,
-        matchedEntry.authoriseWith, // T064: Use the actual matcher instance
+        matchedEntry.authoriseWith.matcher, // T064: Use the actual matcher instance
         authorizationResult.reason || 'authorization failed',
       )
     }
@@ -140,7 +140,7 @@ export class HeaderComparisonService implements IHeaderComparisonService {
   private findMatchingInventoryEntry(headerName: string, inventoryHeaders: InventoryHeaderInfo[]): InventoryHeaderInfo | undefined {
     for (const entry of inventoryHeaders) {
       // Skip non-authorized entries (legacy compatibility)
-      if (!entry.authorisationInfo.authorised) continue
+      if (!entry.authoriseWith.authorisationInfo.authorised) continue
 
       // T063: Use matcher's identify method instead of inline regex test
       // Note: Matcher interface uses DetectedScript shape, so pass name in name field

@@ -189,11 +189,11 @@ describe('RawInventoryScriptInfoSchema', () => {
               hash: { value: 'abc123'.padEnd(64, '0') },
             },
           ],
-        },
-        authorisationInfo: {
-          description: 'External CDN script with hash verification',
-          authorised: true,
-          date: '2025-10-15T00:00:00.000Z',
+          authorisationInfo: {
+            description: 'External CDN script with hash verification',
+            authorised: true,
+            date: '2025-10-15T00:00:00.000Z',
+          },
         },
       }
 
@@ -216,11 +216,11 @@ describe('RawInventoryScriptInfoSchema', () => {
               hash: { value: 'def456'.padEnd(64, '0') },
             },
           ],
-        },
-        authorisationInfo: {
-          description: 'Inline script identified by content pattern',
-          authorised: true,
-          date: '2025-10-15T00:00:00.000Z',
+          authorisationInfo: {
+            description: 'Inline script identified by content pattern',
+            authorised: true,
+            date: '2025-10-15T00:00:00.000Z',
+          },
         },
       }
 
@@ -234,11 +234,13 @@ describe('RawInventoryScriptInfoSchema', () => {
     it('should accept nameMatcher for both identifyWith and authoriseWith', () => {
       const validSchema = {
         identifyWith: { nameMatcher: '^https://example\\.com/script\\.js.*$' },
-        authoriseWith: { nameMatcher: '^https://example\\.com/script\\.js\\?v=[0-9]+$' },
-        authorisationInfo: {
-          description: 'Script identified and authorized by name pattern',
-          authorised: true,
-          date: '2025-10-15T00:00:00.000Z',
+        authoriseWith: {
+          nameMatcher: '^https://example\\.com/script\\.js\\?v=[0-9]+$',
+          authorisationInfo: {
+            description: 'Script identified and authorized by name pattern',
+            authorised: true,
+            date: '2025-10-15T00:00:00.000Z',
+          },
         },
       }
 
@@ -250,11 +252,13 @@ describe('RawInventoryScriptInfoSchema', () => {
     it('should accept contentMatcher for both identifyWith and authoriseWith', () => {
       const validSchema = {
         identifyWith: { contentMatcher: '__NEXT_DATA__' },
-        authoriseWith: { contentMatcher: '__NEXT_DATA__.*"environment":"production"' },
-        authorisationInfo: {
-          description: 'Next.js data script with production environment check',
-          authorised: true,
-          date: '2025-10-15T00:00:00.000Z',
+        authoriseWith: {
+          contentMatcher: '__NEXT_DATA__.*"environment":"production"',
+          authorisationInfo: {
+            description: 'Next.js data script with production environment check',
+            authorised: true,
+            date: '2025-10-15T00:00:00.000Z',
+          },
         },
       }
 
@@ -280,11 +284,11 @@ describe('RawInventoryScriptInfoSchema', () => {
               hash: { value: 'a'.repeat(64) },
             },
           ],
-        },
-        authorisationInfo: {
-          description: 'Script with hash-based identification and authorization',
-          authorised: true,
-          date: '2025-10-15T00:00:00.000Z',
+          authorisationInfo: {
+            description: 'Script with hash-based identification and authorization',
+            authorised: true,
+            date: '2025-10-15T00:00:00.000Z',
+          },
         },
       }
 

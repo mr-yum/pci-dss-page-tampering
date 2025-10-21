@@ -24,6 +24,7 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 ```
 
 **Rationale**:
+
 - **US1** and **US3** can be implemented in parallel - US1 implements the schema changes, US3 validates them
 - **US2** is lower priority (P2) and depends on US1 completion
 - MVP scope includes US1 + US3 only
@@ -36,11 +37,13 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 ## Implementation Strategy
 
 **MVP Scope**: User Stories 1 + 3 (P1 only)
+
 - Core schema restructuring with comprehensive tests
 - Enables validating the design with real code
 - Provides complete, testable increment
 
 **Phase 2 (Optional)**: User Story 2 (P2)
+
 - Migration support for production deployment
 - Can be deferred until MVP validates the approach
 
@@ -54,11 +57,12 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 
 ### Tasks
 
-- [ ] T001 Verify current branch is 004-enhance-the-schema
-- [ ] T002 Run baseline test suite to confirm clean starting state (npm run test:unit)
-- [ ] T003 Run type checking to confirm no existing errors (npm run check:typing)
+- [X] T001 Verify current branch is 004-enhance-the-schema
+- [X] T002 Run baseline test suite to confirm clean starting state (npm run test:unit)
+- [X] T003 Run type checking to confirm no existing errors (npm run check:typing)
 
 **Verification**:
+
 - All existing tests pass
 - TypeScript compilation succeeds with zero errors
 - Development environment ready
@@ -73,16 +77,18 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 
 ### Tasks
 
-- [ ] T004 Create AuthorizeWithConfig runtime type in src/types/inventory/model.ts
-- [ ] T005 Create RawAuthorizeWithConfig serializable type in src/types/inventory/raw.ts
-- [ ] T006 Run type check to verify new types compile (npm run check:typing)
+- [X] T004 Create AuthorizeWithConfig runtime type in src/types/inventory/model.ts
+- [X] T005 Create RawAuthorizeWithConfig serializable type in src/types/inventory/raw.ts
+- [X] T006 Run type check to verify new types compile (npm run check:typing)
 
 **Verification**:
+
 - TypeScript compilation succeeds
 - New types available for use in subsequent phases
 - No runtime behavior changes yet
 
 **File Changes**:
+
 - `src/types/inventory/model.ts`: Add `AuthorizeWithConfig` type
 - `src/types/inventory/raw.ts`: Add `RawAuthorizeWithConfig` type
 
@@ -93,6 +99,7 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 **Goal**: Implement core schema changes to nest authorisationInfo within authoriseWith
 
 **Independent Test Criteria**:
+
 - Create inventory entry with nested structure → Serialize to JSON → Verify authorisationInfo is child of authoriseWith
 - Load JSON with nested structure → Validate with Zod → Pass without errors
 - Access authorization data → Verify matcher + metadata available from authoriseWith field
@@ -103,11 +110,12 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 
 **Tasks**:
 
-- [ ] T007 [US1] Update InventoryScriptInfo type to use AuthorizeWithConfig in src/types/inventory/model.ts:25-29
-- [ ] T008 [US1] Update InventoryHeaderInfo type to use AuthorizeWithConfig in src/types/inventory/model.ts:41-45
-- [ ] T009 [US1] Run type check - expect compilation errors in conversion functions and services (npm run check:typing)
+- [X] T007 [US1] Update InventoryScriptInfo type to use AuthorizeWithConfig in src/types/inventory/model.ts:25-29
+- [X] T008 [US1] Update InventoryHeaderInfo type to use AuthorizeWithConfig in src/types/inventory/model.ts:41-45
+- [X] T009 [US1] Run type check - expect compilation errors in conversion functions and services (npm run check:typing)
 
 **Verification**:
+
 - TypeScript shows errors in files that access old structure (expected)
 - No errors in type definition files themselves
 
@@ -115,23 +123,25 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 
 **Tasks**:
 
-- [ ] T010 [US1] Update RawInventoryScriptInfo type to use RawAuthorizeWithConfig in src/types/inventory/raw.ts:12-15
-- [ ] T011 [US1] Update RawInventoryHeaderInfo type to use RawAuthorizeWithConfig in src/types/inventory/raw.ts:25-28
-- [ ] T012 [US1] Remove Omit pattern from raw types (no longer needed) in src/types/inventory/raw.ts
+- [X] T010 [US1] Update RawInventoryScriptInfo type to use RawAuthorizeWithConfig in src/types/inventory/raw.ts:12-15
+- [X] T011 [US1] Update RawInventoryHeaderInfo type to use RawAuthorizeWithConfig in src/types/inventory/raw.ts:25-28
+- [X] T012 [US1] Remove Omit pattern from raw types (no longer needed) in src/types/inventory/raw.ts
 
 **Verification**:
+
 - Raw types properly reflect flattened JSON structure (matcher config + authorisationInfo as siblings)
 
 ### 3.3: Update Zod Validation Schemas
 
 **Tasks**:
 
-- [ ] T013 [US1] Create InventoryAuthorisationInfoRawSchema in src/types/inventory/zod.ts
-- [ ] T014 [US1] Create RawAuthorizeWithConfigSchema using intersection pattern in src/types/inventory/zod.ts
-- [ ] T015 [US1] Update RawInventoryScriptInfoSchema to use RawAuthorizeWithConfigSchema in src/types/inventory/zod.ts
-- [ ] T016 [US1] Update RawInventoryHeaderInfoSchema to use RawAuthorizeWithConfigSchema in src/types/inventory/zod.ts
+- [X] T013 [US1] Create InventoryAuthorisationInfoRawSchema in src/types/inventory/zod.ts
+- [X] T014 [US1] Create RawAuthorizeWithConfigSchema using intersection pattern in src/types/inventory/zod.ts
+- [X] T015 [US1] Update RawInventoryScriptInfoSchema to use RawAuthorizeWithConfigSchema in src/types/inventory/zod.ts
+- [X] T016 [US1] Update RawInventoryHeaderInfoSchema to use RawAuthorizeWithConfigSchema in src/types/inventory/zod.ts
 
 **Verification**:
+
 - Schemas compile without errors
 - Intersection properly combines RawMatcherConfigSchema with authorisationInfo
 
@@ -139,11 +149,12 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 
 **Tasks**:
 
-- [ ] T017 [US1] Update scriptInfoToInventoryScriptInfo to create nested authoriseWith structure in src/utils/script.ts:16-28
-- [ ] T018 [US1] Update rawInventoryScriptInfoToInventoryScriptInfo with destructuring pattern in src/utils/script.ts:54-59
-- [ ] T019 [US1] Update inventoryScriptInfoToRawInventoryScriptInfo with spread pattern in src/utils/script.ts:70-94
+- [X] T017 [US1] Update scriptInfoToInventoryScriptInfo to create nested authoriseWith structure in src/utils/script.ts:16-28
+- [X] T018 [US1] Update rawInventoryScriptInfoToInventoryScriptInfo with destructuring pattern in src/utils/script.ts:54-59
+- [X] T019 [US1] Update inventoryScriptInfoToRawInventoryScriptInfo with spread pattern in src/utils/script.ts:70-94
 
 **Verification**:
+
 - Conversion functions compile without TypeScript errors
 - Destructuring correctly separates matcher config from authorisationInfo
 - Spread correctly flattens matcher config alongside authorisationInfo
@@ -152,11 +163,12 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 
 **Tasks**:
 
-- [ ] T020 [P] [US1] Update rawInventoryHeaderInfoToInventoryHeaderInfo with destructuring pattern in src/utils/inventory.ts:44-49
-- [ ] T021 [P] [US1] Update inventoryHeaderInfoToRawInventoryHeaderInfo with spread pattern in src/utils/inventory.ts:60-86
-- [ ] T022 [P] [US1] Update matcherToConfig helper to handle headerNameMatcher in src/utils/inventory.ts:62-79
+- [X] T020 [P] [US1] Update rawInventoryHeaderInfoToInventoryHeaderInfo with destructuring pattern in src/utils/inventory.ts:44-49
+- [X] T021 [P] [US1] Update inventoryHeaderInfoToRawInventoryHeaderInfo with spread pattern in src/utils/inventory.ts:60-86
+- [X] T022 [P] [US1] Update matcherToConfig helper to handle headerNameMatcher in src/utils/inventory.ts:62-79
 
 **Verification**:
+
 - Header conversion functions compile without errors
 - Same destructuring/spread patterns as script functions
 - HeaderNameMatcher properly supported
@@ -165,12 +177,13 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 
 **Tasks**:
 
-- [ ] T023 [US1] Update ScriptComparisonService to access authoriseWith.matcher in src/services/comparison/script.ts
-- [ ] T024 [US1] Update ScriptComparisonService to access authoriseWith.authorisationInfo in src/services/comparison/script.ts
-- [ ] T025 [P] [US1] Update HeaderComparisonService to access authoriseWith.matcher in src/services/comparison/header.ts
-- [ ] T026 [P] [US1] Update HeaderComparisonService to access authoriseWith.authorisationInfo in src/services/comparison/header.ts
+- [X] T023 [US1] Update ScriptComparisonService to access authoriseWith.matcher in src/services/comparison/script.ts
+- [X] T024 [US1] Update ScriptComparisonService to access authoriseWith.authorisationInfo in src/services/comparison/script.ts
+- [X] T025 [P] [US1] Update HeaderComparisonService to access authoriseWith.matcher in src/services/comparison/header.ts
+- [X] T026 [P] [US1] Update HeaderComparisonService to access authoriseWith.authorisationInfo in src/services/comparison/header.ts
 
 **Verification**:
+
 - All services access authorization data from new nested location
 - No TypeScript compilation errors
 - Alert generation logic unchanged (same data, different access pattern)
@@ -179,11 +192,12 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 
 **Tasks**:
 
-- [ ] T027 [US1] Run type checking - expect zero errors (npm run check:typing)
-- [ ] T028 [US1] Run linting checks (npm run check:linting)
-- [ ] T029 [US1] Run formatting checks (npm run check:formatting)
+- [X] T027 [US1] Run type checking - expect zero errors (npm run check:typing)
+- [X] T028 [US1] Run linting checks (npm run check:linting)
+- [X] T029 [US1] Run formatting checks (npm run check:formatting)
 
 **Verification**:
+
 - TypeScript compilation succeeds with zero errors
 - All linting rules pass
 - Code formatting consistent
@@ -195,6 +209,7 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 **Goal**: Comprehensive test coverage for schema integrity
 
 **Independent Test Criteria**:
+
 - Run test suite → All tests pass
 - Schema validation tests cover nested structure
 - Round-trip tests verify data preservation
@@ -214,6 +229,7 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 - [ ] T035 [P] [US3] Add test for unauthorized entry (authorised:false) passes validation in src/types/inventory/zod.test.ts
 
 **Verification**:
+
 - All schema validation tests pass
 - Edge cases properly handled
 - Clear error messages for validation failures
@@ -230,6 +246,7 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 - [ ] T041 [P] [US3] Add round-trip test for authorised:false entries in test/unit/utils/script.test.ts
 
 **Verification**:
+
 - `deserialize(serialize(x)) ≡ x` for all test cases
 - Date precision preserved (milliseconds)
 - Matcher behavior identical after round-trip
@@ -246,6 +263,7 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 - [ ] T046 [P] [US3] Add test for Date conversion (ISO string ↔ Date) in test/unit/utils/script.test.ts
 
 **Verification**:
+
 - All conversion functions produce valid output
 - No data loss during conversions
 - Edge cases handled (special characters, long descriptions, etc.)
@@ -262,6 +280,7 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 - [ ] T052 [P] [US3] Add test verifying authorisationInfo accessed correctly for alerts in test/unit/services/comparison/script.test.ts
 
 **Verification**:
+
 - All comparison result types generated correctly
 - No runtime errors accessing nested fields
 - Alert context includes authorization metadata
@@ -276,6 +295,7 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 - [ ] T055 [US3] Run integration tests if available (npm run test:integration)
 
 **Verification**:
+
 - All tests pass (unit + integration)
 - Zero test failures
 - Zero test errors
@@ -290,6 +310,7 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 **Note**: This phase is optional for MVP. Can be deferred until schema changes are validated.
 
 **Independent Test Criteria**:
+
 - Load old-format inventory → Convert to new format → Save → Verify all data preserved
 - Run migration on sample inventories → Validate with Zod → Pass without errors
 
@@ -306,6 +327,7 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 - [ ] T060 [US2] Test migration script on sample inventory files
 
 **Verification**:
+
 - Migration script transforms old format to new format
 - All data preserved during migration
 - Migrated files pass Zod validation
@@ -330,6 +352,7 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 - [ ] T063 Fix any formatting issues (npm run fix:formatting)
 
 **Verification**:
+
 - TypeScript: Zero errors
 - ESLint: Zero warnings
 - Prettier: All files formatted correctly
@@ -344,6 +367,7 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 - [ ] T067 Delete sample inventory file (cleanup)
 
 **Verification**:
+
 - Sample inventory validates successfully
 - Loading and saving preserves structure
 - No runtime errors
@@ -356,6 +380,7 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 - [ ] T069 Review constitution compliance (all gates should still pass)
 
 **Verification**:
+
 - Documentation reflects new schema structure
 - Constitution gates remain passed
 - No new risks introduced
@@ -367,28 +392,35 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 ### High Parallelism (Different Files)
 
 **Phase 3.5 (Header Conversions)**: All three tasks can run in parallel
+
 - T020, T021, T022 - Different functions in same file
 
 **Phase 4.1 (Schema Tests)**: All six tasks can run in parallel
+
 - T030-T035 - Different test cases in same file
 
 **Phase 4.2 (Round-Trip Tests)**: All six tasks can run in parallel
+
 - T036-T041 - Different test cases, can create file first then add tests concurrently
 
 **Phase 4.3 (Conversion Tests)**: All five tasks can run in parallel
+
 - T042-T046 - Different test cases
 
 **Phase 4.4 (Service Tests)**: All six tasks can run in parallel
+
 - T047-T052 - Different test cases
 
 ### Medium Parallelism (Same File, Different Sections)
 
 **Phase 3.6 (Comparison Services)**: T023-T024 and T025-T026 can run in parallel
+
 - Script service and Header service are independent
 
 ### Story-Level Parallelism
 
 **US1 (Schema) and US3 (Tests)**: Can work in parallel after foundational types complete
+
 - US3 can start schema tests (T030-T035) immediately after US1 schemas complete (T013-T016)
 - US3 conversion tests (T042-T046) can start immediately after US1 conversion functions complete (T017-T022)
 
@@ -398,6 +430,7 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 
 **Total Tasks**: 69
 **By User Story**:
+
 - Setup: 3 tasks
 - Foundational: 3 tasks
 - US1 (Schema Restructuring): 23 tasks
@@ -406,12 +439,14 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 - Polish: 9 tasks
 
 **By Priority**:
+
 - P1 (MVP): 61 tasks (Setup + Foundational + US1 + US3 + Polish)
 - P2 (Optional): 5 tasks (US2 only)
 
 **Parallelizable Tasks**: 28 tasks marked with [P]
 
 **Estimated Total Time**:
+
 - MVP (P1 only): 6-8 hours
 - With Migration (P1+P2): 7-10 hours
 
@@ -420,6 +455,7 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 ## Success Criteria
 
 ### US1 Success (Schema Restructuring)
+
 - [x] All TypeScript compilation errors resolved
 - [x] InventoryScriptInfo and InventoryHeaderInfo use AuthorizeWithConfig
 - [x] JSON serialization shows authorisationInfo nested within authoriseWith
@@ -427,6 +463,7 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 - [x] Zero breaking changes to existing functionality (verified by tests)
 
 ### US3 Success (Test Validation)
+
 - [x] All schema validation tests pass
 - [x] All round-trip serialization tests pass
 - [x] All comparison service tests pass
@@ -434,11 +471,13 @@ Setup (Phase 1) → Foundational (Phase 2) → US1 & US3 (parallel) → US2 (opt
 - [x] 100% test pass rate maintained
 
 ### US2 Success (Migration, Optional)
+
 - [x] Migration script transforms old format to new format
 - [x] All data preserved during migration
 - [x] Migrated files pass Zod validation
 
 ### Overall Success
+
 - [x] Constitution gates remain passed (all principles satisfied)
 - [x] Zero test failures
 - [x] Zero TypeScript errors

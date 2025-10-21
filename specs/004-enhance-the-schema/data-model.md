@@ -19,20 +19,23 @@ This document defines the enhanced data model that nests `authorisationInfo` wit
 **Location**: `src/types/inventory/model.ts`
 
 **Definition** (unchanged):
+
 ```typescript
 export type InventoryAuthorisationInfo = {
-  description: string      // Human-readable justification for authorization
-  authorised: boolean      // Whether the resource is authorized
-  date: Date              // Date of authorization decision
+  description: string // Human-readable justification for authorization
+  authorised: boolean // Whether the resource is authorized
+  date: Date // Date of authorization decision
 }
 ```
 
 **Validation Rules**:
+
 - `description`: Non-empty string, required
 - `authorised`: Boolean, required
 - `date`: Valid Date instance, required
 
 **State Transitions**:
+
 - Initial state: `authorised: false`, `description: "NO_DESCRIPTION"` (new script discovery)
 - After review: `authorised: true`, `description: <justification>` (manual authorization)
 
@@ -45,18 +48,21 @@ export type InventoryAuthorisationInfo = {
 **Location**: `src/types/inventory/model.ts` (new type)
 
 **Definition** (new):
+
 ```typescript
 export type AuthorizeWithConfig = {
-  matcher: Matcher                             // How to authorize content
-  authorisationInfo: InventoryAuthorisationInfo  // Authorization metadata
+  matcher: Matcher // How to authorize content
+  authorisationInfo: InventoryAuthorisationInfo // Authorization metadata
 }
 ```
 
 **Validation Rules**:
+
 - `matcher`: Valid Matcher instance (NameMatcher | ContentMatcher | HashMatcher | HeaderNameMatcher)
 - `authorisationInfo`: Valid InventoryAuthorisationInfo object
 
 **Relationships**:
+
 - Contains exactly one Matcher instance
 - Contains exactly one InventoryAuthorisationInfo instance
 - Used in both InventoryScriptInfo and InventoryHeaderInfo
@@ -72,22 +78,26 @@ export type AuthorizeWithConfig = {
 **Location**: `src/types/inventory/model.ts`
 
 **Definition** (updated):
+
 ```typescript
 export type InventoryScriptInfo = {
-  identifyWith: Matcher           // How to identify the script (unchanged)
-  authoriseWith: AuthorizeWithConfig  // NEW: Composite authorization structure
+  identifyWith: Matcher // How to identify the script (unchanged)
+  authoriseWith: AuthorizeWithConfig // NEW: Composite authorization structure
 }
 ```
 
 **Changes from Current**:
+
 - **Before**: `authoriseWith: Matcher`, `authorisationInfo: InventoryAuthorisationInfo` (siblings)
 - **After**: `authoriseWith: AuthorizeWithConfig` (nested)
 
 **Validation Rules**:
+
 - `identifyWith`: Valid Matcher instance (typically NameMatcher for URL matching or ContentMatcher for inline scripts)
 - `authoriseWith`: Valid AuthorizeWithConfig object
 
 **Access Patterns**:
+
 - Identification: `entry.identifyWith.identify(scriptInfo)`
 - Authorization: `entry.authoriseWith.matcher.authorize(scriptInfo)`
 - Metadata: `entry.authoriseWith.authorisationInfo.authorised`
@@ -101,22 +111,26 @@ export type InventoryScriptInfo = {
 **Location**: `src/types/inventory/model.ts`
 
 **Definition** (updated):
+
 ```typescript
 export type InventoryHeaderInfo = {
-  identifyWith: Matcher           // How to identify the header (unchanged)
-  authoriseWith: AuthorizeWithConfig  // NEW: Composite authorization structure
+  identifyWith: Matcher // How to identify the header (unchanged)
+  authoriseWith: AuthorizeWithConfig // NEW: Composite authorization structure
 }
 ```
 
 **Changes from Current**:
+
 - **Before**: `authoriseWith: Matcher`, `authorisationInfo: InventoryAuthorisationInfo` (siblings)
 - **After**: `authoriseWith: AuthorizeWithConfig` (nested)
 
 **Validation Rules**:
+
 - `identifyWith`: Valid Matcher instance (typically HeaderNameMatcher for case-insensitive name matching)
 - `authoriseWith`: Valid AuthorizeWithConfig object (typically ContentMatcher for header value)
 
 **Access Patterns**:
+
 - Identification: `entry.identifyWith.identify(headerInfo)`
 - Authorization: `entry.authoriseWith.matcher.authorize(headerInfo)`
 - Metadata: `entry.authoriseWith.authorisationInfo.authorised`
@@ -132,12 +146,13 @@ export type InventoryHeaderInfo = {
 **Location**: `src/types/inventory/raw.ts` (new type)
 
 **Definition** (new):
+
 ```typescript
 export type RawAuthorizeWithConfig = RawMatcherConfig & {
   authorisationInfo: {
     description: string
     authorised: boolean
-    date: string  // ISO 8601 date string
+    date: string // ISO 8601 date string
   }
 }
 ```
@@ -145,12 +160,14 @@ export type RawAuthorizeWithConfig = RawMatcherConfig & {
 **Structure**: Intersection type combining matcher configuration fields (one of: `nameMatcher`, `contentMatcher`, `hashes`, `headerNameMatcher`) with `authorisationInfo` metadata as siblings in the same object.
 
 **Validation Rules** (Zod schema):
+
 - Matcher config fields: Valid RawMatcherConfig (discriminated union - exactly one matcher type present)
 - `authorisationInfo.description`: Non-empty string
 - `authorisationInfo.authorised`: Boolean
 - `authorisationInfo.date`: ISO 8601 date string
 
 **Serialization**:
+
 - Date → ISO 8601 string: `date.toISOString()`
 - ISO string → Date: `new Date(dateString)`
 
@@ -163,18 +180,21 @@ export type RawAuthorizeWithConfig = RawMatcherConfig & {
 **Location**: `src/types/inventory/raw.ts`
 
 **Definition** (updated):
+
 ```typescript
 export type RawInventoryScriptInfo = {
   identifyWith: RawMatcherConfig
-  authoriseWith: RawAuthorizeWithConfig  // NEW: Nested authorization config
+  authoriseWith: RawAuthorizeWithConfig // NEW: Nested authorization config
 }
 ```
 
 **Changes from Current**:
+
 - **Before**: Inherited `authorisationInfo` as sibling field via Omit
 - **After**: `authoriseWith` contains nested `RawAuthorizeWithConfig`
 
 **JSON Structure Example**:
+
 ```json
 {
   "identifyWith": {
@@ -205,18 +225,21 @@ export type RawInventoryScriptInfo = {
 **Location**: `src/types/inventory/raw.ts`
 
 **Definition** (updated):
+
 ```typescript
 export type RawInventoryHeaderInfo = {
   identifyWith: RawMatcherConfig
-  authoriseWith: RawAuthorizeWithConfig  // NEW: Nested authorization config
+  authoriseWith: RawAuthorizeWithConfig // NEW: Nested authorization config
 }
 ```
 
 **Changes from Current**:
+
 - **Before**: Inherited `authorisationInfo` as sibling field via Omit
 - **After**: `authoriseWith` contains nested `RawAuthorizeWithConfig`
 
 **JSON Structure Example**:
+
 ```json
 {
   "identifyWith": {
@@ -266,6 +289,7 @@ Inventory
 **Location**: `src/types/inventory/zod.ts` (new schema)
 
 **Definition**:
+
 ```typescript
 import { z } from 'zod'
 import { RawMatcherConfigSchema } from './matcher-config-schema'
@@ -273,43 +297,45 @@ import { RawMatcherConfigSchema } from './matcher-config-schema'
 const InventoryAuthorisationInfoSchema = z.object({
   description: z.string().min(1),
   authorised: z.boolean(),
-  date: z.string().datetime()  // ISO 8601 date string
+  date: z.string().datetime(), // ISO 8601 date string
 })
 
 const RawAuthorizeWithConfigSchema = z.intersection(
   RawMatcherConfigSchema,
   z.object({
-    authorisationInfo: InventoryAuthorisationInfoSchema
-  })
+    authorisationInfo: InventoryAuthorisationInfoSchema,
+  }),
 )
 ```
 
 **Alternative Definition** (if discriminated union preferred):
+
 ```typescript
 // Each matcher type variant includes authorisationInfo
 const RawAuthorizeWithConfigSchema = z.discriminatedUnion('type', [
   z.object({
     nameMatcher: z.string(),
-    authorisationInfo: InventoryAuthorisationInfoSchema
+    authorisationInfo: InventoryAuthorisationInfoSchema,
   }),
   z.object({
     contentMatcher: z.string(),
-    authorisationInfo: InventoryAuthorisationInfoSchema
+    authorisationInfo: InventoryAuthorisationInfoSchema,
   }),
   z.object({
     hashes: z.array(InventoryScriptHashInfoSchema),
-    authorisationInfo: InventoryAuthorisationInfoSchema
+    authorisationInfo: InventoryAuthorisationInfoSchema,
   }),
   z.object({
     headerNameMatcher: z.string(),
-    authorisationInfo: InventoryAuthorisationInfoSchema
-  })
+    authorisationInfo: InventoryAuthorisationInfoSchema,
+  }),
 ])
 ```
 
 **Note**: The intersection approach is cleaner as it reuses the existing `RawMatcherConfigSchema`. Choose based on error message preferences and schema complexity.
 
 **Validation Behavior**:
+
 - Fails if `authorisationInfo` is missing
 - Fails if `matcher` is invalid (per RawMatcherConfigSchema)
 - Fails if `date` is not ISO 8601 format
@@ -320,10 +346,11 @@ const RawAuthorizeWithConfigSchema = z.discriminatedUnion('type', [
 **Location**: `src/types/inventory/zod.ts`
 
 **Definition** (updated):
+
 ```typescript
 const RawInventoryScriptInfoSchema = z.object({
   identifyWith: RawMatcherConfigSchema,
-  authoriseWith: RawAuthorizeWithConfigSchema  // NEW: Use nested schema
+  authoriseWith: RawAuthorizeWithConfigSchema, // NEW: Use nested schema
 })
 ```
 
@@ -332,10 +359,11 @@ const RawInventoryScriptInfoSchema = z.object({
 **Location**: `src/types/inventory/zod.ts`
 
 **Definition** (updated):
+
 ```typescript
 const RawInventoryHeaderInfoSchema = z.object({
   identifyWith: RawMatcherConfigSchema,
-  authoriseWith: RawAuthorizeWithConfigSchema  // NEW: Use nested schema
+  authoriseWith: RawAuthorizeWithConfigSchema, // NEW: Use nested schema
 })
 ```
 
@@ -372,6 +400,7 @@ const RawInventoryHeaderInfoSchema = z.object({
 **Output**: `InventoryScriptInfo` with nested authorization info
 
 **Process**:
+
 ```typescript
 export function scriptInfoToInventoryScriptInfo(scriptInfo: ScriptInfo, date: Date): InventoryScriptInfo {
   const scriptSource = getScriptSource(scriptInfo)
@@ -379,14 +408,15 @@ export function scriptInfoToInventoryScriptInfo(scriptInfo: ScriptInfo, date: Da
 
   return {
     identifyWith: createMatcher({ nameMatcher: escapedPattern }),
-    authoriseWith: {  // NEW: Composite structure
+    authoriseWith: {
+      // NEW: Composite structure
       matcher: createMatcher({ hashes: [scriptHashToInventoryHashInfo(scriptInfo, date)] }),
       authorisationInfo: {
         description: 'NO_DESCRIPTION',
         authorised: false,
         date: date,
-      }
-    }
+      },
+    },
   }
 }
 ```
@@ -400,6 +430,7 @@ export function scriptInfoToInventoryScriptInfo(scriptInfo: ScriptInfo, date: Da
 **Output**: `InventoryScriptInfo` (with Matcher instances)
 
 **Process**:
+
 ```typescript
 export function rawInventoryScriptInfoToInventoryScriptInfo(rawInventoryScriptInfo: RawInventoryScriptInfo): InventoryScriptInfo {
   // Destructure authoriseWith to separate matcher config from authorisationInfo
@@ -407,14 +438,15 @@ export function rawInventoryScriptInfoToInventoryScriptInfo(rawInventoryScriptIn
 
   return {
     identifyWith: createMatcher(rawInventoryScriptInfo.identifyWith),
-    authoriseWith: {  // NEW: Construct composite structure
-      matcher: createMatcher(matcherConfig),  // matcherConfig contains nameMatcher/contentMatcher/hashes/headerNameMatcher
+    authoriseWith: {
+      // NEW: Construct composite structure
+      matcher: createMatcher(matcherConfig), // matcherConfig contains nameMatcher/contentMatcher/hashes/headerNameMatcher
       authorisationInfo: {
         description: authorisationInfo.description,
         authorised: authorisationInfo.authorised,
-        date: new Date(authorisationInfo.date)  // ISO string → Date
-      }
-    }
+        date: new Date(authorisationInfo.date), // ISO string → Date
+      },
+    },
   }
 }
 ```
@@ -428,6 +460,7 @@ export function rawInventoryScriptInfoToInventoryScriptInfo(rawInventoryScriptIn
 **Output**: `RawInventoryScriptInfo` (for JSON)
 
 **Process**:
+
 ```typescript
 export function inventoryScriptInfoToRawInventoryScriptInfo(inventoryScriptInfo: InventoryScriptInfo): RawInventoryScriptInfo {
   function matcherToConfig(matcher: Matcher): RawMatcherConfig {
@@ -451,14 +484,15 @@ export function inventoryScriptInfoToRawInventoryScriptInfo(inventoryScriptInfo:
 
   return {
     identifyWith: matcherToConfig(inventoryScriptInfo.identifyWith),
-    authoriseWith: {  // NEW: Flatten matcher config and authorisationInfo as siblings
-      ...matcherConfig,  // Spreads nameMatcher/contentMatcher/hashes/headerNameMatcher
+    authoriseWith: {
+      // NEW: Flatten matcher config and authorisationInfo as siblings
+      ...matcherConfig, // Spreads nameMatcher/contentMatcher/hashes/headerNameMatcher
       authorisationInfo: {
         description: inventoryScriptInfo.authoriseWith.authorisationInfo.description,
         authorised: inventoryScriptInfo.authoriseWith.authorisationInfo.authorised,
-        date: inventoryScriptInfo.authoriseWith.authorisationInfo.date.toISOString()  // Date → ISO string
-      }
-    }
+        date: inventoryScriptInfo.authoriseWith.authorisationInfo.date.toISOString(), // Date → ISO string
+      },
+    },
   }
 }
 ```
@@ -472,28 +506,29 @@ export function inventoryScriptInfoToRawInventoryScriptInfo(inventoryScriptInfo:
 **Output**: Comparison result (UnknownScriptFound | KnownScriptWithUnauthorisedContentFound | AuthorizedScriptFound)
 
 **Process** (updated access pattern):
+
 ```typescript
 // Identify script
-const inventoryEntry = inventoryScripts.find(entry => entry.identifyWith.identify(scriptInfo))
+const inventoryEntry = inventoryScripts.find((entry) => entry.identifyWith.identify(scriptInfo))
 
 if (!inventoryEntry) {
   return new UnknownScriptFound(scriptInfo)
 }
 
 // Authorize content
-const isAuthorized = inventoryEntry.authoriseWith.matcher.authorize(scriptInfo)  // NEW: Access nested matcher
+const isAuthorized = inventoryEntry.authoriseWith.matcher.authorize(scriptInfo) // NEW: Access nested matcher
 
 if (!isAuthorized) {
   return new KnownScriptWithUnauthorisedContentFound(
     scriptInfo,
-    inventoryEntry.authoriseWith.matcher,  // NEW: Access nested matcher
-    inventoryEntry.authoriseWith.authorisationInfo  // NEW: Access nested authorisationInfo
+    inventoryEntry.authoriseWith.matcher, // NEW: Access nested matcher
+    inventoryEntry.authoriseWith.authorisationInfo, // NEW: Access nested authorisationInfo
   )
 }
 
 return new AuthorizedScriptFound(
   scriptInfo,
-  inventoryEntry.authoriseWith.authorisationInfo  // NEW: Access nested authorisationInfo
+  inventoryEntry.authoriseWith.authorisationInfo, // NEW: Access nested authorisationInfo
 )
 ```
 
@@ -502,6 +537,7 @@ return new AuthorizedScriptFound(
 ### Manual Inventory Update
 
 **Process**:
+
 1. Load existing inventory JSON file
 2. For each script/header entry:
    - Extract `authoriseWith` matcher config
@@ -513,6 +549,7 @@ return new AuthorizedScriptFound(
 **Example Transformation**:
 
 **Before** (current format):
+
 ```json
 {
   "identifyWith": { "nameMatcher": "^https://example\\.com/script\\.js$" },
@@ -526,6 +563,7 @@ return new AuthorizedScriptFound(
 ```
 
 **After** (new format):
+
 ```json
 {
   "identifyWith": { "nameMatcher": "^https://example\\.com/script\\.js$" },
@@ -555,6 +593,7 @@ A validation script should be created to verify migrated inventories:
 The enhanced data model nests `authorisationInfo` within `authoriseWith`, creating a cohesive `AuthorizeWithConfig` structure. This improves data organization by grouping authorization logic (matcher) with authorization metadata (description, status, date) in a single entity.
 
 **Key Changes**:
+
 - New type: `AuthorizeWithConfig` wraps `Matcher` + `InventoryAuthorisationInfo`
 - Updated: `InventoryScriptInfo.authoriseWith` and `InventoryHeaderInfo.authoriseWith` use `AuthorizeWithConfig`
 - Updated: `RawInventoryScriptInfo` and `RawInventoryHeaderInfo` use `RawAuthorizeWithConfig`
@@ -562,6 +601,7 @@ The enhanced data model nests `authorisationInfo` within `authoriseWith`, creati
 - Updated: Comparison services access nested `authorisationInfo`
 
 **Benefits**:
+
 - Improved data cohesion (authorization context self-contained)
 - Clearer domain model (authorization includes both logic and metadata)
 - Maintained type safety (TypeScript + Zod validation)

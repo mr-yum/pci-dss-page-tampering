@@ -34,6 +34,7 @@
 **Status**: ✅ PASSED (2025-10-21)
 
 **Changes Made**:
+
 - Removed references to "Zod schemas" from FR-003 and FR-010
 - Made SC-002 technology-agnostic by removing "Zod" reference
 - Made SC-006 more measurable by specifying "100% of service code"

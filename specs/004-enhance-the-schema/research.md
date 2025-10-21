@@ -13,21 +13,23 @@ This document consolidates research findings for enhancing the inventory schema 
 ### Existing Schema Structure
 
 **Current Model** (`src/types/inventory/model.ts:25-29, 41-45`):
+
 ```typescript
 export type InventoryScriptInfo = {
   identifyWith: Matcher
   authoriseWith: Matcher
-  authorisationInfo: InventoryAuthorisationInfo  // ← Sibling field
+  authorisationInfo: InventoryAuthorisationInfo // ← Sibling field
 }
 
 export type InventoryHeaderInfo = {
   identifyWith: Matcher
   authoriseWith: Matcher
-  authorisationInfo: InventoryAuthorisationInfo  // ← Sibling field
+  authorisationInfo: InventoryAuthorisationInfo // ← Sibling field
 }
 ```
 
 **Current Raw Schema** (`src/types/inventory/raw.ts:12-15, 25-28`):
+
 ```typescript
 export type RawInventoryScriptInfo = Omit<InventoryScriptInfo, 'identifyWith' | 'authoriseWith'> & {
   identifyWith: RawMatcherConfig
@@ -64,12 +66,14 @@ export type RawInventoryHeaderInfo = Omit<InventoryHeaderInfo, 'identifyWith' | 
 **Chosen Approach**: Create a composite structure that wraps matcher configuration with authorization metadata.
 
 **Rationale**:
+
 - Improves data cohesion by grouping related information
 - Eliminates sibling relationship between matcher and metadata
 - Makes authorization context self-contained and portable
 - Aligns with domain model: "authorization" includes both "how to authorize" and "authorization status"
 
 **Alternatives Considered**:
+
 1. **Keep current structure** - Rejected: Maintains fragmentation, doesn't address the core issue
 2. **Flatten all fields** - Rejected: Would increase complexity and reduce clarity
 3. **Separate authorization entity** - Rejected: Would require additional lookup/join logic
@@ -79,11 +83,13 @@ export type RawInventoryHeaderInfo = Omit<InventoryHeaderInfo, 'identifyWith' | 
 **Chosen Approach**: Introduce `AuthorizeWithConfig` type for the composite structure.
 
 **Rationale**:
+
 - Clear, descriptive name indicating it's a configuration object
 - Distinguishes between the Matcher instance and the configuration wrapper
 - Consistent with existing naming patterns (`RawMatcherConfig`, `MatcherConfig`)
 
 **Alternatives Considered**:
+
 1. **AuthorizationEntity** - Rejected: Too generic, doesn't indicate it's configuration
 2. **MatcherWithMetadata** - Rejected: Implies matcher is primary, metadata is secondary
 3. **AuthorizeWithInfo** - Rejected: "Info" is ambiguous (could be just metadata)
@@ -93,12 +99,14 @@ export type RawInventoryHeaderInfo = Omit<InventoryHeaderInfo, 'identifyWith' | 
 **Chosen Approach**: No automatic migration; manual inventory update expected.
 
 **Rationale**:
+
 - Per assumption A-001 in spec: "one-time migration or manual update is acceptable"
 - Schema is internal to this service (not a public API)
 - Inventory files are version-controlled; migration can be tracked via Git
 - Reduces implementation complexity and testing burden
 
 **Alternatives Considered**:
+
 1. **Dual-format support** - Rejected: Increases complexity, requires maintaining two code paths
 2. **Automatic migration on load** - Rejected: Hidden side effects, harder to audit
 3. **Migration script** - Considered acceptable if needed, but not required for initial implementation
@@ -108,12 +116,14 @@ export type RawInventoryHeaderInfo = Omit<InventoryHeaderInfo, 'identifyWith' | 
 **Chosen Approach**: Update Zod schemas to validate nested structure, leverage discriminated unions for matcher types.
 
 **Rationale**:
+
 - Zod already used throughout codebase for schema validation (established pattern)
 - Discriminated unions provide type-safe validation for different matcher types
 - Fail-fast validation at deserialization boundary prevents invalid data from entering system
 - Aligns with Constitution Principle VI (Minimal Complexity - use established patterns)
 
 **Alternatives Considered**:
+
 1. **Runtime validation with custom functions** - Rejected: More complex, less declarative
 2. **TypeScript-only validation** - Rejected: Doesn't protect against malformed JSON input
 3. **JSON Schema** - Rejected: Would require new dependency, Zod already established
@@ -125,6 +135,7 @@ export type RawInventoryHeaderInfo = Omit<InventoryHeaderInfo, 'identifyWith' | 
 **Best Practice**: Use `Omit` and intersection types to construct derivative types from source types.
 
 **Current Usage** (already established in codebase):
+
 ```typescript
 export type RawInventoryScriptInfo = Omit<InventoryScriptInfo, 'identifyWith' | 'authoriseWith'> & {
   identifyWith: RawMatcherConfig
@@ -133,10 +144,11 @@ export type RawInventoryScriptInfo = Omit<InventoryScriptInfo, 'identifyWith' | 
 ```
 
 **Application**: Continue this pattern for new composite structure:
+
 ```typescript
 export type InventoryScriptInfo = {
   identifyWith: Matcher
-  authoriseWith: AuthorizeWithConfig  // New composite type
+  authoriseWith: AuthorizeWithConfig // New composite type
 }
 
 export type AuthorizeWithConfig = {
@@ -152,16 +164,13 @@ export type AuthorizeWithConfig = {
 **Best Practice**: Compose complex schemas from smaller, reusable schema fragments.
 
 **Existing Pattern** (from `src/types/inventory/matcher-config-schema.ts`):
+
 ```typescript
 const NameMatcherSchema = z.object({ nameMatcher: z.string() })
 const ContentMatcherSchema = z.object({ contentMatcher: z.string() })
 const HashMatcherSchema = z.object({ hashes: z.array(InventoryScriptHashInfoSchema) })
 
-const RawMatcherConfigSchema = z.discriminatedUnion('type', [
-  NameMatcherSchema,
-  ContentMatcherSchema,
-  HashMatcherSchema
-])
+const RawMatcherConfigSchema = z.discriminatedUnion('type', [NameMatcherSchema, ContentMatcherSchema, HashMatcherSchema])
 ```
 
 **Application**: Create AuthorizeWithConfigSchema by composing matcher schema with authorization info schema.
@@ -173,6 +182,7 @@ const RawMatcherConfigSchema = z.discriminatedUnion('type', [
 **Best Practice**: Use small, focused conversion functions with clear responsibilities.
 
 **Existing Pattern** (already in codebase):
+
 - `rawInventoryScriptInfoToInventoryScriptInfo`: JSON → Runtime model
 - `inventoryScriptInfoToRawInventoryScriptInfo`: Runtime model → JSON
 
@@ -214,6 +224,7 @@ const RawMatcherConfigSchema = z.discriminatedUnion('type', [
 **Scope**: Full workflow tests with mocked Puppeteer responses (existing pattern).
 
 **Required Coverage**:
+
 - Inventory workflow creates entries with nested authorization info
 - Detection workflow reads entries with nested authorization info
 - Git push/pull operations preserve nested structure
@@ -233,28 +244,33 @@ const RawMatcherConfigSchema = z.discriminatedUnion('type', [
 ### Phased Implementation
 
 **Phase 1: Type Definitions** (Zero Runtime Impact)
+
 - Update `InventoryScriptInfo` and `InventoryHeaderInfo` type definitions
 - Create `AuthorizeWithConfig` type
 - Update `RawInventoryScriptInfo` and `RawInventoryHeaderInfo` types
 - TypeScript compilation will fail everywhere the structure is accessed (intentional)
 
 **Phase 2: Schema Validation** (Isolated Change)
+
 - Update Zod schemas to validate nested structure
 - Add schema validation tests
 - No runtime behavior change yet (no data using new schema)
 
 **Phase 3: Conversion Functions** (Isolated Change)
+
 - Update all conversion functions in `src/utils/script.ts` and `src/utils/inventory.ts`
 - Add round-trip serialization tests
 - Still no runtime behavior change (no services updated yet)
 
 **Phase 4: Service Integration** (Runtime Behavior Change)
+
 - Update `ScriptComparisonService` to access nested `authorisationInfo`
 - Update `HeaderComparisonService` to access nested `authorisationInfo`
 - Update any other services that access authorization metadata
 - Add service integration tests
 
 **Phase 5: End-to-End Validation** (Confidence Check)
+
 - Run full test suite (unit + integration)
 - Manually test with sample inventory files
 - Validate Git operations preserve structure
@@ -263,17 +279,20 @@ const RawMatcherConfigSchema = z.discriminatedUnion('type', [
 ### Rollout Strategy
 
 **Preparation**:
+
 1. Implement all code changes (Phases 1-4)
 2. Ensure 100% test coverage for new structure
 3. Create sample inventory files in new format
 
 **Deployment**:
+
 1. Update all inventory files in Git repository to new format (manual update)
 2. Deploy code changes
 3. Run detection workflow to validate
 4. Monitor alerts for any issues
 
 **Rollback Plan**:
+
 - Git revert for inventory files (version controlled)
 - Git revert for code changes
 - No data loss (Git history preserved)
@@ -285,6 +304,7 @@ const RawMatcherConfigSchema = z.discriminatedUnion('type', [
 **Current Version**: Zod ^4.0.17 (per package.json)
 
 **Relevant Features**:
+
 - `z.discriminatedUnion`: Already in use for `RawMatcherConfig`
 - `z.object`: Standard object validation
 - `z.array`: Array validation
@@ -297,6 +317,7 @@ const RawMatcherConfigSchema = z.discriminatedUnion('type', [
 **Current Configuration**: Using `@mr-yum/node-builder` TypeScript config (strict mode enabled)
 
 **Implications**:
+
 - All fields must be explicitly typed (no implicit `any`)
 - Null/undefined must be explicitly handled
 - Type narrowing required for discriminated unions
@@ -308,6 +329,7 @@ const RawMatcherConfigSchema = z.discriminatedUnion('type', [
 **Current Setup**: Jest via `@mr-yum/node-builder` preset
 
 **Test Organization** (per existing pattern):
+
 - `test/unit/`: Unit tests mirroring `src/` structure
 - Descriptive test names using `describe` and `it`
 - Arrange-Act-Assert pattern
