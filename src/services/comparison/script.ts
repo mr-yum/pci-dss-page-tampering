@@ -1,85 +1,148 @@
-import type { Inventory, InventoryScriptInfo } from '../../types/inventory/model'
 import type { IScriptComparisonService } from '../../interfaces/comparison'
+import type { ComparisonResultType } from '../../types/comparison'
+import { AuthorizedScriptFound, KnownScriptWithUnauthorisedContentFound, UnknownScriptFound } from '../../types/comparison'
+import type { Inventory, InventoryScriptInfo } from '../../types/inventory/model'
+import type { DetectedScript } from '../../types/matcher/matcher.interface'
 import type { ScriptDetectionSummary, ScriptInfo } from '../../types/script'
-import type { ScriptComparisonResult, ScriptComparisonSummary } from '../../types/comparison'
 import type { Target } from '../../types/target'
-
 import { getScriptSource } from '../../utils/script'
-import type { ScriptMatcher } from '../../types/matcher'
 
 export class ScriptComparisonService implements IScriptComparisonService {
-  /*
-  Returns scripts that match the following conditions:
-    - Not found in inventory
-    - Found in inventory and authorised but hash doesn't exist and doesn't have any content matches
+  /**
+   * T053: Updated to return Array<ComparisonResultType> instead of ScriptComparisonSummary.
+   * Returns typed comparison results with complete context for alert handlers.
+   *
+   * Result types:
+   * - UnknownScriptFound: Script not in inventory or has null/empty content
+   * - KnownScriptWithUnauthorisedContentFound: Script identified but authorization failed
+   * - AuthorizedScriptFound: Script both identified and authorized (compliant)
    */
-  compare(target: Target, inventory: Inventory, scriptDetectionSummary: ScriptDetectionSummary, scriptContentMatchers: ScriptMatcher[]): Promise<ScriptComparisonSummary> {
+  compare(target: Target, inventory: Inventory, scriptDetectionSummary: ScriptDetectionSummary): Promise<ComparisonResultType[]> {
     const inventoryScripts = inventory.scripts
     const detectedExternalScripts = scriptDetectionSummary.externalScripts
     const detectedInlineScripts = scriptDetectionSummary.inlineScripts
 
-    const externalScriptsComparisonResult = this.compareScriptWithInventory(detectedExternalScripts, inventoryScripts, target, scriptContentMatchers)
-    const inlineScriptsComparisonResult = this.compareScriptWithInventory(detectedInlineScripts, inventoryScripts, target, scriptContentMatchers)
+    const externalScriptsResults = this.compareScriptWithInventory(detectedExternalScripts, inventoryScripts, target)
+    const inlineScriptsResults = this.compareScriptWithInventory(detectedInlineScripts, inventoryScripts, target)
 
-    return Promise.resolve({
-      target: target,
-      externalScripts: externalScriptsComparisonResult,
-      inlineScripts: inlineScriptsComparisonResult,
-    })
+    return Promise.resolve([...externalScriptsResults, ...inlineScriptsResults])
   }
 
-  private compareScriptWithInventory(detectedScripts: ScriptInfo[], inventoryScripts: InventoryScriptInfo[], target: Target, contentMatchers: ScriptMatcher[]): ScriptComparisonResult {
-    const newScripts: ScriptInfo[] = []
-    const newHashes: ScriptInfo[] = []
+  /**
+   * Compares detected scripts against inventory, returning typed results for each script.
+   * T054: Updated to return ComparisonResultType[] instead of ScriptComparisonResult.
+   */
+  private compareScriptWithInventory(detectedScripts: ScriptInfo[], inventoryScripts: InventoryScriptInfo[], target: Target): ComparisonResultType[] {
+    const results: ComparisonResultType[] = []
 
     detectedScripts.forEach((script) => {
-      const scriptSourceValue = getScriptSource(script)
-      // Push detected script if there is no existing match found in inventory
-      if (!this.scriptExistsInInventory(script, inventoryScripts)) {
-        console.log(`[Comparison → Script]: Script '${scriptSourceValue}' not found in inventory for target '${target.url}'.`)
-        newScripts.push(script)
-      }
-
-      // There is a match found in inventory for the detected script
-      else {
-        const isDetectedScriptAuthorised = this.getScriptFromInventory(script, inventoryScripts)
-
-        // The detected script is authorised, add hash if it doesn't exist
-        if (isDetectedScriptAuthorised) {
-          const hashExists = this.scriptHashExists(script, isDetectedScriptAuthorised)
-          const contentMatchExists = this.scriptContentHasMatch(script, contentMatchers)
-
-          if (!hashExists && !contentMatchExists) {
-            console.log(`[Comparison → Script]: Script '${scriptSourceValue}' found in inventory, but hash '${script.hash.value}' doesn't exist for target '${target.url}'.`)
-            newHashes.push(script)
-          }
-        }
-        // Push script if script isn't authorised
-        else {
-          newScripts.push(script)
-        }
-      }
+      const comparisonResult = this.compareSingleScriptWithInventory(script, inventoryScripts, target)
+      results.push(comparisonResult)
     })
 
+    return results
+  }
+
+  /**
+   * Converts ScriptInfo to DetectedScript format for matcher operations.
+   *
+   * Note: For external scripts, we use the URL as both name AND content.
+   * This maintains backward compatibility with the old behavior where contentMatcher
+   * was tested against getScriptSource(script) which returns the URL for external scripts.
+   *
+   * For inline scripts, name is the ID and content is the actual script content.
+   */
+  private scriptInfoToDetectedScript(scriptInfo: ScriptInfo): DetectedScript {
+    const name = getScriptSource(scriptInfo)
+    const content = scriptInfo.source.type === 'inline' ? scriptInfo.source.content : name
+
     return {
-      newScripts: newScripts,
-      newHashes: newHashes,
+      name,
+      content,
+      hash: scriptInfo.hash,
     }
   }
 
-  private scriptExistsInInventory(scriptInfo: ScriptInfo, inventoryScripts: InventoryScriptInfo[]): boolean {
-    return inventoryScripts.some((inventoryScript) => inventoryScript.nameMatcher.test(getScriptSource(scriptInfo)))
+  /**
+   * Compares a single detected script against inventory using matcher pipeline.
+   * Implements first-match-wins identification and authorization logic.
+   *
+   * T054: Updated to return ComparisonResultType instead of { isNewScript, isNewHash }
+   * T055-T057: Instantiates typed result classes based on comparison outcome
+   *
+   * Phase 4 Refactoring (T035-T040):
+   * - Uses identifyWith matcher for script identification (first-match-wins)
+   * - Uses authoriseWith matcher for content authorization
+   * - Handles null/empty content as new script (fail-secure per clarification Q3)
+   * - Logs matcher execution with type, pattern, result, and timing
+   */
+  private compareSingleScriptWithInventory(script: ScriptInfo, inventoryScripts: InventoryScriptInfo[], target: Target): ComparisonResultType {
+    const scriptSourceValue = getScriptSource(script)
+    const detectedScript = this.scriptInfoToDetectedScript(script)
+    const timestamp = new Date()
+
+    // T055: Null/empty content handling - fail-secure (per clarification Q3)
+    if (!detectedScript.content || detectedScript.content.trim() === '') {
+      console.log(`[Comparison → Script]: Script '${scriptSourceValue}' has null/empty content, treating as new script for target '${target.url}'.`)
+      return new UnknownScriptFound(target, timestamp, detectedScript)
+    }
+
+    // First-match-wins identification using matcher pipeline
+    const startIdentificationTime = Date.now()
+    const matchedEntry = this.findMatchingInventoryEntry(detectedScript, inventoryScripts)
+    const identificationTime = Date.now() - startIdentificationTime
+
+    // T055: Script not identified in inventory
+    if (!matchedEntry) {
+      console.log(`[Comparison → Script]: Script '${scriptSourceValue}' not identified in inventory (no identifyWith matcher matched) for target '${target.url}'. Identification took ${identificationTime}ms.`)
+      return new UnknownScriptFound(target, timestamp, detectedScript)
+    }
+
+    // Log successful identification with matcher details
+    const identifyMatcher = matchedEntry.identifyWith
+    console.log(`[Comparison → Script]: Script '${scriptSourceValue}' identified using ${identifyMatcher.getType()}Matcher with pattern '${JSON.stringify(identifyMatcher.getPattern())}' in ${identificationTime}ms.`)
+
+    // Authorization using authoriseWith matcher
+    const startAuthorizationTime = Date.now()
+    const authorizationResult = matchedEntry.authoriseWith.authorize(detectedScript)
+    const authorizationTime = Date.now() - startAuthorizationTime
+
+    // Log authorization result with matcher details
+    const authorizeMatcher = matchedEntry.authoriseWith
+    const authStatus = authorizationResult.authorized ? 'AUTHORIZED' : `UNAUTHORIZED (${authorizationResult.reason})`
+    const matcherPattern = JSON.stringify(authorizeMatcher.getPattern())
+    console.log(`[Comparison → Script]: Script '${scriptSourceValue}' authorization via ${authorizeMatcher.getType()}Matcher with pattern '${matcherPattern}': ${authStatus} in ${authorizationTime}ms.`)
+
+    // T056: Known script but unauthorized content
+    if (!authorizationResult.authorized) {
+      console.log(`[Comparison → Script]: Script '${scriptSourceValue}' found in inventory but authorization failed: ${authorizationResult.reason} for target '${target.url}'.`)
+      return new KnownScriptWithUnauthorisedContentFound(target, timestamp, detectedScript, matchedEntry, authorizeMatcher, authorizationResult.reason ?? 'Unknown authorization failure')
+    }
+
+    // T057: Script is both identified and authorized
+    return new AuthorizedScriptFound(target, timestamp, detectedScript, matchedEntry)
   }
 
-  private getScriptFromInventory(scriptInfo: ScriptInfo, inventoryScripts: InventoryScriptInfo[]): InventoryScriptInfo | undefined {
-    return inventoryScripts.find((inventoryScript) => inventoryScript.nameMatcher.test(getScriptSource(scriptInfo)) && inventoryScript.authorisationInfo.authorised)
-  }
+  /**
+   * Finds first inventory entry where identifyWith matcher returns true.
+   * Implements first-match-wins logic per clarification Q1.
+   *
+   * @param script - Detected script to match
+   * @param inventoryScripts - Array of inventory entries (iteration order determines priority)
+   * @returns First matching entry or undefined if no match
+   */
+  private findMatchingInventoryEntry(script: DetectedScript, inventoryScripts: InventoryScriptInfo[]): InventoryScriptInfo | undefined {
+    for (const inventoryEntry of inventoryScripts) {
+      // Skip non-authorized entries (legacy compatibility)
+      if (!inventoryEntry.authorisationInfo.authorised) {
+        continue
+      }
 
-  private scriptHashExists(scriptInfo: ScriptInfo, inventoryScript: InventoryScriptInfo): boolean {
-    return inventoryScript.hashes.some((hashInfo) => hashInfo.hash.value === scriptInfo.hash.value)
-  }
-
-  private scriptContentHasMatch(scriptInfo: ScriptInfo, scriptContentMatchers: ScriptMatcher[]): ScriptMatcher | undefined {
-    return scriptContentMatchers.find((matcher) => matcher.nameMatcher.test(getScriptSource(scriptInfo)) && matcher.contentMatcher.test(getScriptSource(scriptInfo)))
+      const identified = inventoryEntry.identifyWith.identify(script)
+      if (identified) {
+        return inventoryEntry // First match wins
+      }
+    }
+    return undefined
   }
 }

@@ -1,4 +1,5 @@
 import type { Locator } from 'puppeteer'
+
 import type { Target } from './target'
 import type { WorkflowStep } from './workflow'
 

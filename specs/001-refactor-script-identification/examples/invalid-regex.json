@@ -1,0 +1,58 @@
+{
+  "target": {
+    "inventory": {
+      "type": "inventory",
+      "url": "https://example.com/checkout",
+      "workflow": "checkout-workflow"
+    },
+    "detection": {
+      "type": "detection",
+      "url": "https://example.com/checkout",
+      "workflow": "checkout-workflow"
+    }
+  },
+  "alerts": {
+    "inventory": {
+      "newScriptIdentified": {
+        "destination": "https://hooks.slack.com/services/EXAMPLE/INVENTORY"
+      },
+      "newHeaderIdentified": {
+        "destination": "https://hooks.slack.com/services/EXAMPLE/INVENTORY"
+      }
+    },
+    "detection": {
+      "newScriptDetected": {
+        "destination": "https://hooks.slack.com/services/EXAMPLE/DETECTION"
+      },
+      "scriptMismatchDetected": {
+        "destination": "https://hooks.slack.com/services/EXAMPLE/DETECTION"
+      },
+      "newHeaderDetected": {
+        "destination": "https://hooks.slack.com/services/EXAMPLE/DETECTION"
+      }
+    }
+  },
+  "scripts": [
+    {
+      "identifyWith": {
+        "nameMatcher": "^https://example[abc"
+      },
+      "authoriseWith": {
+        "hashes": [
+          {
+            "timestamp": "2025-10-15T00:00:00.000Z",
+            "hash": {
+              "value": "634b027b1b69e1242d40d53e312b3b4ac7710f55be81f289b549446ef6778bee"
+            }
+          }
+        ]
+      },
+      "authorisationInfo": {
+        "description": "Invalid regex - unclosed character class",
+        "authorised": true,
+        "date": "2025-10-15T00:00:00.000Z"
+      }
+    }
+  ],
+  "headers": []
+}

@@ -1,16 +1,25 @@
 import type { IInventoryStore } from '../../interfaces/inventory'
-
 import type { Inventory, InventoryPullResult } from '../../types/inventory/model'
-import type { RawInventory, RawInventoryScriptInfo, RawInventoryHeaderInfo } from '../../types/inventory/raw'
+import type { RawInventory, RawInventoryHeaderInfo, RawInventoryScriptInfo } from '../../types/inventory/raw'
 
 export class InMemoryInventoryStore implements IInventoryStore {
-  // @ts-ignore
+  // @ts-expect-error - This is unused test data, but kept for reference
   private _inventory: RawInventory[] = [
     {
       target: {
-        inventory: { type: 'inventory', url: 'https://app-dev.meandu.com/qr?t=689e88f4d752b3d741db52b2_default&r=au' },
-        detection: { type: 'detection', url: 'https://app-dev.meandu.com/qr?t=689e88f4d752b3d741db52b2_default&r=au' }, // TODO: replace with production target
-        workflow: '1.0_uat-workflow',
+        inventory: { type: 'inventory', url: 'https://app-dev.meandu.com/qr?t=689e88f4d752b3d741db52b2_default&r=au', workflow: '1.0_uat-workflow' },
+        detection: { type: 'detection', url: 'https://app-dev.meandu.com/qr?t=689e88f4d752b3d741db52b2_default&r=au', workflow: '1.0_uat-workflow' },
+      },
+      alerts: {
+        inventory: {
+          newScriptIdentified: { destination: 'test-channel' },
+          newHeaderIdentified: { destination: 'test-channel' },
+        },
+        detection: {
+          newScriptDetected: { destination: 'test-channel' },
+          scriptMismatchDetected: { destination: 'test-channel' },
+          newHeaderDetected: { destination: 'test-channel' },
+        },
       },
       scripts: [
         this.createDefaultInventoryScript(RegExp('^https://app-dev\\.meandu\\.com/config\\.production\\.js\\?v=.+$')),
@@ -23,9 +32,19 @@ export class InMemoryInventoryStore implements IInventoryStore {
     },
     {
       target: {
-        inventory: { type: 'inventory', url: 'https://staging.meandu.app/pcidsscompliance' },
-        detection: { type: 'detection', url: 'https://staging.meandu.app/pcidsscompliance' }, // TODO: replace with production target
-        workflow: '2.0_uat-workflow',
+        inventory: { type: 'inventory', url: 'https://staging.meandu.app/pcidsscompliance', workflow: '2.0_uat-workflow' },
+        detection: { type: 'detection', url: 'https://staging.meandu.app/pcidsscompliance', workflow: '2.0_uat-workflow' },
+      },
+      alerts: {
+        inventory: {
+          newScriptIdentified: { destination: 'test-channel' },
+          newHeaderIdentified: { destination: 'test-channel' },
+        },
+        detection: {
+          newScriptDetected: { destination: 'test-channel' },
+          scriptMismatchDetected: { destination: 'test-channel' },
+          newHeaderDetected: { destination: 'test-channel' },
+        },
       },
       scripts: [
         this.createDefaultInventoryScript(RegExp('^https://www\\.googletagmanager\\.com/gtag/js\\?id=G-[A-Z0-9]+$')),
@@ -48,25 +67,43 @@ export class InMemoryInventoryStore implements IInventoryStore {
     return Promise.resolve()
   }
 
+  /**
+   * Creates a default inventory script entry for testing.
+   *
+   * Updated for Phase 3:
+   * - identifyWith: Uses nameMatcher with the provided regex pattern
+   * - authoriseWith: Uses nameMatcher (same pattern for authorization)
+   * - This matches the common pattern of URL-based script matching
+   */
   private createDefaultInventoryScript(regex: RegExp): RawInventoryScriptInfo {
     return {
-      matcher: regex.source,
-      hashes: [],
+      identifyWith: { nameMatcher: regex.source },
+      authoriseWith: { nameMatcher: regex.source },
       authorisationInfo: {
         description: 'Script that doesnt match with default implementation due to query string',
         authorised: true,
-        date: new Date().toISOString(),
+        date: new Date(),
       },
     }
   }
 
+  /**
+   * Creates a default inventory header entry for testing.
+   *
+   * Updated for Phase 5 - US3:
+   * - identifyWith: Uses headerNameMatcher with the provided name regex pattern
+   * - authoriseWith: Uses contentMatcher with the provided content regex pattern
+   * - This matches the common pattern of header name/value matching
+   */
   private createDefaultInventoryHeader(nameRegex: RegExp, contentRegex: RegExp): RawInventoryHeaderInfo {
     return {
-      nameMatcher: nameRegex.source,
-      contentMatcher: contentRegex.source,
-      description: 'Default header for testing',
-      authorised: true,
-      date: new Date().toISOString(),
+      identifyWith: { headerNameMatcher: nameRegex.source },
+      authoriseWith: { contentMatcher: contentRegex.source },
+      authorisationInfo: {
+        description: 'Default header for testing',
+        authorised: true,
+        date: new Date(),
+      },
     }
   }
 }

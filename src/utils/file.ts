@@ -1,10 +1,10 @@
-import type { RawInventory } from '../types/inventory/raw'
-import type { WorkflowDefinition } from '../types/workflow'
-
 import { readdir, readFile } from 'fs/promises'
+
+import type { RawInventory } from '../types/inventory/raw'
 import { RawInventorySchema } from '../types/inventory/zod'
-import { TARGET_PATH } from './constants'
+import type { WorkflowDefinition } from '../types/workflow'
 import { WorkflowDefinitionSchema } from '../types/workflow/zod'
+import { TARGET_PATH } from './constants'
 
 export async function getWorkflowDefinitionFromFile(pathToFile: string): Promise<WorkflowDefinition> {
   // Get JSON data from workflow definition file

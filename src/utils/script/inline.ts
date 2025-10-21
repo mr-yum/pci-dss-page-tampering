@@ -12,7 +12,7 @@ export function tryGetIdFromInLineScriptCode(pageScriptElement: PageScriptElemen
   const scriptMatchers = [cloudFlareScriptMatcher, nextJsServerSideRenderingScriptMatcher, reactServerComponentScriptMatcher]
   const maybeMatch = scriptMatchers.find((matcher) => matcher.predicate(pageScriptElement))
 
-  return maybeMatch ? maybeMatch.resultingIdentifier : 'inline_script/id_not_found'
+  return maybeMatch ? maybeMatch.resultingIdentifier : 'inline_script/id_not_found_' + pageScriptElement.content.slice(0, 10) + '...' + pageScriptElement.content.slice(-10)
 }
 
 /*

@@ -1,9 +1,10 @@
+import { z } from 'zod'
+
+import type { RawTargetDetection, RawTargetInventory } from '../target/raw'
+import { SHA256HashSchema } from '../zod'
+import { MatcherConfigSchema } from './matcher-config-schema'
 import type { AlertDestination, AlertDetection, AlertInventory, InventoryAlert, InventoryAuthorisationInfo, InventoryScriptHashInfo } from './model'
 import type { RawInventory, RawInventoryHeaderInfo, RawInventoryScriptInfo, RawInventoryTarget } from './raw'
-import type { RawTargetDetection, RawTargetInventory } from '../target/raw'
-
-import { SHA256HashSchema } from '../zod'
-import { z } from 'zod'
 
 export const AlertDestinationSchema: z.ZodType<AlertDestination> = z.object({
   destination: z.string(),
@@ -77,11 +78,15 @@ export const InventoryScriptHashInfoSchema: z.ZodType<InventoryScriptHashInfo> =
 /**
  * Schema for information about an inventory script.
  * Corresponds to `RawInventoryScriptInfo`.
+ *
+ * Updated schema (Phase 3):
+ * - Replaces nameMatcher/contentMatcher/hashes with identifyWith/authoriseWith
+ * - Each field uses MatcherConfig union type (nameMatcher | contentMatcher | hashes)
+ * - Old schema format is rejected (no backward compatibility per clarification Q4)
  */
 export const RawInventoryScriptInfoSchema: z.ZodType<RawInventoryScriptInfo> = z.object({
-  nameMatcher: z.string(),
-  contentMatcher: z.optional(z.string()),
-  hashes: z.array(InventoryScriptHashInfoSchema),
+  identifyWith: MatcherConfigSchema,
+  authoriseWith: MatcherConfigSchema,
   authorisationInfo: InventoryAuthorisationInfoSchema,
 })
 
@@ -94,9 +99,18 @@ export const RawInventoryTargetSchema: z.ZodType<RawInventoryTarget> = z.object(
   detection: RawTargetDetectionSchema,
 })
 
+/**
+ * Schema for information about an inventory header.
+ * Corresponds to `RawInventoryHeaderInfo`.
+ *
+ * Updated schema (Phase 5 - US3):
+ * - Uses identifyWith/authoriseWith matcher-based structure (aligned with scripts)
+ * - Each field uses MatcherConfig union type (typically headerNameMatcher | contentMatcher)
+ * - Replaces old nameMatcher/contentMatcher RegExp structure
+ */
 export const RawInventoryHeaderInfoSchema: z.ZodType<RawInventoryHeaderInfo> = z.object({
-  nameMatcher: z.string(),
-  contentMatcher: z.string(),
+  identifyWith: MatcherConfigSchema,
+  authoriseWith: MatcherConfigSchema,
   authorisationInfo: InventoryAuthorisationInfoSchema,
 })
 

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+
 import type { SHA256Hash } from './hash'
 
 /**

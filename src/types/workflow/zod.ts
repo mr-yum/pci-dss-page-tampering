@@ -1,4 +1,5 @@
 import { z } from 'zod'
+
 import type { WorkflowActionType, WorkflowDefinition, WorkflowStep, WorkflowWaitForDefinition } from '../workflow'
 
 // Schema for WorkflowWaitForDefinition

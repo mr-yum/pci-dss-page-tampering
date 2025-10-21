@@ -1,13 +1,13 @@
+import { readdir } from 'fs/promises'
+import type { SimpleGit } from 'simple-git'
+import { simpleGit } from 'simple-git'
+
 import type { IInventoryStore } from '../../interfaces/inventory'
 import type { Inventory, InventoryPullResult } from '../../types/inventory/model'
 import type { GitInventoryStoreProps } from '../../types/inventory/props'
-import type { SimpleGit } from 'simple-git'
-
-import { simpleGit } from 'simple-git'
-import { readdir } from 'fs/promises'
-import { getInventoryFileNames, getRawInventoryFromFile } from '../../utils/file'
-import { GIT_CLONE_PATH, GIT_UPDATED_SCRIPTS_BRANCH_NAME, TARGET_DIRECTORY_NAME, TARGET_PATH, WORKFLOW_DIRECTORY_NAME } from '../../utils/constants'
 import { PullTarget } from '../../types/target'
+import { GIT_CLONE_PATH, GIT_DETECTION_SCRIPTS_BRANCH_NAME, GIT_UPDATED_SCRIPTS_BRANCH_NAME, TARGET_DIRECTORY_NAME, TARGET_PATH, WORKFLOW_DIRECTORY_NAME } from '../../utils/constants'
+import { getInventoryFileNames, getRawInventoryFromFile } from '../../utils/file'
 
 export class GitInventoryStore implements IInventoryStore {
   private readonly initialGitClient: SimpleGit
@@ -40,6 +40,7 @@ export class GitInventoryStore implements IInventoryStore {
         await this.switchBranch(this.repositoryGitClient, GIT_UPDATED_SCRIPTS_BRANCH_NAME)
         break
       case PullTarget.Detection:
+        await this.switchBranch(this.repositoryGitClient, GIT_DETECTION_SCRIPTS_BRANCH_NAME)
         break
     }
 
@@ -51,11 +52,17 @@ export class GitInventoryStore implements IInventoryStore {
     const pullResponse = await Promise.all(
       files.map(async (fileName) => {
         const filePath = `${TARGET_PATH}/${fileName}`
-        const rawInventory = await getRawInventoryFromFile(filePath)
 
-        return {
-          fileName: fileName,
-          rawInventory: rawInventory,
+        try {
+          const rawInventory = await getRawInventoryFromFile(filePath)
+          return {
+            fileName: fileName,
+            rawInventory: rawInventory,
+          }
+        } catch (error) {
+          // Enhanced error message with file context for Zod validation failures
+          const errorMessage = error instanceof Error ? error.message : String(error)
+          throw new Error(`[Inventory → Store] Validation failed for inventory file '${fileName}': ${errorMessage}`)
         }
       }),
     )
@@ -65,8 +72,7 @@ export class GitInventoryStore implements IInventoryStore {
     }
   }
 
-  // @ts-ignore
-  async push(inventory: Inventory[]): Promise<void> {
+  async push(_inventory: Inventory[]): Promise<void> {
     console.log(`[Inventory → Store] Setting user.name and user.email for the local repo.`)
     await this.repositoryGitClient?.addConfig('user.name', 'me&u (formerly Mr Yum) Dev [bot]')
     await this.repositoryGitClient?.addConfig('user.email', 'dev@mryum.com')
