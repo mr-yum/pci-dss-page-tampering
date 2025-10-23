@@ -76,26 +76,97 @@ matcher.authorize(script)  // { authorized: false, reason: 'Top-level authorizat
 
 ## Implementation Steps
 
+### Step 0: Introduce Matchable Interface (Type Safety Refinement)
+
+**File**: `src/types/matcher/matcher.interface.ts` (MODIFY)
+
+```typescript
+import type { SHA256Hash } from '../hash'
+
+/**
+ * Generic matchable resource (script or header).
+ * Provides common structure for matcher operations.
+ */
+export interface Matchable {
+  /** Resource name (script URL or header name) */
+  name: string
+
+  /** Resource content (script source or header value) */
+  content: string | null
+
+  /** Optional hash (scripts only, undefined for headers) */
+  hash?: SHA256Hash
+}
+
+/**
+ * Detected script with required hash (extends Matchable).
+ * Backward compatible with existing code.
+ */
+export type DetectedScript = Matchable & {
+  hash: SHA256Hash  // Required for scripts (not optional)
+}
+
+/**
+ * Generic matcher interface (updated to use Matchable).
+ */
+export interface Matcher<T extends Matchable = Matchable> {
+  getType(): 'name' | 'header-name' | 'content' | 'hash' | 'or' | 'and'
+  getPattern(): string | InventoryScriptHashInfo[] | Matcher[]
+  identify(resource: T): boolean
+  authorize(resource: T): AuthorizationResult
+}
+```
+
+**Key Changes**:
+- ✅ Introduces `Matchable` interface for scripts and headers
+- ✅ `DetectedScript` extends `Matchable` (backward compatible)
+- ✅ `Matcher` uses generic type parameter `<T extends Matchable>`
+- ✅ Eliminates `hash: '' as unknown as SHA256Hash` workaround in header comparison
+
+**How Headers Work with Matchable**:
+
+```typescript
+// Header comparison service adapts header data to Matchable shape:
+const headerAsMatchable: Matchable = {
+  name: header.name,        // e.g., 'content-security-policy'
+  content: header.value,    // e.g., 'default-src https:; script-src...'
+  hash: undefined           // No type cast needed! (was: '' as unknown as SHA256Hash)
+}
+
+// Composite matchers work identically for headers:
+const headerMatcher = new AndMatcher<Matchable>([
+  new ContentMatcher('default-src'),
+  new ContentMatcher('script-src')
+])
+
+headerMatcher.authorize(headerAsMatchable)  // Works seamlessly!
+```
+
+---
+
 ### Step 1: Create OrMatcher Class
 
 **File**: `src/types/matcher/or-matcher.ts` (NEW)
 
 ```typescript
-import { Matcher } from './matcher.interface'
-import { DetectedScript } from '../script'
+import { Matcher, Matchable } from './matcher.interface'
 import { InventoryAuthorisationInfo } from '../inventory/authorisation-info'
+import { AuthorizationResult } from './authorization-result'
 
-export interface AuthorizationResult {
-  authorized: boolean
-  reason?: string
-  metadataPath?: InventoryAuthorisationInfo[]
-}
-
-export class OrMatcher implements Matcher {
-  private readonly children: Matcher[]
+/**
+ * Generic composite matcher implementing OR logic.
+ * Works with any Matchable resource type (scripts or headers).
+ *
+ * Type parameter T allows the matcher to be used with:
+ * - Scripts: OrMatcher<DetectedScript>
+ * - Headers: OrMatcher<Matchable> (hash is undefined)
+ * - Any matchable resource: OrMatcher<T extends Matchable>
+ */
+export class OrMatcher<T extends Matchable = Matchable> implements Matcher<T> {
+  private readonly children: Matcher<T>[]
   private readonly authorisationInfo?: InventoryAuthorisationInfo
 
-  constructor(children: Matcher[], authorisationInfo?: InventoryAuthorisationInfo) {
+  constructor(children: Matcher<T>[], authorisationInfo?: InventoryAuthorisationInfo) {
     // FR-008, FR-012: Reject empty arrays (fail-secure)
     if (!children || children.length === 0) {
       throw new Error('OrMatcher requires at least one child matcher')
@@ -108,27 +179,27 @@ export class OrMatcher implements Matcher {
     return 'or'
   }
 
-  getPattern(): Matcher[] {
+  getPattern(): Matcher<T>[] {
     return this.children
   }
 
-  identify(script: DetectedScript): boolean {
+  identify(resource: T): boolean {
     // FR-001: Succeeds if ANY child identifies
-    return this.children.some(child => child.identify(script))
+    return this.children.some(child => child.identify(resource))
   }
 
-  authorize(script: DetectedScript): AuthorizationResult {
+  authorize(resource: T): AuthorizationResult {
     // Fail-secure: null/empty content check
-    if (!script || !script.content || script.content.trim() === '') {
+    if (!resource || !resource.content || resource.content.trim() === '') {
       return {
         authorized: false,
-        reason: 'Script content is null or empty',
+        reason: 'Resource content is null or empty',
         metadataPath: this.authorisationInfo ? [this.authorisationInfo] : []
       }
     }
 
     // FR-013: First-match-wins semantics
-    const matchingChild = this.children.find(child => child.identify(script))
+    const matchingChild = this.children.find(child => child.identify(resource))
 
     if (!matchingChild) {
       return {

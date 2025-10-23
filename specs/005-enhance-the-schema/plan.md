@@ -165,6 +165,117 @@ _GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 
 **Ready for**: Phase 2 task generation via `/speckit.tasks` command
 
+---
+
+### Design Refinement: Generic Matchable Type
+
+**Question Raised**: Does the composite matcher design account for the separate logic for headers and scripts? Does it create duplication?
+
+**Answer**: ✅ **No duplication - enhanced design uses generic `Matchable` type for type safety**
+
+**Improved Architecture** (refinement from current codebase):
+
+Instead of hardcoding `DetectedScript` type in the `Matcher` interface, we'll introduce a **generic `Matchable` type** that both scripts and headers implement:
+
+```typescript
+/**
+ * Generic matchable resource (script or header)
+ */
+export interface Matchable {
+  /** Resource name (script URL or header name) */
+  name: string
+
+  /** Resource content (script source or header value) */
+  content: string | null
+
+  /** Optional hash (scripts only, undefined for headers) */
+  hash?: SHA256Hash
+}
+
+/**
+ * Generic matcher interface
+ */
+export interface Matcher<T extends Matchable = Matchable> {
+  getType(): 'name' | 'header-name' | 'content' | 'hash' | 'or' | 'and'
+  getPattern(): string | InventoryScriptHashInfo[] | Matcher[]
+  identify(resource: T): boolean
+  authorize(resource: T): AuthorizationResult
+}
+```
+
+**Benefits**:
+
+1. **Type Safety**: Eliminates `hash: '' as unknown as SHA256Hash` workaround
+2. **Explicit Contract**: Makes it clear matchers work on any matchable resource
+3. **Zero Duplication**: Composite matchers work generically:
+
+```typescript
+// Same OrMatcher implementation works for both:
+export class OrMatcher<T extends Matchable = Matchable> implements Matcher<T> {
+  private readonly children: Matcher<T>[]
+
+  authorize(resource: T): AuthorizationResult {
+    // Works for scripts AND headers generically
+    const matchingChild = this.children.find(child => child.identify(resource))
+    return matchingChild ? matchingChild.authorize(resource) : { authorized: false }
+  }
+}
+
+// Script use case (hash present)
+const scriptData: Matchable = {
+  name: 'https://cdn.example.com/script.js',
+  content: 'function() { ... }',
+  hash: 'abc123...' as SHA256Hash
+}
+
+// Header use case (hash undefined)
+const headerData: Matchable = {
+  name: 'content-security-policy',
+  content: 'default-src https:; script-src https:;',
+  hash: undefined  // No type cast needed!
+}
+```
+
+**Migration Path**:
+
+1. Introduce `Matchable` interface alongside existing `DetectedScript` type
+2. Add `DetectedScript extends Matchable` for backward compatibility
+3. Update `Matcher` interface to use generic `Matchable`
+4. Composite matchers (`OrMatcher`, `AndMatcher`) use `Matcher<T extends Matchable>`
+5. No changes required to comparison services (they already adapt data)
+
+**Backward Compatibility**:
+
+```typescript
+// Existing code continues to work:
+export type DetectedScript = Matchable & {
+  hash: SHA256Hash  // Required for scripts (not optional)
+}
+
+// Existing matchers still work:
+export class NameMatcher implements Matcher<Matchable> {
+  identify(resource: Matchable): boolean {
+    return this.pattern.test(resource.name)
+  }
+}
+
+// HashMatcher only works with scripts:
+export class HashMatcher implements Matcher<DetectedScript> {
+  identify(script: DetectedScript): boolean {
+    // script.hash is guaranteed to exist (not optional)
+    return false  // Hash cannot identify, only authorize
+  }
+}
+```
+
+**Conclusion**: The refined design uses a **generic `Matchable` type** to:
+- ✅ Eliminate type casting workarounds
+- ✅ Make the abstraction explicit (matchers work on any matchable resource)
+- ✅ Maintain zero duplication (single composite matcher implementation)
+- ✅ Preserve backward compatibility (DetectedScript extends Matchable)
+
+**Implementation Note**: This is an **optional refinement** that improves type safety. The composite matchers will work with the existing `DetectedScript` type as well, but using `Matchable` is cleaner and more maintainable.
+
 ## Project Structure
 
 ### Documentation (this feature)

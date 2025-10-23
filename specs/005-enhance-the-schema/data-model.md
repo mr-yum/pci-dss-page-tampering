@@ -12,17 +12,67 @@ This document defines the data model for composite matchers (OR/AND logic) with 
 
 ## Core Entities
 
-### 1. Matcher (Interface)
+### 1. Matchable (Interface) - NEW
 
-**Description**: Base interface for all matcher types (leaf and composite). Provides identification and authorization operations with type discrimination.
+**Description**: Generic interface for matchable resources (scripts and headers). Provides common structure for matcher operations.
 
-**Existing Implementation**: `src/types/matcher/matcher.interface.ts`
+**Implementation**: `src/types/matcher/matcher.interface.ts` (NEW)
 
 **Fields**:
 
 | Field | Type | Description | Validation |
 |-------|------|-------------|------------|
-| N/A | Interface | Defines contract for matcher implementations | N/A |
+| `name` | `string` | Resource name (script URL or header name) | Required |
+| `content` | `string \| null` | Resource content (script source or header value) | May be null (fail-secure handling required) |
+| `hash` | `SHA256Hash \| undefined` | Optional cryptographic hash (scripts only) | Optional; undefined for headers |
+
+**Relationships**:
+- Extended by: `DetectedScript` (with required hash)
+- Used by: `Matcher<T extends Matchable>`
+
+**State Transitions**: N/A (immutable value object)
+
+**Validation Rules**:
+- `name` must be non-empty string for successful identification
+- `content` may be null; matchers handle null content as fail-secure (unauthorized)
+- `hash` is optional; only present for scripts, undefined for headers
+
+**Design Rationale**:
+- **Type Safety**: Eliminates `hash: '' as unknown as SHA256Hash` workaround in header comparison
+- **Explicit Contract**: Makes it clear matchers work on any matchable resource (scripts or headers)
+- **Backward Compatible**: `DetectedScript` extends `Matchable` with required `hash` field
+
+---
+
+### 2. DetectedScript (Type) - MODIFIED
+
+**Description**: Matchable resource representing a detected script with required hash.
+
+**Implementation**: `src/types/matcher/matcher.interface.ts` (MODIFY)
+
+**Definition**:
+```typescript
+export type DetectedScript = Matchable & {
+  hash: SHA256Hash  // Required for scripts (not optional)
+}
+```
+
+**Relationships**:
+- Extends: `Matchable`
+- Used by: `ScriptComparisonService`, `HashMatcher`
+
+**Backward Compatibility**: ✅ Existing code continues to work; `DetectedScript` is now a specialization of `Matchable`
+
+---
+
+### 3. Matcher (Interface) - MODIFIED
+
+**Description**: Generic base interface for all matcher types (leaf and composite). Uses generic type parameter to work with any `Matchable` resource.
+
+**Implementation**: `src/types/matcher/matcher.interface.ts` (MODIFY)
+
+**Type Parameter**:
+- `T extends Matchable = Matchable`: Generic matchable resource type (defaults to `Matchable`)
 
 **Methods**:
 
@@ -30,11 +80,11 @@ This document defines the data model for composite matchers (OR/AND logic) with 
 |--------|-------------|-------------|
 | `getType()` | `'name' \| 'header-name' \| 'content' \| 'hash' \| 'or' \| 'and'` | Discriminator for matcher type |
 | `getPattern()` | `string \| InventoryScriptHashInfo[] \| Matcher[]` | Returns matcher pattern or child matchers |
-| `identify(script: DetectedScript)` | `boolean` | Returns true if this matcher applies to the detected script |
-| `authorize(script: DetectedScript)` | `AuthorizationResult` | Returns authorization decision with metadata path |
+| `identify(resource: T)` | `boolean` | Returns true if this matcher applies to the resource |
+| `authorize(resource: T)` | `AuthorizationResult` | Returns authorization decision with metadata path |
 
 **Relationships**:
-- Implemented by: `NameMatcher`, `HeaderNameMatcher`, `ContentMatcher`, `HashMatcher`, `OrMatcher`, `AndMatcher`
+- Implemented by: `NameMatcher`, `HeaderNameMatcher`, `ContentMatcher`, `HashMatcher`, `OrMatcher<T>`, `AndMatcher<T>`
 
 **State Transitions**: N/A (stateless)
 
@@ -42,24 +92,32 @@ This document defines the data model for composite matchers (OR/AND logic) with 
 - All implementations must provide type-safe `getType()` discriminator
 - `authorize()` must never return authorized for null/empty content (fail-secure)
 
+**Type Safety**:
+- Generic matchers (`NameMatcher`, `ContentMatcher`, `HeaderNameMatcher`): `Matcher<Matchable>` (work with any resource)
+- Script-specific matchers (`HashMatcher`): `Matcher<DetectedScript>` (require hash field)
+- Composite matchers (`OrMatcher<T>`, `AndMatcher<T>`): Generic over `T extends Matchable`
+
 ---
 
-### 2. OrMatcher (Composite Matcher)
+### 4. OrMatcher (Composite Matcher) - NEW
 
-**Description**: Composite matcher implementing OR logic. Authorizes if ANY child matcher succeeds (first-match-wins semantics).
+**Description**: Generic composite matcher implementing OR logic. Authorizes if ANY child matcher succeeds (first-match-wins semantics). Works with any `Matchable` resource type.
 
 **Implementation**: `src/types/matcher/or-matcher.ts` (NEW)
+
+**Type Parameter**:
+- `T extends Matchable = Matchable`: Generic matchable resource type
 
 **Fields**:
 
 | Field | Type | Description | Validation |
 |-------|------|-------------|------------|
-| `children` | `Matcher[]` | Array of child matchers (any type) | Min length: 1 (enforced by constructor) |
+| `children` | `Matcher<T>[]` | Array of child matchers operating on type T | Min length: 1 (enforced by constructor) |
 | `authorisationInfo` | `InventoryAuthorisationInfo \| undefined` | Optional top-level authorization metadata | Standard authorization info schema |
 
 **Relationships**:
-- Implements: `Matcher`
-- Contains: `Matcher[]` (recursive - can contain other `OrMatcher` or `AndMatcher` instances)
+- Implements: `Matcher<T>`
+- Contains: `Matcher<T>[]` (recursive - can contain other `OrMatcher<T>` or `AndMatcher<T>` instances)
 - References: `InventoryAuthorisationInfo`
 
 **State Transitions**: N/A (stateless)
@@ -81,22 +139,25 @@ This document defines the data model for composite matchers (OR/AND logic) with 
 
 ---
 
-### 3. AndMatcher (Composite Matcher)
+### 5. AndMatcher (Composite Matcher) - NEW
 
-**Description**: Composite matcher implementing AND logic. Authorizes only if ALL child matchers succeed.
+**Description**: Generic composite matcher implementing AND logic. Authorizes only if ALL child matchers succeed. Works with any `Matchable` resource type.
 
 **Implementation**: `src/types/matcher/and-matcher.ts` (NEW)
+
+**Type Parameter**:
+- `T extends Matchable = Matchable`: Generic matchable resource type
 
 **Fields**:
 
 | Field | Type | Description | Validation |
 |-------|------|-------------|------------|
-| `children` | `Matcher[]` | Array of child matchers (any type) | Min length: 1 (enforced by constructor) |
+| `children` | `Matcher<T>[]` | Array of child matchers operating on type T | Min length: 1 (enforced by constructor) |
 | `authorisationInfo` | `InventoryAuthorisationInfo \| undefined` | Optional top-level authorization metadata | Standard authorization info schema |
 
 **Relationships**:
-- Implements: `Matcher`
-- Contains: `Matcher[]` (recursive - can contain other `OrMatcher` or `AndMatcher` instances)
+- Implements: `Matcher<T>`
+- Contains: `Matcher<T>[]` (recursive - can contain other `OrMatcher<T>` or `AndMatcher<T>` instances)
 - References: `InventoryAuthorisationInfo`
 
 **State Transitions**: N/A (stateless)
