@@ -29,10 +29,10 @@ description: 'Task list for Composite Matchers with Nested Authorization impleme
 
 **Purpose**: Project initialization and type system refinements
 
-- [X] T001 Introduce Matchable interface in src/types/matcher/matcher.interface.ts for generic matchable resources
-- [X] T002 Update DetectedScript type to extend Matchable in src/types/matcher/matcher.interface.ts
-- [X] T003 Update Matcher interface to use generic type parameter in src/types/matcher/matcher.interface.ts
-- [X] T004 Create AuthorizationResult type in src/types/matcher/authorization-result.ts with metadataPath support
+- [x] T001 Introduce Matchable interface in src/types/matcher/matcher.interface.ts for generic matchable resources
+- [x] T002 Update DetectedScript type to extend Matchable in src/types/matcher/matcher.interface.ts
+- [x] T003 Update Matcher interface to use generic type parameter in src/types/matcher/matcher.interface.ts
+- [x] T004 Create AuthorizationResult type in src/types/matcher/authorization-result.ts with metadataPath support
 
 ---
 
@@ -42,15 +42,15 @@ description: 'Task list for Composite Matchers with Nested Authorization impleme
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [X] T005 [P] Create OrMatcher class implementation in src/types/matcher/or-matcher.ts
-- [X] T006 [P] Create AndMatcher class implementation in src/types/matcher/and-matcher.ts
-- [X] T007 Update getType return type in Matcher interface to include 'or' and 'and' in src/types/matcher/matcher.interface.ts
-- [X] T008 Update getPattern return type in Matcher interface to support Matcher[] in src/types/matcher/matcher.interface.ts
-- [X] T009 Extend matcher factory to support OrMatcher creation in src/types/matcher/matcher-factory.ts
-- [X] T010 Extend matcher factory to support AndMatcher creation in src/types/matcher/matcher-factory.ts
-- [X] T011 Update Zod schema with OrMatcherConfigSchema using z.lazy() in src/types/inventory/matcher-config-schema.ts
-- [X] T012 Update Zod schema with AndMatcherConfigSchema using z.lazy() in src/types/inventory/matcher-config-schema.ts
-- [X] T013 Update MatcherConfigSchema union to include composite matchers in src/types/inventory/matcher-config-schema.ts
+- [x] T005 [P] Create OrMatcher class implementation in src/types/matcher/or-matcher.ts
+- [x] T006 [P] Create AndMatcher class implementation in src/types/matcher/and-matcher.ts
+- [x] T007 Update getType return type in Matcher interface to include 'or' and 'and' in src/types/matcher/matcher.interface.ts
+- [x] T008 Update getPattern return type in Matcher interface to support Matcher[] in src/types/matcher/matcher.interface.ts
+- [x] T009 Extend matcher factory to support OrMatcher creation in src/types/matcher/matcher-factory.ts
+- [x] T010 Extend matcher factory to support AndMatcher creation in src/types/matcher/matcher-factory.ts
+- [x] T011 Update Zod schema with OrMatcherConfigSchema using z.lazy() in src/types/inventory/matcher-config-schema.ts
+- [x] T012 Update Zod schema with AndMatcherConfigSchema using z.lazy() in src/types/inventory/matcher-config-schema.ts
+- [x] T013 Update MatcherConfigSchema union to include composite matchers in src/types/inventory/matcher-config-schema.ts
 
 **Checkpoint**: ✅ Foundation ready - user story implementation can now begin in parallel
 
@@ -66,27 +66,27 @@ description: 'Task list for Composite Matchers with Nested Authorization impleme
 
 **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T014 [P] [US1] Unit test for AndMatcher constructor validation (empty array rejection) in test/unit/types/matcher/and-matcher.test.ts
-- [ ] T015 [P] [US1] Unit test for AndMatcher identify() with all children matching in test/unit/types/matcher/and-matcher.test.ts
-- [ ] T016 [P] [US1] Unit test for AndMatcher identify() with partial match in test/unit/types/matcher/and-matcher.test.ts
-- [ ] T017 [P] [US1] Unit test for AndMatcher authorize() with all children authorized in test/unit/types/matcher/and-matcher.test.ts
-- [ ] T018 [P] [US1] Unit test for AndMatcher authorize() with short-circuit failure in test/unit/types/matcher/and-matcher.test.ts
-- [ ] T019 [P] [US1] Unit test for AndMatcher authorize() with null/empty content in test/unit/types/matcher/and-matcher.test.ts
-- [ ] T020 [P] [US1] Unit test for AndMatcher authorize() with top-level authorisationInfo override (true) in test/unit/types/matcher/and-matcher.test.ts
-- [ ] T021 [P] [US1] Unit test for AndMatcher authorize() with top-level authorisationInfo override (false) in test/unit/types/matcher/and-matcher.test.ts
-- [ ] T022 [P] [US1] Unit test for AndMatcher metadata path collection in test/unit/types/matcher/and-matcher.test.ts
+- [x] T014 [P] [US1] Unit test for AndMatcher constructor validation (empty array rejection) in src/types/matcher/and-matcher.test.ts
+- [x] T015 [P] [US1] Unit test for AndMatcher identify() with all children matching in src/types/matcher/and-matcher.test.ts
+- [x] T016 [P] [US1] Unit test for AndMatcher identify() with partial match in src/types/matcher/and-matcher.test.ts
+- [x] T017 [P] [US1] Unit test for AndMatcher authorize() with all children authorized in src/types/matcher/and-matcher.test.ts
+- [x] T018 [P] [US1] Unit test for AndMatcher authorize() with short-circuit failure in src/types/matcher/and-matcher.test.ts
+- [x] T019 [P] [US1] Unit test for AndMatcher authorize() with null/empty content in src/types/matcher/and-matcher.test.ts
+- [x] T020 [P] [US1] Unit test for AndMatcher authorize() with top-level authorisationInfo override (true) in src/types/matcher/and-matcher.test.ts
+- [x] T021 [P] [US1] Unit test for AndMatcher authorize() with top-level authorisationInfo override (false) in src/types/matcher/and-matcher.test.ts
+- [x] T022 [P] [US1] Unit test for AndMatcher metadata path collection in src/types/matcher/and-matcher.test.ts
 - [ ] T023 [US1] Integration test for CSP header with AND logic (all directives present) in test/integration/composite-matcher-workflow.test.ts
 - [ ] T024 [US1] Integration test for CSP header with AND logic (missing directive) in test/integration/composite-matcher-workflow.test.ts
 
 ### Implementation for User Story 1
 
-- [ ] T025 [US1] Update AuthorizedScriptFound to include metadataPath field in src/types/comparison/authorized-script-found.ts
-- [ ] T026 [US1] Update KnownScriptWithUnauthorisedContentFound to include metadataPath field in src/types/comparison/known-script-unauthorised-content-found.ts
-- [ ] T027 [US1] Update AuthorizedHeaderFound to include metadataPath field in src/types/comparison/authorized-header-found.ts
-- [ ] T028 [US1] Update KnownHeaderUnauthorisedContentFound to include metadataPath field in src/types/comparison/known-header-unauthorised-content-found.ts
-- [ ] T029 [US1] Update ScriptComparisonService to pass metadataPath from AuthorizationResult in src/services/comparison/script.ts
-- [ ] T030 [US1] Update HeaderComparisonService to pass metadataPath from AuthorizationResult in src/services/comparison/header.ts
-- [ ] T031 [US1] Update HeaderComparisonService to use Matchable interface (remove hash type cast workaround) in src/services/comparison/header.ts
+- [X] T025 [US1] Update AuthorizedScriptFound to include metadataPath field in src/types/comparison/authorized-script-found.ts
+- [X] T026 [US1] Update KnownScriptWithUnauthorisedContentFound to include metadataPath field in src/types/comparison/known-script-unauthorised-content-found.ts
+- [X] T027 [US1] Update AuthorizedHeaderFound to include metadataPath field in src/types/comparison/authorized-header-found.ts
+- [X] T028 [US1] Update KnownHeaderUnauthorisedContentFound to include metadataPath field in src/types/comparison/known-header-unauthorised-content-found.ts
+- [X] T029 [US1] Update ScriptComparisonService to pass metadataPath from AuthorizationResult in src/services/comparison/script.ts
+- [X] T030 [US1] Update HeaderComparisonService to pass metadataPath from AuthorizationResult in src/services/comparison/header.ts
+- [X] T031 [US1] Update HeaderComparisonService to use Matchable interface (remove hash type cast workaround) in src/services/comparison/header.ts
 
 **Checkpoint**: At this point, User Story 1 should be fully functional - AND matcher works with CSP headers requiring multiple directives
 
@@ -321,6 +321,7 @@ With multiple developers:
 ### Total Tasks: 88
 
 **By Phase**:
+
 - Phase 1 (Setup): 4 tasks
 - Phase 2 (Foundational): 9 tasks
 - Phase 3 (US1 - AND logic): 17 tasks (11 tests + 6 implementation)
@@ -332,6 +333,7 @@ With multiple developers:
 - Phase 9 (Polish): 15 tasks
 
 **By User Story**:
+
 - User Story 1 (P1 - AND logic): 17 tasks
 - User Story 2 (P1 - OR logic): 15 tasks
 - User Story 3 (P2 - Array syntax): 6 tasks
@@ -340,6 +342,7 @@ With multiple developers:
 - Quality (Edge Cases + Migration + Polish): 27 tasks
 
 **Parallel Opportunities**:
+
 - Phase 1: 4 tasks can run in parallel
 - Phase 2: ~6 tasks can run in parallel (in groups)
 - US1 tests: 9 unit tests can run in parallel
@@ -352,6 +355,7 @@ With multiple developers:
 - Phase 9 docs: 3 tasks can run in parallel
 
 **MVP Scope (User Stories 1 & 2 only)**: 44 tasks
+
 - Setup + Foundational: 13 tasks
 - User Story 1: 17 tasks
 - User Story 2: 15 tasks

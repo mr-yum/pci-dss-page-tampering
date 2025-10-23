@@ -65,11 +65,11 @@ Top-level `authorisationInfo.authorised` value overrides child authorization dec
 ```typescript
 // Even if children authorize, top-level false denies
 const matcher = new OrMatcher(
-  [new ContentMatcher('.*')],  // Matches everything
-  { authorised: false, description: 'Explicitly denied', date: '...' }
+  [new ContentMatcher('.*')], // Matches everything
+  { authorised: false, description: 'Explicitly denied', date: '...' },
 )
 
-matcher.authorize(script)  // { authorized: false, reason: 'Top-level authorization denied: ...' }
+matcher.authorize(script) // { authorized: false, reason: 'Top-level authorization denied: ...' }
 ```
 
 ---
@@ -103,7 +103,7 @@ export interface Matchable {
  * Backward compatible with existing code.
  */
 export type DetectedScript = Matchable & {
-  hash: SHA256Hash  // Required for scripts (not optional)
+  hash: SHA256Hash // Required for scripts (not optional)
 }
 
 /**
@@ -118,6 +118,7 @@ export interface Matcher<T extends Matchable = Matchable> {
 ```
 
 **Key Changes**:
+
 - ✅ Introduces `Matchable` interface for scripts and headers
 - ✅ `DetectedScript` extends `Matchable` (backward compatible)
 - ✅ `Matcher` uses generic type parameter `<T extends Matchable>`
@@ -128,18 +129,15 @@ export interface Matcher<T extends Matchable = Matchable> {
 ```typescript
 // Header comparison service adapts header data to Matchable shape:
 const headerAsMatchable: Matchable = {
-  name: header.name,        // e.g., 'content-security-policy'
-  content: header.value,    // e.g., 'default-src https:; script-src...'
-  hash: undefined           // No type cast needed! (was: '' as unknown as SHA256Hash)
+  name: header.name, // e.g., 'content-security-policy'
+  content: header.value, // e.g., 'default-src https:; script-src...'
+  hash: undefined, // No type cast needed! (was: '' as unknown as SHA256Hash)
 }
 
 // Composite matchers work identically for headers:
-const headerMatcher = new AndMatcher<Matchable>([
-  new ContentMatcher('default-src'),
-  new ContentMatcher('script-src')
-])
+const headerMatcher = new AndMatcher<Matchable>([new ContentMatcher('default-src'), new ContentMatcher('script-src')])
 
-headerMatcher.authorize(headerAsMatchable)  // Works seamlessly!
+headerMatcher.authorize(headerAsMatchable) // Works seamlessly!
 ```
 
 ---
@@ -185,7 +183,7 @@ export class OrMatcher<T extends Matchable = Matchable> implements Matcher<T> {
 
   identify(resource: T): boolean {
     // FR-001: Succeeds if ANY child identifies
-    return this.children.some(child => child.identify(resource))
+    return this.children.some((child) => child.identify(resource))
   }
 
   authorize(resource: T): AuthorizationResult {
@@ -194,18 +192,18 @@ export class OrMatcher<T extends Matchable = Matchable> implements Matcher<T> {
       return {
         authorized: false,
         reason: 'Resource content is null or empty',
-        metadataPath: this.authorisationInfo ? [this.authorisationInfo] : []
+        metadataPath: this.authorisationInfo ? [this.authorisationInfo] : [],
       }
     }
 
     // FR-013: First-match-wins semantics
-    const matchingChild = this.children.find(child => child.identify(resource))
+    const matchingChild = this.children.find((child) => child.identify(resource))
 
     if (!matchingChild) {
       return {
         authorized: false,
         reason: 'No child matcher identified the script',
-        metadataPath: this.authorisationInfo ? [this.authorisationInfo] : []
+        metadataPath: this.authorisationInfo ? [this.authorisationInfo] : [],
       }
     }
 
@@ -216,10 +214,8 @@ export class OrMatcher<T extends Matchable = Matchable> implements Matcher<T> {
     if (this.authorisationInfo) {
       return {
         authorized: this.authorisationInfo.authorised,
-        reason: this.authorisationInfo.authorised
-          ? undefined
-          : `Top-level authorization denied: ${this.authorisationInfo.description}`,
-        metadataPath: [this.authorisationInfo, ...(childResult.metadataPath ?? [])]
+        reason: this.authorisationInfo.authorised ? undefined : `Top-level authorization denied: ${this.authorisationInfo.description}`,
+        metadataPath: [this.authorisationInfo, ...(childResult.metadataPath ?? [])],
       }
     }
 
@@ -230,6 +226,7 @@ export class OrMatcher<T extends Matchable = Matchable> implements Matcher<T> {
 ```
 
 **Key Points**:
+
 - Constructor validates children array is non-empty (prevents vacuous truth issues)
 - `identify()` uses `Array.some()` for OR logic
 - `authorize()` implements first-match-wins and metadata path collection
@@ -275,7 +272,7 @@ export class AndMatcher implements Matcher {
 
   identify(script: DetectedScript): boolean {
     // FR-002: Succeeds only if ALL children identify
-    return this.children.every(child => child.identify(script))
+    return this.children.every((child) => child.identify(script))
   }
 
   authorize(script: DetectedScript): AuthorizationResult {
@@ -284,7 +281,7 @@ export class AndMatcher implements Matcher {
       return {
         authorized: false,
         reason: 'Script content is null or empty',
-        metadataPath: this.authorisationInfo ? [this.authorisationInfo] : []
+        metadataPath: this.authorisationInfo ? [this.authorisationInfo] : [],
       }
     }
 
@@ -293,7 +290,7 @@ export class AndMatcher implements Matcher {
       return {
         authorized: false,
         reason: 'Not all child matchers identified the script',
-        metadataPath: this.authorisationInfo ? [this.authorisationInfo] : []
+        metadataPath: this.authorisationInfo ? [this.authorisationInfo] : [],
       }
     }
 
@@ -305,40 +302,37 @@ export class AndMatcher implements Matcher {
       childResults.push(childResult)
 
       if (!childResult.authorized) {
-        const metadataPath = childResults.flatMap(r => r.metadataPath ?? [])
+        const metadataPath = childResults.flatMap((r) => r.metadataPath ?? [])
         return {
           authorized: false,
           reason: `Child matcher failed: ${childResult.reason}`,
-          metadataPath: this.authorisationInfo
-            ? [this.authorisationInfo, ...metadataPath]
-            : metadataPath
+          metadataPath: this.authorisationInfo ? [this.authorisationInfo, ...metadataPath] : metadataPath,
         }
       }
     }
 
     // All children succeeded - collect full metadata path
-    const fullMetadataPath = childResults.flatMap(r => r.metadataPath ?? [])
+    const fullMetadataPath = childResults.flatMap((r) => r.metadataPath ?? [])
 
     // FR-004: Top-level authorisationInfo overrides
     if (this.authorisationInfo) {
       return {
         authorized: this.authorisationInfo.authorised,
-        reason: this.authorisationInfo.authorised
-          ? undefined
-          : `Top-level authorization denied: ${this.authorisationInfo.description}`,
-        metadataPath: [this.authorisationInfo, ...fullMetadataPath]
+        reason: this.authorisationInfo.authorised ? undefined : `Top-level authorization denied: ${this.authorisationInfo.description}`,
+        metadataPath: [this.authorisationInfo, ...fullMetadataPath],
       }
     }
 
     return {
       authorized: true,
-      metadataPath: fullMetadataPath
+      metadataPath: fullMetadataPath,
     }
   }
 }
 ```
 
 **Key Points**:
+
 - Constructor validates children array is non-empty (critical for fail-secure behavior)
 - `identify()` uses `Array.every()` but only because array is guaranteed non-empty
 - `authorize()` implements short-circuit evaluation (FR-014)
@@ -361,7 +355,7 @@ export interface Matcher {
   getPattern(): string | InventoryScriptHashInfo[] | Matcher[]
 
   identify(script: DetectedScript): boolean
-  authorize(script: DetectedScript): AuthorizationResult  // Use new result type
+  authorize(script: DetectedScript): AuthorizationResult // Use new result type
 }
 ```
 
@@ -396,13 +390,13 @@ export function createMatcher(config: MatcherConfig): Matcher {
   // NEW: Composite matchers
   if ('orMatcher' in config) {
     // Recursively create child matchers
-    const children = config.orMatcher.map(childConfig => createMatcher(childConfig))
+    const children = config.orMatcher.map((childConfig) => createMatcher(childConfig))
     return new OrMatcher(children, config.authorisationInfo)
   }
 
   if ('andMatcher' in config) {
     // Recursively create child matchers
-    const children = config.andMatcher.map(childConfig => createMatcher(childConfig))
+    const children = config.andMatcher.map((childConfig) => createMatcher(childConfig))
     return new AndMatcher(children, config.authorisationInfo)
   }
 
@@ -463,6 +457,7 @@ export type MatcherConfig = z.infer<typeof MatcherConfigSchema>
 ```
 
 **Key Points**:
+
 - Use `z.lazy()` to defer schema evaluation for recursive references
 - `.min(1)` enforces FR-008 (composite arrays must have at least one child)
 - TypeScript will infer the correct recursive type
@@ -477,36 +472,28 @@ export type MatcherConfig = z.infer<typeof MatcherConfigSchema>
 // FR-006: Array syntax as syntactic sugar for OR matcher
 export const RawAuthorizeWithConfigSchema = z.union([
   // Single matcher (existing)
-  z.intersection(
-    MatcherConfigSchema,
-    z.object({ authorisationInfo: InventoryAuthorisationInfoRawSchema })
-  ),
+  z.intersection(MatcherConfigSchema, z.object({ authorisationInfo: InventoryAuthorisationInfoRawSchema })),
 
   // NEW: Array of matchers (syntactic sugar for OR)
-  z.array(
-    z.intersection(
-      MatcherConfigSchema,
-      z.object({ authorisationInfo: InventoryAuthorisationInfoRawSchema })
-    )
-  ).min(1)
+  z.array(z.intersection(MatcherConfigSchema, z.object({ authorisationInfo: InventoryAuthorisationInfoRawSchema }))).min(1),
 ])
 
 // Processing function to convert array to OrMatcher
 export function processAuthorizeWith(raw: RawAuthorizeWithConfig): AuthorizeWithConfig {
   if (Array.isArray(raw)) {
     // Convert array to OrMatcher automatically
-    const children = raw.map(item => createMatcher(item))
+    const children = raw.map((item) => createMatcher(item))
     const matcher = new OrMatcher(children)
     return {
       matcher,
-      authorisationInfo: raw[0].authorisationInfo  // Use first element's metadata
+      authorisationInfo: raw[0].authorisationInfo, // Use first element's metadata
     }
   }
 
   // Single matcher (existing path)
   return {
     matcher: createMatcher(raw),
-    authorisationInfo: raw.authorisationInfo
+    authorisationInfo: raw.authorisationInfo,
   }
 }
 ```
@@ -522,12 +509,12 @@ export class AuthorizedScriptFound {
   readonly type = 'AuthorizedScriptFound' as const
   readonly script: DetectedScript
   readonly inventoryEntry: InventoryEntry
-  readonly metadataPath: InventoryAuthorisationInfo[]  // NEW: Add metadata path
+  readonly metadataPath: InventoryAuthorisationInfo[] // NEW: Add metadata path
 
   constructor(
     script: DetectedScript,
     inventoryEntry: InventoryEntry,
-    metadataPath: InventoryAuthorisationInfo[] = []  // NEW parameter
+    metadataPath: InventoryAuthorisationInfo[] = [], // NEW parameter
   ) {
     this.script = script
     this.inventoryEntry = inventoryEntry
@@ -577,6 +564,7 @@ private compareSingleScriptWithInventory(
 ```
 
 **Key Changes**:
+
 - Call `authorize()` method on matcher (returns `AuthorizationResult` with metadata path)
 - Pass `metadataPath` to comparison result constructors
 
@@ -603,20 +591,14 @@ describe('OrMatcher', () => {
 
   describe('identify()', () => {
     it('should return true if any child identifies', () => {
-      const matcher = new OrMatcher([
-        new ContentMatcher('pattern1'),
-        new ContentMatcher('pattern2')
-      ])
+      const matcher = new OrMatcher([new ContentMatcher('pattern1'), new ContentMatcher('pattern2')])
 
       const script = { name: 'test', content: 'pattern2 here', hash: '...' }
       expect(matcher.identify(script)).toBe(true)
     })
 
     it('should return false if no children identify', () => {
-      const matcher = new OrMatcher([
-        new ContentMatcher('pattern1'),
-        new ContentMatcher('pattern2')
-      ])
+      const matcher = new OrMatcher([new ContentMatcher('pattern1'), new ContentMatcher('pattern2')])
 
       const script = { name: 'test', content: 'other', hash: '...' }
       expect(matcher.identify(script)).toBe(false)
@@ -626,10 +608,7 @@ describe('OrMatcher', () => {
   describe('authorize()', () => {
     it('should authorize when first child matches', () => {
       const authInfo = { description: 'Test', authorised: true, date: '2025-10-22T12:00:00.000Z' }
-      const matcher = new OrMatcher([
-        new ContentMatcher('pattern1'),
-        new ContentMatcher('pattern2')
-      ])
+      const matcher = new OrMatcher([new ContentMatcher('pattern1'), new ContentMatcher('pattern2')])
 
       const script = { name: 'test', content: 'pattern1 here', hash: '...' }
       const result = matcher.authorize(script)
@@ -640,8 +619,8 @@ describe('OrMatcher', () => {
     it('should deny when top-level authorised is false', () => {
       const authInfo = { description: 'Denied', authorised: false, date: '2025-10-22T12:00:00.000Z' }
       const matcher = new OrMatcher(
-        [new ContentMatcher('.*')],  // Matches everything
-        authInfo
+        [new ContentMatcher('.*')], // Matches everything
+        authInfo,
       )
 
       const script = { name: 'test', content: 'anything', hash: '...' }
@@ -680,24 +659,20 @@ describe('Composite Matcher Integration', () => {
         {
           identifyWith: { headerNameMatcher: '^content-security-policy$' },
           authoriseWith: {
-            andMatcher: [
-              { contentMatcher: 'default-src' },
-              { contentMatcher: 'script-src' },
-              { contentMatcher: 'connect-src' }
-            ],
+            andMatcher: [{ contentMatcher: 'default-src' }, { contentMatcher: 'script-src' }, { contentMatcher: 'connect-src' }],
             authorisationInfo: {
               description: 'Complete CSP with all directives',
               authorised: true,
-              date: '2025-10-22T12:00:00.000Z'
-            }
-          }
-        }
-      ]
+              date: '2025-10-22T12:00:00.000Z',
+            },
+          },
+        },
+      ],
     }
 
     const detectedHeader = {
       name: 'Content-Security-Policy',
-      value: 'default-src https:; script-src https:; connect-src https:;'
+      value: 'default-src https:; script-src https:; connect-src https:;',
     }
 
     const result = await headerComparisonService.compare(detectedHeader, inventory)
@@ -710,7 +685,7 @@ describe('Composite Matcher Integration', () => {
     // Same inventory as above
     const detectedHeader = {
       name: 'Content-Security-Policy',
-      value: 'default-src https:; script-src https:;'  // Missing connect-src
+      value: 'default-src https:; script-src https:;', // Missing connect-src
     }
 
     const result = await headerComparisonService.compare(detectedHeader, inventory)
@@ -733,11 +708,7 @@ Use `andMatcher` when ALL conditions must be present:
 {
   "identifyWith": { "headerNameMatcher": "^content-security-policy$" },
   "authoriseWith": {
-    "andMatcher": [
-      { "contentMatcher": "default-src" },
-      { "contentMatcher": "script-src" },
-      { "contentMatcher": "object-src.*none" }
-    ],
+    "andMatcher": [{ "contentMatcher": "default-src" }, { "contentMatcher": "script-src" }, { "contentMatcher": "object-src.*none" }],
     "authorisationInfo": {
       "description": "CSP must include default-src, script-src, and block objects",
       "authorised": true,
@@ -785,10 +756,7 @@ Use nested composites for "(A AND B) OR (C AND D)" logic:
   "authoriseWith": {
     "orMatcher": [
       {
-        "andMatcher": [
-          { "contentMatcher": "default-src.*self" },
-          { "contentMatcher": "upgrade-insecure-requests" }
-        ],
+        "andMatcher": [{ "contentMatcher": "default-src.*self" }, { "contentMatcher": "upgrade-insecure-requests" }],
         "authorisationInfo": {
           "description": "Secure policy with upgrade",
           "authorised": true,
@@ -796,10 +764,7 @@ Use nested composites for "(A AND B) OR (C AND D)" logic:
         }
       },
       {
-        "andMatcher": [
-          { "contentMatcher": "default-src.*https:" },
-          { "contentMatcher": "block-all-mixed-content" }
-        ],
+        "andMatcher": [{ "contentMatcher": "default-src.*https:" }, { "contentMatcher": "block-all-mixed-content" }],
         "authorisationInfo": {
           "description": "HTTPS-only policy",
           "authorised": true,

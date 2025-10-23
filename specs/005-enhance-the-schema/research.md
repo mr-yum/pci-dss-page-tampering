@@ -32,12 +32,12 @@ This document consolidates research findings for implementing composite matchers
 
 ### Alternatives Considered
 
-| Alternative | Pros | Cons | Verdict |
-|-------------|------|------|---------|
-| `z.union()` without discrimination | Simple syntax | O(n) validation, poor error messages | ❌ Rejected - performance |
-| `z.switch()` API | Cleaner syntax | Never implemented in Zod 4 | ❌ Rejected - doesn't exist |
-| Hard-coded depth limit | Simpler validation | Violates spec requirement FR-013 | ❌ Rejected - spec violation |
-| Manual recursive types | No Zod dependency | Circular reference errors | ❌ Rejected - impossible |
+| Alternative                        | Pros               | Cons                                 | Verdict                      |
+| ---------------------------------- | ------------------ | ------------------------------------ | ---------------------------- |
+| `z.union()` without discrimination | Simple syntax      | O(n) validation, poor error messages | ❌ Rejected - performance    |
+| `z.switch()` API                   | Cleaner syntax     | Never implemented in Zod 4           | ❌ Rejected - doesn't exist  |
+| Hard-coded depth limit             | Simpler validation | Violates spec requirement FR-013     | ❌ Rejected - spec violation |
+| Manual recursive types             | No Zod dependency  | Circular reference errors            | ❌ Rejected - impossible     |
 
 ### Code Example
 
@@ -90,20 +90,15 @@ type Matcher = LeafMatcher | OrMatcher | AndMatcher
 
 // --- Recursive Schema Definitions ---
 const OrMatcherSchema = BaseOrMatcherSchema.extend({
-  matchers: z.lazy(() => z.array(MatcherSchema).min(1, 'orMatcher must contain at least 1 child'))
+  matchers: z.lazy(() => z.array(MatcherSchema).min(1, 'orMatcher must contain at least 1 child')),
 })
 
 const AndMatcherSchema = BaseAndMatcherSchema.extend({
-  matchers: z.lazy(() => z.array(MatcherSchema).min(1, 'andMatcher must contain at least 1 child'))
+  matchers: z.lazy(() => z.array(MatcherSchema).min(1, 'andMatcher must contain at least 1 child')),
 })
 
 // --- Discriminated Union (Must use explicit type hint) ---
-const MatcherSchema: z.ZodType<Matcher> = z.discriminatedUnion('type', [
-  NameMatcherSchema,
-  ContentMatcherSchema,
-  OrMatcherSchema,
-  AndMatcherSchema,
-])
+const MatcherSchema: z.ZodType<Matcher> = z.discriminatedUnion('type', [NameMatcherSchema, ContentMatcherSchema, OrMatcherSchema, AndMatcherSchema])
 ```
 
 ### Performance Notes
@@ -152,11 +147,11 @@ Extend the existing `Matcher` interface to support composite matchers that can c
 
 ### Alternatives Considered
 
-| Alternative | Pros | Cons | Verdict |
-|-------------|------|------|---------|
-| Visitor Pattern | Separates traversal logic; multiple strategies | Adds complexity; requires updating visitors for new types | ❌ Rejected - unnecessary complexity |
-| Chain of Responsibility | Natural for first-match-wins | Doesn't support AND logic; doesn't model trees | ❌ Rejected - doesn't fit requirement |
-| Flat Array with Operators | Simpler JSON structure | Cannot express nested logic like "(A AND B) OR (C AND D)" | ❌ Rejected - doesn't meet P3 requirement |
+| Alternative               | Pros                                           | Cons                                                      | Verdict                                   |
+| ------------------------- | ---------------------------------------------- | --------------------------------------------------------- | ----------------------------------------- |
+| Visitor Pattern           | Separates traversal logic; multiple strategies | Adds complexity; requires updating visitors for new types | ❌ Rejected - unnecessary complexity      |
+| Chain of Responsibility   | Natural for first-match-wins                   | Doesn't support AND logic; doesn't model trees            | ❌ Rejected - doesn't fit requirement     |
+| Flat Array with Operators | Simpler JSON structure                         | Cannot express nested logic like "(A AND B) OR (C AND D)" | ❌ Rejected - doesn't meet P3 requirement |
 
 ### Code Example
 
@@ -167,7 +162,7 @@ Extend the existing `Matcher` interface to support composite matchers that can c
 export type AuthorizationResult = {
   authorized: boolean
   reason?: string
-  metadataPath?: InventoryAuthorisationInfo[]  // Array from root to leaf
+  metadataPath?: InventoryAuthorisationInfo[] // Array from root to leaf
 }
 
 /**
@@ -191,17 +186,17 @@ export class OrMatcher implements Matcher {
   }
 
   identify(script: DetectedScript): boolean {
-    return this.children.some(child => child.identify(script))
+    return this.children.some((child) => child.identify(script))
   }
 
   authorize(script: DetectedScript): AuthorizationResult {
-    const matchingChild = this.children.find(child => child.identify(script))
+    const matchingChild = this.children.find((child) => child.identify(script))
 
     if (!matchingChild) {
       return {
         authorized: false,
         reason: 'No child matcher identified the script',
-        metadataPath: this.authorisationInfo ? [this.authorisationInfo] : []
+        metadataPath: this.authorisationInfo ? [this.authorisationInfo] : [],
       }
     }
 
@@ -211,10 +206,8 @@ export class OrMatcher implements Matcher {
     if (this.authorisationInfo) {
       return {
         authorized: this.authorisationInfo.authorised,
-        reason: this.authorisationInfo.authorised
-          ? undefined
-          : `Top-level authorization denied: ${this.authorisationInfo.description}`,
-        metadataPath: [this.authorisationInfo, ...(childResult.metadataPath ?? [])]
+        reason: this.authorisationInfo.authorised ? undefined : `Top-level authorization denied: ${this.authorisationInfo.description}`,
+        metadataPath: [this.authorisationInfo, ...(childResult.metadataPath ?? [])],
       }
     }
 
@@ -243,7 +236,7 @@ export class AndMatcher implements Matcher {
   }
 
   identify(script: DetectedScript): boolean {
-    return this.children.every(child => child.identify(script))
+    return this.children.every((child) => child.identify(script))
   }
 
   authorize(script: DetectedScript): AuthorizationResult {
@@ -251,7 +244,7 @@ export class AndMatcher implements Matcher {
       return {
         authorized: false,
         reason: 'Not all child matchers identified the script',
-        metadataPath: this.authorisationInfo ? [this.authorisationInfo] : []
+        metadataPath: this.authorisationInfo ? [this.authorisationInfo] : [],
       }
     }
 
@@ -263,33 +256,29 @@ export class AndMatcher implements Matcher {
       childResults.push(childResult)
 
       if (!childResult.authorized) {
-        const metadataPath = childResults.flatMap(r => r.metadataPath ?? [])
+        const metadataPath = childResults.flatMap((r) => r.metadataPath ?? [])
         return {
           authorized: false,
           reason: `Child matcher failed: ${childResult.reason}`,
-          metadataPath: this.authorisationInfo
-            ? [this.authorisationInfo, ...metadataPath]
-            : metadataPath
+          metadataPath: this.authorisationInfo ? [this.authorisationInfo, ...metadataPath] : metadataPath,
         }
       }
     }
 
-    const fullMetadataPath = childResults.flatMap(r => r.metadataPath ?? [])
+    const fullMetadataPath = childResults.flatMap((r) => r.metadataPath ?? [])
 
     // Top-level authorisationInfo overrides (FR-004)
     if (this.authorisationInfo) {
       return {
         authorized: this.authorisationInfo.authorised,
-        reason: this.authorisationInfo.authorised
-          ? undefined
-          : `Top-level authorization denied: ${this.authorisationInfo.description}`,
-        metadataPath: [this.authorisationInfo, ...fullMetadataPath]
+        reason: this.authorisationInfo.authorised ? undefined : `Top-level authorization denied: ${this.authorisationInfo.description}`,
+        metadataPath: [this.authorisationInfo, ...fullMetadataPath],
       }
     }
 
     return {
       authorized: true,
-      metadataPath: fullMetadataPath
+      metadataPath: fullMetadataPath,
     }
   }
 }
@@ -309,12 +298,12 @@ export function createMatcher(config: MatcherConfig): Matcher {
 
   // New composite matchers
   if ('orMatcher' in config) {
-    const children = config.orMatcher.map(childConfig => createMatcher(childConfig))
+    const children = config.orMatcher.map((childConfig) => createMatcher(childConfig))
     return new OrMatcher(children, config.authorisationInfo)
   }
 
   if ('andMatcher' in config) {
-    const children = config.andMatcher.map(childConfig => createMatcher(childConfig))
+    const children = config.andMatcher.map((childConfig) => createMatcher(childConfig))
     return new AndMatcher(children, config.authorisationInfo)
   }
 
@@ -360,13 +349,13 @@ export function createMatcher(config: MatcherConfig): Matcher {
 
 ### Alternatives Considered
 
-| Pattern | Pros | Cons | Verdict |
-|---------|------|------|---------|
-| Runtime empty array checks in evaluate() | Simple, centralized | Allows invalid state; violates "make illegal states unrepresentable" | ❌ Rejected |
-| Default to `false` for empty arrays | Prevents vacuous truth | Silent failure; hard to debug | ❌ Rejected |
-| Schema-level validation only | Catches at entry | No runtime protection | ⚠️ Use with runtime checks |
-| Constructor validation (throw errors) | Immediate feedback; fails fast | Requires error handling | ✅ **Recommended** |
-| Allow empty arrays with warnings | Flexible | **DANGEROUS** - permits unauthorized state | ❌ Rejected - security violation |
+| Pattern                                  | Pros                           | Cons                                                                 | Verdict                          |
+| ---------------------------------------- | ------------------------------ | -------------------------------------------------------------------- | -------------------------------- |
+| Runtime empty array checks in evaluate() | Simple, centralized            | Allows invalid state; violates "make illegal states unrepresentable" | ❌ Rejected                      |
+| Default to `false` for empty arrays      | Prevents vacuous truth         | Silent failure; hard to debug                                        | ❌ Rejected                      |
+| Schema-level validation only             | Catches at entry               | No runtime protection                                                | ⚠️ Use with runtime checks       |
+| Constructor validation (throw errors)    | Immediate feedback; fails fast | Requires error handling                                              | ✅ **Recommended**               |
+| Allow empty arrays with warnings         | Flexible                       | **DANGEROUS** - permits unauthorized state                           | ❌ Rejected - security violation |
 
 ### Code Example
 
@@ -391,7 +380,7 @@ class AndMatcher implements Matcher {
     if (this.authInfo?.authorised === false) {
       return {
         authorized: false,
-        reason: `Top-level authorization denied: ${this.authInfo.description}`
+        reason: `Top-level authorization denied: ${this.authInfo.description}`,
       }
     }
 
@@ -415,7 +404,7 @@ class AndMatcher implements Matcher {
     if (this.authInfo) {
       return {
         authorized: this.authInfo.authorised,
-        metadata: [this.authInfo, ...metadata]
+        metadata: [this.authInfo, ...metadata],
       }
     }
 
@@ -458,18 +447,18 @@ class AndMatcher implements Matcher {
 
 ### Files to Modify
 
-| File | Change Type | Description |
-|------|-------------|-------------|
-| `src/types/matcher/or-matcher.ts` | NEW | OrMatcher composite implementation |
-| `src/types/matcher/and-matcher.ts` | NEW | AndMatcher composite implementation |
-| `src/types/matcher/matcher.interface.ts` | MODIFY | Update `getType()` return type to include 'or' and 'and' |
-| `src/types/matcher/matcher-factory.ts` | MODIFY | Add composite matcher creation logic |
-| `src/types/inventory/matcher-config-schema.ts` | MODIFY | Add discriminated union with `z.lazy()` for recursive schemas |
-| `src/types/inventory/zod.ts` | MODIFY | Support array syntax for `authoriseWith` |
-| `src/types/comparison/authorized-script-found.ts` | MODIFY | Add metadata path support |
-| `src/types/comparison/authorized-header-found.ts` | MODIFY | Add metadata path support |
-| `src/services/comparison/script.ts` | MODIFY | Handle metadata paths in comparison results |
-| `src/services/comparison/header.ts` | MODIFY | Handle metadata paths in comparison results |
+| File                                              | Change Type | Description                                                   |
+| ------------------------------------------------- | ----------- | ------------------------------------------------------------- |
+| `src/types/matcher/or-matcher.ts`                 | NEW         | OrMatcher composite implementation                            |
+| `src/types/matcher/and-matcher.ts`                | NEW         | AndMatcher composite implementation                           |
+| `src/types/matcher/matcher.interface.ts`          | MODIFY      | Update `getType()` return type to include 'or' and 'and'      |
+| `src/types/matcher/matcher-factory.ts`            | MODIFY      | Add composite matcher creation logic                          |
+| `src/types/inventory/matcher-config-schema.ts`    | MODIFY      | Add discriminated union with `z.lazy()` for recursive schemas |
+| `src/types/inventory/zod.ts`                      | MODIFY      | Support array syntax for `authoriseWith`                      |
+| `src/types/comparison/authorized-script-found.ts` | MODIFY      | Add metadata path support                                     |
+| `src/types/comparison/authorized-header-found.ts` | MODIFY      | Add metadata path support                                     |
+| `src/services/comparison/script.ts`               | MODIFY      | Handle metadata paths in comparison results                   |
+| `src/services/comparison/header.ts`               | MODIFY      | Handle metadata paths in comparison results                   |
 
 ### Performance Expectations
 
@@ -480,6 +469,7 @@ class AndMatcher implements Matcher {
 ### Backward Compatibility
 
 ✅ **100% Compatible** - Existing inventory entries continue working unchanged:
+
 - Leaf matchers (NameMatcher, ContentMatcher, HashMatcher, HeaderNameMatcher) remain identical
 - Schema validation is additive (union expands, doesn't break)
 - Comparison service logic requires minimal updates
@@ -488,6 +478,7 @@ class AndMatcher implements Matcher {
 ### Next Steps
 
 Proceed to **Phase 1: Design & Contracts** to:
+
 1. Generate `data-model.md` with entity definitions
 2. Create JSON schema contracts for composite matchers
 3. Document API for matcher construction and evaluation

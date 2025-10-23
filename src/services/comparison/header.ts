@@ -13,7 +13,6 @@ import type { ComparisonResultType } from '../../types/comparison'
 import { AuthorizedHeaderFound } from '../../types/comparison/authorized-header-found'
 import { KnownHeaderWithUnauthorisedContentFound as KnownHeaderWithUnauthorisedContentFound_Header } from '../../types/comparison/known-header-unauthorised-content-found'
 import { UnknownHeaderFound } from '../../types/comparison/unknown-header-found'
-import type { SHA256Hash } from '../../types/hash'
 import type { DetectedHeader, HeaderDetectionSummary } from '../../types/header'
 import type { Inventory, InventoryHeaderInfo } from '../../types/inventory/model'
 import type { Target } from '../../types/target'
@@ -92,14 +91,15 @@ export class HeaderComparisonService implements IHeaderComparisonService {
     this.log(`Header '${header.name}' identified using ${identifyMatcherType} matcher with pattern '${JSON.stringify(identifyPattern)}'.`)
 
     // T064: Authorize value using authoriseWith matcher (BR-4: case-sensitive value matching)
-    // Note: Matcher interface uses DetectedScript shape, so map header fields:
+    // T031: Use Matchable interface (hash is optional, no type cast workaround needed)
+    // Note: Matcher interface uses Matchable shape, so map header fields:
     // - name stays as name
     // - value → content (matcher expects content field)
-    // - hash is not used for headers but required by interface
+    // - hash is omitted for headers (optional field with exactOptionalPropertyTypes)
     const authorizationResult = matchedEntry.authoriseWith.matcher.authorize({
       name: header.name,
       content: header.value,
-      hash: '' as unknown as SHA256Hash, // Not used for header matching
+      // hash is omitted for headers (optional field in Matchable interface)
     })
     const isAuthorized = matchedEntry.authoriseWith.authorisationInfo.authorised && authorizationResult.authorized
 
@@ -110,6 +110,7 @@ export class HeaderComparisonService implements IHeaderComparisonService {
     this.log(`Header '${header.name}' authorization via ${authorizeMatcherType} matcher with pattern '${JSON.stringify(authorizePattern)}': ${authStatus}.`)
 
     // Return appropriate result
+    // T030: Pass metadataPath from AuthorizationResult for composite matcher support
     if (!isAuthorized) {
       return new KnownHeaderWithUnauthorisedContentFound_Header(
         target,
@@ -118,10 +119,12 @@ export class HeaderComparisonService implements IHeaderComparisonService {
         matchedEntry,
         matchedEntry.authoriseWith.matcher, // T064: Use the actual matcher instance
         authorizationResult.reason || 'authorization failed',
+        authorizationResult.metadataPath ?? [], // NEW (T030): Pass metadata path from authorization result
       )
     }
 
-    return new AuthorizedHeaderFound(target, timestamp, header, matchedEntry)
+    // T030: Pass metadataPath from AuthorizationResult for composite matcher support
+    return new AuthorizedHeaderFound(target, timestamp, header, matchedEntry, authorizationResult.metadataPath ?? [])
   }
 
   /**
@@ -143,8 +146,9 @@ export class HeaderComparisonService implements IHeaderComparisonService {
       if (!entry.authoriseWith.authorisationInfo.authorised) continue
 
       // T063: Use matcher's identify method instead of inline regex test
-      // Note: Matcher interface uses DetectedScript shape, so pass name in name field
-      if (entry.identifyWith.identify({ name: headerName, content: '', hash: '' as unknown as SHA256Hash })) {
+      // T031: Use Matchable interface (hash is optional, no type cast workaround needed)
+      // Note: Matcher interface uses Matchable shape, so pass name in name field
+      if (entry.identifyWith.identify({ name: headerName, content: '' })) {
         return entry // First match wins (BR-2)
       }
     }

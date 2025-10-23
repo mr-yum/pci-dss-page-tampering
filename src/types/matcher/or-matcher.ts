@@ -22,9 +22,9 @@
  * @see ../../../specs/005-enhance-the-schema/data-model.md for entity definitions
  */
 
-import type { Matcher, Matchable } from './matcher.interface'
-import type { AuthorizationResult } from './authorization-result'
 import type { InventoryAuthorisationInfo } from '../inventory/model'
+import type { AuthorizationResult } from './authorization-result'
+import type { Matchable, Matcher } from './matcher.interface'
 
 /**
  * OrMatcher - Composite matcher with OR logic (any child matches).

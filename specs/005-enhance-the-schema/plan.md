@@ -89,6 +89,7 @@ _GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 **Status**: ⚠️ **CONDITIONAL PASS** - May proceed to Phase 0 with constraints
 
 **Constraints**:
+
 1. Comprehensive test plan MUST be delivered in Phase 1 (Principle V violation)
 2. Complexity justification MUST be documented in Complexity Tracking section (Principle VI)
 3. Re-evaluate after Phase 1 design to ensure no additional abstractions introduced
@@ -102,6 +103,7 @@ _GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 #### Principle I: Security-First Development ✅ PASS
 
 **Re-evaluation**: Design maintains all security guarantees
+
 - Fail-secure behavior enforced at multiple levels (Zod schema `.min(1)`, constructor validation, runtime checks)
 - Null/empty content handling preserved via entry-point guards in `authorize()` methods
 - Authorization metadata paths enhance audit trail (FR-009)
@@ -110,6 +112,7 @@ _GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 #### Principle II: Dual-Workflow Integrity ✅ PASS
 
 **Re-evaluation**: No changes to workflow separation
+
 - Composite matchers apply identically to inventory and detection workflows
 - Read-only detection constraint maintained
 - Alert categories unchanged (existing types enhanced with metadata paths)
@@ -117,6 +120,7 @@ _GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 #### Principle III: Git-Based Audit Trail ✅ PASS
 
 **Re-evaluation**: Audit trail enhanced
+
 - Authorization metadata now includes nested authorization decisions
 - Git commit workflow unchanged
 - Full metadata path provides richer audit context
@@ -124,6 +128,7 @@ _GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 #### Principle IV: Alert Completeness and Routing ✅ PASS
 
 **Re-evaluation**: Alert context significantly improved
+
 - Metadata path array (root to leaf) provides complete authorization history
 - All existing alert types functional with enhanced context
 - No blocking behavior introduced
@@ -131,6 +136,7 @@ _GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 #### Principle V: Test Coverage for Security Logic ✅ PASS (Constraint Resolved)
 
 **Re-evaluation**: Comprehensive test plan delivered in quickstart.md
+
 - Unit tests specified for: OrMatcher, AndMatcher, nested composites, array syntax
 - Integration tests specified for: End-to-end composite matcher workflows
 - Test scenarios cover: Empty arrays, null content, top-level override, metadata path collection
@@ -140,6 +146,7 @@ _GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 #### Principle VI: Minimal Complexity ✅ PASS (Justified)
 
 **Re-evaluation**: Abstractions justified and documented
+
 - **OrMatcher/AndMatcher**: Necessary to express boolean composition (documented in Complexity Tracking)
 - **Recursive evaluation**: Required for nested composite trees (documented in Complexity Tracking)
 - **Authorization metadata path**: Needed for full audit trail (documented in Complexity Tracking)
@@ -152,11 +159,13 @@ _GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 **Status**: ✅ **PASS** - All constraints satisfied, may proceed to implementation
 
 **Resolved Constraints**:
+
 1. ✅ Comprehensive test plan delivered (quickstart.md sections on testing)
 2. ✅ Complexity justification documented (Complexity Tracking table)
 3. ✅ No additional abstractions beyond initial design
 
 **Design Artifacts Completed**:
+
 - ✅ research.md: Zod recursive schemas, TypeScript composite pattern, fail-secure design
 - ✅ data-model.md: Entity definitions, relationships, validation rules
 - ✅ contracts/composite-matcher-schema.json: JSON Schema for composite matchers
@@ -216,7 +225,7 @@ export class OrMatcher<T extends Matchable = Matchable> implements Matcher<T> {
 
   authorize(resource: T): AuthorizationResult {
     // Works for scripts AND headers generically
-    const matchingChild = this.children.find(child => child.identify(resource))
+    const matchingChild = this.children.find((child) => child.identify(resource))
     return matchingChild ? matchingChild.authorize(resource) : { authorized: false }
   }
 }
@@ -225,14 +234,14 @@ export class OrMatcher<T extends Matchable = Matchable> implements Matcher<T> {
 const scriptData: Matchable = {
   name: 'https://cdn.example.com/script.js',
   content: 'function() { ... }',
-  hash: 'abc123...' as SHA256Hash
+  hash: 'abc123...' as SHA256Hash,
 }
 
 // Header use case (hash undefined)
 const headerData: Matchable = {
   name: 'content-security-policy',
   content: 'default-src https:; script-src https:;',
-  hash: undefined  // No type cast needed!
+  hash: undefined, // No type cast needed!
 }
 ```
 
@@ -249,7 +258,7 @@ const headerData: Matchable = {
 ```typescript
 // Existing code continues to work:
 export type DetectedScript = Matchable & {
-  hash: SHA256Hash  // Required for scripts (not optional)
+  hash: SHA256Hash // Required for scripts (not optional)
 }
 
 // Existing matchers still work:
@@ -263,12 +272,13 @@ export class NameMatcher implements Matcher<Matchable> {
 export class HashMatcher implements Matcher<DetectedScript> {
   identify(script: DetectedScript): boolean {
     // script.hash is guaranteed to exist (not optional)
-    return false  // Hash cannot identify, only authorize
+    return false // Hash cannot identify, only authorize
   }
 }
 ```
 
 **Conclusion**: The refined design uses a **generic `Matchable` type** to:
+
 - ✅ Eliminate type casting workarounds
 - ✅ Make the abstraction explicit (matchers work on any matchable resource)
 - ✅ Maintain zero duplication (single composite matcher implementation)
@@ -338,8 +348,8 @@ test/
 
 ## Complexity Tracking
 
-| Abstraction                    | Why Needed                                                                                          | Simpler Alternative Rejected Because                                                                                |
-| ------------------------------ | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| OrMatcher/AndMatcher types     | Cannot express "all required directives present" (AND) or "any acceptable policy" (OR) with current single-matcher approach | Array syntax for OR exists but cannot express AND; inline regex cannot handle complex multi-directive CSP validation |
-| Recursive evaluation           | Real-world policies like "(A AND B) OR (C AND D)" require nesting                                   | Flat matcher arrays cannot express hierarchical logic; hard-coded depth limit would artificially constrain valid use cases |
-| Authorization metadata path    | Nested matchers may have authorization decisions at multiple levels; alerts need full context       | Leaf-only metadata loses intermediate authorization rationale needed for compliance audit trail                    |
+| Abstraction                 | Why Needed                                                                                                                  | Simpler Alternative Rejected Because                                                                                       |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| OrMatcher/AndMatcher types  | Cannot express "all required directives present" (AND) or "any acceptable policy" (OR) with current single-matcher approach | Array syntax for OR exists but cannot express AND; inline regex cannot handle complex multi-directive CSP validation       |
+| Recursive evaluation        | Real-world policies like "(A AND B) OR (C AND D)" require nesting                                                           | Flat matcher arrays cannot express hierarchical logic; hard-coded depth limit would artificially constrain valid use cases |
+| Authorization metadata path | Nested matchers may have authorization decisions at multiple levels; alerts need full context                               | Leaf-only metadata loses intermediate authorization rationale needed for compliance audit trail                            |

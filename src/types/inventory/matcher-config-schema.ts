@@ -96,14 +96,7 @@ const AndMatcherConfigSchema = z.object({
  * IMPORTANT: Explicit type annotation required for z.lazy() circular reference resolution.
  */
 export const MatcherConfigSchema: z.ZodType<any> = z
-  .union([
-    NameMatcherConfigSchema,
-    HeaderNameMatcherConfigSchema,
-    ContentMatcherConfigSchema,
-    HashMatcherConfigSchema,
-    OrMatcherConfigSchema,
-    AndMatcherConfigSchema,
-  ])
+  .union([NameMatcherConfigSchema, HeaderNameMatcherConfigSchema, ContentMatcherConfigSchema, HashMatcherConfigSchema, OrMatcherConfigSchema, AndMatcherConfigSchema])
   .superRefine((val, ctx) => {
     // Validate regex syntax for nameMatcher
     if ('nameMatcher' in val) {

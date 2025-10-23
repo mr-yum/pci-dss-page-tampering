@@ -8,13 +8,13 @@
  */
 
 import type { InventoryAuthorisationInfo, InventoryScriptHashInfo } from '../inventory/model'
+import { AndMatcher } from './and-matcher'
 import { ContentMatcher } from './content-matcher'
 import { HashMatcher } from './hash-matcher'
 import { HeaderNameMatcher } from './header-name-matcher'
 import type { Matcher } from './matcher.interface'
 import { NameMatcher } from './name-matcher'
 import { OrMatcher } from './or-matcher'
-import { AndMatcher } from './and-matcher'
 
 /**
  * Configuration for creating a matcher instance.
@@ -103,7 +103,5 @@ export function createMatcher(config: MatcherConfig): Matcher {
   }
 
   // This should never happen if Zod schema validation is working
-  throw new Error(
-    'Invalid MatcherConfig: must have nameMatcher, headerNameMatcher, contentMatcher, hashes, orMatcher, or andMatcher',
-  )
+  throw new Error('Invalid MatcherConfig: must have nameMatcher, headerNameMatcher, contentMatcher, hashes, orMatcher, or andMatcher')
 }

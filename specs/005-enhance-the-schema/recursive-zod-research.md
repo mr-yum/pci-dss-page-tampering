@@ -22,21 +22,25 @@ This pattern is optimal for the composite matcher use case because:
 ## Alternatives Considered
 
 ### Alternative 1: `z.union()` without discrimination
+
 - **Pros**: Simpler syntax, no discriminator field required
 - **Cons**: O(n) sequential validation (slow for many matcher types), poor error messages
 - **Rejected because**: Performance degrades with 6+ matcher types (nameMatcher, headerNameMatcher, contentMatcher, hashMatcher, orMatcher, andMatcher)
 
 ### Alternative 2: `z.switch()` API (proposed in Zod 4)
+
 - **Pros**: More flexible, user-controlled type selection
 - **Cons**: Not implemented in Zod 4.x despite discussions
 - **Rejected because**: Feature does not exist in our Zod version (4.0.17)
 
 ### Alternative 3: Hard-coded depth limit with nested schemas
+
 - **Pros**: Prevents stack overflow with explicit depth control
 - **Cons**: Artificially constrains valid use cases, requires MAX_DEPTH constant
 - **Rejected because**: Spec requirement FR-013 specifies "allow unlimited nesting depth (rely on performance degradation as natural boundary)"
 
 ### Alternative 4: Manual recursive type definitions without `z.lazy()`
+
 - **Pros**: No deferred evaluation overhead
 - **Cons**: Causes "type is referenced directly or indirectly in its own initializer" errors
 - **Rejected because**: TypeScript circular reference errors make this impossible
@@ -76,10 +80,14 @@ const ContentMatcherSchema = z.object({
 
 const HashMatcherSchema = z.object({
   type: z.literal('hashMatcher'),
-  hashes: z.array(z.object({
-    timestamp: z.string().datetime(),
-    hash: z.object({ value: z.string() }),
-  })).min(1),
+  hashes: z
+    .array(
+      z.object({
+        timestamp: z.string().datetime(),
+        hash: z.object({ value: z.string() }),
+      }),
+    )
+    .min(1),
   authorisationInfo: AuthorisationInfoSchema.optional(),
 })
 
@@ -97,10 +105,7 @@ const BaseAndMatcherSchema = z.object({
 })
 
 // TypeScript types for recursive matchers (manual type hint required)
-type LeafMatcher = z.infer<typeof NameMatcherSchema>
-  | z.infer<typeof HeaderNameMatcherSchema>
-  | z.infer<typeof ContentMatcherSchema>
-  | z.infer<typeof HashMatcherSchema>
+type LeafMatcher = z.infer<typeof NameMatcherSchema> | z.infer<typeof HeaderNameMatcherSchema> | z.infer<typeof ContentMatcherSchema> | z.infer<typeof HashMatcherSchema>
 
 type OrMatcher = z.infer<typeof BaseOrMatcherSchema> & {
   matchers: Matcher[]
@@ -114,22 +119,15 @@ type Matcher = LeafMatcher | OrMatcher | AndMatcher
 
 // Recursive schema definitions using z.lazy()
 const OrMatcherSchema = BaseOrMatcherSchema.extend({
-  matchers: z.lazy(() => z.array(MatcherSchema).min(1, 'orMatcher must contain at least 1 child matcher'))
+  matchers: z.lazy(() => z.array(MatcherSchema).min(1, 'orMatcher must contain at least 1 child matcher')),
 })
 
 const AndMatcherSchema = BaseAndMatcherSchema.extend({
-  matchers: z.lazy(() => z.array(MatcherSchema).min(1, 'andMatcher must contain at least 1 child matcher'))
+  matchers: z.lazy(() => z.array(MatcherSchema).min(1, 'andMatcher must contain at least 1 child matcher')),
 })
 
 // Discriminated union combining all matcher types
-const MatcherSchema: z.ZodType<Matcher> = z.discriminatedUnion('type', [
-  NameMatcherSchema,
-  HeaderNameMatcherSchema,
-  ContentMatcherSchema,
-  HashMatcherSchema,
-  OrMatcherSchema,
-  AndMatcherSchema,
-])
+const MatcherSchema: z.ZodType<Matcher> = z.discriminatedUnion('type', [NameMatcherSchema, HeaderNameMatcherSchema, ContentMatcherSchema, HashMatcherSchema, OrMatcherSchema, AndMatcherSchema])
 
 // --- Inventory Entry Schema ---
 
@@ -227,18 +225,21 @@ const invalidScript = {
 ## Performance Notes
 
 ### Depth Limits
+
 - **No hard limit enforced**: Per spec requirement, unlimited nesting is allowed
 - **Natural boundaries**: Performance degradation at extreme depth (10+ levels) acts as practical limit
 - **Stack overflow risk**: JSON parsing itself will fail before Zod validation for pathological cases (100+ levels)
 - **Recommendation**: Document that reasonable nesting (up to 10 levels) is tested; deeper nesting is allowed but may impact performance
 
 ### Validation Performance
+
 - **Discriminated union optimization**: O(1) type lookup using discriminator field
 - **Lazy evaluation overhead**: Minimal - schema is compiled once at startup, not per-validation
 - **Recursive validation cost**: O(n) where n is total number of matchers in tree (depth × branching factor)
 - **Practical impact**: Typical CSP policies have 2-4 levels of nesting with 2-5 matchers per level = 10-20 total matchers, negligible performance impact
 
 ### Error Message Quality
+
 - **Discriminated union errors**: Clear identification of which matcher type failed
 - **Path information**: Zod includes full JSON path to validation error (e.g., `authoriseWith.matchers[1].matchers[0].pattern`)
 - **Custom refinements**: Regex validation errors include the pattern itself for debugging
@@ -247,6 +248,7 @@ const invalidScript = {
 ## TypeScript Type Inference
 
 ### Manual Type Hints Required
+
 Due to TypeScript's limitations with recursive types, you **must** provide explicit type annotations for the discriminated union schema:
 
 ```typescript
@@ -256,6 +258,7 @@ const MatcherSchema: z.ZodType<Matcher> = z.discriminatedUnion('type', [...])
 Without the `: z.ZodType<Matcher>` hint, TypeScript cannot infer the recursive structure and will produce circular reference errors.
 
 ### Type Safety Trade-offs
+
 - **Runtime validation**: ✅ Full validation at runtime via Zod
 - **Compile-time validation**: ⚠️ Requires manual type definition (cannot use `z.infer<typeof MatcherSchema>` directly)
 - **Type safety**: ✅ Achieved through explicit TypeScript types aligned with Zod schemas
@@ -287,6 +290,7 @@ Without the `: z.ZodType<Matcher>` hint, TypeScript cannot infer the recursive s
 ### Backward Compatibility
 
 **100% compatible**: Existing inventory entries without composite matchers will validate identically because:
+
 - Discriminated union includes all existing matcher types as options
 - No schema structure changes for leaf matchers (nameMatcher, contentMatcher, hashMatcher)
 - Optional `authorisationInfo` field remains optional

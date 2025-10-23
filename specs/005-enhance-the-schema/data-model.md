@@ -20,24 +20,27 @@ This document defines the data model for composite matchers (OR/AND logic) with 
 
 **Fields**:
 
-| Field | Type | Description | Validation |
-|-------|------|-------------|------------|
-| `name` | `string` | Resource name (script URL or header name) | Required |
-| `content` | `string \| null` | Resource content (script source or header value) | May be null (fail-secure handling required) |
-| `hash` | `SHA256Hash \| undefined` | Optional cryptographic hash (scripts only) | Optional; undefined for headers |
+| Field     | Type                      | Description                                      | Validation                                  |
+| --------- | ------------------------- | ------------------------------------------------ | ------------------------------------------- |
+| `name`    | `string`                  | Resource name (script URL or header name)        | Required                                    |
+| `content` | `string \| null`          | Resource content (script source or header value) | May be null (fail-secure handling required) |
+| `hash`    | `SHA256Hash \| undefined` | Optional cryptographic hash (scripts only)       | Optional; undefined for headers             |
 
 **Relationships**:
+
 - Extended by: `DetectedScript` (with required hash)
 - Used by: `Matcher<T extends Matchable>`
 
 **State Transitions**: N/A (immutable value object)
 
 **Validation Rules**:
+
 - `name` must be non-empty string for successful identification
 - `content` may be null; matchers handle null content as fail-secure (unauthorized)
 - `hash` is optional; only present for scripts, undefined for headers
 
 **Design Rationale**:
+
 - **Type Safety**: Eliminates `hash: '' as unknown as SHA256Hash` workaround in header comparison
 - **Explicit Contract**: Makes it clear matchers work on any matchable resource (scripts or headers)
 - **Backward Compatible**: `DetectedScript` extends `Matchable` with required `hash` field
@@ -51,13 +54,15 @@ This document defines the data model for composite matchers (OR/AND logic) with 
 **Implementation**: `src/types/matcher/matcher.interface.ts` (MODIFY)
 
 **Definition**:
+
 ```typescript
 export type DetectedScript = Matchable & {
-  hash: SHA256Hash  // Required for scripts (not optional)
+  hash: SHA256Hash // Required for scripts (not optional)
 }
 ```
 
 **Relationships**:
+
 - Extends: `Matchable`
 - Used by: `ScriptComparisonService`, `HashMatcher`
 
@@ -72,27 +77,31 @@ export type DetectedScript = Matchable & {
 **Implementation**: `src/types/matcher/matcher.interface.ts` (MODIFY)
 
 **Type Parameter**:
+
 - `T extends Matchable = Matchable`: Generic matchable resource type (defaults to `Matchable`)
 
 **Methods**:
 
-| Method | Return Type | Description |
-|--------|-------------|-------------|
-| `getType()` | `'name' \| 'header-name' \| 'content' \| 'hash' \| 'or' \| 'and'` | Discriminator for matcher type |
-| `getPattern()` | `string \| InventoryScriptHashInfo[] \| Matcher[]` | Returns matcher pattern or child matchers |
-| `identify(resource: T)` | `boolean` | Returns true if this matcher applies to the resource |
-| `authorize(resource: T)` | `AuthorizationResult` | Returns authorization decision with metadata path |
+| Method                   | Return Type                                                       | Description                                          |
+| ------------------------ | ----------------------------------------------------------------- | ---------------------------------------------------- |
+| `getType()`              | `'name' \| 'header-name' \| 'content' \| 'hash' \| 'or' \| 'and'` | Discriminator for matcher type                       |
+| `getPattern()`           | `string \| InventoryScriptHashInfo[] \| Matcher[]`                | Returns matcher pattern or child matchers            |
+| `identify(resource: T)`  | `boolean`                                                         | Returns true if this matcher applies to the resource |
+| `authorize(resource: T)` | `AuthorizationResult`                                             | Returns authorization decision with metadata path    |
 
 **Relationships**:
+
 - Implemented by: `NameMatcher`, `HeaderNameMatcher`, `ContentMatcher`, `HashMatcher`, `OrMatcher<T>`, `AndMatcher<T>`
 
 **State Transitions**: N/A (stateless)
 
 **Validation Rules**:
+
 - All implementations must provide type-safe `getType()` discriminator
 - `authorize()` must never return authorized for null/empty content (fail-secure)
 
 **Type Safety**:
+
 - Generic matchers (`NameMatcher`, `ContentMatcher`, `HeaderNameMatcher`): `Matcher<Matchable>` (work with any resource)
 - Script-specific matchers (`HashMatcher`): `Matcher<DetectedScript>` (require hash field)
 - Composite matchers (`OrMatcher<T>`, `AndMatcher<T>`): Generic over `T extends Matchable`
@@ -106,16 +115,18 @@ export type DetectedScript = Matchable & {
 **Implementation**: `src/types/matcher/or-matcher.ts` (NEW)
 
 **Type Parameter**:
+
 - `T extends Matchable = Matchable`: Generic matchable resource type
 
 **Fields**:
 
-| Field | Type | Description | Validation |
-|-------|------|-------------|------------|
-| `children` | `Matcher<T>[]` | Array of child matchers operating on type T | Min length: 1 (enforced by constructor) |
-| `authorisationInfo` | `InventoryAuthorisationInfo \| undefined` | Optional top-level authorization metadata | Standard authorization info schema |
+| Field               | Type                                      | Description                                 | Validation                              |
+| ------------------- | ----------------------------------------- | ------------------------------------------- | --------------------------------------- |
+| `children`          | `Matcher<T>[]`                            | Array of child matchers operating on type T | Min length: 1 (enforced by constructor) |
+| `authorisationInfo` | `InventoryAuthorisationInfo \| undefined` | Optional top-level authorization metadata   | Standard authorization info schema      |
 
 **Relationships**:
+
 - Implements: `Matcher<T>`
 - Contains: `Matcher<T>[]` (recursive - can contain other `OrMatcher<T>` or `AndMatcher<T>` instances)
 - References: `InventoryAuthorisationInfo`
@@ -123,6 +134,7 @@ export type DetectedScript = Matchable & {
 **State Transitions**: N/A (stateless)
 
 **Validation Rules**:
+
 - **FR-008**: Children array must contain at least 1 element (enforced at construction)
 - **FR-001**: Authorization succeeds if ANY child matcher succeeds
 - **FR-013**: First-match-wins evaluation order (short-circuit on first success)
@@ -131,6 +143,7 @@ export type DetectedScript = Matchable & {
 - **FR-012**: Empty children array triggers constructor error (fail-secure)
 
 **Behavior**:
+
 1. Constructor validates children array is non-empty
 2. `identify()` returns true if ANY child identifies the script
 3. `authorize()` finds first matching child and delegates authorization
@@ -146,16 +159,18 @@ export type DetectedScript = Matchable & {
 **Implementation**: `src/types/matcher/and-matcher.ts` (NEW)
 
 **Type Parameter**:
+
 - `T extends Matchable = Matchable`: Generic matchable resource type
 
 **Fields**:
 
-| Field | Type | Description | Validation |
-|-------|------|-------------|------------|
-| `children` | `Matcher<T>[]` | Array of child matchers operating on type T | Min length: 1 (enforced by constructor) |
-| `authorisationInfo` | `InventoryAuthorisationInfo \| undefined` | Optional top-level authorization metadata | Standard authorization info schema |
+| Field               | Type                                      | Description                                 | Validation                              |
+| ------------------- | ----------------------------------------- | ------------------------------------------- | --------------------------------------- |
+| `children`          | `Matcher<T>[]`                            | Array of child matchers operating on type T | Min length: 1 (enforced by constructor) |
+| `authorisationInfo` | `InventoryAuthorisationInfo \| undefined` | Optional top-level authorization metadata   | Standard authorization info schema      |
 
 **Relationships**:
+
 - Implements: `Matcher<T>`
 - Contains: `Matcher<T>[]` (recursive - can contain other `OrMatcher<T>` or `AndMatcher<T>` instances)
 - References: `InventoryAuthorisationInfo`
@@ -163,6 +178,7 @@ export type DetectedScript = Matchable & {
 **State Transitions**: N/A (stateless)
 
 **Validation Rules**:
+
 - **FR-008**: Children array must contain at least 1 element (enforced at construction)
 - **FR-002**: Authorization succeeds only if ALL child matchers succeed
 - **FR-014**: Short-circuit evaluation (fails on first unsuccessful match)
@@ -171,6 +187,7 @@ export type DetectedScript = Matchable & {
 - **FR-012**: Empty children array triggers constructor error (fail-secure)
 
 **Behavior**:
+
 1. Constructor validates children array is non-empty (prevents vacuous truth: `Array.every([]) === true`)
 2. `identify()` returns true only if ALL children identify the script
 3. `authorize()` evaluates all children in sequence, short-circuits on first failure
@@ -187,24 +204,27 @@ export type DetectedScript = Matchable & {
 
 **Fields**:
 
-| Field | Type | Description | Validation |
-|-------|------|-------------|------------|
-| `authorized` | `boolean` | Authorization decision | Required |
-| `reason` | `string \| undefined` | Explanation when authorization fails | Optional; present when `authorized === false` |
+| Field          | Type                                        | Description                                       | Validation                                              |
+| -------------- | ------------------------------------------- | ------------------------------------------------- | ------------------------------------------------------- |
+| `authorized`   | `boolean`                                   | Authorization decision                            | Required                                                |
+| `reason`       | `string \| undefined`                       | Explanation when authorization fails              | Optional; present when `authorized === false`           |
 | `metadataPath` | `InventoryAuthorisationInfo[] \| undefined` | Array of authorization metadata from root to leaf | Optional; populated during composite traversal (FR-009) |
 
 **Relationships**:
+
 - Returned by: `Matcher.authorize()`
 - References: `InventoryAuthorisationInfo[]`
 
 **State Transitions**: N/A (immutable value object)
 
 **Validation Rules**:
+
 - **FR-009**: `metadataPath` must contain full path from root composite to successful leaf
 - `reason` should be present when `authorized === false` for audit trail
 - `metadataPath` array ordering: root → intermediate → leaf (chronological traversal order)
 
 **Behavior**:
+
 - Composite matchers accumulate metadata by prepending their own `authorisationInfo` to child results
 - Leaf matchers return single-element `metadataPath` (or empty if no authorization info)
 - Failed authorization includes reason explaining which matcher rejected
@@ -219,19 +239,21 @@ export type DetectedScript = Matchable & {
 
 **Fields**:
 
-| Field | Type | Description | Validation |
-|-------|------|-------------|------------|
-| `description` | `string` | Human-readable justification for authorization decision | Min length: 1 |
-| `authorised` | `boolean` | Authorization status (true = authorized, false = explicitly denied) | Required |
-| `date` | `string` | ISO 8601 timestamp of authorization decision | Must be valid datetime string |
+| Field         | Type      | Description                                                         | Validation                    |
+| ------------- | --------- | ------------------------------------------------------------------- | ----------------------------- |
+| `description` | `string`  | Human-readable justification for authorization decision             | Min length: 1                 |
+| `authorised`  | `boolean` | Authorization status (true = authorized, false = explicitly denied) | Required                      |
+| `date`        | `string`  | ISO 8601 timestamp of authorization decision                        | Must be valid datetime string |
 
 **Relationships**:
+
 - Referenced by: `OrMatcher`, `AndMatcher`, and all leaf matchers
 - Collected in: `AuthorizationResult.metadataPath`
 
 **State Transitions**: N/A (immutable once set in inventory)
 
 **Validation Rules**:
+
 - **FR-003**: Can appear on composite matchers and child matchers
 - **FR-004**: Top-level value takes precedence when present on composite matchers
 - **FR-011**: `authorised: false` always denies regardless of matcher success
@@ -239,6 +261,7 @@ export type DetectedScript = Matchable & {
 - `description` must explain the authorization decision for compliance audits
 
 **Enhancement for Composite Matchers**:
+
 - **NEW**: Can now appear at multiple levels in composite matcher tree
 - **NEW**: Collected as array path (root to leaf) in `AuthorizationResult`
 
@@ -254,21 +277,23 @@ export type DetectedScript = Matchable & {
 
 **Variants**:
 
-| Variant | Discriminator Key | Fields | Description |
-|---------|------------------|--------|-------------|
-| `NameMatcherConfig` | `nameMatcher` | `{ nameMatcher: string }` | Matches by script URL pattern |
-| `HeaderNameMatcherConfig` | `headerNameMatcher` | `{ headerNameMatcher: string }` | Matches by header name pattern (case-insensitive) |
-| `ContentMatcherConfig` | `contentMatcher` | `{ contentMatcher: string }` | Matches by content pattern |
-| `HashMatcherConfig` | `hashes` | `{ hashes: InventoryScriptHashInfo[] }` | Matches by SHA-256 hash |
-| `OrMatcherConfig` | `orMatcher` | `{ orMatcher: MatcherConfig[], authorisationInfo?: InventoryAuthorisationInfo }` | Composite OR matcher (NEW) |
-| `AndMatcherConfig` | `andMatcher` | `{ andMatcher: MatcherConfig[], authorisationInfo?: InventoryAuthorisationInfo }` | Composite AND matcher (NEW) |
+| Variant                   | Discriminator Key   | Fields                                                                            | Description                                       |
+| ------------------------- | ------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------- |
+| `NameMatcherConfig`       | `nameMatcher`       | `{ nameMatcher: string }`                                                         | Matches by script URL pattern                     |
+| `HeaderNameMatcherConfig` | `headerNameMatcher` | `{ headerNameMatcher: string }`                                                   | Matches by header name pattern (case-insensitive) |
+| `ContentMatcherConfig`    | `contentMatcher`    | `{ contentMatcher: string }`                                                      | Matches by content pattern                        |
+| `HashMatcherConfig`       | `hashes`            | `{ hashes: InventoryScriptHashInfo[] }`                                           | Matches by SHA-256 hash                           |
+| `OrMatcherConfig`         | `orMatcher`         | `{ orMatcher: MatcherConfig[], authorisationInfo?: InventoryAuthorisationInfo }`  | Composite OR matcher (NEW)                        |
+| `AndMatcherConfig`        | `andMatcher`        | `{ andMatcher: MatcherConfig[], authorisationInfo?: InventoryAuthorisationInfo }` | Composite AND matcher (NEW)                       |
 
 **Relationships**:
+
 - Discriminated by: Field names (structural discrimination)
 - Recursive: `OrMatcherConfig` and `AndMatcherConfig` contain `MatcherConfig[]`
 - Validated by: Zod schema with `z.lazy()` for recursive definitions
 
 **Validation Rules**:
+
 - Exactly one discriminator field must be present
 - **FR-008**: Composite matcher arrays must have min length 1
 - **FR-010**: All existing matcher types supported as children in composites
@@ -284,8 +309,8 @@ const MatcherConfigSchema = z.union([
   HeaderNameMatcherConfigSchema,
   ContentMatcherConfigSchema,
   HashMatcherConfigSchema,
-  OrMatcherConfigSchema,    // Contains z.lazy(() => z.array(MatcherConfigSchema))
-  AndMatcherConfigSchema,   // Contains z.lazy(() => z.array(MatcherConfigSchema))
+  OrMatcherConfigSchema, // Contains z.lazy(() => z.array(MatcherConfigSchema))
+  AndMatcherConfigSchema, // Contains z.lazy(() => z.array(MatcherConfigSchema))
 ])
 ```
 
@@ -299,18 +324,20 @@ const MatcherConfigSchema = z.union([
 
 **Fields**:
 
-| Field | Type | Description | Validation |
-|-------|------|-------------|------------|
-| `matcher` | `Matcher` | Constructed matcher instance | Created via `createMatcher()` factory |
-| `authorisationInfo` | `InventoryAuthorisationInfo` | Authorization metadata | Required (existing field) |
+| Field               | Type                         | Description                  | Validation                            |
+| ------------------- | ---------------------------- | ---------------------------- | ------------------------------------- |
+| `matcher`           | `Matcher`                    | Constructed matcher instance | Created via `createMatcher()` factory |
+| `authorisationInfo` | `InventoryAuthorisationInfo` | Authorization metadata       | Required (existing field)             |
 
 **Relationships**:
+
 - Contains: `Matcher` (can be leaf or composite)
 - References: `InventoryAuthorisationInfo`
 
 **State Transitions**: N/A (constructed from JSON at inventory load)
 
 **Validation Rules**:
+
 - **FR-006**: `authoriseWith` can be an array (converted to `OrMatcher` automatically)
 - Array syntax: `authoriseWith: [matcher1, matcher2]` → equivalent to `{ orMatcher: [matcher1, matcher2] }`
 - Each array element must have its own `authorisationInfo`
@@ -321,18 +348,10 @@ const MatcherConfigSchema = z.union([
 // NEW: Array syntax support (FR-006)
 export const RawAuthorizeWithConfigSchema = z.union([
   // Single matcher (existing)
-  z.intersection(
-    MatcherConfigSchema,
-    z.object({ authorisationInfo: InventoryAuthorisationInfoRawSchema })
-  ),
+  z.intersection(MatcherConfigSchema, z.object({ authorisationInfo: InventoryAuthorisationInfoRawSchema })),
 
   // Array of matchers (NEW - syntactic sugar for OR)
-  z.array(
-    z.intersection(
-      MatcherConfigSchema,
-      z.object({ authorisationInfo: InventoryAuthorisationInfoRawSchema })
-    )
-  ).min(1)
+  z.array(z.intersection(MatcherConfigSchema, z.object({ authorisationInfo: InventoryAuthorisationInfoRawSchema }))).min(1),
 ])
 ```
 
@@ -348,12 +367,12 @@ export const RawAuthorizeWithConfigSchema = z.union([
 
 **Fields**:
 
-| Field | Type | Description | Validation |
-|-------|------|-------------|------------|
-| `type` | `'AuthorizedScriptFound'` | Discriminator | Literal type |
-| `script` | `DetectedScript` | The authorized script | Required |
-| `inventoryEntry` | `InventoryEntry` | Matching inventory entry | Required |
-| `metadataPath` | `InventoryAuthorisationInfo[]` | NEW: Authorization path from root to leaf | FR-009 |
+| Field            | Type                           | Description                               | Validation   |
+| ---------------- | ------------------------------ | ----------------------------------------- | ------------ |
+| `type`           | `'AuthorizedScriptFound'`      | Discriminator                             | Literal type |
+| `script`         | `DetectedScript`               | The authorized script                     | Required     |
+| `inventoryEntry` | `InventoryEntry`               | Matching inventory entry                  | Required     |
+| `metadataPath`   | `InventoryAuthorisationInfo[]` | NEW: Authorization path from root to leaf | FR-009       |
 
 **Enhancement**: Add `metadataPath` field for composite matcher context in alerts.
 
@@ -367,13 +386,13 @@ export const RawAuthorizeWithConfigSchema = z.union([
 
 **Fields**:
 
-| Field | Type | Description | Validation |
-|-------|------|-------------|------------|
-| `type` | `'KnownScriptWithUnauthorisedContentFound'` | Discriminator | Literal type |
-| `script` | `DetectedScript` | The unauthorized script | Required |
-| `inventoryEntry` | `InventoryEntry` | Matching inventory entry | Required |
-| `reason` | `string` | Explanation of authorization failure | Required |
-| `metadataPath` | `InventoryAuthorisationInfo[]` | NEW: Partial authorization path (if available) | FR-009 |
+| Field            | Type                                        | Description                                    | Validation   |
+| ---------------- | ------------------------------------------- | ---------------------------------------------- | ------------ |
+| `type`           | `'KnownScriptWithUnauthorisedContentFound'` | Discriminator                                  | Literal type |
+| `script`         | `DetectedScript`                            | The unauthorized script                        | Required     |
+| `inventoryEntry` | `InventoryEntry`                            | Matching inventory entry                       | Required     |
+| `reason`         | `string`                                    | Explanation of authorization failure           | Required     |
+| `metadataPath`   | `InventoryAuthorisationInfo[]`              | NEW: Partial authorization path (if available) | FR-009       |
 
 **Enhancement**: Add `metadataPath` field to show which composite matchers were evaluated before failure.
 
@@ -387,12 +406,12 @@ export const RawAuthorizeWithConfigSchema = z.union([
 
 **Fields**:
 
-| Field | Type | Description | Validation |
-|-------|------|-------------|------------|
-| `type` | `'AuthorizedHeaderFound'` | Discriminator | Literal type |
-| `header` | `DetectedHeader` | The authorized header | Required |
-| `inventoryEntry` | `InventoryEntry` | Matching inventory entry | Required |
-| `metadataPath` | `InventoryAuthorisationInfo[]` | NEW: Authorization path from root to leaf | FR-009 |
+| Field            | Type                           | Description                               | Validation   |
+| ---------------- | ------------------------------ | ----------------------------------------- | ------------ |
+| `type`           | `'AuthorizedHeaderFound'`      | Discriminator                             | Literal type |
+| `header`         | `DetectedHeader`               | The authorized header                     | Required     |
+| `inventoryEntry` | `InventoryEntry`               | Matching inventory entry                  | Required     |
+| `metadataPath`   | `InventoryAuthorisationInfo[]` | NEW: Authorization path from root to leaf | FR-009       |
 
 **Enhancement**: Add `metadataPath` field for composite matcher context in alerts.
 
@@ -406,13 +425,13 @@ export const RawAuthorizeWithConfigSchema = z.union([
 
 **Fields**:
 
-| Field | Type | Description | Validation |
-|-------|------|-------------|------------|
-| `type` | `'KnownHeaderUnauthorisedContentFound'` | Discriminator | Literal type |
-| `header` | `DetectedHeader` | The unauthorized header | Required |
-| `inventoryEntry` | `InventoryEntry` | Matching inventory entry | Required |
-| `reason` | `string` | Explanation of authorization failure | Required |
-| `metadataPath` | `InventoryAuthorisationInfo[]` | NEW: Partial authorization path (if available) | FR-009 |
+| Field            | Type                                    | Description                                    | Validation   |
+| ---------------- | --------------------------------------- | ---------------------------------------------- | ------------ |
+| `type`           | `'KnownHeaderUnauthorisedContentFound'` | Discriminator                                  | Literal type |
+| `header`         | `DetectedHeader`                        | The unauthorized header                        | Required     |
+| `inventoryEntry` | `InventoryEntry`                        | Matching inventory entry                       | Required     |
+| `reason`         | `string`                                | Explanation of authorization failure           | Required     |
+| `metadataPath`   | `InventoryAuthorisationInfo[]`          | NEW: Partial authorization path (if available) | FR-009       |
 
 **Enhancement**: Add `metadataPath` field to show which composite matchers were evaluated before failure.
 
@@ -513,11 +532,7 @@ export const RawAuthorizeWithConfigSchema = z.union([
 {
   "identifyWith": { "headerNameMatcher": "^content-security-policy$" },
   "authoriseWith": {
-    "andMatcher": [
-      { "contentMatcher": "default-src" },
-      { "contentMatcher": "script-src" },
-      { "contentMatcher": "connect-src" }
-    ],
+    "andMatcher": [{ "contentMatcher": "default-src" }, { "contentMatcher": "script-src" }, { "contentMatcher": "connect-src" }],
     "authorisationInfo": {
       "description": "Complete CSP policy with all required directives",
       "authorised": true,
@@ -539,10 +554,7 @@ export const RawAuthorizeWithConfigSchema = z.union([
   "authoriseWith": {
     "orMatcher": [
       {
-        "andMatcher": [
-          { "contentMatcher": "default-src.*self" },
-          { "contentMatcher": "script-src.*nonce-" }
-        ],
+        "andMatcher": [{ "contentMatcher": "default-src.*self" }, { "contentMatcher": "script-src.*nonce-" }],
         "authorisationInfo": {
           "description": "Strict CSP with nonce-based scripts",
           "authorised": true,
@@ -550,10 +562,7 @@ export const RawAuthorizeWithConfigSchema = z.union([
         }
       },
       {
-        "andMatcher": [
-          { "contentMatcher": "default-src.*unsafe-inline" },
-          { "contentMatcher": "report-uri" }
-        ],
+        "andMatcher": [{ "contentMatcher": "default-src.*unsafe-inline" }, { "contentMatcher": "report-uri" }],
         "authorisationInfo": {
           "description": "Legacy CSP with reporting enabled",
           "authorised": true,
@@ -571,10 +580,12 @@ export const RawAuthorizeWithConfigSchema = z.union([
 ```
 
 **Semantics**: Authorize if EITHER:
+
 - (default-src with 'self' AND script-src with nonce), OR
 - (default-src with 'unsafe-inline' AND report-uri present)
 
 **Metadata Path**: When second AND matcher succeeds, path would be:
+
 ```json
 [
   { "description": "CSP policy - either strict or legacy with reporting", ... },
@@ -651,6 +662,7 @@ export const RawAuthorizeWithConfigSchema = z.union([
 ### Example Migration
 
 **Before** (existing single matcher):
+
 ```json
 {
   "identifyWith": { "headerNameMatcher": "^content-security-policy$" },
@@ -662,6 +674,7 @@ export const RawAuthorizeWithConfigSchema = z.union([
 ```
 
 **After** (enhanced with AND logic):
+
 ```json
 {
   "identifyWith": { "headerNameMatcher": "^content-security-policy$" },

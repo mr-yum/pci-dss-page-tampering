@@ -262,11 +262,7 @@
         "headerNameMatcher": "^content-security-policy$"
       },
       "authoriseWith": {
-        "andMatcher": [
-          { "contentMatcher": "default-src" },
-          { "contentMatcher": "script-src" },
-          { "contentMatcher": "connect-src" }
-        ],
+        "andMatcher": [{ "contentMatcher": "default-src" }, { "contentMatcher": "script-src" }, { "contentMatcher": "connect-src" }],
         "authorisationInfo": {
           "description": "Complete CSP policy with all required directives",
           "authorised": true,
@@ -282,10 +278,7 @@
       "authoriseWith": {
         "orMatcher": [
           {
-            "andMatcher": [
-              { "contentMatcher": "default-src.*self" },
-              { "contentMatcher": "script-src.*nonce-" }
-            ],
+            "andMatcher": [{ "contentMatcher": "default-src.*self" }, { "contentMatcher": "script-src.*nonce-" }],
             "authorisationInfo": {
               "description": "Strict CSP with nonce-based scripts",
               "authorised": true,
@@ -293,10 +286,7 @@
             }
           },
           {
-            "andMatcher": [
-              { "contentMatcher": "default-src.*unsafe-inline" },
-              { "contentMatcher": "report-uri" }
-            ],
+            "andMatcher": [{ "contentMatcher": "default-src.*unsafe-inline" }, { "contentMatcher": "report-uri" }],
             "authorisationInfo": {
               "description": "Legacy CSP with reporting enabled",
               "authorised": true,
