@@ -1,5 +1,6 @@
 import type { Inventory, InventoryHeaderInfo, InventoryScriptInfo } from '../types/inventory/model'
 import type { RawInventory, RawInventoryHeaderInfo } from '../types/inventory/raw'
+import { processAuthorizeWith } from '../types/inventory/zod'
 import { createMatcher } from '../types/matcher/matcher-factory'
 import { inventoryScriptInfoToRawInventoryScriptInfo } from './script'
 
@@ -38,24 +39,15 @@ export function inventoryToRawInventory(inventory: Inventory): RawInventory {
  *
  * Updated for Phase 5 - US3:
  * - Creates Matcher instances from identifyWith and authoriseWith configs using matcher factory
- * - Destructures authoriseWith to separate matcher config from authorisationInfo
+ * - Uses processAuthorizeWith to handle both single matcher and array syntax (FR-006)
+ * - Array syntax is automatically converted to OrMatcher
  * - Matchers are validated by Zod schema before this function is called
  * - Replaces old nameMatcher/contentMatcher field conversion
  */
 export function rawInventoryHeaderInfoToInventoryHeaderInfo(rawHeaderInfo: RawInventoryHeaderInfo): InventoryHeaderInfo {
-  // Destructure authoriseWith to separate matcher config from authorisationInfo
-  const { authorisationInfo, ...matcherConfig } = rawHeaderInfo.authoriseWith
-
   return {
     identifyWith: createMatcher(rawHeaderInfo.identifyWith),
-    authoriseWith: {
-      matcher: createMatcher(matcherConfig),
-      authorisationInfo: {
-        description: authorisationInfo.description,
-        authorised: authorisationInfo.authorised,
-        date: new Date(authorisationInfo.date),
-      },
-    },
+    authoriseWith: processAuthorizeWith(rawHeaderInfo.authoriseWith),
   }
 }
 

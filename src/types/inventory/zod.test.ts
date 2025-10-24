@@ -401,7 +401,9 @@ describe('RawInventoryScriptInfoSchema', () => {
         expect(result.success).toBe(false)
         if (!result.success) {
           const issues = result.error.issues.map((issue) => issue.path.join('.'))
-          expect(issues).toContain('authoriseWith.authorisationInfo')
+          // After FR-006 (array syntax support), authoriseWith is a union (single or array)
+          // Error path is now 'authoriseWith' (union didn't match) instead of 'authoriseWith.authorisationInfo'
+          expect(issues).toContain('authoriseWith')
         }
       })
     })

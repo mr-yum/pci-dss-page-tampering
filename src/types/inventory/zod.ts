@@ -1,10 +1,12 @@
 import { z } from 'zod'
 
+import { createMatcher } from '../matcher/matcher-factory'
+import { OrMatcher } from '../matcher/or-matcher'
 import type { RawTargetDetection, RawTargetInventory } from '../target/raw'
 import { SHA256HashSchema } from '../zod'
 import { MatcherConfigSchema } from './matcher-config-schema'
-import type { AlertDestination, AlertDetection, AlertInventory, InventoryAlert, InventoryAuthorisationInfo, InventoryScriptHashInfo } from './model'
-import type { RawInventory, RawInventoryHeaderInfo, RawInventoryScriptInfo, RawInventoryTarget } from './raw'
+import type { AlertDestination, AlertDetection, AlertInventory, AuthorizeWithConfig,InventoryAlert, InventoryAuthorisationInfo, InventoryScriptHashInfo } from './model'
+import type { RawAuthorizeWithConfig,RawInventory, RawInventoryHeaderInfo, RawInventoryScriptInfo, RawInventoryTarget } from './raw'
 
 export const AlertDestinationSchema: z.ZodType<AlertDestination> = z.object({
   destination: z.string(),
@@ -88,14 +90,36 @@ export const InventoryAuthorisationInfoRawSchema = z.object({
 /**
  * Schema for the composite authorization structure in raw (JSON-serializable) format.
  * Combines matcher configuration with authorization metadata as siblings.
+ *
+ * Supports two syntaxes:
+ * 1. Single matcher: { nameMatcher: "...", authorisationInfo: {...} }
+ * 2. Array syntax (FR-006): [{ contentMatcher: "...", authorisationInfo: {...} }, { contentMatcher: "...", authorisationInfo: {...} }]
+ *    - Array syntax is syntactic sugar for OrMatcher
+ *    - Each array element must have its own authorisationInfo
+ *    - Automatically converted to OrMatcher during inventory loading
+ *
  * Corresponds to `RawAuthorizeWithConfig`.
  */
-export const RawAuthorizeWithConfigSchema = z.intersection(
-  MatcherConfigSchema,
-  z.object({
-    authorisationInfo: InventoryAuthorisationInfoRawSchema,
-  }),
-)
+export const RawAuthorizeWithConfigSchema = z.union([
+  // Single matcher (existing)
+  z.intersection(
+    MatcherConfigSchema,
+    z.object({
+      authorisationInfo: InventoryAuthorisationInfoRawSchema,
+    }),
+  ),
+
+  // Array of matchers (NEW - syntactic sugar for OR, FR-006)
+  // Each element is a matcher config with its own authorisationInfo
+  z.array(
+    z.intersection(
+      MatcherConfigSchema,
+      z.object({
+        authorisationInfo: InventoryAuthorisationInfoRawSchema,
+      }),
+    ),
+  ).min(1, 'authoriseWith array must contain at least 1 matcher'),
+])
 
 /**
  * Schema for information about an inventory script.
@@ -145,3 +169,51 @@ export const RawInventorySchema: z.ZodType<RawInventory> = z.object({
   scripts: z.array(RawInventoryScriptInfoSchema),
   headers: z.array(RawInventoryHeaderInfoSchema),
 })
+
+/**
+ * Processes RawAuthorizeWithConfig to convert array syntax to OrMatcher.
+ *
+ * Handles two cases:
+ * 1. Single matcher: Returns AuthorizeWithConfig with matcher and authorisationInfo
+ * 2. Array syntax (FR-006): Converts array to OrMatcher automatically
+ *    - Each array element becomes a child matcher in the OrMatcher
+ *    - Uses first element's authorisationInfo as the top-level authorization metadata
+ *
+ * @param rawConfig - Raw authorization configuration (single matcher or array)
+ * @returns AuthorizeWithConfig with Matcher instance(s)
+ */
+export function processAuthorizeWith(rawConfig: RawAuthorizeWithConfig): AuthorizeWithConfig {
+  if (Array.isArray(rawConfig)) {
+    // Array syntax: Convert to OrMatcher (FR-006)
+    // Each array element must have authorisationInfo (validated by Zod schema)
+    const children = rawConfig.map((element) => {
+      const { authorisationInfo: _, ...matcherConfig } = element
+      return createMatcher(matcherConfig)
+    })
+
+    // Use first element's authorisationInfo as the top-level authorization metadata
+    // This provides the overall context for the OR matcher
+    const firstElementInfo = rawConfig[0].authorisationInfo
+
+    return {
+      matcher: new OrMatcher(children),
+      authorisationInfo: {
+        description: firstElementInfo.description,
+        authorised: firstElementInfo.authorised,
+        date: new Date(firstElementInfo.date),
+      },
+    }
+  } else {
+    // Single matcher (existing path)
+    const { authorisationInfo, ...matcherConfig } = rawConfig
+
+    return {
+      matcher: createMatcher(matcherConfig),
+      authorisationInfo: {
+        description: authorisationInfo.description,
+        authorised: authorisationInfo.authorised,
+        date: new Date(authorisationInfo.date),
+      },
+    }
+  }
+}

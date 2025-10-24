@@ -147,7 +147,7 @@ All changes MUST pass before merge:
 
 When refactoring comparison or detection logic:
 
-1. Write tests that capture current behavior FIRST
+1. Write tests that capture current behavior FIRST (tests along implementations, not in separate unit test folder)
 2. Verify tests pass with current implementation
 3. Refactor code
 4. Verify tests still pass (no behavior change)
