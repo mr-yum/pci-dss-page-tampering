@@ -1,5 +1,6 @@
 import type { InventoryScriptInfo } from '../types/inventory/model'
 import type { RawInventoryScriptInfo } from '../types/inventory/raw'
+import { processAuthorizeWith } from '../types/inventory/zod'
 import { createMatcher } from '../types/matcher/matcher-factory'
 import type { ScriptInfo } from '../types/script'
 import { scriptHashToInventoryHashInfo } from '../utils/hash'
@@ -50,24 +51,15 @@ export function getScriptSource(scriptInfo: ScriptInfo): string {
  *
  * Updated for Phase 3:
  * - Creates Matcher instances from identifyWith and authoriseWith configs using matcher factory
- * - Destructures authoriseWith to separate matcher config from authorisationInfo
+ * - Uses processAuthorizeWith to handle both single matcher and array syntax (FR-006)
+ * - Array syntax is automatically converted to OrMatcher
  * - Matchers are validated by Zod schema before this function is called
  * - Replaces old nameMatcher/contentMatcher/hashes field conversion
  */
 export function rawInventoryScriptInfoToInventoryScriptInfo(rawInventoryScriptInfo: RawInventoryScriptInfo): InventoryScriptInfo {
-  // Destructure authoriseWith to separate matcher config from authorisationInfo
-  const { authorisationInfo, ...matcherConfig } = rawInventoryScriptInfo.authoriseWith
-
   return {
     identifyWith: createMatcher(rawInventoryScriptInfo.identifyWith),
-    authoriseWith: {
-      matcher: createMatcher(matcherConfig),
-      authorisationInfo: {
-        description: authorisationInfo.description,
-        authorised: authorisationInfo.authorised,
-        date: new Date(authorisationInfo.date),
-      },
-    },
+    authoriseWith: processAuthorizeWith(rawInventoryScriptInfo.authoriseWith),
   }
 }
 

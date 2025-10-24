@@ -114,13 +114,23 @@ export class ScriptComparisonService implements IScriptComparisonService {
     console.log(`[Comparison → Script]: Script '${scriptSourceValue}' authorization via ${authorizeMatcher.getType()}Matcher with pattern '${matcherPattern}': ${authStatus} in ${authorizationTime}ms.`)
 
     // T056: Known script but unauthorized content
+    // T029: Pass metadataPath from AuthorizationResult for composite matcher support
     if (!authorizationResult.authorized) {
       console.log(`[Comparison → Script]: Script '${scriptSourceValue}' found in inventory but authorization failed: ${authorizationResult.reason} for target '${target.url}'.`)
-      return new KnownScriptWithUnauthorisedContentFound(target, timestamp, detectedScript, matchedEntry, authorizeMatcher, authorizationResult.reason ?? 'Unknown authorization failure')
+      return new KnownScriptWithUnauthorisedContentFound(
+        target,
+        timestamp,
+        detectedScript,
+        matchedEntry,
+        authorizeMatcher,
+        authorizationResult.reason ?? 'Unknown authorization failure',
+        authorizationResult.metadataPath ?? [], // NEW: Pass metadata path from authorization result
+      )
     }
 
     // T057: Script is both identified and authorized
-    return new AuthorizedScriptFound(target, timestamp, detectedScript, matchedEntry)
+    // T029: Pass metadataPath from AuthorizationResult for composite matcher support
+    return new AuthorizedScriptFound(target, timestamp, detectedScript, matchedEntry, authorizationResult.metadataPath ?? [])
   }
 
   /**

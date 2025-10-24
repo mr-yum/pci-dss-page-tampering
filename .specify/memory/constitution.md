@@ -141,13 +141,14 @@ All changes MUST pass before merge:
 2. `npm run check:linting` - ESLint rules
 3. `npm run check:typing` - TypeScript type checking
 4. `npm run test:unit` - Unit test suite
-5. `npm run test:integration` - Integration tests (Dockerized)
+5. `npm run test:integration` - Integration tests
+6. `npm run precommit` - All of the above
 
 ### Refactoring Protocol
 
 When refactoring comparison or detection logic:
 
-1. Write tests that capture current behavior FIRST
+1. Write tests that capture current behavior FIRST (tests along implementations, not in separate unit test folder)
 2. Verify tests pass with current implementation
 3. Refactor code
 4. Verify tests still pass (no behavior change)

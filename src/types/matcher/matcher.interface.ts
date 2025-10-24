@@ -13,81 +13,116 @@ import type { InventoryScriptHashInfo } from '../inventory/model'
 import type { AuthorizationResult } from './authorization-result'
 
 /**
- * Detected script structure for matcher operations.
- * Contains script name (URL or identifier) and content for matching.
+ * Generic matchable resource (script or header).
+ * Provides common structure for matcher operations.
+ *
+ * This interface enables type-safe matching across both scripts and headers
+ * without requiring type casting workarounds.
  */
-export type DetectedScript = {
+export interface Matchable {
   /**
-   * Script name/URL for external scripts, generated ID for inline scripts
+   * Resource name (script URL or header name)
    */
   name: string
 
   /**
-   * Script content/source code. May be null if fetch failed or content unavailable.
+   * Resource content (script source or header value).
+   * May be null if fetch failed or content unavailable.
    */
   content: string | null
 
   /**
-   * SHA-256 hash of content (computed on detection)
+   * Optional cryptographic hash (scripts only, undefined for headers).
+   * Scripts will always have a hash; headers will have undefined.
+   */
+  hash?: SHA256Hash
+}
+
+/**
+ * Detected script structure for matcher operations.
+ * Extends Matchable with required hash field for scripts.
+ *
+ * Contains script name (URL or identifier) and content for matching.
+ * Backward compatible with existing code.
+ */
+export type DetectedScript = Matchable & {
+  /**
+   * SHA-256 hash of content (computed on detection).
+   * Required for scripts (not optional like in base Matchable).
    */
   hash: SHA256Hash
 }
 
 /**
- * Strategy interface for script and header matching operations.
+ * Generic strategy interface for script and header matching operations.
+ *
+ * Type parameter T allows matchers to work with any Matchable resource:
+ * - Generic matchers (NameMatcher, ContentMatcher, HeaderNameMatcher): Matcher<Matchable>
+ * - Script-specific matchers (HashMatcher): Matcher<DetectedScript>
+ * - Composite matchers (OrMatcher, AndMatcher): Matcher<T extends Matchable>
  *
  * Implementations:
  * - NameMatcher: Matches by script name/URL using regex (case-sensitive)
  * - HeaderNameMatcher: Matches by header name using regex (case-insensitive per RFC 7230)
  * - ContentMatcher: Matches by script/header content using regex
  * - HashMatcher: Matches by cryptographic hash (SHA-256, scripts only)
+ * - OrMatcher: Composite matcher with OR logic (any child matches)
+ * - AndMatcher: Composite matcher with AND logic (all children match)
  *
- * Pattern: Strategy Pattern (per research.md R1)
+ * Pattern: Strategy Pattern + Composite Pattern (per research.md R1, R2)
  */
-export interface Matcher {
+export interface Matcher<T extends Matchable = Matchable> {
   /**
    * Returns the matcher type discriminator.
    * Used for logging, debugging, and type narrowing.
    */
-  getType(): 'name' | 'header-name' | 'content' | 'hash'
+  getType(): 'name' | 'header-name' | 'content' | 'hash' | 'or' | 'and'
 
   /**
-   * Returns the pattern or hashes used by this matcher.
-   * For NameMatcher/ContentMatcher: regex pattern string
-   * For HashMatcher: array of authorized hashes with timestamps
+   * Returns the pattern, hashes, or child matchers used by this matcher.
+   * - For NameMatcher/ContentMatcher/HeaderNameMatcher: regex pattern string
+   * - For HashMatcher: array of authorized hashes with timestamps
+   * - For OrMatcher/AndMatcher: array of child matchers
    */
-  getPattern(): string | InventoryScriptHashInfo[]
+  getPattern(): string | InventoryScriptHashInfo[] | Matcher<T>[]
 
   /**
-   * Determines if the given script matches this matcher's identification criteria.
+   * Determines if the given resource matches this matcher's identification criteria.
    *
-   * @param script - The detected script to test
-   * @returns true if script matches, false otherwise
+   * @param resource - The detected resource (script or header) to test
+   * @returns true if resource matches, false otherwise
    *
    * Behavior by matcher type:
-   * - NameMatcher: Tests script.name against regex pattern
-   * - ContentMatcher: Tests script.content against regex pattern
+   * - NameMatcher: Tests resource.name against regex pattern
+   * - HeaderNameMatcher: Tests resource.name against regex pattern (case-insensitive)
+   * - ContentMatcher: Tests resource.content against regex pattern
    * - HashMatcher: Always returns false (hashes cannot identify, only authorize)
+   * - OrMatcher: Returns true if ANY child identifies the resource
+   * - AndMatcher: Returns true if ALL children identify the resource
    *
    * Edge cases:
-   * - Null/empty script.name (NameMatcher): returns false
-   * - Null/empty script.content (ContentMatcher): returns false
+   * - Null/empty resource.name (NameMatcher/HeaderNameMatcher): returns false
+   * - Null/empty resource.content (ContentMatcher): returns false
    */
-  identify(script: DetectedScript): boolean
+  identify(resource: T): boolean
 
   /**
-   * Determines if the given script's content is authorized.
+   * Determines if the given resource's content is authorized.
    *
-   * @param script - The detected script to authorize
-   * @returns AuthorizationResult with authorized flag and optional reason
+   * @param resource - The detected resource (script or header) to authorize
+   * @returns AuthorizationResult with authorized flag, optional reason, and metadata path
    *
    * Behavior by matcher type:
-   * - NameMatcher: Tests script.content against regex pattern
-   * - ContentMatcher: Tests script.content against regex pattern
-   * - HashMatcher: Computes SHA-256 hash of script.content, checks against authorized hashes
+   * - NameMatcher: Tests resource.content against regex pattern
+   * - HeaderNameMatcher: Tests resource.content against regex pattern
+   * - ContentMatcher: Tests resource.content against regex pattern
+   * - HashMatcher: Computes SHA-256 hash of resource.content, checks against authorized hashes
+   * - OrMatcher: Returns authorized if ANY child authorizes (first-match-wins)
+   * - AndMatcher: Returns authorized if ALL children authorize (short-circuit on failure)
    *
    * Edge cases:
-   * - Null/empty script.content: returns { authorized: false, reason: "content is null or empty" }
+   * - Null/empty resource.content: returns { authorized: false, reason: "content is null or empty" }
+   * - Top-level authorisationInfo.authorised: false always denies regardless of matcher result
    */
-  authorize(script: DetectedScript): AuthorizationResult
+  authorize(resource: T): AuthorizationResult
 }

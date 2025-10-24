@@ -401,7 +401,9 @@ describe('RawInventoryScriptInfoSchema', () => {
         expect(result.success).toBe(false)
         if (!result.success) {
           const issues = result.error.issues.map((issue) => issue.path.join('.'))
-          expect(issues).toContain('authoriseWith.authorisationInfo')
+          // After FR-006 (array syntax support), authoriseWith is a union (single or array)
+          // Error path is now 'authoriseWith' (union didn't match) instead of 'authoriseWith.authorisationInfo'
+          expect(issues).toContain('authoriseWith')
         }
       })
     })
@@ -516,6 +518,467 @@ describe('RawInventoryScriptInfoSchema', () => {
         if (result.success) {
           expect(result.data.authoriseWith.authorisationInfo.authorised).toBe(false)
         }
+      })
+    })
+  })
+
+  describe('Phase 5: Array Syntax Support (T052)', () => {
+    describe('Array syntax for authoriseWith', () => {
+      it('should accept array with two content matchers', () => {
+        const validSchema = {
+          identifyWith: { nameMatcher: '^https://example\\.com/.*$' },
+          authoriseWith: [
+            {
+              contentMatcher: 'pattern-one',
+              authorisationInfo: {
+                description: 'First pattern',
+                authorised: true,
+                date: '2025-10-22T12:00:00.000Z',
+              },
+            },
+            {
+              contentMatcher: 'pattern-two',
+              authorisationInfo: {
+                description: 'Second pattern',
+                authorised: true,
+                date: '2025-10-22T12:00:00.000Z',
+              },
+            },
+          ],
+        }
+
+        const result = RawInventoryScriptInfoSchema.safeParse(validSchema)
+        expect(result.success).toBe(true)
+      })
+
+      it('should accept array with single matcher (edge case)', () => {
+        const validSchema = {
+          identifyWith: { nameMatcher: '^https://example\\.com/.*$' },
+          authoriseWith: [
+            {
+              contentMatcher: 'single-pattern',
+              authorisationInfo: {
+                description: 'Single element array',
+                authorised: true,
+                date: '2025-10-22T12:00:00.000Z',
+              },
+            },
+          ],
+        }
+
+        const result = RawInventoryScriptInfoSchema.safeParse(validSchema)
+        expect(result.success).toBe(true)
+      })
+
+      it('should accept array with mixed matcher types', () => {
+        const validSchema = {
+          identifyWith: { nameMatcher: '^https://example\\.com/.*$' },
+          authoriseWith: [
+            {
+              contentMatcher: 'content-pattern',
+              authorisationInfo: {
+                description: 'Content matcher',
+                authorised: true,
+                date: '2025-10-22T12:00:00.000Z',
+              },
+            },
+            {
+              nameMatcher: '^https://example\\.com/specific\\.js$',
+              authorisationInfo: {
+                description: 'Name matcher',
+                authorised: true,
+                date: '2025-10-22T12:00:00.000Z',
+              },
+            },
+          ],
+        }
+
+        const result = RawInventoryScriptInfoSchema.safeParse(validSchema)
+        expect(result.success).toBe(true)
+      })
+
+      it('should reject empty array (fail-secure)', () => {
+        const invalidSchema = {
+          identifyWith: { nameMatcher: '^https://example\\.com/.*$' },
+          authoriseWith: [],
+        }
+
+        const result = RawInventoryScriptInfoSchema.safeParse(invalidSchema)
+        expect(result.success).toBe(false)
+        if (!result.success) {
+          const errorMessages = result.error.issues.map((issue) => issue.message)
+          expect(errorMessages.some((msg) => msg.includes('at least 1'))).toBe(true)
+        }
+      })
+
+      it('should reject array element without authorisationInfo', () => {
+        const invalidSchema = {
+          identifyWith: { nameMatcher: '^https://example\\.com/.*$' },
+          authoriseWith: [
+            {
+              contentMatcher: 'pattern-one',
+              // Missing authorisationInfo
+            },
+            {
+              contentMatcher: 'pattern-two',
+              authorisationInfo: {
+                description: 'Second pattern',
+                authorised: true,
+                date: '2025-10-22T12:00:00.000Z',
+              },
+            },
+          ],
+        }
+
+        const result = RawInventoryScriptInfoSchema.safeParse(invalidSchema)
+        expect(result.success).toBe(false)
+      })
+
+      it('should accept array with composite matchers (andMatcher)', () => {
+        const validSchema = {
+          identifyWith: { nameMatcher: '^https://example\\.com/.*$' },
+          authoriseWith: [
+            {
+              andMatcher: [{ contentMatcher: 'required-1' }, { contentMatcher: 'required-2' }],
+              authorisationInfo: {
+                description: 'AND matcher in array',
+                authorised: true,
+                date: '2025-10-22T12:00:00.000Z',
+              },
+            },
+            {
+              contentMatcher: 'fallback',
+              authorisationInfo: {
+                description: 'Fallback pattern',
+                authorised: true,
+                date: '2025-10-22T12:00:00.000Z',
+              },
+            },
+          ],
+        }
+
+        const result = RawInventoryScriptInfoSchema.safeParse(validSchema)
+        expect(result.success).toBe(true)
+      })
+
+      it('should accept array with nested orMatcher', () => {
+        const validSchema = {
+          identifyWith: { nameMatcher: '^https://example\\.com/.*$' },
+          authoriseWith: [
+            {
+              orMatcher: [{ contentMatcher: 'option-a' }, { contentMatcher: 'option-b' }],
+              authorisationInfo: {
+                description: 'OR matcher in array',
+                authorised: true,
+                date: '2025-10-22T12:00:00.000Z',
+              },
+            },
+            {
+              contentMatcher: 'option-c',
+              authorisationInfo: {
+                description: 'Alternative option',
+                authorised: true,
+                date: '2025-10-22T12:00:00.000Z',
+              },
+            },
+          ],
+        }
+
+        const result = RawInventoryScriptInfoSchema.safeParse(validSchema)
+        expect(result.success).toBe(true)
+      })
+    })
+  })
+
+  describe('T061: Recursive composite matcher validation', () => {
+    describe('Nested OR containing AND', () => {
+      it('should accept deeply nested OR containing AND matchers', () => {
+        const nestedSchema = {
+          identifyWith: { headerNameMatcher: '^content-security-policy$' },
+          authoriseWith: {
+            orMatcher: [
+              {
+                andMatcher: [{ contentMatcher: 'default-src' }, { contentMatcher: 'script-src' }],
+                authorisationInfo: {
+                  description: 'AND group: default-src and script-src',
+                  authorised: true,
+                  date: '2025-10-22T12:00:00.000Z',
+                },
+              },
+              {
+                andMatcher: [{ contentMatcher: 'report-uri' }, { contentMatcher: 'frame-ancestors' }],
+                authorisationInfo: {
+                  description: 'AND group: report-uri and frame-ancestors',
+                  authorised: true,
+                  date: '2025-10-22T12:00:00.000Z',
+                },
+              },
+            ],
+            authorisationInfo: {
+              description: 'OR matcher with nested AND groups',
+              authorised: true,
+              date: '2025-10-22T12:00:00.000Z',
+            },
+          },
+        }
+
+        const result = RawInventoryScriptInfoSchema.safeParse(nestedSchema)
+        expect(result.success).toBe(true)
+      })
+
+      it('should reject nested OR with empty AND matcher array', () => {
+        const invalidSchema = {
+          identifyWith: { headerNameMatcher: '^content-security-policy$' },
+          authoriseWith: {
+            orMatcher: [
+              {
+                andMatcher: [], // Invalid: empty array
+                authorisationInfo: {
+                  description: 'Empty AND group',
+                  authorised: true,
+                  date: '2025-10-22T12:00:00.000Z',
+                },
+              },
+            ],
+            authorisationInfo: {
+              description: 'OR matcher',
+              authorised: true,
+              date: '2025-10-22T12:00:00.000Z',
+            },
+          },
+        }
+
+        const result = RawInventoryScriptInfoSchema.safeParse(invalidSchema)
+        expect(result.success).toBe(false)
+        if (!result.success) {
+          expect(result.error.issues[0]!.message).toContain('andMatcher must contain at least 1 child')
+        }
+      })
+    })
+
+    describe('Nested AND containing OR', () => {
+      it('should accept deeply nested AND containing OR matchers', () => {
+        const nestedSchema = {
+          identifyWith: { headerNameMatcher: '^content-security-policy$' },
+          authoriseWith: {
+            andMatcher: [
+              {
+                orMatcher: [{ contentMatcher: 'default-src.*self' }, { contentMatcher: 'default-src.*unsafe-inline' }],
+                authorisationInfo: {
+                  description: 'OR group: self or unsafe-inline',
+                  authorised: true,
+                  date: '2025-10-22T12:00:00.000Z',
+                },
+              },
+              { contentMatcher: 'script-src' },
+            ],
+            authorisationInfo: {
+              description: 'AND matcher with nested OR group',
+              authorised: true,
+              date: '2025-10-22T12:00:00.000Z',
+            },
+          },
+        }
+
+        const result = RawInventoryScriptInfoSchema.safeParse(nestedSchema)
+        expect(result.success).toBe(true)
+      })
+
+      it('should reject nested AND with empty OR matcher array', () => {
+        const invalidSchema = {
+          identifyWith: { headerNameMatcher: '^content-security-policy$' },
+          authoriseWith: {
+            andMatcher: [
+              {
+                orMatcher: [], // Invalid: empty array
+                authorisationInfo: {
+                  description: 'Empty OR group',
+                  authorised: true,
+                  date: '2025-10-22T12:00:00.000Z',
+                },
+              },
+            ],
+            authorisationInfo: {
+              description: 'AND matcher',
+              authorised: true,
+              date: '2025-10-22T12:00:00.000Z',
+            },
+          },
+        }
+
+        const result = RawInventoryScriptInfoSchema.safeParse(invalidSchema)
+        expect(result.success).toBe(false)
+        if (!result.success) {
+          expect(result.error.issues[0]!.message).toContain('orMatcher must contain at least 1 child')
+        }
+      })
+    })
+
+    describe('Deep nesting (5+ levels)', () => {
+      it('should accept 5 levels of nested composite matchers', () => {
+        const deeplyNestedSchema = {
+          identifyWith: { headerNameMatcher: '^content-security-policy$' },
+          authoriseWith: {
+            orMatcher: [
+              {
+                andMatcher: [
+                  {
+                    orMatcher: [
+                      {
+                        andMatcher: [
+                          {
+                            orMatcher: [{ contentMatcher: 'level-5-pattern-a' }, { contentMatcher: 'level-5-pattern-b' }],
+                            authorisationInfo: {
+                              description: 'Level 5 OR',
+                              authorised: true,
+                              date: '2025-10-22T12:00:00.000Z',
+                            },
+                          },
+                        ],
+                        authorisationInfo: {
+                          description: 'Level 4 AND',
+                          authorised: true,
+                          date: '2025-10-22T12:00:00.000Z',
+                        },
+                      },
+                    ],
+                    authorisationInfo: {
+                      description: 'Level 3 OR',
+                      authorised: true,
+                      date: '2025-10-22T12:00:00.000Z',
+                    },
+                  },
+                ],
+                authorisationInfo: {
+                  description: 'Level 2 AND',
+                  authorised: true,
+                  date: '2025-10-22T12:00:00.000Z',
+                },
+              },
+            ],
+            authorisationInfo: {
+              description: 'Level 1 OR (root)',
+              authorised: true,
+              date: '2025-10-22T12:00:00.000Z',
+            },
+          },
+        }
+
+        const result = RawInventoryScriptInfoSchema.safeParse(deeplyNestedSchema)
+        expect(result.success).toBe(true)
+      })
+
+      it('should accept 10 levels of nesting (performance boundary test)', () => {
+        // Build a 10-level deep alternating OR/AND structure
+        let currentLevel: any = { contentMatcher: 'deepest-level' }
+
+        // Wrap in 10 levels of alternating OR and AND matchers
+        for (let i = 10; i >= 1; i--) {
+          const matcherType = i % 2 === 0 ? 'andMatcher' : 'orMatcher'
+          currentLevel = {
+            [matcherType]: [currentLevel],
+            authorisationInfo: {
+              description: `Level ${i} ${matcherType}`,
+              authorised: true,
+              date: '2025-10-22T12:00:00.000Z',
+            },
+          }
+        }
+
+        const deepSchema = {
+          identifyWith: { headerNameMatcher: '^test-header$' },
+          authoriseWith: currentLevel,
+        }
+
+        const result = RawInventoryScriptInfoSchema.safeParse(deepSchema)
+        expect(result.success).toBe(true)
+      })
+    })
+
+    describe('Validation of recursive structures', () => {
+      it('should validate authorisationInfo at all nesting levels', () => {
+        const schemaWithInvalidNestedAuth = {
+          identifyWith: { headerNameMatcher: '^content-security-policy$' },
+          authoriseWith: {
+            orMatcher: [
+              {
+                andMatcher: [{ contentMatcher: 'test' }],
+                authorisationInfo: {
+                  description: 'Valid description',
+                  authorised: true,
+                  date: 'invalid-date-format', // Invalid: not ISO 8601
+                },
+              },
+            ],
+            authorisationInfo: {
+              description: 'Root level',
+              authorised: true,
+              date: '2025-10-22T12:00:00.000Z',
+            },
+          },
+        }
+
+        const result = RawInventoryScriptInfoSchema.safeParse(schemaWithInvalidNestedAuth)
+        expect(result.success).toBe(false)
+        if (!result.success) {
+          expect(result.error.issues[0]!.message).toContain('Invalid')
+        }
+      })
+
+      it('should reject invalid matcher types within nested structures', () => {
+        const schemaWithInvalidMatcher = {
+          identifyWith: { headerNameMatcher: '^content-security-policy$' },
+          authoriseWith: {
+            orMatcher: [
+              {
+                andMatcher: [
+                  { invalidMatcher: 'this should not be accepted' }, // Invalid matcher type
+                ],
+                authorisationInfo: {
+                  description: 'Nested AND',
+                  authorised: true,
+                  date: '2025-10-22T12:00:00.000Z',
+                },
+              },
+            ],
+            authorisationInfo: {
+              description: 'Root OR',
+              authorised: true,
+              date: '2025-10-22T12:00:00.000Z',
+            },
+          },
+        }
+
+        const result = RawInventoryScriptInfoSchema.safeParse(schemaWithInvalidMatcher)
+        expect(result.success).toBe(false)
+      })
+
+      it('should accept mixing all matcher types within nested composites', () => {
+        const mixedSchema = {
+          identifyWith: { headerNameMatcher: '^content-security-policy$' },
+          authoriseWith: {
+            orMatcher: [
+              { nameMatcher: '^https://cdn.example.com/.*' },
+              { contentMatcher: 'default-src' },
+              {
+                andMatcher: [{ contentMatcher: 'script-src' }, { contentMatcher: 'connect-src' }],
+                authorisationInfo: {
+                  description: 'AND group',
+                  authorised: true,
+                  date: '2025-10-22T12:00:00.000Z',
+                },
+              },
+            ],
+            authorisationInfo: {
+              description: 'Mixed matcher types in OR',
+              authorised: true,
+              date: '2025-10-22T12:00:00.000Z',
+            },
+          },
+        }
+
+        const result = RawInventoryScriptInfoSchema.safeParse(mixedSchema)
+        expect(result.success).toBe(true)
       })
     })
   })
