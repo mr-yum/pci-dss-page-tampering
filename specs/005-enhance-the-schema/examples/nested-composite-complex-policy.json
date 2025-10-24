@@ -1,0 +1,75 @@
+{
+  "scripts": [],
+  "headers": [
+    {
+      "identifyWith": {
+        "headerNameMatcher": "^content-security-policy$"
+      },
+      "authoriseWith": {
+        "orMatcher": [
+          {
+            "andMatcher": [
+              {
+                "contentMatcher": "default-src\\s+https:"
+              },
+              {
+                "contentMatcher": "script-src\\s+https:"
+              },
+              {
+                "contentMatcher": "object-src\\s+'none'"
+              }
+            ]
+          },
+          {
+            "andMatcher": [
+              {
+                "contentMatcher": "default-src\\s+'self'"
+              },
+              {
+                "contentMatcher": "script-src\\s+'self'\\s+'unsafe-inline'"
+              }
+            ]
+          }
+        ],
+        "authorisationInfo": {
+          "description": "Accept either strict production policy (HTTPS + no objects) OR relaxed staging policy (self + unsafe-inline)",
+          "authorised": true,
+          "date": "2025-10-24T12:00:00.000Z"
+        }
+      }
+    }
+  ],
+  "alerts": {
+    "inventory": {
+      "newScriptIdentified": {
+        "destination": "https://hooks.slack.com/services/example/inventory/script"
+      },
+      "newHeaderIdentified": {
+        "destination": "https://hooks.slack.com/services/example/inventory/header"
+      }
+    },
+    "detection": {
+      "newScriptDetected": {
+        "destination": "https://hooks.slack.com/services/example/detection/script"
+      },
+      "scriptMismatchDetected": {
+        "destination": "https://hooks.slack.com/services/example/detection/mismatch"
+      },
+      "newHeaderDetected": {
+        "destination": "https://hooks.slack.com/services/example/detection/header"
+      }
+    }
+  },
+  "target": {
+    "inventory": {
+      "type": "inventory",
+      "url": "https://staging.example.com/checkout",
+      "workflow": "checkout-flow"
+    },
+    "detection": {
+      "type": "detection",
+      "url": "https://example.com/checkout",
+      "workflow": "checkout-flow"
+    }
+  }
+}

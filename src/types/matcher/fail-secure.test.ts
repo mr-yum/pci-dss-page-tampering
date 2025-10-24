@@ -7,30 +7,31 @@
  * @see specs/005-enhance-the-schema/spec.md - Edge cases and fail-secure requirements
  */
 
+import type { SHA256Hash } from '../hash'
+import type { InventoryAuthorisationInfo } from '../inventory/model'
 import { AndMatcher } from './and-matcher'
 import { ContentMatcher } from './content-matcher'
+import type { DetectedScript } from './matcher.interface'
 import { OrMatcher } from './or-matcher'
-import type { InventoryAuthorisationInfo } from '../inventory/authorisation-info'
-import type { Matchable } from './matcher.interface'
 
 describe('Fail-Secure Edge Cases (T065-T070)', () => {
-  const mockMatchable = (name: string, content: string | null): Matchable => ({
+  const mockScript = (name: string, content: string | null): DetectedScript => ({
     name,
     content,
-    hash: undefined,
+    hash: 'mock-hash' as unknown as SHA256Hash,
   })
 
   const authInfo = (description: string, authorised: boolean = true): InventoryAuthorisationInfo => ({
     description,
     authorised,
-    date: new Date().toISOString(),
+    date: new Date(),
   })
 
   describe('T065: Single-child composite matchers (valid edge case)', () => {
     it('should accept OrMatcher with single child', () => {
-      const singleChildOr = new OrMatcher([new ContentMatcher(/test-pattern/)], authInfo('Single child OR'))
+      const singleChildOr = new OrMatcher([new ContentMatcher('test-pattern')], authInfo('Single child OR'))
 
-      const resource = mockMatchable('test', 'test-pattern content')
+      const resource = mockScript('test', 'test-pattern content')
 
       const result = singleChildOr.authorize(resource)
       expect(result.authorized).toBe(true)
@@ -38,9 +39,9 @@ describe('Fail-Secure Edge Cases (T065-T070)', () => {
     })
 
     it('should accept AndMatcher with single child', () => {
-      const singleChildAnd = new AndMatcher([new ContentMatcher(/test-pattern/)], authInfo('Single child AND'))
+      const singleChildAnd = new AndMatcher([new ContentMatcher('test-pattern')], authInfo('Single child AND'))
 
-      const resource = mockMatchable('test', 'test-pattern content')
+      const resource = mockScript('test', 'test-pattern content')
 
       const result = singleChildAnd.authorize(resource)
       expect(result.authorized).toBe(true)
@@ -48,9 +49,9 @@ describe('Fail-Secure Edge Cases (T065-T070)', () => {
     })
 
     it('should deny OrMatcher with single non-matching child', () => {
-      const singleChildOr = new OrMatcher([new ContentMatcher(/missing-pattern/)], authInfo('Single child OR'))
+      const singleChildOr = new OrMatcher([new ContentMatcher('missing-pattern')], authInfo('Single child OR'))
 
-      const resource = mockMatchable('test', 'different content')
+      const resource = mockScript('test', 'different content')
 
       const result = singleChildOr.authorize(resource)
       expect(result.authorized).toBe(false)
@@ -58,9 +59,9 @@ describe('Fail-Secure Edge Cases (T065-T070)', () => {
     })
 
     it('should deny AndMatcher with single non-matching child', () => {
-      const singleChildAnd = new AndMatcher([new ContentMatcher(/missing-pattern/)], authInfo('Single child AND'))
+      const singleChildAnd = new AndMatcher([new ContentMatcher('missing-pattern')], authInfo('Single child AND'))
 
-      const resource = mockMatchable('test', 'different content')
+      const resource = mockScript('test', 'different content')
 
       const result = singleChildAnd.authorize(resource)
       expect(result.authorized).toBe(false)
@@ -71,9 +72,9 @@ describe('Fail-Secure Edge Cases (T065-T070)', () => {
   describe('T066: authorisationInfo.authorised: false always denying', () => {
     describe('OrMatcher with authorised: false', () => {
       it('should deny even when child matcher succeeds', () => {
-        const orMatcher = new OrMatcher([new ContentMatcher(/.*/)], authInfo('Explicitly denied', false))
+        const orMatcher = new OrMatcher([new ContentMatcher('.*')], authInfo('Explicitly denied', false))
 
-        const resource = mockMatchable('test', 'any content matches')
+        const resource = mockScript('test', 'any content matches')
 
         const result = orMatcher.authorize(resource)
         expect(result.authorized).toBe(false)
@@ -83,9 +84,9 @@ describe('Fail-Secure Edge Cases (T065-T070)', () => {
 
       it('should include metadata path even when denying', () => {
         const denialInfo = authInfo('Deprecated policy', false)
-        const orMatcher = new OrMatcher([new ContentMatcher(/test/)], denialInfo)
+        const orMatcher = new OrMatcher([new ContentMatcher('test')], denialInfo)
 
-        const resource = mockMatchable('test', 'test content')
+        const resource = mockScript('test', 'test content')
 
         const result = orMatcher.authorize(resource)
         expect(result.authorized).toBe(false)
@@ -96,12 +97,9 @@ describe('Fail-Secure Edge Cases (T065-T070)', () => {
 
     describe('AndMatcher with authorised: false', () => {
       it('should deny even when all children succeed', () => {
-        const andMatcher = new AndMatcher(
-          [new ContentMatcher(/foo/), new ContentMatcher(/bar/)],
-          authInfo('Explicitly denied', false),
-        )
+        const andMatcher = new AndMatcher([new ContentMatcher('foo'), new ContentMatcher('bar')], authInfo('Explicitly denied', false))
 
-        const resource = mockMatchable('test', 'content with foo and bar')
+        const resource = mockScript('test', 'content with foo and bar')
 
         const result = andMatcher.authorize(resource)
         expect(result.authorized).toBe(false)
@@ -112,14 +110,11 @@ describe('Fail-Secure Edge Cases (T065-T070)', () => {
 
     describe('Nested composite with authorised: false at different levels', () => {
       it('should deny when root has authorised: false', () => {
-        const andGroup = new AndMatcher(
-          [new ContentMatcher(/foo/), new ContentMatcher(/bar/)],
-          authInfo('Inner AND', true),
-        )
+        const andGroup = new AndMatcher([new ContentMatcher('foo'), new ContentMatcher('bar')], authInfo('Inner AND', true))
 
         const orMatcher = new OrMatcher([andGroup], authInfo('Root OR - denied', false))
 
-        const resource = mockMatchable('test', 'foo and bar')
+        const resource = mockScript('test', 'foo and bar')
 
         const result = orMatcher.authorize(resource)
         expect(result.authorized).toBe(false)
@@ -127,28 +122,25 @@ describe('Fail-Secure Edge Cases (T065-T070)', () => {
       })
 
       it('should deny when nested child has authorised: false', () => {
-        const andGroup = new AndMatcher(
-          [new ContentMatcher(/foo/), new ContentMatcher(/bar/)],
-          authInfo('Inner AND - denied', false),
-        )
+        const andGroup = new AndMatcher([new ContentMatcher('foo'), new ContentMatcher('bar')], authInfo('Inner AND - denied', false))
 
         const orMatcher = new OrMatcher([andGroup]) // No top-level override
 
-        const resource = mockMatchable('test', 'foo and bar')
+        const resource = mockScript('test', 'foo and bar')
 
         const result = orMatcher.authorize(resource)
         expect(result.authorized).toBe(false)
         expect(result.metadataPath).toBeDefined()
-        expect(result.metadataPath![0].description).toContain('Inner AND - denied')
+        expect(result.metadataPath![0]!.description).toContain('Inner AND - denied')
       })
     })
   })
 
   describe('T067: Whitespace-only content triggering unauthorized', () => {
     it('should deny OrMatcher when content is only spaces', () => {
-      const orMatcher = new OrMatcher([new ContentMatcher(/.*/)], authInfo('Should match anything'))
+      const orMatcher = new OrMatcher([new ContentMatcher('.*')], authInfo('Should match anything'))
 
-      const resource = mockMatchable('test', '   ')
+      const resource = mockScript('test', '   ')
 
       const result = orMatcher.authorize(resource)
       expect(result.authorized).toBe(false)
@@ -156,9 +148,9 @@ describe('Fail-Secure Edge Cases (T065-T070)', () => {
     })
 
     it('should deny AndMatcher when content is only tabs', () => {
-      const andMatcher = new AndMatcher([new ContentMatcher(/.*/)], authInfo('Should match anything'))
+      const andMatcher = new AndMatcher([new ContentMatcher('.*')], authInfo('Should match anything'))
 
-      const resource = mockMatchable('test', '\t\t\t')
+      const resource = mockScript('test', '\t\t\t')
 
       const result = andMatcher.authorize(resource)
       expect(result.authorized).toBe(false)
@@ -166,9 +158,9 @@ describe('Fail-Secure Edge Cases (T065-T070)', () => {
     })
 
     it('should deny when content is newlines and spaces', () => {
-      const orMatcher = new OrMatcher([new ContentMatcher(/.*/)], authInfo('Should match anything'))
+      const orMatcher = new OrMatcher([new ContentMatcher('.*')], authInfo('Should match anything'))
 
-      const resource = mockMatchable('test', '\n  \n\t  \n')
+      const resource = mockScript('test', '\n  \n\t  \n')
 
       const result = orMatcher.authorize(resource)
       expect(result.authorized).toBe(false)
@@ -176,9 +168,9 @@ describe('Fail-Secure Edge Cases (T065-T070)', () => {
     })
 
     it('should authorize when content has actual characters with surrounding whitespace', () => {
-      const orMatcher = new OrMatcher([new ContentMatcher(/test/)], authInfo('Should match test'))
+      const orMatcher = new OrMatcher([new ContentMatcher('test')], authInfo('Should match test'))
 
-      const resource = mockMatchable('test', '  \n test \n  ')
+      const resource = mockScript('test', '  \n test \n  ')
 
       const result = orMatcher.authorize(resource)
       expect(result.authorized).toBe(true)
@@ -187,9 +179,9 @@ describe('Fail-Secure Edge Cases (T065-T070)', () => {
 
   describe('T068: Undefined content triggering unauthorized', () => {
     it('should deny OrMatcher when content is null', () => {
-      const orMatcher = new OrMatcher([new ContentMatcher(/.*/)], authInfo('Should match anything'))
+      const orMatcher = new OrMatcher([new ContentMatcher('.*')], authInfo('Should match anything'))
 
-      const resource = mockMatchable('test', null)
+      const resource = mockScript('test', null)
 
       const result = orMatcher.authorize(resource)
       expect(result.authorized).toBe(false)
@@ -197,9 +189,9 @@ describe('Fail-Secure Edge Cases (T065-T070)', () => {
     })
 
     it('should deny AndMatcher when content is null', () => {
-      const andMatcher = new AndMatcher([new ContentMatcher(/.*/)], authInfo('Should match anything'))
+      const andMatcher = new AndMatcher([new ContentMatcher('.*')], authInfo('Should match anything'))
 
-      const resource = mockMatchable('test', null)
+      const resource = mockScript('test', null)
 
       const result = andMatcher.authorize(resource)
       expect(result.authorized).toBe(false)
@@ -207,11 +199,11 @@ describe('Fail-Secure Edge Cases (T065-T070)', () => {
     })
 
     it('should deny nested composite when content is null', () => {
-      const andGroup = new AndMatcher([new ContentMatcher(/foo/), new ContentMatcher(/bar/)], authInfo('AND group'))
+      const andGroup = new AndMatcher([new ContentMatcher('foo'), new ContentMatcher('bar')], authInfo('AND group'))
 
       const orMatcher = new OrMatcher([andGroup], authInfo('OR wrapper'))
 
-      const resource = mockMatchable('test', null)
+      const resource = mockScript('test', null)
 
       const result = orMatcher.authorize(resource)
       expect(result.authorized).toBe(false)
@@ -219,9 +211,9 @@ describe('Fail-Secure Edge Cases (T065-T070)', () => {
     })
 
     it('should deny when content is empty string', () => {
-      const orMatcher = new OrMatcher([new ContentMatcher(/.*/)], authInfo('Should match anything'))
+      const orMatcher = new OrMatcher([new ContentMatcher('.*')], authInfo('Should match anything'))
 
-      const resource = mockMatchable('test', '')
+      const resource = mockScript('test', '')
 
       const result = orMatcher.authorize(resource)
       expect(result.authorized).toBe(false)
@@ -229,14 +221,11 @@ describe('Fail-Secure Edge Cases (T065-T070)', () => {
     })
   })
 
-  describe('T069: Top-level override when matchers don\'t match', () => {
-    it('should NOT override when OrMatcher children don\'t identify', () => {
-      const orMatcher = new OrMatcher(
-        [new ContentMatcher(/pattern-that-wont-match/)],
-        authInfo('Top-level override', true),
-      )
+  describe("T069: Top-level override when matchers don't match", () => {
+    it("should NOT override when OrMatcher children don't identify", () => {
+      const orMatcher = new OrMatcher([new ContentMatcher('pattern-that-wont-match')], authInfo('Top-level override', true))
 
-      const resource = mockMatchable('test', 'different content')
+      const resource = mockScript('test', 'different content')
 
       const result = orMatcher.authorize(resource)
       expect(result.authorized).toBe(false)
@@ -244,13 +233,10 @@ describe('Fail-Secure Edge Cases (T065-T070)', () => {
       // Top-level override should NOT apply when no child matches
     })
 
-    it('should NOT override when AndMatcher children don\'t all identify', () => {
-      const andMatcher = new AndMatcher(
-        [new ContentMatcher(/foo/), new ContentMatcher(/bar/)],
-        authInfo('Top-level override', true),
-      )
+    it("should NOT override when AndMatcher children don't all identify", () => {
+      const andMatcher = new AndMatcher([new ContentMatcher('foo'), new ContentMatcher('bar')], authInfo('Top-level override', true))
 
-      const resource = mockMatchable('test', 'only foo here')
+      const resource = mockScript('test', 'only foo here')
 
       const result = andMatcher.authorize(resource)
       expect(result.authorized).toBe(false)
@@ -258,21 +244,18 @@ describe('Fail-Secure Edge Cases (T065-T070)', () => {
     })
 
     it('should apply override when OrMatcher child identifies', () => {
-      const orMatcher = new OrMatcher([new ContentMatcher(/test/)], authInfo('Override applies', true))
+      const orMatcher = new OrMatcher([new ContentMatcher('test')], authInfo('Override applies', true))
 
-      const resource = mockMatchable('test', 'test content')
+      const resource = mockScript('test', 'test content')
 
       const result = orMatcher.authorize(resource)
       expect(result.authorized).toBe(true) // Override applied because child identified
     })
 
     it('should apply override (deny) when AndMatcher children all identify', () => {
-      const andMatcher = new AndMatcher(
-        [new ContentMatcher(/foo/), new ContentMatcher(/bar/)],
-        authInfo('Override denies', false),
-      )
+      const andMatcher = new AndMatcher([new ContentMatcher('foo'), new ContentMatcher('bar')], authInfo('Override denies', false))
 
-      const resource = mockMatchable('test', 'foo and bar')
+      const resource = mockScript('test', 'foo and bar')
 
       const result = andMatcher.authorize(resource)
       expect(result.authorized).toBe(false) // Override applied because all children identified
@@ -281,9 +264,9 @@ describe('Fail-Secure Edge Cases (T065-T070)', () => {
 
     it('should include metadata path when override does not apply', () => {
       const authInfoObj = authInfo('Top-level that does not apply', true)
-      const orMatcher = new OrMatcher([new ContentMatcher(/missing/)], authInfoObj)
+      const orMatcher = new OrMatcher([new ContentMatcher('missing')], authInfoObj)
 
-      const resource = mockMatchable('test', 'different content')
+      const resource = mockScript('test', 'different content')
 
       const result = orMatcher.authorize(resource)
       expect(result.authorized).toBe(false)
@@ -331,16 +314,16 @@ describe('Fail-Secure Edge Cases (T065-T070)', () => {
     it('should verify AndMatcher.identify() never reaches Array.every() on empty array', () => {
       // This test verifies that constructor validation prevents Array.every() from ever being called on empty array
       // The previous tests confirm constructor throws, so identify() never gets called with empty array
-      const andMatcher = new AndMatcher([new ContentMatcher(/test/)], authInfo('Single child'))
-      const resource = mockMatchable('test', 'test content')
+      const andMatcher = new AndMatcher([new ContentMatcher('test')], authInfo('Single child'))
+      const resource = mockScript('test', 'test content')
 
       // If we got here, the array is non-empty (constructor validated)
       expect(andMatcher.identify(resource)).toBe(true)
     })
 
     it('should verify AndMatcher with single child uses Array.every() safely', () => {
-      const andMatcher = new AndMatcher([new ContentMatcher(/test/)], authInfo('Single child'))
-      const resource = mockMatchable('test', 'test content')
+      const andMatcher = new AndMatcher([new ContentMatcher('test')], authInfo('Single child'))
+      const resource = mockScript('test', 'test content')
 
       // Array.every([single item]) is safe - returns correct result
       expect(andMatcher.identify(resource)).toBe(true)
@@ -349,11 +332,11 @@ describe('Fail-Secure Edge Cases (T065-T070)', () => {
 
   describe('Combined edge cases', () => {
     it('should handle nested composites with whitespace content', () => {
-      const andGroup = new AndMatcher([new ContentMatcher(/foo/), new ContentMatcher(/bar/)], authInfo('AND group'))
+      const andGroup = new AndMatcher([new ContentMatcher('foo'), new ContentMatcher('bar')], authInfo('AND group'))
 
       const orMatcher = new OrMatcher([andGroup], authInfo('OR wrapper'))
 
-      const resource = mockMatchable('test', '   \n\t   ')
+      const resource = mockScript('test', '   \n\t   ')
 
       const result = orMatcher.authorize(resource)
       expect(result.authorized).toBe(false)
@@ -361,9 +344,9 @@ describe('Fail-Secure Edge Cases (T065-T070)', () => {
     })
 
     it('should handle single-child composite with authorised: false', () => {
-      const singleChildOr = new OrMatcher([new ContentMatcher(/.*/)], authInfo('Denied single child', false))
+      const singleChildOr = new OrMatcher([new ContentMatcher('.*')], authInfo('Denied single child', false))
 
-      const resource = mockMatchable('test', 'any content')
+      const resource = mockScript('test', 'any content')
 
       const result = singleChildOr.authorize(resource)
       expect(result.authorized).toBe(false)
@@ -371,9 +354,9 @@ describe('Fail-Secure Edge Cases (T065-T070)', () => {
     })
 
     it('should handle multiple edge cases: null content + override', () => {
-      const orMatcher = new OrMatcher([new ContentMatcher(/.*/)], authInfo('Override that never applies', true))
+      const orMatcher = new OrMatcher([new ContentMatcher('.*')], authInfo('Override that never applies', true))
 
-      const resource = mockMatchable('test', null)
+      const resource = mockScript('test', null)
 
       const result = orMatcher.authorize(resource)
       expect(result.authorized).toBe(false)

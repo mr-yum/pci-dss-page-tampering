@@ -237,8 +237,8 @@ describe('Composite Matcher Integration Tests (T041-T043)', () => {
       const result = orMatcher.authorize(header)
       expect(result.authorized).toBe(true)
       expect(result.metadataPath).toHaveLength(2)
-      expect(result.metadataPath?.[0]).toEqual(rootInfo)
-      expect(result.metadataPath?.[1]).toEqual(andInfo)
+      expect(result.metadataPath![0]).toEqual(rootInfo)
+      expect(result.metadataPath![1]).toEqual(andInfo)
     })
   })
 
@@ -429,56 +429,38 @@ describe('Composite Matcher Integration Tests (T041-T043)', () => {
       )
 
       // Policy 3: Transitional policy (nested OR within AND)
-      const scriptSrcOptions = new OrMatcher<Matchable>(
-        [new ContentMatcher("script-src.*'strict-dynamic'"), new ContentMatcher("script-src.*'nonce-")],
-        createAuthInfo('Script-src: either strict-dynamic or nonce', true),
-      )
+      const scriptSrcOptions = new OrMatcher<Matchable>([new ContentMatcher("script-src.*'strict-dynamic'"), new ContentMatcher("script-src.*'nonce-")], createAuthInfo('Script-src: either strict-dynamic or nonce', true))
 
-      const transitionalPolicy = new AndMatcher<Matchable>(
-        [new ContentMatcher('upgrade-insecure-requests'), new ContentMatcher('report-uri'), scriptSrcOptions],
-        createAuthInfo('Transitional policy - upgrading with reporting', true),
-      )
+      const transitionalPolicy = new AndMatcher<Matchable>([new ContentMatcher('upgrade-insecure-requests'), new ContentMatcher('report-uri'), scriptSrcOptions], createAuthInfo('Transitional policy - upgrading with reporting', true))
 
       // Root OR matcher combining all three policies
-      const cspMatcher = new OrMatcher<Matchable>(
-        [strictDefaults, legacyWithProtections, transitionalPolicy],
-        createAuthInfo('Payment page CSP - strict, legacy, or transitional', true),
-      )
+      const cspMatcher = new OrMatcher<Matchable>([strictDefaults, legacyWithProtections, transitionalPolicy], createAuthInfo('Payment page CSP - strict, legacy, or transitional', true))
 
       // Test Case 1: Strict policy header
-      const strictHeader = createHeader(
-        'content-security-policy',
-        "default-src 'self'; script-src 'nonce-r4nd0m' 'strict-dynamic'; object-src 'none'; base-uri 'self'; report-uri /csp-report;",
-      )
+      const strictHeader = createHeader('content-security-policy', "default-src 'self'; script-src 'nonce-r4nd0m' 'strict-dynamic'; object-src 'none'; base-uri 'self'; report-uri /csp-report;")
 
       const strictResult = cspMatcher.authorize(strictHeader)
       expect(strictResult.authorized).toBe(true)
       expect(strictResult.metadataPath).toHaveLength(2) // Root OR + Strict AND
-      expect(strictResult.metadataPath?.[0].description).toContain('Payment page CSP')
-      expect(strictResult.metadataPath?.[1].description).toContain('Strict CSP policy')
+      expect(strictResult.metadataPath![0]!.description).toContain('Payment page CSP')
+      expect(strictResult.metadataPath![1]!.description).toContain('Strict CSP policy')
 
       // Test Case 2: Legacy policy header
-      const legacyHeader = createHeader(
-        'content-security-policy',
-        "default-src 'unsafe-inline' https:; script-src 'unsafe-inline' https:; frame-ancestors 'self'; report-uri /csp-report;",
-      )
+      const legacyHeader = createHeader('content-security-policy', "default-src 'unsafe-inline' https:; script-src 'unsafe-inline' https:; frame-ancestors 'self'; report-uri /csp-report;")
 
       const legacyResult = cspMatcher.authorize(legacyHeader)
       expect(legacyResult.authorized).toBe(true)
       expect(legacyResult.metadataPath).toHaveLength(2) // Root OR + Legacy AND
-      expect(legacyResult.metadataPath?.[1].description).toContain('Legacy CSP policy')
+      expect(legacyResult.metadataPath![1]!.description).toContain('Legacy CSP policy')
 
       // Test Case 3: Transitional policy header (with nested OR match)
-      const transitionalHeader = createHeader(
-        'content-security-policy',
-        "default-src https:; script-src 'strict-dynamic' https:; upgrade-insecure-requests; report-uri /csp-report;",
-      )
+      const transitionalHeader = createHeader('content-security-policy', "default-src https:; script-src 'strict-dynamic' https:; upgrade-insecure-requests; report-uri /csp-report;")
 
       const transitionalResult = cspMatcher.authorize(transitionalHeader)
       expect(transitionalResult.authorized).toBe(true)
       expect(transitionalResult.metadataPath).toHaveLength(3) // Root OR + Transitional AND + Script-src OR
-      expect(transitionalResult.metadataPath?.[1].description).toContain('Transitional policy')
-      expect(transitionalResult.metadataPath?.[2].description).toContain('Script-src')
+      expect(transitionalResult.metadataPath![1]!.description).toContain('Transitional policy')
+      expect(transitionalResult.metadataPath![2]!.description).toContain('Script-src')
 
       // Test Case 4: Invalid policy (doesn't match any of the three)
       const invalidHeader = createHeader('content-security-policy', 'default-src https:; script-src https:;')
@@ -498,45 +480,30 @@ describe('Composite Matcher Integration Tests (T041-T043)', () => {
       // Level 4: AND groups for directive combinations
       const minimalDirectives = new AndMatcher<Matchable>([defaultSrc, scriptSrc], createAuthInfo('Level 4: Minimal required directives', true))
 
-      const fullDirectives = new AndMatcher<Matchable>(
-        [defaultSrc, scriptSrc, connectSrc, imgSrc],
-        createAuthInfo('Level 4: Complete directive set', true),
-      )
+      const fullDirectives = new AndMatcher<Matchable>([defaultSrc, scriptSrc, connectSrc, imgSrc], createAuthInfo('Level 4: Complete directive set', true))
 
       // Level 3: OR for directive requirement options
-      const directiveOptions = new OrMatcher<Matchable>(
-        [minimalDirectives, fullDirectives],
-        createAuthInfo('Level 3: Either minimal or full directives', true),
-      )
+      const directiveOptions = new OrMatcher<Matchable>([minimalDirectives, fullDirectives], createAuthInfo('Level 3: Either minimal or full directives', true))
 
       // Level 2: AND with additional requirements
       const upgradeRequirement = new ContentMatcher('upgrade-insecure-requests')
-      const policyWithUpgrade = new AndMatcher<Matchable>(
-        [directiveOptions, upgradeRequirement],
-        createAuthInfo('Level 2: Directives AND upgrade-insecure-requests', true),
-      )
+      const policyWithUpgrade = new AndMatcher<Matchable>([directiveOptions, upgradeRequirement], createAuthInfo('Level 2: Directives AND upgrade-insecure-requests', true))
 
       // Level 1: Root OR with alternative top-level policies
       const reportingOnly = new ContentMatcher('report-uri')
-      const rootPolicy = new OrMatcher<Matchable>(
-        [policyWithUpgrade, reportingOnly],
-        createAuthInfo('Level 1: Complete policy OR reporting-only', true),
-      )
+      const rootPolicy = new OrMatcher<Matchable>([policyWithUpgrade, reportingOnly], createAuthInfo('Level 1: Complete policy OR reporting-only', true))
 
       // Test: Full policy path (5 levels)
-      const fullHeader = createHeader(
-        'content-security-policy',
-        'default-src https:; script-src https:; connect-src https:; img-src https:; upgrade-insecure-requests;',
-      )
+      const fullHeader = createHeader('content-security-policy', 'default-src https:; script-src https:; connect-src https:; img-src https:; upgrade-insecure-requests;')
 
       const fullResult = rootPolicy.authorize(fullHeader)
       expect(fullResult.authorized).toBe(true)
       expect(fullResult.metadataPath).toHaveLength(4) // Levels 1-4 (leaves don't have metadata)
-      expect(fullResult.metadataPath?.[0].description).toContain('Level 1')
-      expect(fullResult.metadataPath?.[1].description).toContain('Level 2')
-      expect(fullResult.metadataPath?.[2].description).toContain('Level 3')
+      expect(fullResult.metadataPath![0]!.description).toContain('Level 1')
+      expect(fullResult.metadataPath![1]!.description).toContain('Level 2')
+      expect(fullResult.metadataPath![2]!.description).toContain('Level 3')
       // First-match-wins: minimal directives match before full directives in OR matcher
-      expect(fullResult.metadataPath?.[3].description).toContain('Level 4: Minimal')
+      expect(fullResult.metadataPath![3]!.description).toContain('Level 4: Minimal')
 
       // Test: Short-circuit path (reporting-only, bypasses nested structure)
       const reportingHeader = createHeader('content-security-policy', 'report-uri /csp-report;')
@@ -544,7 +511,7 @@ describe('Composite Matcher Integration Tests (T041-T043)', () => {
       const reportingResult = rootPolicy.authorize(reportingHeader)
       expect(reportingResult.authorized).toBe(true)
       expect(reportingResult.metadataPath).toHaveLength(1) // Only Level 1
-      expect(reportingResult.metadataPath?.[0].description).toContain('Level 1')
+      expect(reportingResult.metadataPath![0]!.description).toContain('Level 1')
     })
   })
 })

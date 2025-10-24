@@ -1,0 +1,61 @@
+{
+  "scripts": [],
+  "headers": [
+    {
+      "identifyWith": {
+        "headerNameMatcher": "^content-security-policy$"
+      },
+      "authoriseWith": {
+        "orMatcher": [
+          {
+            "contentMatcher": "default-src\\s+https:.*script-src\\s+https:"
+          },
+          {
+            "contentMatcher": "default-src\\s+'self'.*script-src\\s+'self'"
+          },
+          {
+            "contentMatcher": "default-src\\s+'none'"
+          }
+        ],
+        "authorisationInfo": {
+          "description": "Accept any of three valid CSP configurations: HTTPS-only (production), self-only (staging), or deny-all (maintenance)",
+          "authorised": true,
+          "date": "2025-10-24T12:00:00.000Z"
+        }
+      }
+    }
+  ],
+  "alerts": {
+    "inventory": {
+      "newScriptIdentified": {
+        "destination": "https://hooks.slack.com/services/example/inventory/script"
+      },
+      "newHeaderIdentified": {
+        "destination": "https://hooks.slack.com/services/example/inventory/header"
+      }
+    },
+    "detection": {
+      "newScriptDetected": {
+        "destination": "https://hooks.slack.com/services/example/detection/script"
+      },
+      "scriptMismatchDetected": {
+        "destination": "https://hooks.slack.com/services/example/detection/mismatch"
+      },
+      "newHeaderDetected": {
+        "destination": "https://hooks.slack.com/services/example/detection/header"
+      }
+    }
+  },
+  "target": {
+    "inventory": {
+      "type": "inventory",
+      "url": "https://staging.example.com/checkout",
+      "workflow": "checkout-flow"
+    },
+    "detection": {
+      "type": "detection",
+      "url": "https://example.com/checkout",
+      "workflow": "checkout-flow"
+    }
+  }
+}

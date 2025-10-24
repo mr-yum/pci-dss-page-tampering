@@ -81,6 +81,85 @@ export function detectOldSchema(inventory: unknown): string | null {
 }
 
 /**
+ * Detects and reports on composite matcher usage in inventory.
+ * Provides informative messages about composite matcher features.
+ *
+ * @param inventory - Raw inventory object
+ * @returns Array of informational messages about composite matchers found
+ */
+export function detectCompositeMatchers(inventory: unknown): string[] {
+  const messages: string[] = []
+
+  if (!inventory || typeof inventory !== 'object') {
+    return messages
+  }
+
+  // Check scripts for composite matchers
+  if ('scripts' in inventory && Array.isArray(inventory.scripts)) {
+    for (const script of inventory.scripts) {
+      if (script && typeof script === 'object') {
+        // Check identifyWith for composite matchers
+        if ('identifyWith' in script && script.identifyWith && typeof script.identifyWith === 'object') {
+          if ('orMatcher' in script.identifyWith) {
+            messages.push('ℹ️  Found orMatcher in scripts.identifyWith (multi-alternative identification)')
+          }
+          if ('andMatcher' in script.identifyWith) {
+            messages.push('ℹ️  Found andMatcher in scripts.identifyWith (multi-condition identification)')
+          }
+        }
+
+        // Check authoriseWith for composite matchers
+        if ('authoriseWith' in script && script.authoriseWith && typeof script.authoriseWith === 'object') {
+          const authoriseWith = script.authoriseWith as Record<string, unknown>
+          if ('matcher' in authoriseWith && authoriseWith['matcher'] && typeof authoriseWith['matcher'] === 'object') {
+            const matcher = authoriseWith['matcher'] as Record<string, unknown>
+            if ('orMatcher' in matcher) {
+              messages.push('ℹ️  Found orMatcher in scripts.authoriseWith.matcher (alternative authorization policies)')
+            }
+            if ('andMatcher' in matcher) {
+              messages.push('ℹ️  Found andMatcher in scripts.authoriseWith.matcher (multi-condition authorization)')
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Check headers for composite matchers
+  if ('headers' in inventory && Array.isArray(inventory.headers)) {
+    for (const header of inventory.headers) {
+      if (header && typeof header === 'object') {
+        // Check identifyWith for composite matchers
+        if ('identifyWith' in header && header.identifyWith && typeof header.identifyWith === 'object') {
+          if ('orMatcher' in header.identifyWith) {
+            messages.push('ℹ️  Found orMatcher in headers.identifyWith (multi-alternative identification)')
+          }
+          if ('andMatcher' in header.identifyWith) {
+            messages.push('ℹ️  Found andMatcher in headers.identifyWith (multi-condition identification)')
+          }
+        }
+
+        // Check authoriseWith for composite matchers
+        if ('authoriseWith' in header && header.authoriseWith && typeof header.authoriseWith === 'object') {
+          const authoriseWith = header.authoriseWith as Record<string, unknown>
+          if ('matcher' in authoriseWith && authoriseWith['matcher'] && typeof authoriseWith['matcher'] === 'object') {
+            const matcher = authoriseWith['matcher'] as Record<string, unknown>
+            if ('orMatcher' in matcher) {
+              messages.push('ℹ️  Found orMatcher in headers.authoriseWith.matcher (alternative authorization policies)')
+            }
+            if ('andMatcher' in matcher) {
+              messages.push('ℹ️  Found andMatcher in headers.authoriseWith.matcher (multi-condition authorization)')
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return [...new Set(messages)] // Remove duplicates
+}
+
+/**
  * Validates an inventory file.
  *
  * @param filePath - Absolute or relative path to inventory JSON file
@@ -145,6 +224,21 @@ function main(): void {
     console.log('✅ Inventory is valid!')
     console.log('')
     console.log('The inventory conforms to the new identifyWith/authoriseWith schema.')
+
+    // Report on composite matcher usage
+    try {
+      const fileContent = readFileSync(inventoryPath, 'utf-8')
+      const inventory = JSON.parse(fileContent)
+      const compositeMessages = detectCompositeMatchers(inventory)
+      if (compositeMessages.length > 0) {
+        console.log('')
+        console.log('Composite matcher features detected:')
+        compositeMessages.forEach((msg) => console.log(`  ${msg}`))
+      }
+    } catch {
+      // Ignore errors in composite detection (validation already passed)
+    }
+
     process.exit(0)
   } else {
     console.error('❌ Inventory validation failed:')

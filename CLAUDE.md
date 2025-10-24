@@ -120,15 +120,14 @@ act push --container-architecture linux/amd64 --secret-file .env.secrets
 
 Each inventory entry (scripts and headers) uses a nested authorization structure:
 
-- `identifyWith`: Matcher for identifying the resource (NameMatcher/HeaderNameMatcher/ContentMatcher/HashMatcher)
-- `authoriseWith`: Composite structure containing:
-  - `matcher`: Matcher for authorizing the resource's content
-  - `authorisationInfo`: Authorization metadata including:
-    - `description`: Human-readable justification
-    - `authorised`: Authorization status (boolean)
-    - `date`: Date of authorization decision
+- `identifyWith`: Matcher for identifying the resource (NameMatcher/HeaderNameMatcher/ContentMatcher/HashMatcher/OrMatcher/AndMatcher)
+- `authoriseWith`: Matcher configuration with authorization metadata:
+  - Can be a single matcher (NameMatcher, ContentMatcher, HashMatcher, OrMatcher, AndMatcher)
+  - Can be an array of matchers (syntactic sugar for OrMatcher)
+  - Must include `authorisationInfo` with description, authorization status, and date
+  - Composite matchers (OrMatcher, AndMatcher) can have nested `authorisationInfo` at each level
 
-**JSON Structure Example**:
+**Simple Matcher Example**:
 
 ```json
 {
@@ -144,7 +143,41 @@ Each inventory entry (scripts and headers) uses a nested authorization structure
 }
 ```
 
-This nested structure ensures authorization logic (matcher) and metadata are cohesively linked.
+**Composite Matcher Example (AND logic for CSP)**:
+
+```json
+{
+  "identifyWith": { "headerNameMatcher": "^content-security-policy$" },
+  "authoriseWith": {
+    "andMatcher": [{ "contentMatcher": "default-src\\s+https:" }, { "contentMatcher": "script-src\\s+https:" }, { "contentMatcher": "object-src\\s+'none'" }],
+    "authorisationInfo": {
+      "description": "CSP requiring all three critical directives",
+      "authorised": true,
+      "date": "2025-10-24T12:00:00.000Z"
+    }
+  }
+}
+```
+
+**Array Syntax Example (OR logic for multiple versions)**:
+
+```json
+{
+  "identifyWith": { "nameMatcher": "^https://cdn\\.example\\.com/analytics\\.js$" },
+  "authoriseWith": [
+    {
+      "hashes": [{ "timestamp": "2025-10-01T00:00:00.000Z", "hash": { "value": "abc123..." } }],
+      "authorisationInfo": { "description": "Version 1.0.0", "authorised": true, "date": "2025-10-01T00:00:00.000Z" }
+    },
+    {
+      "hashes": [{ "timestamp": "2025-10-15T00:00:00.000Z", "hash": { "value": "def456..." } }],
+      "authorisationInfo": { "description": "Version 1.1.0", "authorised": true, "date": "2025-10-15T00:00:00.000Z" }
+    }
+  ]
+}
+```
+
+This structure ensures authorization logic (matcher) and metadata are cohesively linked.
 
 #### Matcher System (Refactored 2025-10)
 
@@ -170,19 +203,32 @@ This nested structure ensures authorization logic (matcher) and metadata are coh
 - **Fail-Secure**: Empty composite matcher arrays are rejected at schema validation and constructor level
 - **Metadata Paths**: Authorization metadata is collected from root to leaf for full audit trail
 
-#### Comparison Result Types (Refactored 2025-10)
+#### Comparison Result Types (Enhanced 2025-10 with Metadata Paths)
 
 **Script Comparison Results:**
 
 - **UnknownScriptFound** (`src/types/comparison/unknown-script-found.ts`) - Script not in inventory or has null/empty content
-- **KnownScriptWithUnauthorisedContentFound** (`src/types/comparison/known-script-unauthorised-content-found.ts`) - Script identified but authorization failed (includes matcher details and failure reason)
-- **AuthorizedScriptFound** (`src/types/comparison/authorized-script-found.ts`) - Script both identified and authorized (compliant, no alert)
+- **KnownScriptWithUnauthorisedContentFound** (`src/types/comparison/known-script-unauthorised-content-found.ts`) - Script identified but authorization failed (includes matcher details, failure reason, and metadataPath for composite matchers)
+- **AuthorizedScriptFound** (`src/types/comparison/authorized-script-found.ts`) - Script both identified and authorized (compliant, no alert; includes metadataPath for composite matchers)
 
 **Header Comparison Results:**
 
 - **UnknownHeaderFound** (`src/types/comparison/unknown-header-found.ts`) - Header not in inventory
-- **KnownHeaderUnauthorisedContentFound** (`src/types/comparison/known-header-unauthorised-content-found.ts`) - Header identified but authorization failed (includes matcher details and failure reason)
-- **AuthorizedHeaderFound** (`src/types/comparison/authorized-header-found.ts`) - Header both identified and authorized (compliant, no alert)
+- **KnownHeaderUnauthorisedContentFound** (`src/types/comparison/known-header-unauthorised-content-found.ts`) - Header identified but authorization failed (includes matcher details, failure reason, and metadataPath for composite matchers)
+- **AuthorizedHeaderFound** (`src/types/comparison/authorized-header-found.ts`) - Header both identified and authorized (compliant, no alert; includes metadataPath for composite matchers)
+
+**Metadata Path**: For composite matchers (OrMatcher/AndMatcher), comparison results include a `metadataPath` array containing authorization metadata from root to leaf. This provides complete audit trail context for nested authorization decisions:
+
+```typescript
+{
+  authorized: true,
+  metadataPath: [
+    { description: "Accept either production OR staging policy", authorised: true, date: "2025-10-24..." },
+    { description: "Production policy with HTTPS", authorised: true, date: "2025-10-24..." },
+    { description: "default-src https: required", authorised: true, date: "2025-10-24..." }
+  ]
+}
+```
 
 These typed results provide complete context to alert handlers without additional queries.
 
