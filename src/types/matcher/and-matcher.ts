@@ -84,6 +84,16 @@ export class AndMatcher<T extends Matchable = Matchable> implements Matcher<T> {
   }
 
   /**
+   * Returns a human-readable description for logging.
+   *
+   * @returns Formatted string like "and:[matcher1, matcher2, ...]" with child descriptions
+   */
+  getDescription(): string {
+    const childDescriptions = this.children.length > 3 ? `${this.children.length} matchers` : this.children.map((child) => child.getDescription()).join(', ')
+    return `and:[${childDescriptions}]`
+  }
+
+  /**
    * Identifies if ALL child matchers identify the resource.
    *
    * FR-002: AND logic - succeeds only if ALL children succeed.

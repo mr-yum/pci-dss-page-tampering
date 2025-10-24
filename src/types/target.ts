@@ -1,3 +1,4 @@
+import type { Logger } from '../utils/logger'
 import type { Workflow } from './workflow'
 
 export type TargetInventory = Target & {
@@ -10,8 +11,10 @@ export type TargetDetection = Target & {
 
 export type Target = {
   type: 'inventory' | 'detection'
+  name?: string | undefined
   url: string
   workflow: Workflow
+  logger: Logger
 }
 
 export enum PullTarget {

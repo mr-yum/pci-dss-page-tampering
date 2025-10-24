@@ -39,16 +39,16 @@ export class DetectionService implements IDetectionService {
         })
       } catch (navError) {
         if (navError instanceof Error && navError.name === 'TimeoutError') {
-          console.error(`[Detection]: NAVIGATION TIMEOUT ERROR`)
-          console.error(`[Detection]: Target URL: ${puppeteerWorkflow.target.url}`)
-          console.error(`[Detection]: Error message: ${navError.message}`)
-          console.error(`[Detection]: Stack trace:`, navError.stack)
+          target.logger.error(`NAVIGATION TIMEOUT ERROR`)
+          target.logger.error(`Target URL: ${puppeteerWorkflow.target.url}`)
+          target.logger.error(`Error message: ${navError.message}`)
+          target.logger.error(`Stack trace:`, navError.stack)
         } else {
-          console.error(`[Detection]: NAVIGATION ERROR`)
-          console.error(`[Detection]: Target URL: ${puppeteerWorkflow.target.url}`)
-          console.error(`[Detection]: Error: ${navError}`)
+          target.logger.error(`NAVIGATION ERROR`)
+          target.logger.error(`Target URL: ${puppeteerWorkflow.target.url}`)
+          target.logger.error(`Error: ${navError}`)
           if (navError instanceof Error) {
-            console.error(`[Detection]: Stack trace:`, navError.stack)
+            target.logger.error(`Stack trace:`, navError.stack)
           }
         }
         throw navError
@@ -59,14 +59,14 @@ export class DetectionService implements IDetectionService {
         const totalStepCount = puppeteerWorkflow.locatorActions.length
         const currentStepIndex = index + 1
 
-        console.log(`[Detection]: (${currentStepIndex}/${totalStepCount}) ${step.description} for target '${puppeteerWorkflow.target.url}'.`)
+        target.logger.log(`(${currentStepIndex}/${totalStepCount}) ${step.description} for target '${puppeteerWorkflow.target.url}'.`)
 
         try {
           // Wait for element to be available
           await step.locator.wait()
 
           // Execute action
-          await this.executeAction(page, step)
+          await this.executeAction(page, step, target)
 
           // Detect and add new inline scripts on each workflow action
           const newInlineScripts = await this.detectNewInlineScripts(page, internalScripts, scriptContentMatchers)
@@ -74,24 +74,24 @@ export class DetectionService implements IDetectionService {
         } catch (stepError) {
           // Enhanced error logging for workflow steps
           if (stepError instanceof Error && stepError.name === 'TimeoutError') {
-            console.error(`[Detection]: TIMEOUT ERROR in step ${currentStepIndex}/${totalStepCount}`)
-            console.error(`[Detection]: Step description: ${step.description}`)
-            console.error(`[Detection]: Target URL: ${puppeteerWorkflow.target.url}`)
-            console.error(`[Detection]: Element selector: ${step.querySelector}`)
-            console.error(`[Detection]: Action type: ${step.action.type}`)
-            console.error(`[Detection]: Current page URL: ${page.url()}`)
-            console.error(`[Detection]: Error message: ${stepError.message}`)
-            console.error(`[Detection]: Stack trace:`, stepError.stack)
+            target.logger.error(`TIMEOUT ERROR in step ${currentStepIndex}/${totalStepCount}`)
+            target.logger.error(`Step description: ${step.description}`)
+            target.logger.error(`Target URL: ${puppeteerWorkflow.target.url}`)
+            target.logger.error(`Element selector: ${step.querySelector}`)
+            target.logger.error(`Action type: ${step.action.type}`)
+            target.logger.error(`Current page URL: ${page.url()}`)
+            target.logger.error(`Error message: ${stepError.message}`)
+            target.logger.error(`Stack trace:`, stepError.stack)
           } else {
-            console.error(`[Detection]: ERROR in step ${currentStepIndex}/${totalStepCount}`)
-            console.error(`[Detection]: Step description: ${step.description}`)
-            console.error(`[Detection]: Target URL: ${puppeteerWorkflow.target.url}`)
-            console.error(`[Detection]: Element selector: ${step.querySelector}`)
-            console.error(`[Detection]: Action type: ${step.action.type}`)
-            console.error(`[Detection]: Current page URL: ${page.url()}`)
-            console.error(`[Detection]: Error: ${stepError}`)
+            target.logger.error(`ERROR in step ${currentStepIndex}/${totalStepCount}`)
+            target.logger.error(`Step description: ${step.description}`)
+            target.logger.error(`Target URL: ${puppeteerWorkflow.target.url}`)
+            target.logger.error(`Element selector: ${step.querySelector}`)
+            target.logger.error(`Action type: ${step.action.type}`)
+            target.logger.error(`Current page URL: ${page.url()}`)
+            target.logger.error(`Error: ${stepError}`)
             if (stepError instanceof Error) {
-              console.error(`[Detection]: Stack trace:`, stepError.stack)
+              target.logger.error(`Stack trace:`, stepError.stack)
             }
           }
           throw stepError // Re-throw to maintain existing error handling
@@ -100,18 +100,18 @@ export class DetectionService implements IDetectionService {
     } catch (e) {
       // Enhanced error logging for the main catch block
       if (e instanceof Error && e.name === 'TimeoutError') {
-        console.error(`[Detection]: TIMEOUT ERROR during page processing`)
-        console.error(`[Detection]: Target URL: ${puppeteerWorkflow?.target?.url || 'Unknown'}`)
-        console.error(`[Detection]: Current page URL: ${page.url()}`)
-        console.error(`[Detection]: Error message: ${e.message}`)
-        console.error(`[Detection]: Stack trace:`, e.stack)
+        target.logger.error(`TIMEOUT ERROR during page processing`)
+        target.logger.error(`Target URL: ${puppeteerWorkflow?.target?.url || 'Unknown'}`)
+        target.logger.error(`Current page URL: ${page.url()}`)
+        target.logger.error(`Error message: ${e.message}`)
+        target.logger.error(`Stack trace:`, e.stack)
       } else {
-        console.error(`[Detection]: ERROR during page processing`)
-        console.error(`[Detection]: Target URL: ${puppeteerWorkflow?.target?.url || 'Unknown'}`)
-        console.error(`[Detection]: Current page URL: ${page.url()}`)
-        console.error(`[Detection]: Error: ${e}`)
+        target.logger.error(`ERROR during page processing`)
+        target.logger.error(`Target URL: ${puppeteerWorkflow?.target?.url || 'Unknown'}`)
+        target.logger.error(`Current page URL: ${page.url()}`)
+        target.logger.error(`Error: ${e}`)
         if (e instanceof Error) {
-          console.error(`[Detection]: Stack trace:`, e.stack)
+          target.logger.error(`Stack trace:`, e.stack)
         }
       }
       throw e // Re-throw the error to ensure it's propagated
@@ -131,7 +131,7 @@ export class DetectionService implements IDetectionService {
     }
   }
 
-  private async executeAction(page: Page, step: PuppeteerLocatorAction): Promise<void> {
+  private async executeAction(page: Page, step: PuppeteerLocatorAction, target: Target): Promise<void> {
     // Delay action
     if (step.delay > 0) {
       await this.sleep(step.delay)
@@ -182,40 +182,40 @@ export class DetectionService implements IDetectionService {
 
               for (const [popupIndex, innerStep] of innerSteps.entries()) {
                 const popupStepNumber = popupIndex + 1
-                console.log(`[Detection]: Popup step ${popupStepNumber}/${innerSteps.length}: ${innerStep.description}`)
+                target.logger.log(`Popup step ${popupStepNumber}/${innerSteps.length}: ${innerStep.description}`)
 
                 try {
                   await innerStep.locator.wait()
-                  await this.executeAction(popupPage, innerStep)
+                  await this.executeAction(popupPage, innerStep, target)
                 } catch (popupStepError) {
                   if (popupStepError instanceof Error && popupStepError.name === 'TimeoutError') {
-                    console.error(`[Detection]: POPUP TIMEOUT ERROR in step ${popupStepNumber}/${innerSteps.length}`)
-                    console.error(`[Detection]: Popup step description: ${innerStep.description}`)
-                    console.error(`[Detection]: Popup element selector: ${innerStep.querySelector}`)
-                    console.error(`[Detection]: Popup action type: ${innerStep.action.type}`)
-                    console.error(`[Detection]: Popup page URL: ${popupPage.url()}`)
-                    console.error(`[Detection]: Error message: ${popupStepError.message}`)
-                    console.error(`[Detection]: Stack trace:`, popupStepError.stack)
+                    target.logger.error(`POPUP TIMEOUT ERROR in step ${popupStepNumber}/${innerSteps.length}`)
+                    target.logger.error(`Popup step description: ${innerStep.description}`)
+                    target.logger.error(`Popup element selector: ${innerStep.querySelector}`)
+                    target.logger.error(`Popup action type: ${innerStep.action.type}`)
+                    target.logger.error(`Popup page URL: ${popupPage.url()}`)
+                    target.logger.error(`Error message: ${popupStepError.message}`)
+                    target.logger.error(`Stack trace:`, popupStepError.stack)
                   } else {
-                    console.error(`[Detection]: POPUP ERROR in step ${popupStepNumber}/${innerSteps.length}`)
-                    console.error(`[Detection]: Popup step description: ${innerStep.description}`)
-                    console.error(`[Detection]: Popup element selector: ${innerStep.querySelector}`)
-                    console.error(`[Detection]: Popup action type: ${innerStep.action.type}`)
-                    console.error(`[Detection]: Popup page URL: ${popupPage.url()}`)
-                    console.error(`[Detection]: Error: ${popupStepError}`)
+                    target.logger.error(`POPUP ERROR in step ${popupStepNumber}/${innerSteps.length}`)
+                    target.logger.error(`Popup step description: ${innerStep.description}`)
+                    target.logger.error(`Popup element selector: ${innerStep.querySelector}`)
+                    target.logger.error(`Popup action type: ${innerStep.action.type}`)
+                    target.logger.error(`Popup page URL: ${popupPage.url()}`)
+                    target.logger.error(`Error: ${popupStepError}`)
                     if (popupStepError instanceof Error) {
-                      console.error(`[Detection]: Stack trace:`, popupStepError.stack)
+                      target.logger.error(`Stack trace:`, popupStepError.stack)
                     }
                   }
                   throw popupStepError
                 }
               }
             } catch (error) {
-              console.error(`[Detection]: POPUP HANDLING ERROR`)
-              console.error(`[Detection]: Popup page URL: ${popupPage.url()}`)
-              console.error(`[Detection]: Error: ${error}`)
+              target.logger.error(`POPUP HANDLING ERROR`)
+              target.logger.error(`Popup page URL: ${popupPage.url()}`)
+              target.logger.error(`Error: ${error}`)
               if (error instanceof Error) {
-                console.error(`[Detection]: Stack trace:`, error.stack)
+                target.logger.error(`Stack trace:`, error.stack)
               }
               throw error // Re-throw to ensure popup errors are caught
             }

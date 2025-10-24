@@ -87,6 +87,21 @@ export interface Matcher<T extends Matchable = Matchable> {
   getPattern(): string | InventoryScriptHashInfo[] | Matcher<T>[]
 
   /**
+   * Returns a human-readable description of this matcher for logging.
+   * - For NameMatcher/ContentMatcher/HeaderNameMatcher: shows matcher type and truncated pattern
+   * - For HashMatcher: shows hash count
+   * - For OrMatcher/AndMatcher: shows child count and logic
+   *
+   * Example outputs:
+   * - "name:/^https:\\/\\/example\\.com\\/script\\.js$/"
+   * - "content:/fbq\\('init',/"
+   * - "hash:3 authorized hashes"
+   * - "or:5 matchers"
+   * - "and:3 matchers"
+   */
+  getDescription(): string
+
+  /**
    * Determines if the given resource matches this matcher's identification criteria.
    *
    * @param resource - The detected resource (script or header) to test

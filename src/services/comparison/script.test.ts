@@ -3,6 +3,7 @@ import type { Inventory, InventoryScriptInfo } from '../../types/inventory/model
 import { createMatcher } from '../../types/matcher/matcher-factory'
 import type { ScriptDetectionSummary, ScriptInfo } from '../../types/script'
 import type { Target } from '../../types/target'
+import { createLogger } from '../../utils/logger'
 import { ScriptComparisonService } from './script'
 
 describe('ScriptComparisonService', () => {
@@ -20,13 +21,24 @@ describe('ScriptComparisonService', () => {
         fileName: 'test-workflow.json',
         definition: { steps: [] },
       },
+      logger: createLogger('test'),
     }
 
     mockInventory = {
       fileName: 'test-inventory.json',
       target: {
-        inventory: { type: 'inventory', url: 'https://staging.example.com', workflow: { fileName: 'test-workflow.json', definition: { steps: [] } } },
-        detection: { type: 'detection', url: 'https://example.com/payment', workflow: { fileName: 'test-workflow.json', definition: { steps: [] } } },
+        inventory: {
+          type: 'inventory',
+          url: 'https://staging.example.com',
+          workflow: { fileName: 'test-workflow.json', definition: { steps: [] } },
+          logger: createLogger('test-inventory'),
+        },
+        detection: {
+          type: 'detection',
+          url: 'https://example.com/payment',
+          workflow: { fileName: 'test-workflow.json', definition: { steps: [] } },
+          logger: createLogger('test-detection'),
+        },
       },
       alerts: {
         inventory: {

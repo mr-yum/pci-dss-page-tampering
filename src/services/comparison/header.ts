@@ -81,14 +81,13 @@ export class HeaderComparisonService implements IHeaderComparisonService {
 
     // No match → unknown header
     if (!matchedEntry) {
-      this.log(`Header '${header.name}' not identified in inventory for target '${target.url}'.`)
+      target.logger.log(`Header '${header.name}' not identified in inventory.`)
       return new UnknownHeaderFound(target, timestamp, header)
     }
 
-    // Log identification (T065: use matcher.getType() and matcher.getPattern())
-    const identifyMatcherType = matchedEntry.identifyWith.getType()
-    const identifyPattern = matchedEntry.identifyWith.getPattern()
-    this.log(`Header '${header.name}' identified using ${identifyMatcherType} matcher with pattern '${JSON.stringify(identifyPattern)}'.`)
+    // Log identification (T065: use matcher.getDescription() for human-readable output)
+    const identifyDescription = matchedEntry.identifyWith.getDescription()
+    target.logger.log(`Header '${header.name}' identified using ${identifyDescription}.`)
 
     // T064: Authorize value using authoriseWith matcher (BR-4: case-sensitive value matching)
     // T031: Use Matchable interface (hash is optional, no type cast workaround needed)
@@ -104,10 +103,9 @@ export class HeaderComparisonService implements IHeaderComparisonService {
     const isAuthorized = matchedEntry.authoriseWith.authorisationInfo.authorised && authorizationResult.authorized
 
     // T065: Log authorization result with matcher details
-    const authorizeMatcherType = matchedEntry.authoriseWith.matcher.getType()
-    const authorizePattern = matchedEntry.authoriseWith.matcher.getPattern()
+    const authorizeDescription = matchedEntry.authoriseWith.matcher.getDescription()
     const authStatus = isAuthorized ? 'AUTHORIZED' : `UNAUTHORIZED (${authorizationResult.reason || 'authorization failed'})`
-    this.log(`Header '${header.name}' authorization via ${authorizeMatcherType} matcher with pattern '${JSON.stringify(authorizePattern)}': ${authStatus}.`)
+    target.logger.log(`Header '${header.name}' authorization via ${authorizeDescription}: ${authStatus}.`)
 
     // Return appropriate result
     // T030: Pass metadataPath from AuthorizationResult for composite matcher support
@@ -153,14 +151,5 @@ export class HeaderComparisonService implements IHeaderComparisonService {
       }
     }
     return undefined
-  }
-
-  /**
-   * Log comparison events.
-   *
-   * Format: `[Comparison → Header]: <message>`
-   */
-  private log(message: string): void {
-    console.log(`[Comparison → Header]: ${message}`)
   }
 }

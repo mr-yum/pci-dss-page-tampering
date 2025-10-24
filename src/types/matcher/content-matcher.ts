@@ -53,6 +53,17 @@ export class ContentMatcher implements Matcher {
   }
 
   /**
+   * Returns a human-readable description for logging.
+   *
+   * @returns Formatted string like "content:/pattern/" with pattern truncated if too long
+   */
+  getDescription(): string {
+    const pattern = this.pattern.source
+    const truncated = pattern.length > 50 ? pattern.substring(0, 47) + '...' : pattern
+    return `content:/${truncated}/`
+  }
+
+  /**
    * Identifies if a detected script matches this pattern by testing the script content.
    * Fail-secure: returns false for null/empty content.
    *

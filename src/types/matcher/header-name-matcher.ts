@@ -71,6 +71,17 @@ export class HeaderNameMatcher implements Matcher {
   }
 
   /**
+   * Returns a human-readable description for logging.
+   *
+   * @returns Formatted string like "header-name:/pattern/" with pattern truncated if too long
+   */
+  getDescription(): string {
+    const pattern = this.pattern.source
+    const truncated = pattern.length > 50 ? pattern.substring(0, 47) + '...' : pattern
+    return `header-name:/${truncated}/`
+  }
+
+  /**
    * Identifies if a detected resource matches this pattern by testing the name (T053).
    *
    * For headers:

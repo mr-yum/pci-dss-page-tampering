@@ -158,6 +158,7 @@ describe('AndMatcher', () => {
       const mockChild1: Matcher<Matchable> = {
         getType: () => 'content',
         getPattern: () => 'pattern1',
+        getDescription: () => 'content:/pattern1/',
         identify: (r) => r.content?.includes('pattern1') ?? false,
         authorize: (r) => (r.content?.includes('pattern1') ? { authorized: true, metadataPath: [child1AuthInfo] } : { authorized: false, reason: 'no match' }),
       }
@@ -165,6 +166,7 @@ describe('AndMatcher', () => {
       const mockChild2: Matcher<Matchable> = {
         getType: () => 'content',
         getPattern: () => 'pattern2',
+        getDescription: () => 'content:/pattern2/',
         identify: (r) => r.content?.includes('pattern2') ?? false,
         authorize: (r) => (r.content?.includes('pattern2') ? { authorized: true, metadataPath: [child2AuthInfo] } : { authorized: false, reason: 'no match' }),
       }
@@ -193,6 +195,7 @@ describe('AndMatcher', () => {
       const mockChild1: Matcher<Matchable> = {
         getType: () => 'content',
         getPattern: () => 'pattern1',
+        getDescription: () => 'content:/pattern1/',
         identify: (r) => r.content?.includes('pattern1') ?? false,
         authorize: (r) => (r.content?.includes('pattern1') ? { authorized: true } : { authorized: false, reason: 'pattern1 not found' }),
       }
@@ -200,6 +203,7 @@ describe('AndMatcher', () => {
       const mockChild2: Matcher<Matchable> = {
         getType: () => 'content',
         getPattern: () => 'pattern2',
+        getDescription: () => 'content:/pattern2/',
         identify: (r) => r.content?.includes('pattern2') ?? false,
         authorize: () => ({ authorized: false, reason: 'pattern2 failed' }),
       }
@@ -207,6 +211,7 @@ describe('AndMatcher', () => {
       const mockChild3: Matcher<Matchable> = {
         getType: () => 'content',
         getPattern: () => 'pattern3',
+        getDescription: () => 'content:/pattern3/',
         identify: (r) => r.content?.includes('pattern3') ?? false,
         authorize: () => {
           child3Called = true
@@ -230,6 +235,7 @@ describe('AndMatcher', () => {
       const mockChild1: Matcher<Matchable> = {
         getType: () => 'content',
         getPattern: () => 'pattern1',
+        getDescription: () => 'content:/pattern1/',
         identify: (r) => r.content?.includes('pattern1') ?? false,
         authorize: () => ({ authorized: true, metadataPath: [child1AuthInfo] }),
       }
@@ -237,6 +243,7 @@ describe('AndMatcher', () => {
       const mockChild2: Matcher<Matchable> = {
         getType: () => 'content',
         getPattern: () => 'pattern2',
+        getDescription: () => 'content:/pattern2/',
         identify: (r) => r.content?.includes('pattern2') ?? false,
         authorize: () => ({ authorized: false, reason: 'failed' }),
       }
@@ -333,6 +340,7 @@ describe('AndMatcher', () => {
       const mockChild: Matcher<Matchable> = {
         getType: () => 'content',
         getPattern: () => 'pattern',
+        getDescription: () => 'content:/pattern/',
         identify: (r) => r.content?.includes('pattern') ?? false,
         authorize: () => ({ authorized: true, metadataPath: [childAuthInfo] }),
       }
@@ -374,6 +382,7 @@ describe('AndMatcher', () => {
       const mockChild: Matcher<Matchable> = {
         getType: () => 'content',
         getPattern: () => 'pattern',
+        getDescription: () => 'content:/pattern/',
         identify: (r) => r.content?.includes('pattern') ?? false,
         authorize: () => ({ authorized: true, metadataPath: [childAuthInfo] }),
       }
@@ -403,6 +412,7 @@ describe('AndMatcher', () => {
       const mockChild1: Matcher<Matchable> = {
         getType: () => 'content',
         getPattern: () => 'p1',
+        getDescription: () => 'content:/p1/',
         identify: (r) => r.content?.includes('p1') ?? false,
         authorize: () => ({ authorized: true, metadataPath: [child1Info] }),
       }
@@ -410,6 +420,7 @@ describe('AndMatcher', () => {
       const mockChild2: Matcher<Matchable> = {
         getType: () => 'content',
         getPattern: () => 'p2',
+        getDescription: () => 'content:/p2/',
         identify: (r) => r.content?.includes('p2') ?? false,
         authorize: () => ({ authorized: true, metadataPath: [child2Info] }),
       }
@@ -417,6 +428,7 @@ describe('AndMatcher', () => {
       const mockChild3: Matcher<Matchable> = {
         getType: () => 'content',
         getPattern: () => 'p3',
+        getDescription: () => 'content:/p3/',
         identify: (r) => r.content?.includes('p3') ?? false,
         authorize: () => ({ authorized: true, metadataPath: [child3Info] }),
       }
@@ -441,6 +453,7 @@ describe('AndMatcher', () => {
       const mockChild1: Matcher<Matchable> = {
         getType: () => 'content',
         getPattern: () => 'p1',
+        getDescription: () => 'content:/p1/',
         identify: (r) => r.content?.includes('p1') ?? false,
         authorize: () => ({ authorized: true, metadataPath: [child1Info] }),
       }
@@ -448,6 +461,7 @@ describe('AndMatcher', () => {
       const mockChild2: Matcher<Matchable> = {
         getType: () => 'content',
         getPattern: () => 'p2',
+        getDescription: () => 'content:/p2/',
         identify: (r) => r.content?.includes('p2') ?? false,
         authorize: () => ({ authorized: true, metadataPath: [child2Info] }),
       }
@@ -470,6 +484,7 @@ describe('AndMatcher', () => {
       const mockChild: Matcher<Matchable> = {
         getType: () => 'content',
         getPattern: () => 'pattern',
+        getDescription: () => 'content:/pattern/',
         identify: (r) => r.content?.includes('pattern') ?? false,
         authorize: () => ({ authorized: true }), // No metadataPath
       }
