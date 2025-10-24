@@ -1,5 +1,5 @@
-import type { Workflow } from './workflow'
 import type { Logger } from '../utils/logger'
+import type { Workflow } from './workflow'
 
 export type TargetInventory = Target & {
   type: 'inventory'

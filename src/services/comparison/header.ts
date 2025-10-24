@@ -152,5 +152,4 @@ export class HeaderComparisonService implements IHeaderComparisonService {
     }
     return undefined
   }
-
 }
