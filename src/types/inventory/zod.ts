@@ -5,8 +5,8 @@ import { OrMatcher } from '../matcher/or-matcher'
 import type { RawTargetDetection, RawTargetInventory } from '../target/raw'
 import { SHA256HashSchema } from '../zod'
 import { MatcherConfigSchema } from './matcher-config-schema'
-import type { AlertDestination, AlertDetection, AlertInventory, AuthorizeWithConfig,InventoryAlert, InventoryAuthorisationInfo, InventoryScriptHashInfo } from './model'
-import type { RawAuthorizeWithConfig,RawInventory, RawInventoryHeaderInfo, RawInventoryScriptInfo, RawInventoryTarget } from './raw'
+import type { AlertDestination, AlertDetection, AlertInventory, AuthorizeWithConfig, InventoryAlert, InventoryAuthorisationInfo, InventoryScriptHashInfo } from './model'
+import type { RawAuthorizeWithConfig, RawInventory, RawInventoryHeaderInfo, RawInventoryScriptInfo, RawInventoryTarget } from './raw'
 
 export const AlertDestinationSchema: z.ZodType<AlertDestination> = z.object({
   destination: z.string(),
@@ -111,14 +111,16 @@ export const RawAuthorizeWithConfigSchema = z.union([
 
   // Array of matchers (NEW - syntactic sugar for OR, FR-006)
   // Each element is a matcher config with its own authorisationInfo
-  z.array(
-    z.intersection(
-      MatcherConfigSchema,
-      z.object({
-        authorisationInfo: InventoryAuthorisationInfoRawSchema,
-      }),
-    ),
-  ).min(1, 'authoriseWith array must contain at least 1 matcher'),
+  z
+    .array(
+      z.intersection(
+        MatcherConfigSchema,
+        z.object({
+          authorisationInfo: InventoryAuthorisationInfoRawSchema,
+        }),
+      ),
+    )
+    .min(1, 'authoriseWith array must contain at least 1 matcher'),
 ])
 
 /**
@@ -196,7 +198,11 @@ export function processAuthorizeWith(rawConfig: RawAuthorizeWithConfig): Authori
     const firstElementInfo = rawConfig[0].authorisationInfo
 
     return {
-      matcher: new OrMatcher(children),
+      matcher: new OrMatcher(children, {
+        description: firstElementInfo.description,
+        authorised: firstElementInfo.authorised,
+        date: new Date(firstElementInfo.date),
+      }),
       authorisationInfo: {
         description: firstElementInfo.description,
         authorised: firstElementInfo.authorised,

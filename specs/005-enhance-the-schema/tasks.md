@@ -80,13 +80,13 @@ description: 'Task list for Composite Matchers with Nested Authorization impleme
 
 ### Implementation for User Story 1
 
-- [X] T025 [US1] Update AuthorizedScriptFound to include metadataPath field in src/types/comparison/authorized-script-found.ts
-- [X] T026 [US1] Update KnownScriptWithUnauthorisedContentFound to include metadataPath field in src/types/comparison/known-script-unauthorised-content-found.ts
-- [X] T027 [US1] Update AuthorizedHeaderFound to include metadataPath field in src/types/comparison/authorized-header-found.ts
-- [X] T028 [US1] Update KnownHeaderUnauthorisedContentFound to include metadataPath field in src/types/comparison/known-header-unauthorised-content-found.ts
-- [X] T029 [US1] Update ScriptComparisonService to pass metadataPath from AuthorizationResult in src/services/comparison/script.ts
-- [X] T030 [US1] Update HeaderComparisonService to pass metadataPath from AuthorizationResult in src/services/comparison/header.ts
-- [X] T031 [US1] Update HeaderComparisonService to use Matchable interface (remove hash type cast workaround) in src/services/comparison/header.ts
+- [x] T025 [US1] Update AuthorizedScriptFound to include metadataPath field in src/types/comparison/authorized-script-found.ts
+- [x] T026 [US1] Update KnownScriptWithUnauthorisedContentFound to include metadataPath field in src/types/comparison/known-script-unauthorised-content-found.ts
+- [x] T027 [US1] Update AuthorizedHeaderFound to include metadataPath field in src/types/comparison/authorized-header-found.ts
+- [x] T028 [US1] Update KnownHeaderUnauthorisedContentFound to include metadataPath field in src/types/comparison/known-header-unauthorised-content-found.ts
+- [x] T029 [US1] Update ScriptComparisonService to pass metadataPath from AuthorizationResult in src/services/comparison/script.ts
+- [x] T030 [US1] Update HeaderComparisonService to pass metadataPath from AuthorizationResult in src/services/comparison/header.ts
+- [x] T031 [US1] Update HeaderComparisonService to use Matchable interface (remove hash type cast workaround) in src/services/comparison/header.ts
 
 **Checkpoint**: At this point, User Story 1 should be fully functional - AND matcher works with CSP headers requiring multiple directives
 
@@ -100,24 +100,24 @@ description: 'Task list for Composite Matchers with Nested Authorization impleme
 
 ### Tests for User Story 2
 
-- [X] T032 [P] [US2] Unit test for OrMatcher constructor validation (empty array rejection) in src/types/matcher/or-matcher.test.ts
-- [X] T033 [P] [US2] Unit test for OrMatcher identify() with first child matching in src/types/matcher/or-matcher.test.ts
-- [X] T034 [P] [US2] Unit test for OrMatcher identify() with second child matching in src/types/matcher/or-matcher.test.ts
-- [X] T035 [P] [US2] Unit test for OrMatcher identify() with no children matching in src/types/matcher/or-matcher.test.ts
-- [X] T036 [P] [US2] Unit test for OrMatcher authorize() with first-match-wins semantics in src/types/matcher/or-matcher.test.ts
-- [X] T037 [P] [US2] Unit test for OrMatcher authorize() with null/empty content in src/types/matcher/or-matcher.test.ts
-- [X] T038 [P] [US2] Unit test for OrMatcher authorize() with top-level authorisationInfo override (true) in src/types/matcher/or-matcher.test.ts
-- [X] T039 [P] [US2] Unit test for OrMatcher authorize() with top-level authorisationInfo override (false) in src/types/matcher/or-matcher.test.ts
-- [X] T040 [P] [US2] Unit test for OrMatcher metadata path collection in src/types/matcher/or-matcher.test.ts
-- [X] T041 [US2] Integration test for CSP header with OR logic (first alternative matches) in test/integration/composite-matcher-workflow.test.ts
-- [X] T042 [US2] Integration test for CSP header with OR logic (second alternative matches) in test/integration/composite-matcher-workflow.test.ts
-- [X] T043 [US2] Integration test for CSP header with OR logic (no alternatives match) in test/integration/composite-matcher-workflow.test.ts
+- [x] T032 [P] [US2] Unit test for OrMatcher constructor validation (empty array rejection) in src/types/matcher/or-matcher.test.ts
+- [x] T033 [P] [US2] Unit test for OrMatcher identify() with first child matching in src/types/matcher/or-matcher.test.ts
+- [x] T034 [P] [US2] Unit test for OrMatcher identify() with second child matching in src/types/matcher/or-matcher.test.ts
+- [x] T035 [P] [US2] Unit test for OrMatcher identify() with no children matching in src/types/matcher/or-matcher.test.ts
+- [x] T036 [P] [US2] Unit test for OrMatcher authorize() with first-match-wins semantics in src/types/matcher/or-matcher.test.ts
+- [x] T037 [P] [US2] Unit test for OrMatcher authorize() with null/empty content in src/types/matcher/or-matcher.test.ts
+- [x] T038 [P] [US2] Unit test for OrMatcher authorize() with top-level authorisationInfo override (true) in src/types/matcher/or-matcher.test.ts
+- [x] T039 [P] [US2] Unit test for OrMatcher authorize() with top-level authorisationInfo override (false) in src/types/matcher/or-matcher.test.ts
+- [x] T040 [P] [US2] Unit test for OrMatcher metadata path collection in src/types/matcher/or-matcher.test.ts
+- [x] T041 [US2] Integration test for CSP header with OR logic (first alternative matches) in test/integration/composite-matcher-workflow.test.ts
+- [x] T042 [US2] Integration test for CSP header with OR logic (second alternative matches) in test/integration/composite-matcher-workflow.test.ts
+- [x] T043 [US2] Integration test for CSP header with OR logic (no alternatives match) in test/integration/composite-matcher-workflow.test.ts
 
 ### Implementation for User Story 2
 
-- [X] T044 [US2] Update RawAuthorizeWithConfigSchema to support array syntax in src/types/inventory/zod.ts
-- [X] T045 [US2] Create processAuthorizeWith function to convert array to OrMatcher in src/types/inventory/zod.ts
-- [X] T046 [US2] Update inventory loading to process array syntax via processAuthorizeWith in src/utils/script.ts and src/utils/inventory.ts
+- [x] T044 [US2] Update RawAuthorizeWithConfigSchema to support array syntax in src/types/inventory/zod.ts
+- [x] T045 [US2] Create processAuthorizeWith function to convert array to OrMatcher in src/types/inventory/zod.ts
+- [x] T046 [US2] Update inventory loading to process array syntax via processAuthorizeWith in src/utils/script.ts and src/utils/inventory.ts
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work independently - both AND and OR matchers functional
 
@@ -131,16 +131,16 @@ description: 'Task list for Composite Matchers with Nested Authorization impleme
 
 ### Tests for User Story 3
 
-- [ ] T047 [P] [US3] Unit test for array syntax with two content matchers (first matches) in test/unit/services/comparison/array-syntax.test.ts
-- [ ] T048 [P] [US3] Unit test for array syntax with two content matchers (second matches) in test/unit/services/comparison/array-syntax.test.ts
-- [ ] T049 [P] [US3] Unit test for array syntax with two content matchers (both match, first-match-wins) in test/unit/services/comparison/array-syntax.test.ts
-- [ ] T050 [P] [US3] Unit test for array syntax with composite matchers (mixing syntaxes) in test/unit/services/comparison/array-syntax.test.ts
-- [ ] T051 [US3] Integration test for array syntax equivalence to explicit orMatcher in test/integration/composite-matcher-workflow.test.ts
+- [x] T047 [P] [US3] Unit test for array syntax with two content matchers (first matches) in test/unit/services/comparison/array-syntax.test.ts
+- [x] T048 [P] [US3] Unit test for array syntax with two content matchers (second matches) in test/unit/services/comparison/array-syntax.test.ts
+- [x] T049 [P] [US3] Unit test for array syntax with two content matchers (both match, first-match-wins) in test/unit/services/comparison/array-syntax.test.ts
+- [x] T050 [P] [US3] Unit test for array syntax with composite matchers (mixing syntaxes) in test/unit/services/comparison/array-syntax.test.ts
+- [x] T051 [US3] Integration test for array syntax equivalence to explicit orMatcher in test/integration/composite-matcher-workflow.test.ts
 
 ### Implementation for User Story 3
 
-- [ ] T052 [US3] Update Zod schema validation to accept array syntax in src/types/inventory/zod.ts
-- [ ] T053 [US3] Add integration tests verifying array syntax matches explicit orMatcher behavior in test/integration/array-syntax-equivalence.test.ts
+- [x] T052 [US3] Update Zod schema validation to accept array syntax in src/types/inventory/zod.ts
+- [x] T053 [US3] Add integration tests verifying array syntax matches explicit orMatcher behavior in test/integration/composite-matcher-workflow.test.ts
 
 **Checkpoint**: All basic composite matcher scenarios (AND, OR, array syntax) should now be independently functional
 

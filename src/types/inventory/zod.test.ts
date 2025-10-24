@@ -521,4 +521,172 @@ describe('RawInventoryScriptInfoSchema', () => {
       })
     })
   })
+
+  describe('Phase 5: Array Syntax Support (T052)', () => {
+    describe('Array syntax for authoriseWith', () => {
+      it('should accept array with two content matchers', () => {
+        const validSchema = {
+          identifyWith: { nameMatcher: '^https://example\\.com/.*$' },
+          authoriseWith: [
+            {
+              contentMatcher: 'pattern-one',
+              authorisationInfo: {
+                description: 'First pattern',
+                authorised: true,
+                date: '2025-10-22T12:00:00.000Z',
+              },
+            },
+            {
+              contentMatcher: 'pattern-two',
+              authorisationInfo: {
+                description: 'Second pattern',
+                authorised: true,
+                date: '2025-10-22T12:00:00.000Z',
+              },
+            },
+          ],
+        }
+
+        const result = RawInventoryScriptInfoSchema.safeParse(validSchema)
+        expect(result.success).toBe(true)
+      })
+
+      it('should accept array with single matcher (edge case)', () => {
+        const validSchema = {
+          identifyWith: { nameMatcher: '^https://example\\.com/.*$' },
+          authoriseWith: [
+            {
+              contentMatcher: 'single-pattern',
+              authorisationInfo: {
+                description: 'Single element array',
+                authorised: true,
+                date: '2025-10-22T12:00:00.000Z',
+              },
+            },
+          ],
+        }
+
+        const result = RawInventoryScriptInfoSchema.safeParse(validSchema)
+        expect(result.success).toBe(true)
+      })
+
+      it('should accept array with mixed matcher types', () => {
+        const validSchema = {
+          identifyWith: { nameMatcher: '^https://example\\.com/.*$' },
+          authoriseWith: [
+            {
+              contentMatcher: 'content-pattern',
+              authorisationInfo: {
+                description: 'Content matcher',
+                authorised: true,
+                date: '2025-10-22T12:00:00.000Z',
+              },
+            },
+            {
+              nameMatcher: '^https://example\\.com/specific\\.js$',
+              authorisationInfo: {
+                description: 'Name matcher',
+                authorised: true,
+                date: '2025-10-22T12:00:00.000Z',
+              },
+            },
+          ],
+        }
+
+        const result = RawInventoryScriptInfoSchema.safeParse(validSchema)
+        expect(result.success).toBe(true)
+      })
+
+      it('should reject empty array (fail-secure)', () => {
+        const invalidSchema = {
+          identifyWith: { nameMatcher: '^https://example\\.com/.*$' },
+          authoriseWith: [],
+        }
+
+        const result = RawInventoryScriptInfoSchema.safeParse(invalidSchema)
+        expect(result.success).toBe(false)
+        if (!result.success) {
+          const errorMessages = result.error.issues.map((issue) => issue.message)
+          expect(errorMessages.some((msg) => msg.includes('at least 1'))).toBe(true)
+        }
+      })
+
+      it('should reject array element without authorisationInfo', () => {
+        const invalidSchema = {
+          identifyWith: { nameMatcher: '^https://example\\.com/.*$' },
+          authoriseWith: [
+            {
+              contentMatcher: 'pattern-one',
+              // Missing authorisationInfo
+            },
+            {
+              contentMatcher: 'pattern-two',
+              authorisationInfo: {
+                description: 'Second pattern',
+                authorised: true,
+                date: '2025-10-22T12:00:00.000Z',
+              },
+            },
+          ],
+        }
+
+        const result = RawInventoryScriptInfoSchema.safeParse(invalidSchema)
+        expect(result.success).toBe(false)
+      })
+
+      it('should accept array with composite matchers (andMatcher)', () => {
+        const validSchema = {
+          identifyWith: { nameMatcher: '^https://example\\.com/.*$' },
+          authoriseWith: [
+            {
+              andMatcher: [{ contentMatcher: 'required-1' }, { contentMatcher: 'required-2' }],
+              authorisationInfo: {
+                description: 'AND matcher in array',
+                authorised: true,
+                date: '2025-10-22T12:00:00.000Z',
+              },
+            },
+            {
+              contentMatcher: 'fallback',
+              authorisationInfo: {
+                description: 'Fallback pattern',
+                authorised: true,
+                date: '2025-10-22T12:00:00.000Z',
+              },
+            },
+          ],
+        }
+
+        const result = RawInventoryScriptInfoSchema.safeParse(validSchema)
+        expect(result.success).toBe(true)
+      })
+
+      it('should accept array with nested orMatcher', () => {
+        const validSchema = {
+          identifyWith: { nameMatcher: '^https://example\\.com/.*$' },
+          authoriseWith: [
+            {
+              orMatcher: [{ contentMatcher: 'option-a' }, { contentMatcher: 'option-b' }],
+              authorisationInfo: {
+                description: 'OR matcher in array',
+                authorised: true,
+                date: '2025-10-22T12:00:00.000Z',
+              },
+            },
+            {
+              contentMatcher: 'option-c',
+              authorisationInfo: {
+                description: 'Alternative option',
+                authorised: true,
+                date: '2025-10-22T12:00:00.000Z',
+              },
+            },
+          ],
+        }
+
+        const result = RawInventoryScriptInfoSchema.safeParse(validSchema)
+        expect(result.success).toBe(true)
+      })
+    })
+  })
 })
