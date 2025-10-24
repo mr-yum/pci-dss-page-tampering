@@ -82,7 +82,7 @@ export class OrMatcher<T extends Matchable = Matchable> implements Matcher<T> {
    * @returns Formatted string like "or:[matcher1, matcher2, ...]" with child descriptions
    */
   getDescription(): string {
-    const childDescriptions = this.children.map((child) => child.getDescription()).join(', ')
+    const childDescriptions = this.children.length > 3 ? `${this.children.length} matchers` : this.children.map((child) => child.getDescription()).join(', ')
     return `or:[${childDescriptions}]`
   }
 
