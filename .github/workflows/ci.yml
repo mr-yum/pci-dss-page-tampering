@@ -65,3 +65,11 @@ jobs:
           echo "▶️ Running unit tests..."
           npm run test:unit
           echo "✅ Unit tests completed"
+
+      - name: Run integration tests
+        timeout-minutes: 30
+        run: |
+          echo "▶️ Running integration tests..."
+          npm run test:integration
+          echo "✅ Integration tests completed"
+  
