@@ -139,19 +139,19 @@ This task list implements the refactoring to use typed comparison results direct
 
 ### Type Removal Tasks
 
-- [ ] T037 [US3] Search codebase for remaining references to ScriptComparisonResult, ScriptComparisonSummary, HeaderComparisonSummary
-- [ ] T038 [US3] Update src/types/comparison.ts to remove legacy type definitions (keep ComparisonResultType export)
-- [ ] T039 [US3] Remove any legacy conversion utilities from src/utils/inventory.ts (if not already removed)
-- [ ] T040 [US3] Update src/main.ts to remove any remaining legacy conversion logic
+- [x] T037 [US3] Search codebase for remaining references to ScriptComparisonResult, ScriptComparisonSummary, HeaderComparisonSummary
+- [x] T038 [US3] Update src/types/comparison.ts to remove legacy type definitions (keep ComparisonResultType export)
+- [x] T039 [US3] Remove any legacy conversion utilities from src/utils/inventory.ts (if not already removed)
+- [x] T040 [US3] Update src/main.ts to remove any remaining legacy conversion logic
 
 ### Validation Tasks
 
-- [ ] T041 [US3] Run type checking to verify no legacy type references remain with npm run check:typing
-- [ ] T042 [US3] Run all unit tests to verify behavior unchanged with npm run test:unit
-- [ ] T043 [US3] Run all integration tests to verify end-to-end functionality with npm run test:integration
-- [ ] T044 [US3] Search codebase for "ScriptComparisonResult" to confirm zero references
-- [ ] T045 [US3] Search codebase for "ScriptComparisonSummary" to confirm zero references
-- [ ] T046 [US3] Search codebase for "HeaderComparisonSummary" to confirm zero references
+- [x] T041 [US3] Run type checking to verify no legacy type references remain with npm run check:typing
+- [x] T042 [US3] Run all unit tests to verify behavior unchanged with npm run test:unit
+- [x] T043 [US3] Run all integration tests to verify end-to-end functionality with npm run test:integration
+- [x] T044 [US3] Search codebase for "ScriptComparisonResult" to confirm zero references
+- [x] T045 [US3] Search codebase for "ScriptComparisonSummary" to confirm zero references
+- [x] T046 [US3] Search codebase for "HeaderComparisonSummary" to confirm zero references
 
 **US3 Acceptance**:
 
