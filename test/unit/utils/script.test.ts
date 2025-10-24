@@ -569,4 +569,340 @@ describe('Script Conversion Functions', () => {
       })
     })
   })
+
+  describe('Composite matcher round-trip tests (T034-T038)', () => {
+    describe('T034: OrMatcher with ContentMatchers survives round-trip', () => {
+      it('should preserve OrMatcher structure and behavior through round-trip', () => {
+        const original: InventoryScriptInfo = {
+          identifyWith: createMatcher({ nameMatcher: '^https://example\\.com/.*$' }),
+          authoriseWith: {
+            matcher: new OrMatcher([new ContentMatcher('pattern1'), new ContentMatcher('pattern2')], {
+              description: 'Accept either pattern',
+              authorised: true,
+              date: new Date('2025-10-24T12:00:00.789Z'),
+            }),
+            authorisationInfo: { description: 'Test', authorised: true, date: new Date('2025-10-24T00:00:00.000Z') },
+          },
+        }
+
+        // Serialize
+        const serialized = inventoryScriptInfoToRawInventoryScriptInfo(original)
+
+        // Deserialize
+        const deserialized = rawInventoryScriptInfoToInventoryScriptInfo(serialized)
+
+        // Verify structure
+        expect(deserialized.authoriseWith.matcher.getType()).toBe('or')
+        const children = deserialized.authoriseWith.matcher.getPattern() as any[]
+        expect(children).toHaveLength(2)
+        expect(children[0]!.getType()).toBe('content')
+        expect(children[1]!.getType()).toBe('content')
+        expect(children[0]!.getPattern()).toBe('pattern1')
+        expect(children[1]!.getPattern()).toBe('pattern2')
+
+        // Verify metadata preserved
+        const authInfo = (deserialized.authoriseWith.matcher as OrMatcher).getAuthorisationInfo()
+        expect(authInfo?.description).toBe('Accept either pattern')
+        expect(authInfo?.authorised).toBe(true)
+        expect(authInfo?.date.getTime()).toBe(new Date('2025-10-24T12:00:00.789Z').getTime())
+
+        // Verify behavioral equivalence
+        const testScript = {
+          name: 'https://example.com/test.js',
+          content: 'pattern1',
+          hash: { value: 'test' },
+        }
+        expect(deserialized.authoriseWith.matcher.identify(testScript)).toBe(original.authoriseWith.matcher.identify(testScript))
+        expect(deserialized.authoriseWith.matcher.authorize(testScript).authorized).toBe(original.authoriseWith.matcher.authorize(testScript).authorized)
+      })
+    })
+
+    describe('T035: AndMatcher with nested OrMatcher survives round-trip', () => {
+      it('should preserve nested composite matcher structure through round-trip', () => {
+        const original: InventoryScriptInfo = {
+          identifyWith: createMatcher({ nameMatcher: '^https://example\\.com/.*$' }),
+          authoriseWith: {
+            matcher: new AndMatcher([new OrMatcher([new ContentMatcher('req1a'), new ContentMatcher('req1b')]), new ContentMatcher('req2')]),
+            authorisationInfo: { description: 'Nested test', authorised: true, date: new Date('2025-10-24T00:00:00.000Z') },
+          },
+        }
+
+        const serialized = inventoryScriptInfoToRawInventoryScriptInfo(original)
+        const deserialized = rawInventoryScriptInfoToInventoryScriptInfo(serialized)
+
+        // Verify top-level AndMatcher
+        expect(deserialized.authoriseWith.matcher.getType()).toBe('and')
+        const andChildren = deserialized.authoriseWith.matcher.getPattern() as any[]
+        expect(andChildren).toHaveLength(2)
+
+        // Verify nested OrMatcher
+        expect(andChildren[0]!.getType()).toBe('or')
+        const orChildren = andChildren[0]!.getPattern() as any[]
+        expect(orChildren).toHaveLength(2)
+        expect(orChildren[0]!.getType()).toBe('content')
+        expect(orChildren[1]!.getType()).toBe('content')
+
+        // Verify second child is ContentMatcher
+        expect(andChildren[1]!.getType()).toBe('content')
+        expect(andChildren[1]!.getPattern()).toBe('req2')
+      })
+    })
+
+    describe('T036: Round-trip with special characters in description', () => {
+      it('should preserve special characters in authorization metadata', () => {
+        const original: InventoryScriptInfo = {
+          identifyWith: createMatcher({ nameMatcher: '^test$' }),
+          authoriseWith: {
+            matcher: new OrMatcher([new ContentMatcher('pattern1'), new ContentMatcher('pattern2')], {
+              description: 'Special chars: "quotes", \'apostrophes\', & ampersands, <tags>, 日本語, emoji 🚀',
+              authorised: true,
+              date: new Date('2025-10-24T12:00:00.000Z'),
+            }),
+            authorisationInfo: { description: 'Outer', authorised: true, date: new Date('2025-10-24T00:00:00.000Z') },
+          },
+        }
+
+        const serialized = inventoryScriptInfoToRawInventoryScriptInfo(original)
+        const deserialized = rawInventoryScriptInfoToInventoryScriptInfo(serialized)
+
+        const authInfo = (deserialized.authoriseWith.matcher as OrMatcher).getAuthorisationInfo()
+        expect(authInfo?.description).toBe('Special chars: "quotes", \'apostrophes\', & ampersands, <tags>, 日本語, emoji 🚀')
+      })
+    })
+
+    describe('T037: Round-trip with millisecond-precision date', () => {
+      it('should preserve millisecond precision through round-trip', () => {
+        const preciseDateString = '2025-10-24T12:34:56.789Z'
+        const preciseDate = new Date(preciseDateString)
+
+        const original: InventoryScriptInfo = {
+          identifyWith: createMatcher({ nameMatcher: '^test$' }),
+          authoriseWith: {
+            matcher: new OrMatcher([new ContentMatcher('pattern')], {
+              description: 'Precision test',
+              authorised: true,
+              date: preciseDate,
+            }),
+            authorisationInfo: { description: 'Outer', authorised: true, date: preciseDate },
+          },
+        }
+
+        const serialized = inventoryScriptInfoToRawInventoryScriptInfo(original)
+        const deserialized = rawInventoryScriptInfoToInventoryScriptInfo(serialized)
+
+        // Verify millisecond precision preserved in nested metadata
+        const authInfo = (deserialized.authoriseWith.matcher as OrMatcher).getAuthorisationInfo()
+        expect(authInfo?.date.getTime()).toBe(preciseDate.getTime())
+        expect(authInfo?.date.toISOString()).toBe(preciseDateString)
+
+        // Verify millisecond precision preserved in outer metadata
+        expect(deserialized.authoriseWith.authorisationInfo.date.getTime()).toBe(preciseDate.getTime())
+        expect(deserialized.authoriseWith.authorisationInfo.date.toISOString()).toBe(preciseDateString)
+      })
+    })
+
+    describe('T038: Behavioral equivalence test', () => {
+      it('should produce identical identify/authorize results after round-trip', () => {
+        const original: InventoryScriptInfo = {
+          identifyWith: createMatcher({ nameMatcher: '^https://example\\.com/.*$' }),
+          authoriseWith: {
+            matcher: new OrMatcher([new ContentMatcher('authorized-pattern'), new HashMatcher([{ timestamp: new Date('2025-10-01T00:00:00.000Z'), hash: { value: 'abc123'.padEnd(64, '0') } }])]),
+            authorisationInfo: { description: 'Test', authorised: true, date: new Date('2025-10-24T00:00:00.000Z') },
+          },
+        }
+
+        const serialized = inventoryScriptInfoToRawInventoryScriptInfo(original)
+        const deserialized = rawInventoryScriptInfoToInventoryScriptInfo(serialized)
+
+        // Test with matching content
+        const matchingScript = {
+          name: 'https://example.com/test.js',
+          content: 'authorized-pattern',
+          hash: { value: 'test' },
+        }
+        expect(deserialized.authoriseWith.matcher.identify(matchingScript)).toBe(original.authoriseWith.matcher.identify(matchingScript))
+        expect(deserialized.authoriseWith.matcher.authorize(matchingScript).authorized).toBe(original.authoriseWith.matcher.authorize(matchingScript).authorized)
+
+        // Test with matching hash
+        const matchingHashScript = {
+          name: 'https://example.com/test.js',
+          content: 'different content',
+          hash: { value: 'abc123'.padEnd(64, '0') },
+        }
+        expect(deserialized.authoriseWith.matcher.authorize(matchingHashScript).authorized).toBe(original.authoriseWith.matcher.authorize(matchingHashScript).authorized)
+
+        // Test with non-matching content/hash
+        const nonMatchingScript = {
+          name: 'https://example.com/test.js',
+          content: 'non-matching',
+          hash: { value: 'wrong' },
+        }
+        expect(deserialized.authoriseWith.matcher.authorize(nonMatchingScript).authorized).toBe(original.authoriseWith.matcher.authorize(nonMatchingScript).authorized)
+      })
+    })
+  })
+
+  describe('Composite matcher deserialization (T028, T030-T031)', () => {
+    describe('T028: deserializes orMatcher with two HashMatchers', () => {
+      it('should deserialize orMatcher with two HashMatcher children from JSON', () => {
+        const raw: RawInventoryScriptInfo = {
+          identifyWith: { nameMatcher: '^https://example\\.com/.*$' },
+          authoriseWith: {
+            orMatcher: [{ hashes: [{ timestamp: '2025-10-01T00:00:00.000Z', hash: { value: 'abc123'.padEnd(64, '0') } }] }, { hashes: [{ timestamp: '2025-10-15T00:00:00.000Z', hash: { value: 'def456'.padEnd(64, '0') } }] }],
+            authorisationInfo: {
+              description: 'Accept version 1.0 or 1.1',
+              authorised: true,
+              date: '2025-10-24T12:00:00.000Z',
+            },
+          },
+        }
+
+        const inventoryScript = rawInventoryScriptInfoToInventoryScriptInfo(raw)
+
+        // Verify OrMatcher created
+        expect(inventoryScript.authoriseWith.matcher.getType()).toBe('or')
+
+        // Verify children are HashMatchers
+        const children = inventoryScript.authoriseWith.matcher.getPattern() as any[]
+        expect(children).toHaveLength(2)
+        expect(children[0]!.getType()).toBe('hash')
+        expect(children[1]!.getType()).toBe('hash')
+
+        // Verify authorization info
+        expect(inventoryScript.authoriseWith.authorisationInfo.description).toBe('Accept version 1.0 or 1.1')
+        expect(inventoryScript.authoriseWith.authorisationInfo.authorised).toBe(true)
+        expect(inventoryScript.authoriseWith.authorisationInfo.date).toBeInstanceOf(Date)
+        expect(inventoryScript.authoriseWith.authorisationInfo.date.toISOString()).toBe('2025-10-24T12:00:00.000Z')
+      })
+    })
+
+    describe('T029: deserializes andMatcher with three ContentMatchers', () => {
+      it('should deserialize andMatcher with three ContentMatcher children from JSON', () => {
+        const raw: RawInventoryScriptInfo = {
+          identifyWith: { nameMatcher: '^https://example\\.com/.*$' },
+          authoriseWith: {
+            andMatcher: [{ contentMatcher: 'required-pattern-1' }, { contentMatcher: 'required-pattern-2' }, { contentMatcher: 'required-pattern-3' }],
+            authorisationInfo: {
+              description: 'All three patterns must be present',
+              authorised: true,
+              date: '2025-10-24T14:30:00.000Z',
+            },
+          },
+        }
+
+        const inventoryScript = rawInventoryScriptInfoToInventoryScriptInfo(raw)
+
+        // Verify AndMatcher created
+        expect(inventoryScript.authoriseWith.matcher.getType()).toBe('and')
+
+        // Verify children are ContentMatchers
+        const children = inventoryScript.authoriseWith.matcher.getPattern() as any[]
+        expect(children).toHaveLength(3)
+        expect(children[0]!.getType()).toBe('content')
+        expect(children[1]!.getType()).toBe('content')
+        expect(children[2]!.getType()).toBe('content')
+        expect(children[0]!.getPattern()).toBe('required-pattern-1')
+        expect(children[1]!.getPattern()).toBe('required-pattern-2')
+        expect(children[2]!.getPattern()).toBe('required-pattern-3')
+
+        // Verify authorization info
+        expect(inventoryScript.authoriseWith.authorisationInfo.description).toBe('All three patterns must be present')
+        expect(inventoryScript.authoriseWith.authorisationInfo.authorised).toBe(true)
+        expect(inventoryScript.authoriseWith.authorisationInfo.date).toBeInstanceOf(Date)
+        expect(inventoryScript.authoriseWith.authorisationInfo.date.toISOString()).toBe('2025-10-24T14:30:00.000Z')
+      })
+    })
+
+    describe('T030: deserializes composite matcher WITH authorisationInfo', () => {
+      it('should deserialize OrMatcher with nested authorisationInfo', () => {
+        const raw: RawInventoryScriptInfo = {
+          identifyWith: { nameMatcher: '^test$' },
+          authoriseWith: {
+            orMatcher: [{ contentMatcher: 'pattern1' }, { contentMatcher: 'pattern2' }],
+            authorisationInfo: {
+              description: 'OR matcher with metadata',
+              authorised: true,
+              date: '2025-10-24T12:00:00.000Z',
+            },
+          },
+        }
+
+        const inventoryScript = rawInventoryScriptInfoToInventoryScriptInfo(raw)
+
+        expect(inventoryScript.authoriseWith.matcher.getType()).toBe('or')
+        expect(inventoryScript.authoriseWith.authorisationInfo.description).toBe('OR matcher with metadata')
+        expect(inventoryScript.authoriseWith.authorisationInfo.date).toBeInstanceOf(Date)
+      })
+
+      it('should deserialize AndMatcher with nested authorisationInfo', () => {
+        const raw: RawInventoryScriptInfo = {
+          identifyWith: { nameMatcher: '^test$' },
+          authoriseWith: {
+            andMatcher: [{ contentMatcher: 'required1' }, { contentMatcher: 'required2' }],
+            authorisationInfo: {
+              description: 'AND matcher with metadata',
+              authorised: true,
+              date: '2025-10-24T15:30:00.000Z',
+            },
+          },
+        }
+
+        const inventoryScript = rawInventoryScriptInfoToInventoryScriptInfo(raw)
+
+        expect(inventoryScript.authoriseWith.matcher.getType()).toBe('and')
+        expect(inventoryScript.authoriseWith.authorisationInfo.description).toBe('AND matcher with metadata')
+        expect(inventoryScript.authoriseWith.authorisationInfo.date.toISOString()).toBe('2025-10-24T15:30:00.000Z')
+      })
+    })
+
+    describe('T031: deserializes composite matcher WITHOUT authorisationInfo', () => {
+      it('should deserialize OrMatcher without nested authorisationInfo', () => {
+        const raw: RawInventoryScriptInfo = {
+          identifyWith: { nameMatcher: '^test$' },
+          authoriseWith: {
+            orMatcher: [{ contentMatcher: 'pattern1' }, { contentMatcher: 'pattern2' }],
+            authorisationInfo: {
+              description: 'Outer metadata only',
+              authorised: true,
+              date: '2025-10-24T12:00:00.000Z',
+            },
+          },
+        }
+
+        const inventoryScript = rawInventoryScriptInfoToInventoryScriptInfo(raw)
+
+        // Verify matcher created
+        expect(inventoryScript.authoriseWith.matcher.getType()).toBe('or')
+
+        // Verify outer authorisationInfo is present
+        expect(inventoryScript.authoriseWith.authorisationInfo.description).toBe('Outer metadata only')
+
+        // Verify OrMatcher has no nested authorisationInfo (only outer level)
+        const orMatcher = inventoryScript.authoriseWith.matcher as OrMatcher
+        expect(orMatcher.getAuthorisationInfo()).toBeUndefined()
+      })
+
+      it('should deserialize AndMatcher without nested authorisationInfo', () => {
+        const raw: RawInventoryScriptInfo = {
+          identifyWith: { nameMatcher: '^test$' },
+          authoriseWith: {
+            andMatcher: [{ contentMatcher: 'required1' }, { contentMatcher: 'required2' }],
+            authorisationInfo: {
+              description: 'Outer metadata only',
+              authorised: true,
+              date: '2025-10-24T12:00:00.000Z',
+            },
+          },
+        }
+
+        const inventoryScript = rawInventoryScriptInfoToInventoryScriptInfo(raw)
+
+        expect(inventoryScript.authoriseWith.matcher.getType()).toBe('and')
+        expect(inventoryScript.authoriseWith.authorisationInfo.description).toBe('Outer metadata only')
+
+        const andMatcher = inventoryScript.authoriseWith.matcher as AndMatcher
+        expect(andMatcher.getAuthorisationInfo()).toBeUndefined()
+      })
+    })
+  })
 })

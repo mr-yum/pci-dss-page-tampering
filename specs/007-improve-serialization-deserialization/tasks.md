@@ -215,15 +215,15 @@ test('serializes OrMatcher with HashMatcher children', () => {
 
 ### 3.1: Validate Existing Deserialization
 
-- [ ] T026 [US2] Review createMatcher() factory in src/types/matcher/matcher-factory.ts lines 93-103 for orMatcher/andMatcher support
-- [ ] T027 [US2] Verify Zod schema in src/types/inventory/matcher-config-schema.ts lines 69-77 validates composite matchers
+- [x] T026 [US2] Review createMatcher() factory in src/types/matcher/matcher-factory.ts lines 93-103 for orMatcher/andMatcher support
+- [x] T027 [US2] Verify Zod schema in src/types/inventory/matcher-config-schema.ts lines 69-77 validates composite matchers
 
 ### 3.2: Unit Tests for User Story 2
 
-- [ ] T028 [P] [US2] Add test for deserializing orMatcher with two HashMatchers in test/unit/utils/script.test.ts
-- [ ] T029 [P] [US2] Add test for deserializing andMatcher with three ContentMatchers in test/unit/utils/inventory.test.ts
-- [ ] T030 [P] [US2] Add test for deserializing composite matcher with authorisationInfo in test/unit/utils/script.test.ts
-- [ ] T031 [P] [US2] Add test for deserializing composite matcher without authorisationInfo in test/unit/utils/script.test.ts
+- [x] T028 [P] [US2] Add test for deserializing orMatcher with two HashMatchers in test/unit/utils/script.test.ts
+- [x] T029 [P] [US2] Add test for deserializing andMatcher with three ContentMatchers in test/unit/utils/inventory.test.ts
+- [x] T030 [P] [US2] Add test for deserializing composite matcher with authorisationInfo in test/unit/utils/script.test.ts
+- [x] T031 [P] [US2] Add test for deserializing composite matcher without authorisationInfo in test/unit/utils/script.test.ts
 
 **Test Pattern Example (T028)**:
 
@@ -253,15 +253,15 @@ test('deserializes orMatcher with two HashMatchers', () => {
 
 ### 3.3: Verify User Story 2 Completion
 
-- [ ] T032 [US2] Run unit tests with `npm run test:unit` and verify all US2 tests pass
-- [ ] T033 [US2] Manually test deserialization with sample JSON and verify Matcher instances created
+- [x] T032 [US2] Run unit tests with `npm run test:unit` and verify all US2 tests pass
+- [x] T033 [US2] Manually test deserialization with sample JSON and verify Matcher instances created
 
 **Completion Criteria for US2**:
 
-- [ ] JSON with orMatcher/andMatcher deserializes to Matcher instances
-- [ ] Authorization metadata restored with Date instances
-- [ ] Recursive deserialization works (nested composites)
-- [ ] All unit tests pass
+- [x] JSON with orMatcher/andMatcher deserializes to Matcher instances
+- [x] Authorization metadata restored with Date instances
+- [x] Recursive deserialization works (nested composites)
+- [x] All unit tests pass
 
 ---
 
@@ -277,11 +277,11 @@ test('deserializes orMatcher with two HashMatchers', () => {
 
 ### 4.1: Round-Trip Tests for User Story 3
 
-- [ ] T034 [P] [US3] Add round-trip test for OrMatcher with ContentMatchers in test/unit/utils/script.test.ts
-- [ ] T035 [P] [US3] Add round-trip test for AndMatcher with nested OrMatcher in test/unit/utils/inventory.test.ts
-- [ ] T036 [P] [US3] Add round-trip test for composite matcher with special characters in description in test/unit/utils/script.test.ts
-- [ ] T037 [P] [US3] Add round-trip test for composite matcher with millisecond-precision date in test/unit/utils/script.test.ts
-- [ ] T038 [P] [US3] Add behavioral equivalence test (identify and authorize produce same results) in test/unit/utils/script.test.ts
+- [x] T034 [P] [US3] Add round-trip test for OrMatcher with ContentMatchers in test/unit/utils/script.test.ts
+- [x] T035 [P] [US3] Add round-trip test for AndMatcher with nested OrMatcher in test/unit/utils/inventory.test.ts
+- [x] T036 [P] [US3] Add round-trip test for composite matcher with special characters in description in test/unit/utils/script.test.ts
+- [x] T037 [P] [US3] Add round-trip test for composite matcher with millisecond-precision date in test/unit/utils/script.test.ts
+- [x] T038 [P] [US3] Add behavioral equivalence test (identify and authorize produce same results) in test/unit/utils/script.test.ts
 
 **Test Pattern Example (T034)**:
 
@@ -330,15 +330,15 @@ test('OrMatcher with ContentMatchers survives round-trip', () => {
 
 ### 4.2: Verify User Story 3 Completion
 
-- [ ] T039 [US3] Run unit tests with `npm run test:unit` and verify all US3 tests pass
-- [ ] T040 [US3] Verify date precision preserved (millisecond equality in tests)
+- [x] T039 [US3] Run unit tests with `npm run test:unit` and verify all US3 tests pass
+- [x] T040 [US3] Verify date precision preserved (millisecond equality in tests)
 
 **Completion Criteria for US3**:
 
-- [ ] Round-trip tests pass for all composite matcher types
-- [ ] Authorization metadata preserved exactly (including dates)
-- [ ] Behavioral equivalence verified (same identify/authorize results)
-- [ ] All unit tests pass
+- [x] Round-trip tests pass for all composite matcher types
+- [x] Authorization metadata preserved exactly (including dates)
+- [x] Behavioral equivalence verified (same identify/authorize results)
+- [x] All unit tests pass
 
 ---
 
