@@ -14,6 +14,7 @@ This directory contains TypeScript interface definitions representing the contra
 **File**: [inventory-service.interface.ts](./inventory-service.interface.ts)
 
 **Changes**:
+
 - `diff()` method signature updated to accept `ComparisonResultType[]` instead of separate summary parameters
 - Return type unchanged (InventoryDifferenceResult)
 - Behavior unchanged (creates Git commits for inventory workflow only)
@@ -25,6 +26,7 @@ This directory contains TypeScript interface definitions representing the contra
 **Purpose**: Documents internal private methods for processing typed results
 
 **Methods**:
+
 - `processComparisonResult()` - Switch dispatcher for result types
 - `addNewScript()` - Creates new inventory entry from UnknownScriptFound
 - `updateScriptWithNewHash()` - Updates existing entry from KnownScriptWithUnauthorisedContentFound
@@ -34,6 +36,7 @@ This directory contains TypeScript interface definitions representing the contra
 ## Usage Examples
 
 See [inventory-service-examples.ts](./inventory-service-examples.ts) for complete usage examples including:
+
 - Processing mixed script and header results
 - Handling duplicate results idempotently
 - Converting single matcher to array syntax

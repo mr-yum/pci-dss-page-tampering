@@ -14,14 +14,9 @@ This document defines the data entities and relationships for the refactored inv
 **Location**: [src/types/comparison/index.ts](../../src/types/comparison/index.ts)
 
 **Definition**:
+
 ```typescript
-type ComparisonResultType =
-  | UnknownScriptFound
-  | KnownScriptWithUnauthorisedContentFound
-  | AuthorizedScriptFound
-  | UnknownHeaderFound
-  | KnownHeaderWithUnauthorisedContentFound
-  | AuthorizedHeaderFound
+type ComparisonResultType = UnknownScriptFound | KnownScriptWithUnauthorisedContentFound | AuthorizedScriptFound | UnknownHeaderFound | KnownHeaderWithUnauthorisedContentFound | AuthorizedHeaderFound
 ```
 
 **Purpose**: Discriminated union of all possible comparison results enabling exhaustive type checking
@@ -37,6 +32,7 @@ type ComparisonResultType =
 **Location**: Internal to [src/services/inventory.ts](../../src/services/inventory.ts) (not exported)
 
 **Definition**:
+
 ```typescript
 type InventoryUpdateAction =
   | { action: 'add_script'; script: InventoryScriptInfo }
@@ -53,6 +49,7 @@ type InventoryUpdateAction =
 **Usage**: Intermediate representation for clarity (optional - can be inlined into switch statement)
 
 **Validation Rules**:
+
 - `entryIndex` must be valid index in inventory.scripts or inventory.headers array
 - `newHash` must have unique SHA-256 value (idempotency check)
 - `arrayConfig` must preserve original authorisationInfo when converting single matcher
@@ -66,6 +63,7 @@ type InventoryUpdateAction =
 **Location**: [src/types/inventory/model.ts](../../src/types/inventory/model.ts)
 
 **Definition** (unchanged):
+
 ```typescript
 type InventoryDifferenceResult = {
   oldInventory: Inventory
@@ -76,6 +74,7 @@ type InventoryDifferenceResult = {
 **Purpose**: Captures before/after state for Git commit generation
 
 **Relationships**:
+
 - Contains two `Inventory` instances (immutable update pattern)
 - `newInventory` contains all changes derived from ComparisonResultType[]
 
@@ -88,21 +87,24 @@ type InventoryDifferenceResult = {
 **Location**: [src/types/matcher/matcher.interface.ts](../../src/types/matcher/matcher.interface.ts)
 
 **Definition**:
+
 ```typescript
 interface DetectedScript {
-  name: string        // URL for external scripts, ID for inline scripts
-  content: string     // URL for external, actual content for inline
-  hash: ScriptHash    // SHA-256 hash of content
+  name: string // URL for external scripts, ID for inline scripts
+  content: string // URL for external, actual content for inline
+  hash: ScriptHash // SHA-256 hash of content
 }
 ```
 
 **Purpose**: Normalized representation of detected script for matcher operations
 
 **Relationships**:
+
 - Used in UnknownScriptFound and KnownScriptWithUnauthorisedContentFound results
 - Converted to InventoryScriptInfo when creating new inventory entries
 
 **Validation Rules**:
+
 - Empty/null content triggers UnknownScriptFound (fail-secure per Constitution)
 - Hash must be valid SHA-256 hex string
 
@@ -113,22 +115,25 @@ interface DetectedScript {
 **Location**: [src/types/header.ts](../../src/types/header.ts)
 
 **Definition**:
+
 ```typescript
 type DetectedHeader = {
-  name: HeaderName      // Header name (case-insensitive per RFC 7230)
-  value: HeaderValues   // Set of header values
-  target: Target        // Target that detected this header
-  workflow: Workflow    // Workflow that detected this header
+  name: HeaderName // Header name (case-insensitive per RFC 7230)
+  value: HeaderValues // Set of header values
+  target: Target // Target that detected this header
+  workflow: Workflow // Workflow that detected this header
 }
 ```
 
 **Purpose**: Normalized representation of detected header for matcher operations
 
 **Relationships**:
+
 - Used in UnknownHeaderFound and KnownHeaderWithUnauthorisedContentFound results
 - Converted to InventoryHeaderInfo when creating new inventory entries
 
 **Validation Rules**:
+
 - Empty/null value Set triggers UnknownHeaderFound (fail-secure)
 - Header name matching is case-insensitive via HeaderNameMatcher
 
@@ -141,35 +146,31 @@ type DetectedHeader = {
 **Location**: [src/interfaces/inventory.ts](../../src/interfaces/inventory.ts)
 
 **Before**:
+
 ```typescript
 interface IInventoryService {
   pull(target: PullTarget): Promise<Inventory[]>
 
-  diff(
-    inventory: Inventory,
-    scriptComparisonSummary: ScriptComparisonSummary,
-    headerComparisonSummary: HeaderComparisonSummary
-  ): Promise<InventoryDifferenceResult>
+  diff(inventory: Inventory, scriptComparisonSummary: ScriptComparisonSummary, headerComparisonSummary: HeaderComparisonSummary): Promise<InventoryDifferenceResult>
 
   push(diffs: InventoryDifferenceResult[]): Promise<void>
 }
 ```
 
 **After**:
+
 ```typescript
 interface IInventoryService {
   pull(target: PullTarget): Promise<Inventory[]>
 
-  diff(
-    inventory: Inventory,
-    comparisonResults: ComparisonResultType[]
-  ): Promise<InventoryDifferenceResult>
+  diff(inventory: Inventory, comparisonResults: ComparisonResultType[]): Promise<InventoryDifferenceResult>
 
   push(diffs: InventoryDifferenceResult[]): Promise<void>
 }
 ```
 
 **Changes**:
+
 - Replaced `scriptComparisonSummary` and `headerComparisonSummary` parameters with single `comparisonResults` array
 - Maintains same return type (InventoryDifferenceResult)
 - Validation logic moves inside diff() to check all results are from inventory workflow
@@ -181,19 +182,21 @@ interface IInventoryService {
 **Location**: [src/types/inventory/model.ts](../../src/types/inventory/model.ts)
 
 **Relevant Properties**:
+
 ```typescript
 interface InventoryScriptInfo {
-  identifyWith: Matcher           // How to identify this script
-  authoriseWith: MatcherConfig    // How to authorize (can be single or array)
+  identifyWith: Matcher // How to identify this script
+  authoriseWith: MatcherConfig // How to authorize (can be single or array)
 }
 
 type MatcherConfig = {
-  matcher: Matcher                       // The authorization matcher
-  authorisationInfo: InventoryAuthorisationInfo  // Metadata
+  matcher: Matcher // The authorization matcher
+  authorisationInfo: InventoryAuthorisationInfo // Metadata
 }
 ```
 
 **Update Operations**:
+
 1. **Add new hash to existing entry** (FR-002a):
    - Convert to RawInventoryScriptInfo
    - If `authoriseWith` has `hashes` array, append new hash (if not duplicate)
@@ -213,14 +216,16 @@ type MatcherConfig = {
 **Location**: [src/types/inventory/model.ts](../../src/types/inventory/model.ts)
 
 **Relevant Properties**:
+
 ```typescript
 interface InventoryHeaderInfo {
-  identifyWith: Matcher           // HeaderNameMatcher (case-insensitive)
-  authoriseWith: MatcherConfig    // ContentMatcher (can be single or array)
+  identifyWith: Matcher // HeaderNameMatcher (case-insensitive)
+  authoriseWith: MatcherConfig // ContentMatcher (can be single or array)
 }
 ```
 
 **Update Operations**:
+
 1. **Add new content matcher to array** (FR-003a):
    - Convert to RawInventoryHeaderInfo
    - If `authoriseWith` is array, append new contentMatcher config (if pattern not duplicate)
@@ -242,6 +247,7 @@ interface InventoryHeaderInfo {
 **Location**: [src/types/comparison.ts](../../src/types/comparison.ts)
 
 **Definition** (legacy):
+
 ```typescript
 type ScriptComparisonResult = {
   newScripts: ScriptInfo[]
@@ -258,6 +264,7 @@ type ScriptComparisonResult = {
 **Location**: [src/types/comparison.ts](../../src/types/comparison.ts)
 
 **Definition** (legacy):
+
 ```typescript
 type ScriptComparisonSummary = {
   target: Target
@@ -275,6 +282,7 @@ type ScriptComparisonSummary = {
 **Location**: [src/types/comparison.ts](../../src/types/comparison.ts)
 
 **Definition** (legacy):
+
 ```typescript
 type HeaderComparisonSummary = {
   target: Target
@@ -348,6 +356,7 @@ type HeaderComparisonSummary = {
 ### Comparison to Legacy Flow
 
 **Legacy (Before)**:
+
 1. ComparisonService → ComparisonResultType[]
 2. Main handler → Convert to ScriptComparisonSummary/HeaderComparisonSummary
 3. InventoryService.diff() → Process newScripts array (one pass)
@@ -356,6 +365,7 @@ type HeaderComparisonSummary = {
 6. Return InventoryDifferenceResult
 
 **Refactored (After)**:
+
 1. ComparisonService → ComparisonResultType[]
 2. InventoryService.diff() → Process all results (single pass)
 3. Return InventoryDifferenceResult
@@ -425,14 +435,21 @@ type HeaderComparisonSummary = {
 ### Exhaustive Checking
 
 TypeScript compiler ensures all ComparisonResultType cases are handled:
+
 ```typescript
 switch (result.type) {
-  case 'unknown_script_found': /* ... */ break
-  case 'known_script_unauthorised_content': /* ... */ break
-  case 'authorized_script': /* ... */ break
-  case 'unknown_header_found': /* ... */ break
-  case 'known_header_unauthorised_content': /* ... */ break
-  case 'authorized_header': /* ... */ break
+  case 'unknown_script_found':
+    /* ... */ break
+  case 'known_script_unauthorised_content':
+    /* ... */ break
+  case 'authorized_script':
+    /* ... */ break
+  case 'unknown_header_found':
+    /* ... */ break
+  case 'known_header_unauthorised_content':
+    /* ... */ break
+  case 'authorized_header':
+    /* ... */ break
   default:
     // TypeScript error if any case is missing
     const _exhaustive: never = result
@@ -443,6 +460,7 @@ switch (result.type) {
 ### Narrowing
 
 Within each case, TypeScript narrows `result` to specific class:
+
 ```typescript
 case 'known_script_unauthorised_content':
   // TypeScript knows result is KnownScriptWithUnauthorisedContentFound

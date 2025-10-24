@@ -12,6 +12,7 @@ This quickstart guide gets you up to speed on the refactored inventory update sy
 ### What Changed?
 
 **Before (Legacy Flow)**:
+
 ```
 ComparisonService → ComparisonResultType[]
                 ↓
@@ -25,6 +26,7 @@ ComparisonService → ComparisonResultType[]
 ```
 
 **After (Refactored Flow)**:
+
 ```
 ComparisonService → ComparisonResultType[]
                 ↓
@@ -251,10 +253,7 @@ When a non-hash matcher needs to accept a new hash:
 Processing duplicate results doesn't create duplicate hashes:
 
 ```typescript
-const results: ComparisonResultType[] = [
-  new KnownScriptWithUnauthorisedContentFound(/* hash: "abc123..." */),
-  new KnownScriptWithUnauthorisedContentFound(/* same hash: "abc123..." */)
-]
+const results: ComparisonResultType[] = [new KnownScriptWithUnauthorisedContentFound(/* hash: "abc123..." */), new KnownScriptWithUnauthorisedContentFound(/* same hash: "abc123..." */)]
 
 const diff = await inventoryService.diff(inventory, results)
 
@@ -391,6 +390,7 @@ npm run test:integration
 **Cause**: Code is accessing legacy ScriptComparisonResult properties
 
 **Fix**: Use discriminated union pattern
+
 ```typescript
 // DON'T:
 summary.externalScripts.newScripts.forEach(...)
@@ -409,6 +409,7 @@ results.forEach(result => {
 **Cause**: Function signature hasn't been updated to accept typed results
 
 **Fix**: Update function parameter type
+
 ```typescript
 // Change:
 function processSummary(summary: ScriptComparisonSummary) { ... }
@@ -453,12 +454,5 @@ function processResults(results: ComparisonResultType[]) { ... }
 import type { ComparisonResultType } from '../types/comparison/index'
 
 // Individual result classes
-import {
-  UnknownScriptFound,
-  KnownScriptWithUnauthorisedContentFound,
-  AuthorizedScriptFound,
-  UnknownHeaderFound,
-  KnownHeaderWithUnauthorisedContentFound,
-  AuthorizedHeaderFound
-} from '../types/comparison/index'
+import { UnknownScriptFound, KnownScriptWithUnauthorisedContentFound, AuthorizedScriptFound, UnknownHeaderFound, KnownHeaderWithUnauthorisedContentFound, AuthorizedHeaderFound } from '../types/comparison/index'
 ```

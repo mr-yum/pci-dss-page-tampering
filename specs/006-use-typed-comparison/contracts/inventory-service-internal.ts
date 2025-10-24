@@ -7,10 +7,10 @@
  */
 
 import type { ComparisonResultType } from '../../../src/types/comparison/index'
-import type { UnknownScriptFound } from '../../../src/types/comparison/unknown-script-found'
+import type { KnownHeaderWithUnauthorisedContentFound as KnownHeaderWithUnauthorisedContentFound_Header } from '../../../src/types/comparison/known-header-unauthorised-content-found'
 import type { KnownScriptWithUnauthorisedContentFound } from '../../../src/types/comparison/known-script-unauthorised-content-found'
 import type { UnknownHeaderFound } from '../../../src/types/comparison/unknown-header-found'
-import type { KnownHeaderWithUnauthorisedContentFound as KnownHeaderWithUnauthorisedContentFound_Header } from '../../../src/types/comparison/known-header-unauthorised-content-found'
+import type { UnknownScriptFound } from '../../../src/types/comparison/unknown-script-found'
 import type { Inventory } from '../../../src/types/inventory/model'
 
 /**

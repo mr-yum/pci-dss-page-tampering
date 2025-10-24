@@ -8,58 +8,10 @@ import { ScriptComparisonService } from './services/comparison/script'
 import { DetectionService } from './services/detection'
 import { ScriptInventoryService } from './services/inventory'
 import { GitInventoryStore } from './stores/inventory/git'
-import type { ComparisonResultType, ScriptComparisonSummary } from './types/comparison'
+import type { ComparisonResultType } from './types/comparison'
 import type { Inventory, InventoryDifferenceResult } from './types/inventory/model'
 import { PullTarget, type Target } from './types/target'
 import { getScriptContentMatchersFromInventory } from './utils/script/matcher'
-
-/**
- * T061: Temporary conversion function for backward compatibility with InventoryService.
- * Converts typed comparison results back to old ScriptComparisonSummary format.
- *
- * TODO: Remove this once InventoryService is updated to use typed results.
- */
-function convertTypedResultsToSummary(results: ComparisonResultType[], target: Target): ScriptComparisonSummary {
-  const newScripts: any[] = []
-  const newHashes: any[] = []
-
-  results.forEach((result) => {
-    if (result.type === 'unknown_script_found') {
-      // Convert DetectedScript to ScriptInfo
-      const scriptInfo = {
-        source: result.script.name.startsWith('http') ? { type: 'external' as const, url: result.script.name } : { type: 'inline' as const, id: result.script.name, content: result.script.content ?? '' },
-        hash: result.script.hash,
-      }
-      newScripts.push(scriptInfo)
-    } else if (result.type === 'known_script_unauthorised_content') {
-      // Script known but content changed
-      const scriptInfo = {
-        source: result.script.name.startsWith('http') ? { type: 'external' as const, url: result.script.name } : { type: 'inline' as const, id: result.script.name, content: result.script.content ?? '' },
-        hash: result.script.hash,
-      }
-      newHashes.push(scriptInfo)
-    }
-    // AuthorizedScriptFound doesn't need to be added to summary (compliant script)
-  })
-
-  // Separate by type
-  const externalNewScripts = newScripts.filter((s) => s.source.type === 'external')
-  const inlineNewScripts = newScripts.filter((s) => s.source.type === 'inline')
-  const externalNewHashes = newHashes.filter((s) => s.source.type === 'external')
-  const inlineNewHashes = newHashes.filter((s) => s.source.type === 'inline')
-
-  return {
-    target,
-    externalScripts: {
-      newScripts: externalNewScripts,
-      newHashes: externalNewHashes,
-    },
-    inlineScripts: {
-      newScripts: inlineNewScripts,
-      newHashes: inlineNewHashes,
-    },
-  }
-}
 
 // Just to test the CI run-on-github workflow
 async function main() {
@@ -105,37 +57,16 @@ async function main() {
       const headerComparisonResults = await headerComparisonService.compare(detectionSummaryForTarget.target, payload, detectionSummaryForTarget.headerSummary)
 
       // Alert for inventory and target using new typed results
-      // T034, T035: Alert for both scripts and headers using unified typed handler
       await slackAlertService.alertForTypedResults(scriptComparisonResults, target, payload.alerts)
       await slackAlertService.alertForTypedResults(headerComparisonResults, target, payload.alerts)
 
       // Run inventory sanity check and return to push to inventory
-      // Note: InventoryService.diff() still expects old summary formats
-      // For now, we convert typed results back to summary format for backward compatibility
+      // T025: Pass typed results directly to InventoryService.diff() (Phase 3 - US1)
       if (target.type === 'inventory') {
-        // Convert typed results back to old summary format for backward compatibility
-        const scriptComparisonSummaryForTarget = convertTypedResultsToSummary(scriptComparisonResults, target)
+        // Combine script and header comparison results for single-pass processing
+        const allComparisonResults: ComparisonResultType[] = [...scriptComparisonResults, ...headerComparisonResults]
 
-        // T034: Convert header typed results back to old HeaderComparisonSummary format
-        // Collect unauthorized headers (unknown or known with unauthorized content)
-        const unauthorisedHeadersMap = new Map<string, Set<string>>()
-        headerComparisonResults.forEach((result) => {
-          if (result.type === 'unknown_header_found' || result.type === 'known_header_unauthorised_content') {
-            const headerName = result.header.name
-            const headerValue = result.header.value
-            if (!unauthorisedHeadersMap.has(headerName)) {
-              unauthorisedHeadersMap.set(headerName, new Set())
-            }
-            unauthorisedHeadersMap.get(headerName)!.add(headerValue)
-          }
-        })
-
-        const headerComparisonSummaryForTarget = {
-          target,
-          unauthorisedHeaders: unauthorisedHeadersMap.size > 0 ? unauthorisedHeadersMap : undefined,
-        }
-
-        return await scriptInventoryService.diff(payload, scriptComparisonSummaryForTarget, headerComparisonSummaryForTarget)
+        return await scriptInventoryService.diff(payload, allComparisonResults)
       } else {
         return null
       }

@@ -12,6 +12,7 @@ This guide provides step-by-step instructions for updating code from legacy `Scr
 ### Step 1: Update InventoryService.diff() Calls
 
 **Before** (legacy):
+
 ```typescript
 const scriptComparisonSummary: ScriptComparisonSummary = await scriptComparisonService.compare(...)
 const headerComparisonSummary: HeaderComparisonSummary = await headerComparisonService.compare(...)
@@ -24,6 +25,7 @@ const diff = await inventoryService.diff(
 ```
 
 **After** (typed):
+
 ```typescript
 const comparisonResults: ComparisonResultType[] = [
   ...(await scriptComparisonService.compare(...)),
@@ -34,6 +36,7 @@ const diff = await inventoryService.diff(inventory, comparisonResults)
 ```
 
 **Key Changes**:
+
 - Both comparison services now return `ComparisonResultType[]`
 - Spread and concatenate results into single array
 - Pass single array to `diff()` instead of separate summaries
@@ -43,6 +46,7 @@ const diff = await inventoryService.diff(inventory, comparisonResults)
 ### Step 2: Remove Legacy Summary Conversions
 
 **Before** (legacy conversion code):
+
 ```typescript
 // Convert ComparisonResultType[] to ScriptComparisonSummary
 function toScriptComparisonSummary(
@@ -69,6 +73,7 @@ function toScriptComparisonSummary(
 ```
 
 **After** (no conversion needed):
+
 ```typescript
 // Delete this function - conversion is no longer needed!
 // InventoryService.diff() accepts ComparisonResultType[] directly
@@ -79,16 +84,19 @@ function toScriptComparisonSummary(
 ### Step 3: Update Type Imports
 
 **Before**:
+
 ```typescript
 import type { ScriptComparisonResult, ScriptComparisonSummary, HeaderComparisonSummary } from '../types/comparison'
 ```
 
 **After**:
+
 ```typescript
 import type { ComparisonResultType } from '../types/comparison/index'
 ```
 
 **Files to Update**:
+
 - [src/main.ts](../../../src/main.ts)
 - [src/interfaces/inventory.ts](../../../src/interfaces/inventory.ts)
 - Any test files importing legacy types
@@ -100,6 +108,7 @@ import type { ComparisonResultType } from '../types/comparison/index'
 Alert handlers should already be using `ComparisonResultType[]` from Phase 4 refactoring. Verify no legacy types remain.
 
 **Check**:
+
 ```typescript
 // Alert handlers should look like this:
 function sendAlert(result: ComparisonResultType) {
@@ -116,10 +125,11 @@ function sendAlert(result: ComparisonResultType) {
 ```
 
 **If legacy types found**:
+
 ```typescript
 // REMOVE THIS:
 function sendAlert(summary: ScriptComparisonSummary) {
-  summary.externalScripts.newScripts.forEach(script => {
+  summary.externalScripts.newScripts.forEach((script) => {
     // Alert logic
   })
 }
@@ -137,16 +147,20 @@ function sendAlert(result: ComparisonResultType) {
 ### Step 5: Run Tests and Verify
 
 1. **Type checking**:
+
    ```bash
    npm run check:typing
    ```
+
    - Should show no errors related to legacy types
    - May show errors in files that haven't been migrated yet
 
 2. **Unit tests**:
+
    ```bash
    npm run test:unit
    ```
+
    - Existing tests should pass (behavior unchanged)
    - Add new tests for generic update handler
 
@@ -154,6 +168,7 @@ function sendAlert(result: ComparisonResultType) {
    ```bash
    npm run test:integration
    ```
+
    - Full workflow tests should pass without modification
 
 ---
@@ -165,6 +180,7 @@ After all consumers are updated:
 **File**: [src/types/comparison.ts](../../../src/types/comparison.ts)
 
 **Remove**:
+
 ```typescript
 export type ScriptComparisonResult = {
   newScripts: ScriptInfo[]
@@ -184,6 +200,7 @@ export type HeaderComparisonSummary = {
 ```
 
 **Keep**:
+
 ```typescript
 // Re-export typed comparison results from comparison/index.ts
 export type { ComparisonResultType } from './comparison/index'
@@ -214,6 +231,7 @@ export { ComparisonResult, UnknownScriptFound, KnownScriptWithUnauthorisedConten
 **Cause**: Code is trying to access legacy summary properties on typed results
 
 **Fix**: Use discriminated union pattern with switch statement
+
 ```typescript
 // DON'T DO THIS:
 results.newScripts.forEach(...)
@@ -232,6 +250,7 @@ results.forEach(result => {
 **Cause**: Import statement references removed legacy type
 
 **Fix**: Update import
+
 ```typescript
 // Change this:
 import type { ScriptComparisonSummary } from '../types/comparison'
@@ -245,6 +264,7 @@ import type { ComparisonResultType } from '../types/comparison/index'
 **Cause**: Test is calling old InventoryService.diff() signature
 
 **Fix**: Update test to pass single ComparisonResultType[] array
+
 ```typescript
 // Change this:
 await inventoryService.diff(inventory, scriptSummary, headerSummary)
@@ -269,6 +289,7 @@ If migration causes issues:
 ## Support
 
 For questions or issues during migration:
+
 - Check [data-model.md](../data-model.md) for entity definitions
 - Review [research.md](../research.md) for implementation patterns
 - See [inventory-service-examples.ts](./inventory-service-examples.ts) for usage examples

@@ -34,6 +34,7 @@
 All validation items passed. The specification is complete and ready for planning phase.
 
 **Update 2025-10-24**: Specification updated to clarify handling of KnownScriptWithUnauthorisedContentFound and KnownHeaderWithUnauthorisedContentFound results. Key changes:
+
 - Scripts: Add hash to same inventory entry (convert to array syntax if needed)
 - Headers: Add content matcher to same inventory entry (convert to array syntax if needed)
 - No new inventory entries created for known resources with unauthorized content
@@ -41,12 +42,14 @@ All validation items passed. The specification is complete and ready for plannin
 ### Validation Details:
 
 **Content Quality**:
+
 - ✓ No TypeScript/Node.js specific details
 - ✓ Focuses on refactoring workflow and data flow improvements
 - ✓ Written to describe the system behavior, not implementation
 - ✓ All mandatory sections (User Scenarios, Requirements, Success Criteria) are complete
 
 **Requirement Completeness**:
+
 - ✓ No clarification markers present
 - ✓ All requirements are verifiable and unambiguous
 - ✓ Enhanced requirements (FR-002a/b, FR-003a/b) clarify array syntax conversion behavior
@@ -58,6 +61,7 @@ All validation items passed. The specification is complete and ready for plannin
 - ✓ Dependencies implicit: requires existing typed comparison result classes
 
 **Feature Readiness**:
+
 - ✓ Each FR maps to acceptance scenarios in user stories
 - ✓ User stories cover the full lifecycle: direct updates (P1), generic handler (P2), legacy cleanup (P3)
 - ✓ Success criteria verify outcomes (no legacy conversions, tests pass, single-pass updates)

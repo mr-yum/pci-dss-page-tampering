@@ -26,6 +26,7 @@ Refactor inventory updates to process typed comparison results (UnknownScriptFou
 _GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 
 ### I. Security-First Development
+
 - ✅ **No security regressions**: Refactoring does not change comparison logic, hash verification, or alert behavior
 - ✅ **Hash verification intact**: SHA-256 verification remains in typed comparison results
 - ✅ **Alert coverage maintained**: Same alert categories generated from typed results
@@ -36,6 +37,7 @@ _GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 **Status**: PASS - This is a pure refactoring with no security logic changes
 
 ### II. Dual-Workflow Integrity
+
 - ✅ **Workflow separation maintained**: Inventory vs detection distinction unchanged
 - ✅ **Git commits restricted**: InventoryService push behavior unchanged
 - ✅ **Alert categories preserved**: new_inventory_script_identified vs uninventoried_script_detected still distinguished
@@ -44,6 +46,7 @@ _GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 **Status**: PASS - No changes to workflow separation logic
 
 ### III. Git-Based Audit Trail
+
 - ✅ **Commit tracking intact**: inventory.push() still creates commits for all changes
 - ✅ **Commit messages preserved**: Same descriptive messages for new scripts/hashes/headers
 - ✅ **No force-pushes**: No changes to Git repository operations
@@ -52,6 +55,7 @@ _GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 **Status**: PASS - Git audit trail logic untouched
 
 ### IV. Alert Completeness and Routing
+
 - ✅ **Alert categories preserved**: All three categories (new_inventory_script_identified, uninventoried_script_detected, mismatched_script_detected) still generated
 - ✅ **Context maintained**: Typed results contain all necessary context (URL, hash, matcher details)
 - ✅ **Failure handling unchanged**: Alert failures still logged without blocking detection
@@ -60,6 +64,7 @@ _GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 **Status**: PASS - Alert generation uses same typed results as input
 
 ### V. Test Coverage for Security Logic
+
 - ✅ **Existing tests preserved**: ScriptComparisonService and HeaderComparisonService tests unchanged
 - ⚠️ **New tests required**: Generic update handler needs new test coverage
 - ✅ **Integration tests**: Existing workflow tests verify end-to-end behavior
@@ -68,6 +73,7 @@ _GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 **Status**: PASS (with commitment to add tests for new code)
 
 ### VI. Minimal Complexity
+
 - ✅ **Complexity reduction**: Removes legacy ScriptComparisonResult/HeaderComparisonSummary types
 - ✅ **Established patterns**: Uses existing Zod schemas and matcher strategy pattern
 - ✅ **Generic handler justified**: Eliminates code duplication between script/header update logic
@@ -139,6 +145,7 @@ No complexity violations - this refactoring reduces complexity by removing legac
 _Re-evaluation after Phase 1 design artifacts are complete_
 
 ### I. Security-First Development
+
 - ✅ **No security regressions**: Design maintains all security behaviors
 - ✅ **Hash verification intact**: SHA-256 verification logic unchanged
 - ✅ **Alert coverage maintained**: All alert categories generated from typed results
@@ -149,6 +156,7 @@ _Re-evaluation after Phase 1 design artifacts are complete_
 **Status**: PASS - Design maintains all security controls
 
 ### II. Dual-Workflow Integrity
+
 - ✅ **Workflow separation maintained**: diff() validates all results are from inventory workflow (target.type check)
 - ✅ **Git commits restricted**: push() behavior unchanged
 - ✅ **Alert categories preserved**: Result types map directly to alert categories
@@ -157,6 +165,7 @@ _Re-evaluation after Phase 1 design artifacts are complete_
 **Status**: PASS - Design enforces workflow separation
 
 ### III. Git-Based Audit Trail
+
 - ✅ **Commit tracking intact**: push() still creates commits for all changes via InventoryDifferenceResult
 - ✅ **Commit messages preserved**: Same descriptive messages for new scripts/hashes/headers
 - ✅ **No force-pushes**: No changes to Git repository operations
@@ -165,6 +174,7 @@ _Re-evaluation after Phase 1 design artifacts are complete_
 **Status**: PASS - Git audit trail intact
 
 ### IV. Alert Completeness and Routing
+
 - ✅ **Alert categories preserved**: ComparisonResultType discriminator maps to alert categories
 - ✅ **Context maintained**: Typed results contain complete context (script, inventoryEntry, failureReason, metadataPath)
 - ✅ **Failure handling unchanged**: Alert failures still logged without blocking detection (handled in alert service)
@@ -173,6 +183,7 @@ _Re-evaluation after Phase 1 design artifacts are complete_
 **Status**: PASS - Alert generation improved with better type safety
 
 ### V. Test Coverage for Security Logic
+
 - ✅ **Existing tests preserved**: ScriptComparisonService and HeaderComparisonService tests unchanged
 - ✅ **New tests planned**: inventory.test.ts will cover processComparisonResult, addNewScript, updateScriptWithNewHash, etc.
 - ✅ **Integration tests**: Existing workflow tests verify end-to-end behavior (should pass without modification)
@@ -181,6 +192,7 @@ _Re-evaluation after Phase 1 design artifacts are complete_
 **Status**: PASS - Test strategy defined and adequate
 
 ### VI. Minimal Complexity
+
 - ✅ **Complexity reduction**: Removes 3 legacy types, eliminates 2 conversions, reduces from 3 passes to 1
 - ✅ **Established patterns**: Uses Zod schemas, matcher strategy pattern, discriminated unions
 - ✅ **Generic handler justified**: Eliminates duplicate update logic for scripts vs headers
