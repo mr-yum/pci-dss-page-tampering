@@ -74,7 +74,12 @@ act push --container-architecture linux/amd64 --secret-file .env.secrets
    - `ScriptComparisonService` (`src/services/comparison/script.ts`) - Uses modular matcher system for flexible script identification and authorization
    - `HeaderComparisonService` (`src/services/comparison/header.ts`) - Uses matcher system for header identification (case-insensitive names) and authorization (case-sensitive values)
 
-3. **InventoryService** (`src/services/inventory.ts`) - Manages resource inventories stored in Git
+3. **InventoryService** (`src/services/inventory.ts`) - Manages resource inventories stored in Git:
+   - Processes typed comparison results (ComparisonResultType[]) directly for inventory updates
+   - Generic update handler for both scripts and headers using discriminated union switch
+   - Single-pass processing eliminating legacy type conversions
+   - Idempotent updates prevent duplicate hashes/matchers
+   - Array syntax conversion preserves original authorization metadata
 
 4. **AlertService** (`src/services/alert/slack.ts`) - Sends Slack notifications for detected changes
 
@@ -82,14 +87,17 @@ act push --container-architecture linux/amd64 --secret-file .env.secrets
 
 1. **Inventory Workflow**:
    - Executes against staging/inventory targets
-   - Updates baseline inventory with newly discovered scripts
-   - Alerts on unidentified scripts (requires manual authorization)
+   - Comparison services return typed results (ComparisonResultType[])
+   - InventoryService processes results directly in single pass
+   - Updates baseline inventory with newly discovered scripts/headers
+   - Alerts on unidentified resources (requires manual authorization)
    - Pushes changes to Git repository
 
 2. **Detection Workflow**:
    - Executes against production/detection targets
+   - Comparison services return typed results (ComparisonResultType[])
    - Compares findings against existing inventory (read-only)
-   - Alerts on uninventoried or hash-mismatched scripts
+   - Alerts on uninventoried or hash-mismatched resources
    - No inventory modifications
 
 3. **Script Comparison Flow** (Matcher Pipeline):
