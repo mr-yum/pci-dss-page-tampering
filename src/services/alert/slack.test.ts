@@ -20,6 +20,7 @@ import type { DetectedHeader } from '../../types/header'
 import type { InventoryAlert, InventoryHeaderInfo } from '../../types/inventory/model'
 import type { DetectedScript, Matcher } from '../../types/matcher/matcher.interface'
 import type { Target } from '../../types/target'
+import { createLogger } from '../../utils/logger'
 import { SlackAlertService } from './slack'
 
 // Mock axios to prevent actual HTTP calls
@@ -42,6 +43,7 @@ describe('SlackAlertService - Typed Results Handling (Phase 4)', () => {
         fileName: 'test-workflow.json',
         definition: { steps: [] },
       },
+      logger: createLogger('test'),
     }
 
     mockAlertDestinations = {

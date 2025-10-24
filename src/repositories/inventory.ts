@@ -6,6 +6,7 @@ import type { InventoryRepositoryProps } from '../types/inventory/props'
 import type { PullTarget } from '../types/target'
 import { GIT_CLONE_PATH, TARGET_PATH } from '../utils/constants'
 import { inventoryToRawInventory, rawInventoryHeaderInfoToInventoryHeaderInfo } from '../utils/inventory'
+import { createTargetLogger } from '../utils/logger'
 import { rawInventoryScriptInfoToInventoryScriptInfo } from '../utils/script'
 import { getWorkflowFromFile } from '../utils/workflow'
 
@@ -25,20 +26,39 @@ export class ScriptInventoryRepository implements IScriptInventoryRepository {
     const payloads = pullResult.payloads
 
     const payloadsToProcess = payloads.map(async (payload): Promise<Inventory> => {
+      const inventoryWorkflow = await getWorkflowFromFile(payload.rawInventory.target.inventory.workflow)
+      const detectionWorkflow = await getWorkflowFromFile(payload.rawInventory.target.detection.workflow)
+
+      const inventoryTarget = {
+        type: payload.rawInventory.target.inventory.type,
+        url: payload.rawInventory.target.inventory.url,
+        workflow: inventoryWorkflow,
+        logger: createTargetLogger({
+          type: payload.rawInventory.target.inventory.type,
+          url: payload.rawInventory.target.inventory.url,
+          workflow: inventoryWorkflow,
+          logger: undefined as any, // Temporary for creating logger
+        }),
+      }
+
+      const detectionTarget = {
+        type: payload.rawInventory.target.detection.type,
+        url: payload.rawInventory.target.detection.url,
+        workflow: detectionWorkflow,
+        logger: createTargetLogger({
+          type: payload.rawInventory.target.detection.type,
+          url: payload.rawInventory.target.detection.url,
+          workflow: detectionWorkflow,
+          logger: undefined as any, // Temporary for creating logger
+        }),
+      }
+
       return {
         fileName: payload.fileName,
         alerts: payload.rawInventory.alerts,
         target: {
-          inventory: {
-            type: payload.rawInventory.target.inventory.type,
-            url: payload.rawInventory.target.inventory.url,
-            workflow: await getWorkflowFromFile(payload.rawInventory.target.inventory.workflow),
-          },
-          detection: {
-            type: payload.rawInventory.target.detection.type,
-            url: payload.rawInventory.target.detection.url,
-            workflow: await getWorkflowFromFile(payload.rawInventory.target.detection.workflow),
-          },
+          inventory: inventoryTarget,
+          detection: detectionTarget,
         },
         scripts: payload.rawInventory.scripts.map(rawInventoryScriptInfoToInventoryScriptInfo),
         headers: (payload.rawInventory.headers || []).map(rawInventoryHeaderInfoToInventoryHeaderInfo),

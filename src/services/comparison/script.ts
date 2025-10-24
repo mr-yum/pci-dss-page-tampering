@@ -81,7 +81,7 @@ export class ScriptComparisonService implements IScriptComparisonService {
 
     // T055: Null/empty content handling - fail-secure (per clarification Q3)
     if (!detectedScript.content || detectedScript.content.trim() === '') {
-      console.log(`[Comparison → Script]: Script '${scriptSourceValue}' has null/empty content, treating as new script for target '${target.url}'.`)
+      target.logger.log(`Script '${scriptSourceValue}' has null/empty content, treating as new script.`)
       return new UnknownScriptFound(target, timestamp, detectedScript)
     }
 
@@ -92,13 +92,13 @@ export class ScriptComparisonService implements IScriptComparisonService {
 
     // T055: Script not identified in inventory
     if (!matchedEntry) {
-      console.log(`[Comparison → Script]: Script '${scriptSourceValue}' not identified in inventory (no identifyWith matcher matched) for target '${target.url}'. Identification took ${identificationTime}ms.`)
+      target.logger.log(`Script '${scriptSourceValue}' not identified in inventory (no identifyWith matcher matched). Identification took ${identificationTime}ms.`)
       return new UnknownScriptFound(target, timestamp, detectedScript)
     }
 
     // Log successful identification with matcher details
     const identifyDescription = matchedEntry.identifyWith.getDescription()
-    console.log(`[Comparison → Script]: Script '${scriptSourceValue}' identified using ${identifyDescription} in ${identificationTime}ms.`)
+    target.logger.log(`Script '${scriptSourceValue}' identified using ${identifyDescription} in ${identificationTime}ms.`)
 
     // Authorization using authoriseWith matcher
     const startAuthorizationTime = Date.now()
@@ -108,12 +108,12 @@ export class ScriptComparisonService implements IScriptComparisonService {
     // Log authorization result with matcher details
     const authorizeDescription = matchedEntry.authoriseWith.matcher.getDescription()
     const authStatus = authorizationResult.authorized ? 'AUTHORIZED' : `UNAUTHORIZED (${authorizationResult.reason})`
-    console.log(`[Comparison → Script]: Script '${scriptSourceValue}' authorization via ${authorizeDescription}: ${authStatus} in ${authorizationTime}ms.`)
+    target.logger.log(`Script '${scriptSourceValue}' authorization via ${authorizeDescription}: ${authStatus} in ${authorizationTime}ms.`)
 
     // T056: Known script but unauthorized content
     // T029: Pass metadataPath from AuthorizationResult for composite matcher support
     if (!authorizationResult.authorized) {
-      console.log(`[Comparison → Script]: Script '${scriptSourceValue}' found in inventory but authorization failed: ${authorizationResult.reason} for target '${target.url}'.`)
+      target.logger.log(`Script '${scriptSourceValue}' found in inventory but authorization failed: ${authorizationResult.reason}.`)
       return new KnownScriptWithUnauthorisedContentFound(
         target,
         timestamp,

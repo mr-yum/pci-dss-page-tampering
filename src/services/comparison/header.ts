@@ -81,13 +81,13 @@ export class HeaderComparisonService implements IHeaderComparisonService {
 
     // No match → unknown header
     if (!matchedEntry) {
-      this.log(`Header '${header.name}' not identified in inventory for target '${target.url}'.`)
+      target.logger.log(`Header '${header.name}' not identified in inventory.`)
       return new UnknownHeaderFound(target, timestamp, header)
     }
 
     // Log identification (T065: use matcher.getDescription() for human-readable output)
     const identifyDescription = matchedEntry.identifyWith.getDescription()
-    this.log(`Header '${header.name}' identified using ${identifyDescription}.`)
+    target.logger.log(`Header '${header.name}' identified using ${identifyDescription}.`)
 
     // T064: Authorize value using authoriseWith matcher (BR-4: case-sensitive value matching)
     // T031: Use Matchable interface (hash is optional, no type cast workaround needed)
@@ -105,7 +105,7 @@ export class HeaderComparisonService implements IHeaderComparisonService {
     // T065: Log authorization result with matcher details
     const authorizeDescription = matchedEntry.authoriseWith.matcher.getDescription()
     const authStatus = isAuthorized ? 'AUTHORIZED' : `UNAUTHORIZED (${authorizationResult.reason || 'authorization failed'})`
-    this.log(`Header '${header.name}' authorization via ${authorizeDescription}: ${authStatus}.`)
+    target.logger.log(`Header '${header.name}' authorization via ${authorizeDescription}: ${authStatus}.`)
 
     // Return appropriate result
     // T030: Pass metadataPath from AuthorizationResult for composite matcher support
@@ -153,12 +153,4 @@ export class HeaderComparisonService implements IHeaderComparisonService {
     return undefined
   }
 
-  /**
-   * Log comparison events.
-   *
-   * Format: `[Comparison → Header]: <message>`
-   */
-  private log(message: string): void {
-    console.log(`[Comparison → Header]: ${message}`)
-  }
 }

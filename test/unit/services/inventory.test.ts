@@ -17,6 +17,7 @@ import type { Inventory } from '../../../src/types/inventory/model'
 import type { DetectedScript } from '../../../src/types/matcher/matcher.interface'
 import { createMatcher } from '../../../src/types/matcher/matcher-factory'
 import type { PullTarget, Target } from '../../../src/types/target'
+import { createLogger } from '../../../src/utils/logger'
 
 // Mock repository for testing
 class MockInventoryRepository implements IScriptInventoryRepository {
@@ -51,12 +52,14 @@ describe('InventoryService - processComparisonResult() (Phase 3 Unit Tests)', ()
       type: 'inventory' as const,
       url: 'https://example.com/payment',
       workflow: mockWorkflow,
+      logger: createLogger('test-inventory'),
     }
 
     detectionTarget = {
       type: 'detection' as const,
       url: 'https://example.com/payment',
       workflow: mockWorkflow,
+      logger: createLogger('test-detection'),
     }
 
     baseInventory = {
