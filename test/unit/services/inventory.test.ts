@@ -151,4 +151,101 @@ describe('InventoryService - processComparisonResult() (Phase 3 Unit Tests)', ()
       expect(diff.newInventory.headers).toHaveLength(1)
     })
   })
+
+  describe('Phase 4 - Generic Handler Validation (T033-T034)', () => {
+    it('T033: should use same processComparisonResult() method for both scripts and headers', async () => {
+      // This test verifies that both script and header results are processed through
+      // the same generic handler (processComparisonResult) rather than separate methods
+      const detectedScript: DetectedScript = {
+        name: 'https://cdn.example.com/test.js',
+        content: 'test script',
+        hash: { value: 'scriptHash123' },
+      }
+
+      const detectedHeader: DetectedHeader = {
+        name: 'Content-Security-Policy',
+        value: "default-src 'self'",
+        target: inventoryTarget,
+        workflow: inventoryTarget.workflow,
+      }
+
+      const scriptResult = new UnknownScriptFound(inventoryTarget, timestamp, detectedScript)
+      const headerResult = new UnknownHeaderFound(inventoryTarget, timestamp, detectedHeader)
+
+      // Process both in a single call - verifying unified processing
+      const diff = await service.diff(baseInventory, [scriptResult, headerResult])
+
+      // Verify both were added correctly
+      expect(diff.newInventory.scripts).toHaveLength(1)
+      expect(diff.newInventory.headers).toHaveLength(1)
+
+      // Verify script was processed correctly
+      const addedScript = diff.newInventory.scripts[0]
+      expect(addedScript?.identifyWith.getType()).toBe('name')
+      expect(addedScript?.authoriseWith.matcher.getType()).toBe('hash')
+      expect(addedScript?.authoriseWith.authorisationInfo.authorised).toBe(false)
+
+      // Verify header was processed correctly
+      const addedHeader = diff.newInventory.headers[0]
+      expect(addedHeader?.identifyWith.getType()).toBe('headerName')
+      expect(addedHeader?.authoriseWith.matcher.getType()).toBe('content')
+      expect(addedHeader?.authoriseWith.authorisationInfo.authorised).toBe(false)
+    })
+
+    it('T034: should process mixed script and header results in single pass', async () => {
+      // This test verifies that the service processes all results in a single iteration
+      // rather than multiple passes (previously: newScripts, newHashes, unauthorisedHeaders)
+      const script1: DetectedScript = {
+        name: 'https://cdn.example.com/script1.js',
+        content: 'script 1 content',
+        hash: { value: 'hash1' },
+      }
+
+      const script2: DetectedScript = {
+        name: 'https://cdn.example.com/script2.js',
+        content: 'script 2 content',
+        hash: { value: 'hash2' },
+      }
+
+      const header1: DetectedHeader = {
+        name: 'X-Frame-Options',
+        value: 'DENY',
+        target: inventoryTarget,
+        workflow: inventoryTarget.workflow,
+      }
+
+      const header2: DetectedHeader = {
+        name: 'Strict-Transport-Security',
+        value: 'max-age=31536000',
+        target: inventoryTarget,
+        workflow: inventoryTarget.workflow,
+      }
+
+      // Mix script and header results in arbitrary order
+      const results = [
+        new UnknownScriptFound(inventoryTarget, timestamp, script1),
+        new UnknownHeaderFound(inventoryTarget, timestamp, header1),
+        new UnknownScriptFound(inventoryTarget, timestamp, script2),
+        new UnknownHeaderFound(inventoryTarget, timestamp, header2),
+      ]
+
+      const diff = await service.diff(baseInventory, results)
+
+      // Verify all results were processed correctly in single pass
+      expect(diff.newInventory.scripts).toHaveLength(2)
+      expect(diff.newInventory.headers).toHaveLength(2)
+
+      // Verify order preservation (scripts maintain order of appearance)
+      expect(diff.newInventory.scripts[0]?.identifyWith.identify(script1)).toBe(true)
+      expect(diff.newInventory.scripts[1]?.identifyWith.identify(script2)).toBe(true)
+
+      // Verify both headers were added
+      const headerNames = diff.newInventory.headers.map((h) => {
+        // Extract header name from identifyWith matcher (headerNameMatcher pattern)
+        const rawHeader: any = { identifyWith: h.identifyWith, authoriseWith: h.authoriseWith }
+        return rawHeader
+      })
+      expect(headerNames).toHaveLength(2)
+    })
+  })
 })

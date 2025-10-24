@@ -106,20 +106,20 @@ This task list implements the refactoring to use typed comparison results direct
 
 ### Validation Tasks
 
-- [ ] T029 [US2] Review processComparisonResult() implementation to verify generic handling of scripts and headers in src/services/inventory.ts
-- [ ] T030 [US2] Remove old getUpdatedInventoryWithNewScripts() method from src/services/inventory.ts
-- [ ] T031 [US2] Remove old getUpdatedInventoryWithNewHashes() method from src/services/inventory.ts
-- [ ] T032 [US2] Remove old getUpdatedInventoryWithNewHeaders() method from src/services/inventory.ts
+- [x] T029 [US2] Review processComparisonResult() implementation to verify generic handling of scripts and headers in src/services/inventory.ts
+- [x] T030 [US2] Remove old getUpdatedInventoryWithNewScripts() method from src/services/inventory.ts
+- [x] T031 [US2] Remove old getUpdatedInventoryWithNewHashes() method from src/services/inventory.ts
+- [x] T032 [US2] Remove old getUpdatedInventoryWithNewHeaders() method from src/services/inventory.ts
 
 ### Unit Tests
 
-- [ ] T033 [P] [US2] Write test verifying script and header processing uses same processComparisonResult() method in src/services/inventory.test.ts
-- [ ] T034 [P] [US2] Write test for mixed script and header results processed in single pass in src/services/inventory.test.ts
+- [x] T033 [P] [US2] Write test verifying script and header processing uses same processComparisonResult() method in src/services/inventory.test.ts
+- [x] T034 [P] [US2] Write test for mixed script and header results processed in single pass in src/services/inventory.test.ts
 
 ### Validation
 
-- [ ] T035 [US2] Verify all integration tests still pass after removing old methods
-- [ ] T036 [US2] Verify code complexity reduced (fewer methods, single pass) via manual review
+- [x] T035 [US2] Verify all integration tests still pass after removing old methods
+- [x] T036 [US2] Verify code complexity reduced (fewer methods, single pass) via manual review
 
 **US2 Acceptance**:
 
