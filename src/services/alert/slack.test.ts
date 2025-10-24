@@ -150,6 +150,7 @@ describe('SlackAlertService - Typed Results Handling (Phase 4)', () => {
         authorize: () => ({ authorized: false, reason: 'value does not match pattern: ^(DENY|SAMEORIGIN)$' }),
         getType: () => 'content',
         getPattern: () => '^(DENY|SAMEORIGIN)$',
+        getDescription: () => 'content:/^(DENY|SAMEORIGIN)$/',
       }
 
       const mockInventoryEntry: InventoryHeaderInfo = {
@@ -158,6 +159,7 @@ describe('SlackAlertService - Typed Results Handling (Phase 4)', () => {
           authorize: () => ({ authorized: true }),
           getType: () => 'header-name',
           getPattern: () => '^x-frame-options$',
+          getDescription: () => 'header-name:/^x-frame-options$/',
         },
         authoriseWith: {
           matcher: mockMatcher,
@@ -219,6 +221,7 @@ describe('SlackAlertService - Typed Results Handling (Phase 4)', () => {
         authorize: () => ({ authorized: false, reason: 'value does not match pattern' }),
         getType: () => 'content',
         getPattern: () => '^default-src .self.$',
+        getDescription: () => 'content:/^default-src .self.$/',
       }
 
       const mockInventoryEntry: InventoryHeaderInfo = {
@@ -227,6 +230,7 @@ describe('SlackAlertService - Typed Results Handling (Phase 4)', () => {
           authorize: () => ({ authorized: true }),
           getType: () => 'header-name',
           getPattern: () => '^content-security-policy$',
+          getDescription: () => 'header-name:/^content-security-policy$/',
         },
         authoriseWith: {
           matcher: mockMatcher,
@@ -266,6 +270,7 @@ describe('SlackAlertService - Typed Results Handling (Phase 4)', () => {
         authorize: () => ({ authorized: true }),
         getType: () => 'content',
         getPattern: () => '^(DENY|SAMEORIGIN)$',
+        getDescription: () => 'content:/^(DENY|SAMEORIGIN)$/',
       }
 
       const mockInventoryEntry: InventoryHeaderInfo = {
@@ -274,6 +279,7 @@ describe('SlackAlertService - Typed Results Handling (Phase 4)', () => {
           authorize: () => ({ authorized: true }),
           getType: () => 'header-name',
           getPattern: () => '^x-frame-options$',
+          getDescription: () => 'header-name:/^x-frame-options$/',
         },
         authoriseWith: {
           matcher: mockMatcher,
@@ -324,6 +330,7 @@ describe('SlackAlertService - Typed Results Handling (Phase 4)', () => {
         authorize: () => ({ authorized: false, reason: 'hash mismatch' }),
         getType: () => 'hash',
         getPattern: () => 'oldhash',
+        getDescription: () => 'hash:1 authorized hash',
       }
 
       const mockInventoryEntry = {
@@ -359,6 +366,7 @@ describe('SlackAlertService - Typed Results Handling (Phase 4)', () => {
         authorize: () => ({ authorized: true }),
         getType: () => 'hash',
         getPattern: () => 'hash123',
+        getDescription: () => 'hash:1 authorized hash',
       }
 
       const mockInventoryEntry = {

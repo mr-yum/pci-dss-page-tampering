@@ -77,6 +77,16 @@ export class OrMatcher<T extends Matchable = Matchable> implements Matcher<T> {
   }
 
   /**
+   * Returns a human-readable description for logging.
+   *
+   * @returns Formatted string like "or:[matcher1, matcher2, ...]" with child descriptions
+   */
+  getDescription(): string {
+    const childDescriptions = this.children.map((child) => child.getDescription()).join(', ')
+    return `or:[${childDescriptions}]`
+  }
+
+  /**
    * Identifies if ANY child matcher identifies the resource.
    *
    * FR-001: OR logic - succeeds if any child succeeds.

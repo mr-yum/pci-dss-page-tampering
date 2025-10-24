@@ -97,8 +97,8 @@ export class ScriptComparisonService implements IScriptComparisonService {
     }
 
     // Log successful identification with matcher details
-    const identifyMatcher = matchedEntry.identifyWith
-    console.log(`[Comparison → Script]: Script '${scriptSourceValue}' identified using ${identifyMatcher.getType()}Matcher with pattern '${JSON.stringify(identifyMatcher.getPattern())}' in ${identificationTime}ms.`)
+    const identifyDescription = matchedEntry.identifyWith.getDescription()
+    console.log(`[Comparison → Script]: Script '${scriptSourceValue}' identified using ${identifyDescription} in ${identificationTime}ms.`)
 
     // Authorization using authoriseWith matcher
     const startAuthorizationTime = Date.now()
@@ -106,10 +106,9 @@ export class ScriptComparisonService implements IScriptComparisonService {
     const authorizationTime = Date.now() - startAuthorizationTime
 
     // Log authorization result with matcher details
-    const authorizeMatcher = matchedEntry.authoriseWith.matcher
+    const authorizeDescription = matchedEntry.authoriseWith.matcher.getDescription()
     const authStatus = authorizationResult.authorized ? 'AUTHORIZED' : `UNAUTHORIZED (${authorizationResult.reason})`
-    const matcherPattern = JSON.stringify(authorizeMatcher.getPattern())
-    console.log(`[Comparison → Script]: Script '${scriptSourceValue}' authorization via ${authorizeMatcher.getType()}Matcher with pattern '${matcherPattern}': ${authStatus} in ${authorizationTime}ms.`)
+    console.log(`[Comparison → Script]: Script '${scriptSourceValue}' authorization via ${authorizeDescription}: ${authStatus} in ${authorizationTime}ms.`)
 
     // T056: Known script but unauthorized content
     // T029: Pass metadataPath from AuthorizationResult for composite matcher support
@@ -120,7 +119,7 @@ export class ScriptComparisonService implements IScriptComparisonService {
         timestamp,
         detectedScript,
         matchedEntry,
-        authorizeMatcher,
+        matchedEntry.authoriseWith.matcher,
         authorizationResult.reason ?? 'Unknown authorization failure',
         authorizationResult.metadataPath ?? [], // NEW: Pass metadata path from authorization result
       )

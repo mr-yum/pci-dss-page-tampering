@@ -53,6 +53,17 @@ export class NameMatcher implements Matcher {
   }
 
   /**
+   * Returns a human-readable description for logging.
+   *
+   * @returns Formatted string like "name:/pattern/" with pattern truncated if too long
+   */
+  getDescription(): string {
+    const pattern = this.pattern.source
+    const truncated = pattern.length > 50 ? pattern.substring(0, 47) + '...' : pattern
+    return `name:/${truncated}/`
+  }
+
+  /**
    * Identifies if a detected script matches this pattern by testing the script name.
    *
    * @param script - The detected script to test

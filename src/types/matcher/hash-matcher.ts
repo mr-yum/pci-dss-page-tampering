@@ -62,6 +62,16 @@ export class HashMatcher implements Matcher {
   }
 
   /**
+   * Returns a human-readable description for logging.
+   *
+   * @returns Formatted string like "hash:3 authorized hashes"
+   */
+  getDescription(): string {
+    const count = this.authorizedHashes.length
+    return `hash:${count} authorized ${count === 1 ? 'hash' : 'hashes'}`
+  }
+
+  /**
    * Identifies scripts - always returns false for HashMatcher.
    * Hashes cannot identify scripts (requires known content), only authorize them.
    *
