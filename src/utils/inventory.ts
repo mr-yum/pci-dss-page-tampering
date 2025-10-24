@@ -4,13 +4,13 @@ import { processAuthorizeWith } from '../types/inventory/zod'
 import { createMatcher } from '../types/matcher/matcher-factory'
 import { inventoryScriptInfoToRawInventoryScriptInfo } from './script'
 
-export function copyInventory(inventory: Inventory, args?: { newScripts: InventoryScriptInfo[] }): Inventory {
+export function copyInventory(inventory: Inventory, args?: { newScripts?: InventoryScriptInfo[]; newHeaders?: InventoryHeaderInfo[] }): Inventory {
   return {
     fileName: inventory.fileName,
     target: inventory.target,
     alerts: inventory.alerts,
-    scripts: args ? args.newScripts : inventory.scripts,
-    headers: inventory.headers,
+    scripts: args?.newScripts ?? inventory.scripts,
+    headers: args?.newHeaders ?? inventory.headers,
   }
 }
 

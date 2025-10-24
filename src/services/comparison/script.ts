@@ -9,7 +9,6 @@ import { getScriptSource } from '../../utils/script'
 
 export class ScriptComparisonService implements IScriptComparisonService {
   /**
-   * T053: Updated to return Array<ComparisonResultType> instead of ScriptComparisonSummary.
    * Returns typed comparison results with complete context for alert handlers.
    *
    * Result types:
@@ -30,7 +29,6 @@ export class ScriptComparisonService implements IScriptComparisonService {
 
   /**
    * Compares detected scripts against inventory, returning typed results for each script.
-   * T054: Updated to return ComparisonResultType[] instead of ScriptComparisonResult.
    */
   private compareScriptWithInventory(detectedScripts: ScriptInfo[], inventoryScripts: InventoryScriptInfo[], target: Target): ComparisonResultType[] {
     const results: ComparisonResultType[] = []

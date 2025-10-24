@@ -1,4 +1,4 @@
-import type { HeaderComparisonSummary, ScriptComparisonSummary } from '../types/comparison'
+import type { ComparisonResultType } from '../types/comparison'
 import type { Inventory, InventoryDifferenceResult, InventoryPullResult } from '../types/inventory/model'
 import type { PullTarget } from '../types/target'
 
@@ -9,7 +9,7 @@ export interface IInventoryStore {
 
 export interface IInventoryService {
   pull(target: PullTarget): Promise<Inventory[]>
-  diff(inventory: Inventory, scriptComparisonSummary: ScriptComparisonSummary, headerComparisonSummary: HeaderComparisonSummary): Promise<InventoryDifferenceResult>
+  diff(inventory: Inventory, comparisonResults: ComparisonResultType[]): Promise<InventoryDifferenceResult>
   push(diffs: InventoryDifferenceResult[]): Promise<void>
 }
 

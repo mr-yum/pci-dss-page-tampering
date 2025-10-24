@@ -1,12 +1,13 @@
 import type { IInventoryService, IScriptInventoryRepository } from '../interfaces/inventory'
-import type { HeaderComparisonSummary, ScriptComparisonResult, ScriptComparisonSummary } from '../types/comparison'
-import type { Inventory, InventoryDifferenceResult, InventoryHeaderInfo } from '../types/inventory/model'
+import type { ComparisonResultType, KnownScriptWithUnauthorisedContentFound, UnknownScriptFound } from '../types/comparison'
+import type { KnownHeaderWithUnauthorisedContentFound } from '../types/comparison/known-header-unauthorised-content-found'
+import type { UnknownHeaderFound } from '../types/comparison/unknown-header-found'
+import type { Inventory, InventoryDifferenceResult, InventoryHeaderInfo, InventoryScriptInfo } from '../types/inventory/model'
 import type { InventoryServiceProps } from '../types/inventory/props'
+import { createMatcher } from '../types/matcher/matcher-factory'
 import type { PullTarget } from '../types/target'
-import { scriptHashToInventoryHashInfo } from '../utils/hash'
-import { unauthorisedHeadersToInventoryHeaderInfo } from '../utils/header'
-import { copyInventory } from '../utils/inventory'
-import { getScriptSource, inventoryScriptInfoToRawInventoryScriptInfo, rawInventoryScriptInfoToInventoryScriptInfo, scriptInfoToInventoryScriptInfo } from '../utils/script'
+import { copyInventory, inventoryHeaderInfoToRawInventoryHeaderInfo, rawInventoryHeaderInfoToInventoryHeaderInfo } from '../utils/inventory'
+import { inventoryScriptInfoToRawInventoryScriptInfo, rawInventoryScriptInfoToInventoryScriptInfo } from '../utils/script'
 
 export class ScriptInventoryService implements IInventoryService {
   private _repository: IScriptInventoryRepository
@@ -20,24 +21,24 @@ export class ScriptInventoryService implements IInventoryService {
     return await this._repository.pull(target)
   }
 
-  diff(inventory: Inventory, scriptComparisonSummary: ScriptComparisonSummary, headerComparisonSummary: HeaderComparisonSummary): Promise<InventoryDifferenceResult> {
-    if (scriptComparisonSummary.target.type !== 'inventory' || headerComparisonSummary.target.type !== 'inventory') {
-      return Promise.reject(new Error('[Inventory → Service] Cannot run diff with inventory scripts from detection target! Skipping...'))
+  diff(inventory: Inventory, comparisonResults: ComparisonResultType[]): Promise<InventoryDifferenceResult> {
+    // Validation: Ensure all results are from inventory workflow (FR-008)
+    const hasDetectionResults = comparisonResults.some((result) => result.target.type !== 'inventory')
+    if (hasDetectionResults) {
+      return Promise.reject(new Error('[Inventory → Service] Cannot run diff with results from detection target! Skipping...'))
     }
 
     const updateDate = new Date()
+    let updatedInventory = copyInventory(inventory)
 
-    const updatedInventoryWithExternalScripts = this.getUpdatedInventoryWithNewScripts(scriptComparisonSummary.externalScripts, inventory, updateDate)
-    const updatedInventoryWithExternalHashes = this.getUpdatedInventoryWithNewHashes(scriptComparisonSummary.externalScripts, updatedInventoryWithExternalScripts, updateDate)
-
-    const updatedInventoryWithInLineScripts = this.getUpdatedInventoryWithNewScripts(scriptComparisonSummary.inlineScripts, updatedInventoryWithExternalHashes, updateDate)
-    const updatedInventoryWithInLineHashes = this.getUpdatedInventoryWithNewHashes(scriptComparisonSummary.inlineScripts, updatedInventoryWithInLineScripts, updateDate)
-
-    const updatedInventoryWithHeaders = this.getUpdatedInventoryWithNewHeaders(headerComparisonSummary, updatedInventoryWithInLineHashes, updateDate)
+    // Single pass through all comparison results
+    for (const result of comparisonResults) {
+      updatedInventory = this.processComparisonResult(result, updatedInventory, updateDate)
+    }
 
     return Promise.resolve({
       oldInventory: inventory,
-      newInventory: updatedInventoryWithHeaders,
+      newInventory: updatedInventory,
     })
   }
 
@@ -51,72 +52,170 @@ export class ScriptInventoryService implements IInventoryService {
     return Promise.resolve()
   }
 
-  private getUpdatedInventoryWithNewScripts(scriptComparisonResult: ScriptComparisonResult, inventory: Inventory, updateDate: Date): Inventory {
-    const newScriptsToAdd = scriptComparisonResult.newScripts.map((script) => scriptInfoToInventoryScriptInfo(script, updateDate))
-    return copyInventory(inventory, { newScripts: inventory.scripts.concat(newScriptsToAdd) })
+  /**
+   * Process a single comparison result and return updated inventory.
+   * Uses discriminated union exhaustive checking to handle all result types.
+   *
+   * @param result - Typed comparison result
+   * @param inventory - Current inventory state
+   * @param updateDate - Timestamp for authorization metadata
+   * @returns Updated inventory with changes applied
+   */
+  private processComparisonResult(result: ComparisonResultType, inventory: Inventory, updateDate: Date): Inventory {
+    switch (result.type) {
+      case 'unknown_script_found':
+        return this.addNewScript(result, inventory, updateDate)
+
+      case 'known_script_unauthorised_content':
+        return this.updateScriptWithNewHash(result, inventory, updateDate)
+
+      case 'authorized_script':
+        // Script already authorized, no changes needed
+        return inventory
+
+      case 'unknown_header_found':
+        return this.addNewHeader(result, inventory, updateDate)
+
+      case 'known_header_unauthorised_content':
+        return this.updateHeaderWithNewContent(result, inventory, updateDate)
+
+      case 'authorized_header':
+        // Header already authorized, no changes needed
+        return inventory
+
+      default: {
+        // TypeScript exhaustiveness check
+        const _exhaustive: never = result
+        throw new Error(`[Inventory → Service] Unhandled comparison result type: ${(_exhaustive as any).type}`)
+      }
+    }
   }
 
-  private getUpdatedInventoryWithNewHashes(scriptComparisonResult: ScriptComparisonResult, inventory: Inventory, updateDate: Date): Inventory {
-    const newHashesToAdd = scriptComparisonResult.newHashes
+  /**
+   * Add a new script to inventory (FR-001).
+   * Creates a new inventory entry from UnknownScriptFound result.
+   */
+  private addNewScript(result: UnknownScriptFound, inventory: Inventory, updateDate: Date): Inventory {
+    const scriptSource = result.script.name
+    const escapedPattern = `^${this.escapeRegex(scriptSource)}$`
 
-    if (newHashesToAdd.length === 0) {
-      return copyInventory(inventory)
+    const newScript: InventoryScriptInfo = {
+      identifyWith: createMatcher({ nameMatcher: escapedPattern }),
+      authoriseWith: {
+        matcher: createMatcher({ hashes: [{ timestamp: result.timestamp, hash: result.script.hash }] }),
+        authorisationInfo: {
+          description: 'NO_DESCRIPTION',
+          authorised: false,
+          date: updateDate,
+        },
+      },
     }
 
-    // Phase 4 Update: Work with matcher-based inventory structure
-    // Need to find matching entries and update their authoriseWith matchers with new hashes
-    const updatedScripts = inventory.scripts.map((inventoryScript) => {
-      // Check if any of the new hashes belong to this inventory entry
-      const matchingNewHashScripts = newHashesToAdd.filter((script) => {
-        const detectedScript = {
-          name: getScriptSource(script),
-          content: script.source.type === 'inline' ? script.source.content : getScriptSource(script),
-          hash: script.hash,
-        }
-        return inventoryScript.identifyWith.identify(detectedScript)
-      })
+    const newScripts = inventory.scripts.concat(newScript)
+    return copyInventory(inventory, { newScripts })
+  }
 
-      if (matchingNewHashScripts.length === 0) {
-        // No new hashes for this entry, return as-is
+  /**
+   * Update existing script entry with new hash (FR-002a/FR-002b).
+   */
+  private updateScriptWithNewHash(result: KnownScriptWithUnauthorisedContentFound, inventory: Inventory, updateDate: Date): Inventory {
+    const updatedScripts = inventory.scripts.map((inventoryScript) => {
+      if (inventoryScript !== result.inventoryEntry) {
         return inventoryScript
       }
 
-      // Convert to raw format to access matcher patterns/hashes
       const rawInventoryScript = inventoryScriptInfoToRawInventoryScriptInfo(inventoryScript)
+      const newHashInfo = { timestamp: result.timestamp, hash: result.script.hash }
 
-      // Add new hashes to the authoriseWith configuration
-      // Only add if authoriseWith is a hash matcher
+      // FR-002a: If authoriseWith has hashes array, add to it
       if ('hashes' in rawInventoryScript.authoriseWith) {
-        const newHashInfos = matchingNewHashScripts.map((script) => scriptHashToInventoryHashInfo(script, updateDate))
-        rawInventoryScript.authoriseWith.hashes.push(...newHashInfos)
+        const hashAlreadyExists = rawInventoryScript.authoriseWith.hashes.some((h: any) => h.hash.value === newHashInfo.hash.value)
+        if (!hashAlreadyExists) {
+          rawInventoryScript.authoriseWith.hashes.push(newHashInfo)
+        }
       } else {
-        // authoriseWith is not a hash matcher (it's content or name matcher)
-        // This shouldn't happen in normal flow, but log a warning
-        console.warn(`[Inventory → Service] Script identified but authoriseWith is not a hash matcher. Cannot add new hash. Entry: ${JSON.stringify(rawInventoryScript.identifyWith)}`)
+        // FR-002b: Convert single matcher to array syntax
+        rawInventoryScript.authoriseWith = [
+          rawInventoryScript.authoriseWith,
+          {
+            hashes: [newHashInfo],
+            authorisationInfo: {
+              description: `Hash detected during inventory run ${updateDate.toISOString()}`,
+              authorised: true,
+              date: updateDate.toISOString(),
+            },
+          },
+        ]
       }
 
-      // Convert back to InventoryScriptInfo with updated matchers
       return rawInventoryScriptInfoToInventoryScriptInfo(rawInventoryScript)
     })
 
     return copyInventory(inventory, { newScripts: updatedScripts })
   }
 
-  private getUpdatedInventoryWithNewHeaders(headerComparisonSummary: HeaderComparisonSummary, inventory: Inventory, updateDate: Date): Inventory {
-    let headers: InventoryHeaderInfo[]
+  /**
+   * Add a new header to inventory (FR-004).
+   */
+  private addNewHeader(result: UnknownHeaderFound, inventory: Inventory, updateDate: Date): Inventory {
+    const headerNamePattern = `^${result.header.name.toLowerCase()}$`
+    const headerValuePattern = `^${this.escapeRegex(result.header.value)}$`
 
-    if (headerComparisonSummary.unauthorisedHeaders) {
-      headers = unauthorisedHeadersToInventoryHeaderInfo(headerComparisonSummary.unauthorisedHeaders, updateDate).concat(inventory.headers)
-    } else {
-      headers = inventory.headers
+    const newHeader: InventoryHeaderInfo = {
+      identifyWith: createMatcher({ headerNameMatcher: headerNamePattern }),
+      authoriseWith: {
+        matcher: createMatcher({ contentMatcher: headerValuePattern }),
+        authorisationInfo: {
+          description: 'NO_DESCRIPTION',
+          authorised: false,
+          date: updateDate,
+        },
+      },
     }
 
-    return {
-      fileName: inventory.fileName,
-      target: inventory.target,
-      alerts: inventory.alerts,
-      scripts: inventory.scripts,
-      headers: headers,
-    }
+    return copyInventory(inventory, { newHeaders: inventory.headers.concat([newHeader]) })
+  }
+
+  /**
+   * Update existing header entry with new content matcher (FR-003a/FR-003b).
+   */
+  private updateHeaderWithNewContent(result: KnownHeaderWithUnauthorisedContentFound, inventory: Inventory, updateDate: Date): Inventory {
+    const updatedHeaders = inventory.headers.map((inventoryHeader) => {
+      if (inventoryHeader !== result.inventoryEntry) {
+        return inventoryHeader
+      }
+
+      const rawInventoryHeader = inventoryHeaderInfoToRawInventoryHeaderInfo(inventoryHeader)
+      const headerValuePattern = `^${this.escapeRegex(result.header.value)}$`
+
+      const newMatcherConfig = {
+        contentMatcher: headerValuePattern,
+        authorisationInfo: {
+          description: `Header value detected during inventory run ${updateDate.toISOString()}`,
+          authorised: true,
+          date: updateDate.toISOString(),
+        },
+      }
+
+      if (Array.isArray(rawInventoryHeader.authoriseWith)) {
+        const patternAlreadyExists = rawInventoryHeader.authoriseWith.some((m: any) => 'contentMatcher' in m && m.contentMatcher === newMatcherConfig.contentMatcher)
+        if (!patternAlreadyExists) {
+          rawInventoryHeader.authoriseWith.push(newMatcherConfig)
+        }
+      } else {
+        rawInventoryHeader.authoriseWith = [rawInventoryHeader.authoriseWith, newMatcherConfig]
+      }
+
+      return rawInventoryHeaderInfoToInventoryHeaderInfo(rawInventoryHeader)
+    })
+
+    return copyInventory(inventory, { newHeaders: updatedHeaders })
+  }
+
+  /**
+   * Helper to escape regex special characters.
+   */
+  private escapeRegex(str: string): string {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   }
 }

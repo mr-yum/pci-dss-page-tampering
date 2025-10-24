@@ -2,12 +2,12 @@ import axios from 'axios'
 
 import type { IAlertService } from '../../interfaces/alert'
 import { AlertType } from '../../types/alert'
-import type { ComparisonResultType, HeaderComparisonSummary, ScriptComparisonSummary } from '../../types/comparison'
+import type { ComparisonResultType } from '../../types/comparison'
 import type { KnownHeaderWithUnauthorisedContentFound } from '../../types/comparison/known-header-unauthorised-content-found'
 import type { KnownScriptWithUnauthorisedContentFound } from '../../types/comparison/known-script-unauthorised-content-found'
 import type { UnknownHeaderFound } from '../../types/comparison/unknown-header-found'
 import type { UnknownScriptFound } from '../../types/comparison/unknown-script-found'
-import type { HeaderInfo, HeaderName, HeaderValues } from '../../types/header'
+import type { HeaderInfo } from '../../types/header'
 import type { AlertDestination, InventoryAlert } from '../../types/inventory/model'
 import type { ScriptInfo } from '../../types/script'
 import type { Target } from '../../types/target'
@@ -77,73 +77,6 @@ export class SlackAlertService implements IAlertService {
     }
 
     // T030: AuthorizedScriptFound and AuthorizedHeaderFound are no-ops (no alert)
-  }
-
-  /**
-   * @deprecated T036: Use alertForTypedResults instead.
-   * This method is deprecated and will be removed in a future release.
-   * Migrate to alertForTypedResults which handles both scripts and headers with complete context.
-   */
-  async alertForScripts(scriptComparisonSummary: ScriptComparisonSummary, target: Target, alertDestinations: InventoryAlert): Promise<void> {
-    switch (target.type) {
-      case 'inventory':
-        await this.alertOnNewScripts(scriptComparisonSummary, target, alertDestinations.inventory.newScriptIdentified)
-        break
-      case 'detection':
-        await this.alertOnNewScripts(scriptComparisonSummary, target, alertDestinations.detection.newScriptDetected)
-        await this.alertOnNewHashes(scriptComparisonSummary, target, alertDestinations.detection.scriptMismatchDetected)
-        break
-    }
-  }
-
-  /**
-   * @deprecated T037: Use alertForTypedResults instead.
-   * This method is deprecated and will be removed in a future release.
-   * Migrate to alertForTypedResults which handles both scripts and headers with complete context.
-   */
-  async alertForHeaders(headerComparisonSummary: HeaderComparisonSummary, target: Target, alertDestinations: InventoryAlert): Promise<void> {
-    if (headerComparisonSummary.unauthorisedHeaders) {
-      const headers = this.headerComparisonSummaryToHeaderInfo(headerComparisonSummary.unauthorisedHeaders)
-
-      switch (target.type) {
-        case 'inventory':
-          await this.alertOnNewHeaders(headers, target, alertDestinations.inventory.newHeaderIdentified)
-          break
-        case 'detection':
-          await this.alertOnNewHeaders(headers, target, alertDestinations.detection.newHeaderDetected)
-          break
-      }
-    }
-  }
-
-  private async alertOnNewHeaders(headers: HeaderInfo[], target: Target, destination: AlertDestination): Promise<void> {
-    const message = `Unauthorised headers detected for target!`
-    const messagePayload = this.createHeaderMessagePayload(message, headers, target, destination)
-
-    this.log(AlertType.Header, message)
-    await this.sendMessage(messagePayload)
-  }
-
-  private async alertOnNewScripts(scriptComparisonSummary: ScriptComparisonSummary, target: Target, destination: AlertDestination): Promise<void> {
-    if (this.newScriptsFound(scriptComparisonSummary)) {
-      const message = `Unauthorised scripts detected for target!`
-      const newScripts = this.getNewScripts(scriptComparisonSummary)
-      const messagePayload = this.createScriptMessagePayload(message, newScripts, target, destination)
-
-      this.log(AlertType.Script, message)
-      await this.sendMessage(messagePayload)
-    }
-  }
-
-  private async alertOnNewHashes(scriptComparisonSummary: ScriptComparisonSummary, target: Target, destination: AlertDestination): Promise<void> {
-    if (this.newHashesFound(scriptComparisonSummary)) {
-      const message = `Script hash mismatch detected for target!`
-      const newHashes = this.getNewHashes(scriptComparisonSummary)
-      const messagePayload = this.createScriptMessagePayload(message, newHashes, target, destination)
-
-      this.log(AlertType.Script, message)
-      await this.sendMessage(messagePayload)
-    }
   }
 
   /**
@@ -232,25 +165,9 @@ export class SlackAlertService implements IAlertService {
     }
   }
 
-  private newScriptsFound(scriptComparisonSummary: ScriptComparisonSummary): boolean {
-    return this.getNewScripts(scriptComparisonSummary).length !== 0
-  }
-
-  private newHashesFound(scriptComparisonSummary: ScriptComparisonSummary): boolean {
-    return this.getNewHashes(scriptComparisonSummary).length !== 0
-  }
-
   private async sendMessage(messagePayload: object): Promise<void> {
     const postMessageEndpoint = 'https://slack.com/api/chat.postMessage'
     await axios.post(postMessageEndpoint, messagePayload, { headers: { Authorization: `Bearer ${this.oAuthToken}`, 'Content-Type': 'application/json' } })
-  }
-
-  private getNewScripts(scriptComparisonSummary: ScriptComparisonSummary): ScriptInfo[] {
-    return scriptComparisonSummary.externalScripts.newScripts.concat(scriptComparisonSummary.inlineScripts.newScripts)
-  }
-
-  private getNewHashes(scriptComparisonSummary: ScriptComparisonSummary): ScriptInfo[] {
-    return scriptComparisonSummary.externalScripts.newHashes.concat(scriptComparisonSummary.inlineScripts.newHashes)
   }
 
   private createScriptMessagePayload(title: string, scripts: ScriptInfo[], target: Target, destination: AlertDestination): object {
@@ -924,18 +841,6 @@ export class SlackAlertService implements IAlertService {
         ],
       },
     ]
-  }
-
-  private headerComparisonSummaryToHeaderInfo(unauthorisedHeaders: Map<HeaderName, HeaderValues>): HeaderInfo[] {
-    return [...unauthorisedHeaders].flatMap(([headerName, headerValues]) => {
-      const headerValuesArray = [...headerValues.values()]
-      return headerValuesArray.map<HeaderInfo>((headerValue) => {
-        return {
-          name: headerName,
-          value: this.truncateText(headerValue),
-        }
-      })
-    })
   }
 
   private log(alertType: AlertType, message: string): void {
