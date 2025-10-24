@@ -141,7 +141,8 @@ All changes MUST pass before merge:
 2. `npm run check:linting` - ESLint rules
 3. `npm run check:typing` - TypeScript type checking
 4. `npm run test:unit` - Unit test suite
-5. `npm run test:integration` - Integration tests (Dockerized)
+5. `npm run test:integration` - Integration tests 
+6. `npm run precommit` - All of the above
 
 ### Refactoring Protocol
 

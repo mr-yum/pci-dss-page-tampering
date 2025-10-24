@@ -153,12 +153,22 @@ This nested structure ensures authorization logic (matcher) and metadata are coh
 - **HeaderNameMatcher** (`src/types/matcher/header-name-matcher.ts`) - Matches headers by name using regex patterns (case-insensitive per RFC 7230, for HTTP header identification)
 - **ContentMatcher** (`src/types/matcher/content-matcher.ts`) - Matches by content using regex patterns (case-sensitive, for inline scripts or header values)
 - **HashMatcher** (`src/types/matcher/hash-matcher.ts`) - Matches scripts by SHA-256 hash (scripts only, for strict integrity verification)
+- **OrMatcher** (`src/types/matcher/or-matcher.ts`) - Composite matcher implementing OR logic (authorizes if ANY child succeeds, first-match-wins)
+- **AndMatcher** (`src/types/matcher/and-matcher.ts`) - Composite matcher implementing AND logic (authorizes only if ALL children succeed)
 
 **Important Distinction**: `NameMatcher` and `HeaderNameMatcher` are distinct implementations with different matching semantics:
 
 - **NameMatcher** (for scripts): Case-sensitive URL/name matching (e.g., "https://Example.com" ≠ "https://example.com")
 - **HeaderNameMatcher** (for headers): Case-insensitive name matching per RFC 7230 (e.g., "Content-Type" = "content-type")
 - Both implement the same `Matcher` interface but with domain-appropriate behaviors
+
+**Composite Matcher Nesting Recommendations**:
+
+- **Tested Performance**: Up to 10 nesting levels without significant degradation
+- **Typical Use Cases**: 2-4 nesting levels (e.g., CSP policies with multiple directive requirements)
+- **No Hard Limit**: Deeper nesting is supported but may impact performance
+- **Fail-Secure**: Empty composite matcher arrays are rejected at schema validation and constructor level
+- **Metadata Paths**: Authorization metadata is collected from root to leaf for full audit trail
 
 #### Comparison Result Types (Refactored 2025-10)
 

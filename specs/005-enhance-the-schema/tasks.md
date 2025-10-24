@@ -154,19 +154,19 @@ description: 'Task list for Composite Matchers with Nested Authorization impleme
 
 ### Tests for User Story 4
 
-- [ ] T054 [P] [US4] Unit test for nested OR containing AND (first AND group succeeds) in test/unit/types/matcher/nested-composite.test.ts
-- [ ] T055 [P] [US4] Unit test for nested OR containing AND (second AND group succeeds) in test/unit/types/matcher/nested-composite.test.ts
-- [ ] T056 [P] [US4] Unit test for nested OR containing AND (partial match of both groups, neither complete) in test/unit/types/matcher/nested-composite.test.ts
-- [ ] T057 [P] [US4] Unit test for nested AND containing OR in test/unit/types/matcher/nested-composite.test.ts
-- [ ] T058 [P] [US4] Unit test for deeply nested composites (5+ levels) in test/unit/types/matcher/nested-composite.test.ts
-- [ ] T059 [P] [US4] Unit test for metadata path collection through nested composites in test/unit/types/matcher/nested-composite.test.ts
-- [ ] T060 [US4] Integration test for nested composite with real CSP policy in test/integration/composite-matcher-workflow.test.ts
+- [X] T054 [P] [US4] Unit test for nested OR containing AND (first AND group succeeds) in test/unit/types/matcher/nested-composite.test.ts
+- [X] T055 [P] [US4] Unit test for nested OR containing AND (second AND group succeeds) in test/unit/types/matcher/nested-composite.test.ts
+- [X] T056 [P] [US4] Unit test for nested OR containing AND (partial match of both groups, neither complete) in test/unit/types/matcher/nested-composite.test.ts
+- [X] T057 [P] [US4] Unit test for nested AND containing OR in test/unit/types/matcher/nested-composite.test.ts
+- [X] T058 [P] [US4] Unit test for deeply nested composites (5+ levels) in test/unit/types/matcher/nested-composite.test.ts
+- [X] T059 [P] [US4] Unit test for metadata path collection through nested composites in test/unit/types/matcher/nested-composite.test.ts
+- [X] T060 [US4] Integration test for nested composite with real CSP policy in test/integration/composite-matcher-workflow.test.ts
 
 ### Implementation for User Story 4
 
-- [ ] T061 [US4] Add recursive validation tests to Zod schema tests in test/unit/types/inventory/matcher-config-schema.test.ts
-- [ ] T062 [US4] Add performance test for deeply nested matchers (10 levels) in test/unit/types/matcher/performance.test.ts
-- [ ] T063 [US4] Document nesting depth recommendations in CLAUDE.md
+- [X] T061 [US4] Add recursive validation tests to Zod schema tests in src/types/inventory/zod.test.ts (includes 10-level performance test)
+- [X] T062 [US4] Add performance test for deeply nested matchers (10 levels) in src/types/inventory/zod.test.ts (combined with T061)
+- [X] T063 [US4] Document nesting depth recommendations in CLAUDE.md
 
 **Checkpoint**: All user stories should now be independently functional - complex nested authorization policies supported
 
@@ -176,13 +176,15 @@ description: 'Task list for Composite Matchers with Nested Authorization impleme
 
 **Purpose**: Ensure fail-secure behavior across all edge cases (Principle V: Test Coverage for Security Logic)
 
-- [ ] T064 [P] Property-based test for fail-secure properties using fast-check in test/unit/types/matcher/fail-secure.test.ts
-- [ ] T065 [P] Unit test for single-child composite matchers (valid edge case) in test/unit/types/matcher/single-child.test.ts
-- [ ] T066 [P] Unit test for authorisationInfo.authorised: false always denying in test/unit/types/matcher/explicit-denial.test.ts
-- [ ] T067 [P] Unit test for whitespace-only content triggering unauthorized in test/unit/types/matcher/whitespace-content.test.ts
-- [ ] T068 [P] Unit test for undefined content triggering unauthorized in test/unit/types/matcher/undefined-content.test.ts
-- [ ] T069 [P] Unit test for top-level override when matchers don't match (inventory entry doesn't apply) in test/unit/services/comparison/override-no-match.test.ts
-- [ ] T070 [US1] Validate that Array.every() is never used without empty array check in test/unit/types/matcher/and-matcher-safety.test.ts
+- [ ] T064 [P] Property-based test for fail-secure properties using fast-check (SKIPPED - fast-check not installed)
+- [X] T065 [P] Unit test for single-child composite matchers (valid edge case) in src/types/matcher/fail-secure.test.ts
+- [X] T066 [P] Unit test for authorisationInfo.authorised: false always denying in src/types/matcher/fail-secure.test.ts
+- [X] T067 [P] Unit test for whitespace-only content triggering unauthorized in src/types/matcher/fail-secure.test.ts
+- [X] T068 [P] Unit test for undefined content triggering unauthorized in src/types/matcher/fail-secure.test.ts
+- [X] T069 [P] Unit test for top-level override when matchers don't match in src/types/matcher/fail-secure.test.ts
+- [X] T070 [US1] Validate that Array.every() is never used without empty array check in src/types/matcher/fail-secure.test.ts
+
+**Note**: All edge case tests (T065-T070) consolidated into single comprehensive fail-secure.test.ts file with 33 test cases covering all scenarios.
 
 ---
 
