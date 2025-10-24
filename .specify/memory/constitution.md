@@ -98,7 +98,7 @@ Introduce new abstractions, dependencies, or patterns ONLY when existing pattern
 - Use Zod schemas for all inventory validation (established pattern)
 - Use matcher strategy pattern for script identification and authorization (NameMatcher, ContentMatcher, HashMatcher)
 - Each inventory entry MUST specify both `identifyWith` and `authoriseWith` matchers for separation of concerns
-- Prefer functional utilities over class hierarchies unless state management required
+- Prefer communicable, readable code over clevel code. Prefer side effect free code when possible.
 - Document any non-obvious patterns with inline comments and type annotations
 - New dependencies MUST be justified (What problem? Why can't we solve it with existing tools?)
 - YAGNI: Don't build extension points "for future flexibility" without concrete need
