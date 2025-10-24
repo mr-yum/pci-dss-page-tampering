@@ -87,6 +87,14 @@ export class OrMatcher<T extends Matchable = Matchable> implements Matcher<T> {
   }
 
   /**
+   * Returns authorization metadata for serialization.
+   * @returns Authorization info if present, undefined otherwise
+   */
+  getAuthorisationInfo(): InventoryAuthorisationInfo | undefined {
+    return this.authorisationInfo
+  }
+
+  /**
    * Identifies if ANY child matcher identifies the resource.
    *
    * FR-001: OR logic - succeeds if any child succeeds.

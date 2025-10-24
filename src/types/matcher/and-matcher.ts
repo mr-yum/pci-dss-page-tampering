@@ -94,6 +94,14 @@ export class AndMatcher<T extends Matchable = Matchable> implements Matcher<T> {
   }
 
   /**
+   * Returns authorization metadata for serialization.
+   * @returns Authorization info if present, undefined otherwise
+   */
+  getAuthorisationInfo(): InventoryAuthorisationInfo | undefined {
+    return this.authorisationInfo
+  }
+
+  /**
    * Identifies if ALL child matchers identify the resource.
    *
    * FR-002: AND logic - succeeds only if ALL children succeed.

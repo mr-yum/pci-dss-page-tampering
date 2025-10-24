@@ -140,12 +140,14 @@ test/
 **Structure Decision**: Single project (Node.js TypeScript CLI/service). Feature modifies existing utility functions in `src/utils/` and adds accessor methods to composite matcher classes in `src/types/matcher/`. No new modules or services created. Tests follow existing structure in `test/unit/` and `test/integration/`.
 
 **Files Modified**:
+
 1. `src/types/matcher/or-matcher.ts` - Add `getAuthorisationInfo()` accessor (~5 lines)
 2. `src/types/matcher/and-matcher.ts` - Add `getAuthorisationInfo()` accessor (~5 lines)
 3. `src/utils/script.ts` - Add `serializeAuthorisationInfo()` helper, extend `matcherToConfig()` (~40 lines)
 4. `src/utils/inventory.ts` - Add `serializeAuthorisationInfo()` helper, extend `matcherToConfig()` (~40 lines)
 
 **Files Created**:
+
 1. Unit tests for serialization (~200 lines total)
 2. Integration tests for full workflow (~100 lines)
 
@@ -156,6 +158,7 @@ test/
 _Fill ONLY if Constitution Check has violations that must be justified_
 
 **No violations requiring tracking.** Constitution Principle VI (Minimal Complexity) justified in Constitution Check section above:
+
 - Complexity necessary to support existing feature (composite matchers)
 - No new abstractions or dependencies
 - Extends existing serialization patterns

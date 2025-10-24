@@ -1,8 +1,23 @@
-import type { Inventory, InventoryHeaderInfo, InventoryScriptInfo } from '../types/inventory/model'
+import type { Inventory, InventoryAuthorisationInfo, InventoryHeaderInfo, InventoryScriptInfo } from '../types/inventory/model'
 import type { RawInventory, RawInventoryHeaderInfo } from '../types/inventory/raw'
 import { processAuthorizeWith } from '../types/inventory/zod'
 import { createMatcher } from '../types/matcher/matcher-factory'
 import { inventoryScriptInfoToRawInventoryScriptInfo } from './script'
+
+/**
+ * Serializes authorization metadata to JSON-compatible format.
+ * Converts Date instances to ISO 8601 strings for JSON persistence.
+ *
+ * @param info - Authorization metadata with Date instance
+ * @returns JSON-serializable object with ISO date string
+ */
+function serializeAuthorisationInfo(info: InventoryAuthorisationInfo): { description: string; authorised: boolean; date: string } {
+  return {
+    description: info.description,
+    authorised: info.authorised,
+    date: info.date.toISOString(),
+  }
+}
 
 export function copyInventory(inventory: Inventory, args?: { newScripts?: InventoryScriptInfo[]; newHeaders?: InventoryHeaderInfo[] }): Inventory {
   return {
@@ -78,6 +93,28 @@ export function inventoryHeaderInfoToRawInventoryHeaderInfo(headerInfo: Inventor
       case 'hash':
         // pattern is InventoryScriptHashInfo[] - not used for headers but included for completeness
         return { hashes: pattern as import('../types/inventory/model').InventoryScriptHashInfo[] }
+      case 'or': {
+        const children = pattern as import('../types/matcher/matcher.interface').Matcher[]
+        const config: any = {
+          orMatcher: children.map(matcherToConfig),
+        }
+        const authInfo = (matcher as any).getAuthorisationInfo?.()
+        if (authInfo) {
+          config.authorisationInfo = serializeAuthorisationInfo(authInfo)
+        }
+        return config
+      }
+      case 'and': {
+        const children = pattern as import('../types/matcher/matcher.interface').Matcher[]
+        const config: any = {
+          andMatcher: children.map(matcherToConfig),
+        }
+        const authInfo = (matcher as any).getAuthorisationInfo?.()
+        if (authInfo) {
+          config.authorisationInfo = serializeAuthorisationInfo(authInfo)
+        }
+        return config
+      }
       default:
         throw new Error(`Unknown matcher type: ${matcherType}`)
     }

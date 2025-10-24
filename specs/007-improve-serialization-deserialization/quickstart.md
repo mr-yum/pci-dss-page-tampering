@@ -48,17 +48,20 @@ function matcherToConfig(matcher: Matcher): RawMatcherConfig {
 
   switch (matcherType) {
     // Existing leaf cases...
-    case 'name': return { nameMatcher: pattern as string }
-    case 'content': return { contentMatcher: pattern as string }
-    case 'hash': return { hashes: pattern as InventoryScriptHashInfo[] }
+    case 'name':
+      return { nameMatcher: pattern as string }
+    case 'content':
+      return { contentMatcher: pattern as string }
+    case 'hash':
+      return { hashes: pattern as InventoryScriptHashInfo[] }
 
     // NEW: Composite matchers (recursive)
     case 'or': {
       const children = pattern as Matcher[]
       const config = {
-        orMatcher: children.map(matcherToConfig)  // Recursive call
+        orMatcher: children.map(matcherToConfig), // Recursive call
       }
-      const authInfo = matcher.getAuthorisationInfo()  // NEW accessor method
+      const authInfo = matcher.getAuthorisationInfo() // NEW accessor method
       if (authInfo) {
         config.authorisationInfo = serializeAuthorisationInfo(authInfo)
       }
@@ -107,7 +110,7 @@ Composite matchers can have top-level authorization metadata:
 new OrMatcher([child1, child2], {
   description: 'Accept either version',
   authorised: true,
-  date: new Date('2025-10-24T12:00:00.000Z')
+  date: new Date('2025-10-24T12:00:00.000Z'),
 })
 ```
 
@@ -139,7 +142,7 @@ function serializeAuthorisationInfo(info: InventoryAuthorisationInfo) {
   return {
     description: info.description,
     authorised: info.authorised,
-    date: info.date.toISOString()  // "2025-10-24T12:00:00.000Z"
+    date: info.date.toISOString(), // "2025-10-24T12:00:00.000Z"
   }
 }
 ```
@@ -179,13 +182,11 @@ getAuthorisationInfo(): InventoryAuthorisationInfo | undefined {
 **Location**: Near top of file, after imports (~line 10)
 
 ```typescript
-function serializeAuthorisationInfo(
-  info: InventoryAuthorisationInfo
-): { description: string; authorised: boolean; date: string } {
+function serializeAuthorisationInfo(info: InventoryAuthorisationInfo): { description: string; authorised: boolean; date: string } {
   return {
     description: info.description,
     authorised: info.authorised,
-    date: info.date.toISOString()
+    date: info.date.toISOString(),
   }
 }
 ```
@@ -195,6 +196,7 @@ function serializeAuthorisationInfo(
 **Location**: Inside `inventoryScriptInfoToRawInventoryScriptInfo()` function (~line 76)
 
 **Current code** (lines 81-92):
+
 ```typescript
 switch (matcherType) {
   case 'name':
@@ -209,6 +211,7 @@ switch (matcherType) {
 ```
 
 **Add before `default` case**:
+
 ```typescript
 case 'or': {
   const children = pattern as import('../types/matcher/matcher.interface').Matcher[]
@@ -258,6 +261,7 @@ code src/types/matcher/and-matcher.ts
 ```
 
 **Test**: Run unit tests for matchers
+
 ```bash
 npm run test:unit -- or-matcher
 npm run test:unit -- and-matcher
@@ -274,12 +278,13 @@ code src/utils/inventory.ts
 ```
 
 **Test**: Create simple unit test for helper
+
 ```typescript
 test('serializeAuthorisationInfo converts date to ISO string', () => {
   const info = {
     description: 'Test',
     authorised: true,
-    date: new Date('2025-10-24T12:00:00.789Z')
+    date: new Date('2025-10-24T12:00:00.789Z'),
   }
   const result = serializeAuthorisationInfo(info)
   expect(result.date).toBe('2025-10-24T12:00:00.789Z')
@@ -295,18 +300,13 @@ code src/utils/inventory.ts
 ```
 
 **Test**: Create unit test for composite matcher serialization
+
 ```typescript
 test('matcherToConfig serializes OrMatcher', () => {
-  const matcher = new OrMatcher([
-    new ContentMatcher('pattern1'),
-    new ContentMatcher('pattern2')
-  ])
+  const matcher = new OrMatcher([new ContentMatcher('pattern1'), new ContentMatcher('pattern2')])
   const config = matcherToConfig(matcher)
   expect(config).toEqual({
-    orMatcher: [
-      { contentMatcher: 'pattern1' },
-      { contentMatcher: 'pattern2' }
-    ]
+    orMatcher: [{ contentMatcher: 'pattern1' }, { contentMatcher: 'pattern2' }],
   })
 })
 ```
@@ -319,21 +319,21 @@ code test/unit/utils/script.test.ts
 ```
 
 **Test Pattern**:
+
 ```typescript
 test('OrMatcher survives round-trip', () => {
   const original: InventoryScriptInfo = {
     identifyWith: new NameMatcher('^https://example\\.com/.*$'),
     authoriseWith: {
-      matcher: new OrMatcher([
-        new ContentMatcher('pattern1'),
-        new ContentMatcher('pattern2')
-      ], {
+      matcher: new OrMatcher([new ContentMatcher('pattern1'), new ContentMatcher('pattern2')], {
         description: 'Accept either pattern',
         authorised: true,
-        date: new Date('2025-10-24T12:00:00.000Z')
+        date: new Date('2025-10-24T12:00:00.000Z'),
       }),
-      authorisationInfo: { /* ... */ }
-    }
+      authorisationInfo: {
+        /* ... */
+      },
+    },
   }
 
   // Serialize
@@ -347,13 +347,15 @@ test('OrMatcher survives round-trip', () => {
   expect(deserialized.authoriseWith.matcher.getPattern()).toHaveLength(2)
 
   // Verify behavior
-  const testScript = { /* mock */ }
-  expect(deserialized.authoriseWith.matcher.identify(testScript))
-    .toBe(original.authoriseWith.matcher.identify(testScript))
+  const testScript = {
+    /* mock */
+  }
+  expect(deserialized.authoriseWith.matcher.identify(testScript)).toBe(original.authoriseWith.matcher.identify(testScript))
 })
 ```
 
 **Run all tests**:
+
 ```bash
 npm run test:unit
 ```
@@ -366,6 +368,7 @@ npm run test:integration
 ```
 
 **Verify**:
+
 - Inventories with composite matchers can be loaded from Git
 - Inventories with composite matchers can be saved to Git
 - Round-trip through Git preserves all data
@@ -380,6 +383,7 @@ npm run check:typing
 ```
 
 **Fix any issues**:
+
 ```bash
 npm run fix:formatting
 npm run fix:linting
@@ -408,6 +412,7 @@ npm run fix:linting
 **Diagnosis**: Ensure ISO string includes milliseconds (`.toISOString()` does this by default).
 
 **Fix**: Verify test comparisons use `date.getTime()` for exact equality:
+
 ```typescript
 expect(deserialized.date.getTime()).toBe(original.date.getTime())
 ```
@@ -419,6 +424,7 @@ expect(deserialized.date.getTime()).toBe(original.date.getTime())
 **Diagnosis**: Check if `getAuthorisationInfo()` method is present and returning correct value.
 
 **Fix**:
+
 1. Verify method added to OrMatcher/AndMatcher classes
 2. Verify serialization code calls method: `matcher.getAuthorisationInfo()`
 3. Verify conditional spread: `if (authInfo) { config.authorisationInfo = ... }`
@@ -450,17 +456,20 @@ Before considering the feature complete, verify:
 ## Need Help?
 
 **Key Reference Documents**:
+
 - [research.md](research.md) - Design decisions and alternatives considered
 - [data-model.md](data-model.md) - Entity definitions and relationships
 - [contracts/serialization-api.md](contracts/serialization-api.md) - Function contracts and examples
 - [spec.md](spec.md) - Requirements and acceptance criteria
 
 **Existing Patterns to Follow**:
+
 - Leaf matcher serialization: [src/utils/script.ts:76-92](../../../src/utils/script.ts#L76-L92)
 - Composite matcher deserialization: [src/types/matcher/matcher-factory.ts:74-107](../../../src/types/matcher/matcher-factory.ts#L74-L107)
 - Round-trip testing: [test/unit/utils/script.test.ts](../../../test/unit/utils/script.test.ts)
 
 **Constitution Compliance**:
+
 - This feature extends existing patterns (Principle VI: Minimal Complexity)
 - No new abstractions or dependencies introduced
 - Fully covered by tests (Principle V: Test Coverage)

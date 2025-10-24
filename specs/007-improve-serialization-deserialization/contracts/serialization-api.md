@@ -12,22 +12,26 @@ This document defines the function contracts for serialization/deserialization u
 ### matcherToConfig()
 
 **Location**:
+
 - `src/utils/script.ts` (internal helper)
 - `src/utils/inventory.ts` (internal helper)
 
 **Purpose**: Convert a Matcher instance to JSON-serializable configuration.
 
 **Signature**:
+
 ```typescript
 function matcherToConfig(matcher: Matcher): RawMatcherConfig
 ```
 
 **Preconditions**:
+
 - `matcher` is a valid Matcher implementation (NameMatcher, HeaderNameMatcher, ContentMatcher, HashMatcher, OrMatcher, AndMatcher)
 - `matcher.getType()` returns one of: `'name'`, `'header-name'`, `'content'`, `'hash'`, `'or'`, `'and'`
 - `matcher.getPattern()` returns data matching the matcher type
 
 **Postconditions**:
+
 - Returns a valid `RawMatcherConfig` discriminated union variant
 - For composite matchers (`'or'`, `'and'`):
   - Recursively serializes all child matchers
@@ -37,10 +41,12 @@ function matcherToConfig(matcher: Matcher): RawMatcherConfig
 - Throws error if `matcher.getType()` is unrecognized
 
 **Error Cases**:
+
 - **Unknown Matcher Type**: `Error('Unknown matcher type during serialization: ${type}')`
 - **Invalid Pattern Type**: TypeError if pattern doesn't match expected type for matcher variant
 
 **Example Usage**:
+
 ```typescript
 // Leaf matcher
 const nameMatcher = new NameMatcher('^https://example\\.com/.*$')
@@ -48,13 +54,10 @@ const config = matcherToConfig(nameMatcher)
 // Returns: { nameMatcher: '^https://example\\.com/.*$' }
 
 // Composite matcher
-const orMatcher = new OrMatcher([
-  new ContentMatcher('pattern1'),
-  new ContentMatcher('pattern2')
-], {
+const orMatcher = new OrMatcher([new ContentMatcher('pattern1'), new ContentMatcher('pattern2')], {
   description: 'Accept either pattern',
   authorised: true,
-  date: new Date('2025-10-24T12:00:00.000Z')
+  date: new Date('2025-10-24T12:00:00.000Z'),
 })
 const config = matcherToConfig(orMatcher)
 // Returns: {
@@ -71,6 +74,7 @@ const config = matcherToConfig(orMatcher)
 ```
 
 **Performance**:
+
 - **Leaf matchers**: O(1) - constant time
 - **Composite matchers**: O(n) where n = total number of matchers in tree (BFS traversal)
 - **Constraint**: Must complete in <100ms for trees with 100 nodes
@@ -82,36 +86,40 @@ const config = matcherToConfig(orMatcher)
 ### serializeAuthorisationInfo()
 
 **Location**:
+
 - `src/utils/script.ts` (new helper)
 - `src/utils/inventory.ts` (new helper)
 
 **Purpose**: Convert authorization metadata to JSON-serializable format with ISO date strings.
 
 **Signature**:
+
 ```typescript
-function serializeAuthorisationInfo(
-  info: InventoryAuthorisationInfo
-): InventoryAuthorisationInfoRaw
+function serializeAuthorisationInfo(info: InventoryAuthorisationInfo): InventoryAuthorisationInfoRaw
 ```
 
 **Preconditions**:
+
 - `info.description` is non-empty string
 - `info.authorised` is boolean
 - `info.date` is valid Date instance
 
 **Postconditions**:
+
 - Returns object with identical structure except `date` converted to ISO 8601 string
 - ISO string includes millisecond precision (e.g., `"2025-10-24T12:00:00.789Z"`)
 
 **Error Cases**:
+
 - **Invalid Date**: `RangeError` if `info.date` is invalid Date (e.g., `new Date('invalid')`)
 
 **Example Usage**:
+
 ```typescript
 const info: InventoryAuthorisationInfo = {
   description: 'Analytics script for conversion tracking',
   authorised: true,
-  date: new Date('2025-10-24T12:00:00.789Z')
+  date: new Date('2025-10-24T12:00:00.789Z'),
 }
 
 const serialized = serializeAuthorisationInfo(info)
@@ -135,18 +143,19 @@ const serialized = serializeAuthorisationInfo(info)
 **Purpose**: Convert an InventoryScriptInfo (with Matcher instances) to RawInventoryScriptInfo (JSON-serializable).
 
 **Signature**:
+
 ```typescript
-function inventoryScriptInfoToRawInventoryScriptInfo(
-  inventoryScriptInfo: InventoryScriptInfo
-): RawInventoryScriptInfo
+function inventoryScriptInfoToRawInventoryScriptInfo(inventoryScriptInfo: InventoryScriptInfo): RawInventoryScriptInfo
 ```
 
 **Preconditions**:
+
 - `inventoryScriptInfo.identifyWith` is valid Matcher instance
 - `inventoryScriptInfo.authoriseWith.matcher` is valid Matcher instance
 - `inventoryScriptInfo.authoriseWith.authorisationInfo` has valid date
 
 **Postconditions**:
+
 - Returns RawInventoryScriptInfo with:
   - `identifyWith`: Matcher converted to RawMatcherConfig
   - `authoriseWith`: Object combining matcher config and authorization metadata (as siblings)
@@ -154,27 +163,26 @@ function inventoryScriptInfoToRawInventoryScriptInfo(
 - Structure matches Zod schema expectations
 
 **Error Cases**:
+
 - Propagates errors from `matcherToConfig()` if unknown matcher types encountered
 
 **Example Usage**:
+
 ```typescript
 const inventoryScriptInfo: InventoryScriptInfo = {
   identifyWith: new NameMatcher('^https://example\\.com/analytics\\.js$'),
   authoriseWith: {
-    matcher: new OrMatcher([
-      new HashMatcher([{ timestamp: new Date('2025-10-01'), hash: { value: 'abc123...' } }]),
-      new HashMatcher([{ timestamp: new Date('2025-10-15'), hash: { value: 'def456...' } }])
-    ], {
+    matcher: new OrMatcher([new HashMatcher([{ timestamp: new Date('2025-10-01'), hash: { value: 'abc123...' } }]), new HashMatcher([{ timestamp: new Date('2025-10-15'), hash: { value: 'def456...' } }])], {
       description: 'Accept version 1.0.0 or 1.1.0',
       authorised: true,
-      date: new Date('2025-10-24T12:00:00.000Z')
+      date: new Date('2025-10-24T12:00:00.000Z'),
     }),
     authorisationInfo: {
       description: 'Analytics script',
       authorised: true,
-      date: new Date('2025-10-24T12:00:00.000Z')
-    }
-  }
+      date: new Date('2025-10-24T12:00:00.000Z'),
+    },
+  },
 }
 
 const raw = inventoryScriptInfoToRawInventoryScriptInfo(inventoryScriptInfo)
@@ -199,6 +207,7 @@ const raw = inventoryScriptInfoToRawInventoryScriptInfo(inventoryScriptInfo)
 **Side Effects**: None (pure function)
 
 **Modifications in This Feature**:
+
 - Extend `matcherToConfig()` helper to handle `'or'` and `'and'` matcher types
 - No changes to function signature or high-level behavior
 
@@ -211,10 +220,9 @@ const raw = inventoryScriptInfoToRawInventoryScriptInfo(inventoryScriptInfo)
 **Purpose**: Convert an InventoryHeaderInfo (with Matcher instances) to RawInventoryHeaderInfo (JSON-serializable).
 
 **Signature**:
+
 ```typescript
-function inventoryHeaderInfoToRawInventoryHeaderInfo(
-  headerInfo: InventoryHeaderInfo
-): RawInventoryHeaderInfo
+function inventoryHeaderInfoToRawInventoryHeaderInfo(headerInfo: InventoryHeaderInfo): RawInventoryHeaderInfo
 ```
 
 **Preconditions**: Same as `inventoryScriptInfoToRawInventoryScriptInfo()` but for headers
@@ -222,6 +230,7 @@ function inventoryHeaderInfoToRawInventoryHeaderInfo(
 **Postconditions**: Same as `inventoryScriptInfoToRawInventoryScriptInfo()` but for headers
 
 **Example Usage**:
+
 ```typescript
 const headerInfo: InventoryHeaderInfo = {
   identifyWith: new HeaderNameMatcher('^content-security-policy$'),
@@ -272,12 +281,14 @@ const raw = inventoryHeaderInfoToRawInventoryHeaderInfo(headerInfo)
 ### Matcher.getAuthorisationInfo() (NEW)
 
 **Location**:
+
 - `src/types/matcher/or-matcher.ts` (new public method)
 - `src/types/matcher/and-matcher.ts` (new public method)
 
 **Purpose**: Expose authorization metadata for serialization without breaking encapsulation.
 
 **Signature**:
+
 ```typescript
 class OrMatcher<T extends Matchable> implements Matcher<T> {
   getAuthorisationInfo(): InventoryAuthorisationInfo | undefined
@@ -291,19 +302,19 @@ class AndMatcher<T extends Matchable> implements Matcher<T> {
 **Preconditions**: None
 
 **Postconditions**:
+
 - Returns the authorization metadata passed to constructor, or `undefined` if not provided
 - Does not modify internal state (read-only accessor)
 
 **Error Cases**: None (always succeeds)
 
 **Example Usage**:
+
 ```typescript
-const matcher = new OrMatcher([
-  new ContentMatcher('pattern1')
-], {
+const matcher = new OrMatcher([new ContentMatcher('pattern1')], {
   description: 'Test matcher',
   authorised: true,
-  date: new Date('2025-10-24T12:00:00.000Z')
+  date: new Date('2025-10-24T12:00:00.000Z'),
 })
 
 const info = matcher.getAuthorisationInfo()
@@ -333,6 +344,7 @@ const noInfo = matcherNoInfo.getAuthorisationInfo()
 **Contract**: InventoryService calls serialization functions when pushing inventory updates to Git.
 
 **Flow**:
+
 1. Service receives typed comparison results (ComparisonResultType[])
 2. Service updates in-memory Inventory (Matcher instances)
 3. Service calls `inventoryToRawInventory(inventory)`
@@ -340,6 +352,7 @@ const noInfo = matcherNoInfo.getAuthorisationInfo()
 5. Result is JSON.stringify'd and committed to Git
 
 **Error Handling**:
+
 - If serialization throws (unknown matcher type), service logs error and aborts commit
 - Inventory repository state remains unchanged (atomic commit)
 - Alert sent to operations team about serialization failure
@@ -349,12 +362,14 @@ const noInfo = matcherNoInfo.getAuthorisationInfo()
 **Contract**: Zod schema validates deserialized JSON before conversion to Matcher instances.
 
 **Flow**:
+
 1. Git repository pulls JSON inventory
 2. Zod schema validates structure via `InventorySchema.parse(json)`
 3. If validation fails, throws error with detailed message
 4. If validation passes, deserialization functions convert to Matcher instances
 
 **Error Handling**:
+
 - Validation errors include field path and expected format
 - Inventory load fails fast on invalid JSON
 - No partial inventories created (all-or-nothing)
@@ -366,6 +381,7 @@ const noInfo = matcherNoInfo.getAuthorisationInfo()
 **Location**: `test/unit/utils/script.test.ts`, `test/unit/utils/inventory.test.ts`
 
 **Required Test Cases**:
+
 1. Serialize OrMatcher with leaf children → verify JSON structure
 2. Serialize AndMatcher with leaf children → verify JSON structure
 3. Serialize nested composites (OrMatcher containing AndMatcher) → verify recursion
@@ -382,6 +398,7 @@ const noInfo = matcherNoInfo.getAuthorisationInfo()
 **Location**: `test/integration/inventory-service.test.ts`
 
 **Required Test Cases**:
+
 1. Full inventory workflow with composite matchers → verify Git commit
 2. Load inventory with composite matchers → verify deserialization
 3. Round-trip full inventory → verify all entries preserved
@@ -389,13 +406,13 @@ const noInfo = matcherNoInfo.getAuthorisationInfo()
 
 ## Performance Guarantees
 
-| Operation | Input Size | Max Time | Notes |
-|-----------|-----------|----------|-------|
-| `matcherToConfig()` leaf matcher | 1 matcher | <1ms | Constant time |
-| `matcherToConfig()` composite | 100 matchers | <100ms | Linear in tree size |
-| `serializeAuthorisationInfo()` | 1 metadata | <1ms | Constant time |
-| Full inventory serialization | 50 scripts, 4 levels | <50ms | Typical production workload |
-| Nested composite serialization | 10 levels deep | <10ms | Spec requirement |
+| Operation                        | Input Size           | Max Time | Notes                       |
+| -------------------------------- | -------------------- | -------- | --------------------------- |
+| `matcherToConfig()` leaf matcher | 1 matcher            | <1ms     | Constant time               |
+| `matcherToConfig()` composite    | 100 matchers         | <100ms   | Linear in tree size         |
+| `serializeAuthorisationInfo()`   | 1 metadata           | <1ms     | Constant time               |
+| Full inventory serialization     | 50 scripts, 4 levels | <50ms    | Typical production workload |
+| Nested composite serialization   | 10 levels deep       | <10ms    | Spec requirement            |
 
 ## Backward Compatibility
 
@@ -412,6 +429,7 @@ const noInfo = matcherNoInfo.getAuthorisationInfo()
 **Guarantee**: All existing function signatures unchanged.
 
 **Changes**:
+
 - `matcherToConfig()` - internal helper, extended with new cases
 - `inventoryScriptInfoToRawInventoryScriptInfo()` - no signature change, behavior extended
 - `inventoryHeaderInfoToRawInventoryHeaderInfo()` - no signature change, behavior extended

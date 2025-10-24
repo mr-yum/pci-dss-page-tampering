@@ -10,6 +10,7 @@
 This document provides an actionable task breakdown for implementing serialization/deserialization support for composite matchers (OrMatcher, AndMatcher). Tasks are organized by user story to enable independent implementation and testing.
 
 **Key Principles**:
+
 - Each user story can be implemented and tested independently
 - Tasks are ordered by dependencies within each phase
 - Parallel execution opportunities are marked with [P]
@@ -22,12 +23,14 @@ This document provides an actionable task breakdown for implementing serializati
 **Recommended MVP**: User Story 1 only (Serialize Composite Matchers to JSON)
 
 **Rationale**:
+
 - US1 is the core blocker preventing production use
 - US2 (deserialization) already works via existing `createMatcher` factory
 - US3 and US4 depend on US1+US2 working together
 - Incremental delivery: ship serialization first, validate, then add comprehensive testing
 
 **Post-MVP Increments**:
+
 1. US1 → Enable composite matcher persistence (immediate value)
 2. US3 → Add round-trip validation (data integrity)
 3. US4 → Validate nested composites (edge cases)
@@ -51,18 +54,19 @@ This document provides an actionable task breakdown for implementing serializati
 
 ### Tasks
 
-- [ ] T001 Verify TypeScript compilation succeeds with `npm run check:typing`
-- [ ] T002 Verify existing unit tests pass with `npm run test:unit`
-- [ ] T003 Verify existing integration tests pass with `npm run test:integration`
-- [ ] T004 Review existing serialization pattern in src/utils/script.ts lines 76-108
-- [ ] T005 Review existing deserialization pattern in src/types/matcher/matcher-factory.ts lines 74-107
-- [ ] T006 Verify OrMatcher constructor in src/types/matcher/or-matcher.ts accepts authorisationInfo parameter
-- [ ] T007 Verify AndMatcher constructor in src/types/matcher/and-matcher.ts accepts authorisationInfo parameter
+- [x] T001 Verify TypeScript compilation succeeds with `npm run check:typing`
+- [x] T002 Verify existing unit tests pass with `npm run test:unit`
+- [x] T003 Verify existing integration tests pass with `npm run test:integration`
+- [x] T004 Review existing serialization pattern in src/utils/script.ts lines 76-108
+- [x] T005 Review existing deserialization pattern in src/types/matcher/matcher-factory.ts lines 74-107
+- [x] T006 Verify OrMatcher constructor in src/types/matcher/or-matcher.ts accepts authorisationInfo parameter
+- [x] T007 Verify AndMatcher constructor in src/types/matcher/and-matcher.ts accepts authorisationInfo parameter
 
 **Completion Criteria**:
-- [ ] All existing tests pass (no regressions)
-- [ ] Code patterns for extension points identified
-- [ ] Understanding of existing matcher reflection methods (getType, getPattern)
+
+- [x] All existing tests pass (no regressions)
+- [x] Code patterns for extension points identified
+- [x] Understanding of existing matcher reflection methods (getType, getPattern)
 
 ---
 
@@ -78,10 +82,11 @@ This document provides an actionable task breakdown for implementing serializati
 
 ### 2.1: Add Accessor Methods to Composite Matchers
 
-- [ ] T008 [P] [US1] Add getAuthorisationInfo() accessor method to OrMatcher class in src/types/matcher/or-matcher.ts after line 87
-- [ ] T009 [P] [US1] Add getAuthorisationInfo() accessor method to AndMatcher class in src/types/matcher/and-matcher.ts after line 87
+- [x] T008 [P] [US1] Add getAuthorisationInfo() accessor method to OrMatcher class in src/types/matcher/or-matcher.ts after line 87
+- [x] T009 [P] [US1] Add getAuthorisationInfo() accessor method to AndMatcher class in src/types/matcher/and-matcher.ts after line 87
 
 **Implementation Details (T008, T009)**:
+
 ```typescript
 /**
  * Returns authorization metadata for serialization.
@@ -94,30 +99,30 @@ getAuthorisationInfo(): InventoryAuthorisationInfo | undefined {
 
 ### 2.2: Add Serialization Helper for Authorization Metadata
 
-- [ ] T010 [P] [US1] Add serializeAuthorisationInfo() helper function in src/utils/script.ts after imports (line 10)
-- [ ] T011 [P] [US1] Add serializeAuthorisationInfo() helper function in src/utils/inventory.ts after imports (line 10)
+- [x] T010 [P] [US1] Add serializeAuthorisationInfo() helper function in src/utils/script.ts after imports (line 10)
+- [x] T011 [P] [US1] Add serializeAuthorisationInfo() helper function in src/utils/inventory.ts after imports (line 10)
 
 **Implementation Details (T010, T011)**:
+
 ```typescript
-function serializeAuthorisationInfo(
-  info: InventoryAuthorisationInfo
-): { description: string; authorised: boolean; date: string } {
+function serializeAuthorisationInfo(info: InventoryAuthorisationInfo): { description: string; authorised: boolean; date: string } {
   return {
     description: info.description,
     authorised: info.authorised,
-    date: info.date.toISOString()
+    date: info.date.toISOString(),
   }
 }
 ```
 
 ### 2.3: Extend matcherToConfig() for Composite Matchers
 
-- [ ] T012 [US1] Extend matcherToConfig() helper in src/utils/script.ts to handle 'or' matcher type (add case before default at line 90)
-- [ ] T013 [US1] Extend matcherToConfig() helper in src/utils/script.ts to handle 'and' matcher type (add case before default at line 90)
-- [ ] T014 [US1] Extend matcherToConfig() helper in src/utils/inventory.ts to handle 'or' matcher type (add case before default at line 82)
-- [ ] T015 [US1] Extend matcherToConfig() helper in src/utils/inventory.ts to handle 'and' matcher type (add case before default at line 82)
+- [x] T012 [US1] Extend matcherToConfig() helper in src/utils/script.ts to handle 'or' matcher type (add case before default at line 90)
+- [x] T013 [US1] Extend matcherToConfig() helper in src/utils/script.ts to handle 'and' matcher type (add case before default at line 90)
+- [x] T014 [US1] Extend matcherToConfig() helper in src/utils/inventory.ts to handle 'or' matcher type (add case before default at line 82)
+- [x] T015 [US1] Extend matcherToConfig() helper in src/utils/inventory.ts to handle 'and' matcher type (add case before default at line 82)
 
 **Implementation Details (T012-T015)**:
+
 ```typescript
 case 'or': {
   const children = pattern as import('../types/matcher/matcher.interface').Matcher[]
@@ -146,30 +151,28 @@ case 'and': {
 
 ### 2.4: Unit Tests for User Story 1
 
-- [ ] T016 [P] [US1] Add test for getAuthorisationInfo() accessor in test/unit/types/matcher/or-matcher.test.ts
-- [ ] T017 [P] [US1] Add test for getAuthorisationInfo() accessor in test/unit/types/matcher/and-matcher.test.ts
-- [ ] T018 [P] [US1] Add test for serializeAuthorisationInfo() date conversion in test/unit/utils/script.test.ts
-- [ ] T019 [P] [US1] Add test for OrMatcher serialization with HashMatcher children in test/unit/utils/script.test.ts
-- [ ] T020 [P] [US1] Add test for AndMatcher serialization with ContentMatcher children in test/unit/utils/inventory.test.ts
-- [ ] T021 [P] [US1] Add test for composite matcher serialization with authorisationInfo in test/unit/utils/script.test.ts
-- [ ] T022 [P] [US1] Add test for composite matcher serialization without authorisationInfo in test/unit/utils/script.test.ts
+- [x] T016 [P] [US1] Add test for getAuthorisationInfo() accessor in test/unit/types/matcher/or-matcher.test.ts
+- [x] T017 [P] [US1] Add test for getAuthorisationInfo() accessor in test/unit/types/matcher/and-matcher.test.ts
+- [x] T018 [P] [US1] Add test for serializeAuthorisationInfo() date conversion in test/unit/utils/script.test.ts
+- [x] T019 [P] [US1] Add test for OrMatcher serialization with HashMatcher children in test/unit/utils/script.test.ts
+- [x] T020 [P] [US1] Add test for AndMatcher serialization with ContentMatcher children in test/unit/utils/script.test.ts (Note: Added to script.test.ts instead)
+- [x] T021 [P] [US1] Add test for composite matcher serialization with authorisationInfo in test/unit/utils/script.test.ts
+- [x] T022 [P] [US1] Add test for composite matcher serialization without authorisationInfo in test/unit/utils/script.test.ts
 
 **Test Pattern Example (T019)**:
+
 ```typescript
 test('serializes OrMatcher with HashMatcher children', () => {
   const inventoryScript: InventoryScriptInfo = {
     identifyWith: new NameMatcher('^https://example\\.com/.*$'),
     authoriseWith: {
-      matcher: new OrMatcher([
-        new HashMatcher([{ timestamp: new Date('2025-10-01'), hash: { value: 'abc123' } }]),
-        new HashMatcher([{ timestamp: new Date('2025-10-15'), hash: { value: 'def456' } }])
-      ], {
+      matcher: new OrMatcher([new HashMatcher([{ timestamp: new Date('2025-10-01'), hash: { value: 'abc123' } }]), new HashMatcher([{ timestamp: new Date('2025-10-15'), hash: { value: 'def456' } }])], {
         description: 'Accept version 1.0 or 1.1',
         authorised: true,
-        date: new Date('2025-10-24T12:00:00.000Z')
+        date: new Date('2025-10-24T12:00:00.000Z'),
       }),
-      authorisationInfo: { description: 'Analytics', authorised: true, date: new Date('2025-10-24') }
-    }
+      authorisationInfo: { description: 'Analytics', authorised: true, date: new Date('2025-10-24') },
+    },
   }
 
   const raw = inventoryScriptInfoToRawInventoryScriptInfo(inventoryScript)
@@ -184,16 +187,17 @@ test('serializes OrMatcher with HashMatcher children', () => {
 
 ### 2.5: Verify User Story 1 Completion
 
-- [ ] T023 [US1] Run unit tests with `npm run test:unit` and verify all US1 tests pass
-- [ ] T024 [US1] Run type checking with `npm run check:typing` and verify no TypeScript errors
-- [ ] T025 [US1] Manually test serialization with sample OrMatcher and verify JSON output structure
+- [x] T023 [US1] Run unit tests with `npm run test:unit` and verify all US1 tests pass
+- [x] T024 [US1] Run type checking with `npm run check:typing` and verify no TypeScript errors
+- [x] T025 [US1] Manually test serialization with sample OrMatcher and verify JSON output structure
 
 **Completion Criteria for US1**:
-- [ ] OrMatcher and AndMatcher instances serialize to valid JSON
-- [ ] Authorization metadata preserved with ISO date format
-- [ ] Recursive serialization works (composite containing composite)
-- [ ] No errors thrown during serialization
-- [ ] All unit tests pass
+
+- [x] OrMatcher and AndMatcher instances serialize to valid JSON
+- [x] Authorization metadata preserved with ISO date format
+- [x] Recursive serialization works (composite containing composite)
+- [x] No errors thrown during serialization
+- [x] All unit tests pass
 
 ---
 
@@ -222,21 +226,19 @@ test('serializes OrMatcher with HashMatcher children', () => {
 - [ ] T031 [P] [US2] Add test for deserializing composite matcher without authorisationInfo in test/unit/utils/script.test.ts
 
 **Test Pattern Example (T028)**:
+
 ```typescript
 test('deserializes orMatcher with two HashMatchers', () => {
   const raw: RawInventoryScriptInfo = {
     identifyWith: { nameMatcher: '^https://example\\.com/.*$' },
     authoriseWith: {
-      orMatcher: [
-        { hashes: [{ timestamp: '2025-10-01T00:00:00.000Z', hash: { value: 'abc123' } }] },
-        { hashes: [{ timestamp: '2025-10-15T00:00:00.000Z', hash: { value: 'def456' } }] }
-      ],
+      orMatcher: [{ hashes: [{ timestamp: '2025-10-01T00:00:00.000Z', hash: { value: 'abc123' } }] }, { hashes: [{ timestamp: '2025-10-15T00:00:00.000Z', hash: { value: 'def456' } }] }],
       authorisationInfo: {
         description: 'Accept version 1.0 or 1.1',
         authorised: true,
-        date: '2025-10-24T12:00:00.000Z'
-      }
-    }
+        date: '2025-10-24T12:00:00.000Z',
+      },
+    },
   }
 
   const inventoryScript = rawInventoryScriptInfoToInventoryScriptInfo(raw)
@@ -255,6 +257,7 @@ test('deserializes orMatcher with two HashMatchers', () => {
 - [ ] T033 [US2] Manually test deserialization with sample JSON and verify Matcher instances created
 
 **Completion Criteria for US2**:
+
 - [ ] JSON with orMatcher/andMatcher deserializes to Matcher instances
 - [ ] Authorization metadata restored with Date instances
 - [ ] Recursive deserialization works (nested composites)
@@ -281,21 +284,19 @@ test('deserializes orMatcher with two HashMatchers', () => {
 - [ ] T038 [P] [US3] Add behavioral equivalence test (identify and authorize produce same results) in test/unit/utils/script.test.ts
 
 **Test Pattern Example (T034)**:
+
 ```typescript
 test('OrMatcher with ContentMatchers survives round-trip', () => {
   const original: InventoryScriptInfo = {
     identifyWith: new NameMatcher('^https://example\\.com/.*$'),
     authoriseWith: {
-      matcher: new OrMatcher([
-        new ContentMatcher('pattern1'),
-        new ContentMatcher('pattern2')
-      ], {
+      matcher: new OrMatcher([new ContentMatcher('pattern1'), new ContentMatcher('pattern2')], {
         description: 'Accept either pattern',
         authorised: true,
-        date: new Date('2025-10-24T12:00:00.789Z')
+        date: new Date('2025-10-24T12:00:00.789Z'),
       }),
-      authorisationInfo: { description: 'Test', authorised: true, date: new Date('2025-10-24') }
-    }
+      authorisationInfo: { description: 'Test', authorised: true, date: new Date('2025-10-24') },
+    },
   }
 
   // Serialize
@@ -321,10 +322,9 @@ test('OrMatcher with ContentMatchers survives round-trip', () => {
   const testScript = {
     source: { type: 'external' as const, url: 'https://example.com/test.js' },
     content: 'pattern1',
-    hash: { value: 'test' }
+    hash: { value: 'test' },
   }
-  expect(deserialized.authoriseWith.matcher.identify(testScript))
-    .toBe(original.authoriseWith.matcher.identify(testScript))
+  expect(deserialized.authoriseWith.matcher.identify(testScript)).toBe(original.authoriseWith.matcher.identify(testScript))
 })
 ```
 
@@ -334,6 +334,7 @@ test('OrMatcher with ContentMatchers survives round-trip', () => {
 - [ ] T040 [US3] Verify date precision preserved (millisecond equality in tests)
 
 **Completion Criteria for US3**:
+
 - [ ] Round-trip tests pass for all composite matcher types
 - [ ] Authorization metadata preserved exactly (including dates)
 - [ ] Behavioral equivalence verified (same identify/authorize results)
@@ -359,20 +360,15 @@ test('OrMatcher with ContentMatchers survives round-trip', () => {
 - [ ] T044 [P] [US4] Add test for mixed child types (OrMatcher with leaf and composite children) in test/unit/utils/script.test.ts
 
 **Test Pattern Example (T041)**:
+
 ```typescript
 test('3-level nested composites preserve structure', () => {
   const inventoryScript: InventoryScriptInfo = {
     identifyWith: new NameMatcher('^https://example\\.com/.*$'),
     authoriseWith: {
-      matcher: new OrMatcher([
-        new AndMatcher([
-          new ContentMatcher('required1'),
-          new ContentMatcher('required2')
-        ]),
-        new ContentMatcher('pattern3')
-      ]),
-      authorisationInfo: { description: 'Test', authorised: true, date: new Date('2025-10-24') }
-    }
+      matcher: new OrMatcher([new AndMatcher([new ContentMatcher('required1'), new ContentMatcher('required2')]), new ContentMatcher('pattern3')]),
+      authorisationInfo: { description: 'Test', authorised: true, date: new Date('2025-10-24') },
+    },
   }
 
   const serialized = inventoryScriptInfoToRawInventoryScriptInfo(inventoryScript)
@@ -397,18 +393,17 @@ test('3-level nested composites preserve structure', () => {
 - [ ] T046 [US4] Verify serialization completes in under 100ms for 100-child composite
 
 **Test Pattern Example (T045)**:
+
 ```typescript
 test('serializes composite with 100 children in under 100ms', () => {
-  const children = Array.from({ length: 100 }, (_, i) =>
-    new ContentMatcher(`pattern${i}`)
-  )
+  const children = Array.from({ length: 100 }, (_, i) => new ContentMatcher(`pattern${i}`))
 
   const inventoryScript: InventoryScriptInfo = {
     identifyWith: new NameMatcher('^https://example\\.com/.*$'),
     authoriseWith: {
       matcher: new OrMatcher(children),
-      authorisationInfo: { description: 'Test', authorised: true, date: new Date('2025-10-24') }
-    }
+      authorisationInfo: { description: 'Test', authorised: true, date: new Date('2025-10-24') },
+    },
   }
 
   const start = performance.now()
@@ -427,6 +422,7 @@ test('serializes composite with 100 children in under 100ms', () => {
 - [ ] T049 [US4] Verify performance requirement met (100 children < 100ms)
 
 **Completion Criteria for US4**:
+
 - [ ] Nested composites up to 10 levels work correctly
 - [ ] Mixed child types (leaf + composite) serialize correctly
 - [ ] Performance requirements met (100 children < 100ms)
@@ -446,24 +442,28 @@ test('serializes composite with 100 children in under 100ms', () => {
 - [ ] T051 [P] Add integration test for Git commit with composite matcher inventory in test/integration/inventory-service.test.ts
 
 **Test Pattern Example (T050)**:
+
 ```typescript
 test('full inventory workflow with composite matchers', async () => {
   // Create inventory with composite matcher
   const inventory: Inventory = {
     fileName: 'test-inventory.json',
-    target: { /* ... */ },
-    alerts: { /* ... */ },
-    scripts: [{
-      identifyWith: new NameMatcher('^https://example\\.com/.*$'),
-      authoriseWith: {
-        matcher: new OrMatcher([
-          new HashMatcher([{ timestamp: new Date(), hash: { value: 'abc123' } }]),
-          new HashMatcher([{ timestamp: new Date(), hash: { value: 'def456' } }])
-        ]),
-        authorisationInfo: { description: 'Test', authorised: true, date: new Date() }
-      }
-    }],
-    headers: []
+    target: {
+      /* ... */
+    },
+    alerts: {
+      /* ... */
+    },
+    scripts: [
+      {
+        identifyWith: new NameMatcher('^https://example\\.com/.*$'),
+        authoriseWith: {
+          matcher: new OrMatcher([new HashMatcher([{ timestamp: new Date(), hash: { value: 'abc123' } }]), new HashMatcher([{ timestamp: new Date(), hash: { value: 'def456' } }])]),
+          authorisationInfo: { description: 'Test', authorised: true, date: new Date() },
+        },
+      },
+    ],
+    headers: [],
   }
 
   // Save to Git (triggers serialization)
@@ -493,6 +493,7 @@ test('full inventory workflow with composite matchers', async () => {
 - [ ] T060 Run precommit checks with `npm run precommit`
 
 **Completion Criteria for Phase 6**:
+
 - [ ] All tests pass (unit + integration)
 - [ ] No linting, formatting, or type errors
 - [ ] All acceptance criteria met
@@ -522,6 +523,7 @@ Serialize        Deserialize      Round-Trip       Nested
 ```
 
 **Dependencies**:
+
 - **US1 → US3**: Round-trip tests require serialization to work
 - **US2 → US3**: Round-trip tests require deserialization to work (already exists)
 - **US1 → US4**: Nested composite tests require serialization to work
@@ -529,6 +531,7 @@ Serialize        Deserialize      Round-Trip       Nested
 - **US1, US2 → Phase 6**: Integration tests require both directions working
 
 **Parallel Opportunities**:
+
 - US1 and US2 can be implemented in parallel (different code areas)
 - After US1+US2 complete, US3 and US4 can be implemented in parallel
 - All unit tests within a phase can be written in parallel
@@ -540,25 +543,30 @@ Serialize        Deserialize      Round-Trip       Nested
 ### Within Phase 2 (User Story 1)
 
 **Parallel Group 1** (Independent files):
+
 - T008: Add accessor to OrMatcher
 - T009: Add accessor to AndMatcher
 - T010: Add helper to script.ts
 - T011: Add helper to inventory.ts
 
 **Sequential Group 2** (Depends on Group 1):
+
 - T012-T015: Extend matcherToConfig (requires T010-T011)
 
 **Parallel Group 3** (Independent test files):
+
 - T016-T022: All unit tests can run in parallel
 
 ### Across Phases
 
 **After Phase 1 Complete**:
+
 - Team Member A: Implement US1 (Phase 2)
 - Team Member B: Validate US2 (Phase 3)
 - Can run in parallel - no conflicts
 
 **After Phase 2 & 3 Complete**:
+
 - Team Member A: Implement US3 (Phase 4)
 - Team Member B: Implement US4 (Phase 5)
 - Can run in parallel - different test scenarios
@@ -570,6 +578,7 @@ Serialize        Deserialize      Round-Trip       Nested
 **Total Tasks**: 60
 
 **Breakdown by Phase**:
+
 - Phase 1 (Setup): 7 tasks
 - Phase 2 (US1): 18 tasks
 - Phase 3 (US2): 8 tasks
@@ -578,6 +587,7 @@ Serialize        Deserialize      Round-Trip       Nested
 - Phase 6 (Polish): 11 tasks
 
 **Breakdown by Type**:
+
 - Setup/Validation: 10 tasks
 - Implementation: 15 tasks
 - Unit Tests: 27 tasks
@@ -585,11 +595,13 @@ Serialize        Deserialize      Round-Trip       Nested
 - Code Quality: 6 tasks
 
 **Parallelization Opportunities**:
+
 - 35 tasks marked with [P] can run in parallel within their phase
 - Phases 2 and 3 can run in parallel (US1 + US2)
 - Phases 4 and 5 can run in parallel (US3 + US4)
 
 **Estimated Total Duration**:
+
 - Sequential execution: ~150 minutes (2.5 hours)
 - Parallel execution (2 developers): ~90 minutes (1.5 hours)
 - MVP only (US1): ~55 minutes
@@ -601,6 +613,7 @@ Serialize        Deserialize      Round-Trip       Nested
 Before marking this feature complete, verify all items:
 
 ### Functional Completeness
+
 - [ ] OrMatcher serializes to JSON with `orMatcher` array field (FR-001)
 - [ ] AndMatcher serializes to JSON with `andMatcher` array field (FR-002)
 - [ ] JSON with `orMatcher` deserializes to OrMatcher instances (FR-003)
@@ -616,6 +629,7 @@ Before marking this feature complete, verify all items:
 - [ ] Performance requirement met (100 children < 100ms) (FR-015)
 
 ### Success Criteria
+
 - [ ] Inventory with composite matchers persists to Git without errors (SC-001)
 - [ ] 100% of round-trip tests pass (SC-002)
 - [ ] Serialization performance meets target (SC-003)
@@ -624,6 +638,7 @@ Before marking this feature complete, verify all items:
 - [ ] Behavioral equivalence verified (SC-006)
 
 ### Code Quality
+
 - [ ] All unit tests pass (`npm run test:unit`)
 - [ ] All integration tests pass (`npm run test:integration`)
 - [ ] No TypeScript errors (`npm run check:typing`)
@@ -632,6 +647,7 @@ Before marking this feature complete, verify all items:
 - [ ] All precommit checks pass (`npm run precommit`)
 
 ### Documentation
+
 - [ ] Code comments added to new functions
 - [ ] CLAUDE.md updated if needed
 - [ ] All acceptance criteria from spec.md verified
@@ -651,12 +667,14 @@ Before marking this feature complete, verify all items:
 ### Important Files
 
 **Modified**:
+
 - `src/types/matcher/or-matcher.ts` - Add accessor method
 - `src/types/matcher/and-matcher.ts` - Add accessor method
 - `src/utils/script.ts` - Add helper + extend matcherToConfig
 - `src/utils/inventory.ts` - Add helper + extend matcherToConfig
 
 **Test Files Created**:
+
 - `test/unit/types/matcher/or-matcher.test.ts` - Accessor tests
 - `test/unit/types/matcher/and-matcher.test.ts` - Accessor tests
 - `test/unit/utils/script.test.ts` - Serialization/round-trip tests (extended)

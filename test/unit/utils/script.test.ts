@@ -13,7 +13,11 @@
 
 import type { InventoryScriptInfo } from '../../../src/types/inventory/model'
 import type { RawInventoryScriptInfo } from '../../../src/types/inventory/raw'
+import { AndMatcher } from '../../../src/types/matcher/and-matcher'
+import { ContentMatcher } from '../../../src/types/matcher/content-matcher'
+import { HashMatcher } from '../../../src/types/matcher/hash-matcher'
 import { createMatcher } from '../../../src/types/matcher/matcher-factory'
+import { OrMatcher } from '../../../src/types/matcher/or-matcher'
 import type { ScriptInfo } from '../../../src/types/script'
 import { inventoryScriptInfoToRawInventoryScriptInfo, rawInventoryScriptInfoToInventoryScriptInfo, scriptInfoToInventoryScriptInfo } from '../../../src/utils/script'
 
@@ -443,6 +447,125 @@ describe('Script Conversion Functions', () => {
         // Verify millisecond precision preserved
         expect(roundTrip.authoriseWith.authorisationInfo.date.getTime()).toBe(preciseDate.getTime())
         expect(roundTrip.authoriseWith.authorisationInfo.date.toISOString()).toBe(preciseDateString)
+      })
+    })
+  })
+
+  describe('Composite matcher serialization (T018-T022)', () => {
+    describe('T018: serializeAuthorisationInfo() date conversion', () => {
+      it('should convert Date to ISO string with millisecond precision', () => {
+        const date = new Date('2025-10-24T12:34:56.789Z')
+        const inventoryInfo: InventoryScriptInfo = {
+          identifyWith: createMatcher({ nameMatcher: '^test$' }),
+          authoriseWith: {
+            matcher: new OrMatcher([new ContentMatcher('pattern')], {
+              description: 'Test',
+              authorised: true,
+              date,
+            }),
+            authorisationInfo: {
+              description: 'Outer',
+              authorised: true,
+              date,
+            },
+          },
+        }
+
+        const raw = inventoryScriptInfoToRawInventoryScriptInfo(inventoryInfo)
+
+        expect(raw.authoriseWith.authorisationInfo.date).toBe('2025-10-24T12:34:56.789Z')
+        expect(typeof raw.authoriseWith.authorisationInfo.date).toBe('string')
+      })
+    })
+
+    describe('T019: OrMatcher serialization with HashMatcher children', () => {
+      it('should serialize OrMatcher with two HashMatcher children', () => {
+        const inventoryScript: InventoryScriptInfo = {
+          identifyWith: createMatcher({ nameMatcher: '^https://example\\.com/.*$' }),
+          authoriseWith: {
+            matcher: new OrMatcher(
+              [
+                new HashMatcher([{ timestamp: new Date('2025-10-01T00:00:00.000Z'), hash: { value: 'abc123'.padEnd(64, '0') } }]),
+                new HashMatcher([{ timestamp: new Date('2025-10-15T00:00:00.000Z'), hash: { value: 'def456'.padEnd(64, '0') } }]),
+              ],
+              {
+                description: 'Accept version 1.0 or 1.1',
+                authorised: true,
+                date: new Date('2025-10-24T12:00:00.000Z'),
+              },
+            ),
+            authorisationInfo: { description: 'Analytics', authorised: true, date: new Date('2025-10-24T00:00:00.000Z') },
+          },
+        }
+
+        const raw = inventoryScriptInfoToRawInventoryScriptInfo(inventoryScript)
+
+        expect(raw.authoriseWith).toHaveProperty('orMatcher')
+        expect((raw.authoriseWith as any).orMatcher).toHaveLength(2)
+        expect((raw.authoriseWith as any).orMatcher[0]).toHaveProperty('hashes')
+        expect((raw.authoriseWith as any).orMatcher[1]).toHaveProperty('hashes')
+        expect(raw.authoriseWith.authorisationInfo.date).toBe('2025-10-24T00:00:00.000Z')
+      })
+    })
+
+    describe('T020: AndMatcher serialization with ContentMatcher children', () => {
+      it('should serialize AndMatcher with ContentMatcher children', () => {
+        const inventoryScript: InventoryScriptInfo = {
+          identifyWith: createMatcher({ nameMatcher: '^test$' }),
+          authoriseWith: {
+            matcher: new AndMatcher([new ContentMatcher('pattern1'), new ContentMatcher('pattern2')]),
+            authorisationInfo: { description: 'Test', authorised: true, date: new Date('2025-10-24T00:00:00.000Z') },
+          },
+        }
+
+        const raw = inventoryScriptInfoToRawInventoryScriptInfo(inventoryScript)
+
+        expect(raw.authoriseWith).toHaveProperty('andMatcher')
+        expect((raw.authoriseWith as any).andMatcher).toHaveLength(2)
+        expect((raw.authoriseWith as any).andMatcher[0]).toHaveProperty('contentMatcher')
+        expect((raw.authoriseWith as any).andMatcher[1]).toHaveProperty('contentMatcher')
+      })
+    })
+
+    describe('T021: Composite matcher serialization WITH authorisationInfo', () => {
+      it('should serialize OrMatcher with nested authorisationInfo', () => {
+        const inventoryScript: InventoryScriptInfo = {
+          identifyWith: createMatcher({ nameMatcher: '^test$' }),
+          authoriseWith: {
+            matcher: new OrMatcher([new ContentMatcher('pattern1'), new ContentMatcher('pattern2')], {
+              description: 'OR matcher authorization',
+              authorised: true,
+              date: new Date('2025-10-24T12:00:00.000Z'),
+            }),
+            authorisationInfo: { description: 'Outer', authorised: true, date: new Date('2025-10-24T00:00:00.000Z') },
+          },
+        }
+
+        const raw = inventoryScriptInfoToRawInventoryScriptInfo(inventoryScript)
+
+        expect((raw.authoriseWith as any).authorisationInfo).toBeDefined()
+        expect((raw.authoriseWith as any).authorisationInfo.description).toBe('OR matcher authorization')
+        expect((raw.authoriseWith as any).authorisationInfo.date).toBe('2025-10-24T12:00:00.000Z')
+      })
+    })
+
+    describe('T022: Composite matcher serialization WITHOUT authorisationInfo', () => {
+      it('should serialize OrMatcher without nested authorisationInfo', () => {
+        const inventoryScript: InventoryScriptInfo = {
+          identifyWith: createMatcher({ nameMatcher: '^test$' }),
+          authoriseWith: {
+            matcher: new OrMatcher([new ContentMatcher('pattern1'), new ContentMatcher('pattern2')]),
+            authorisationInfo: { description: 'Outer', authorised: true, date: new Date('2025-10-24T00:00:00.000Z') },
+          },
+        }
+
+        const raw = inventoryScriptInfoToRawInventoryScriptInfo(inventoryScript)
+
+        expect((raw.authoriseWith as any).orMatcher).toBeDefined()
+        // The orMatcher's authorisationInfo should be undefined (not present at nested level)
+        // Only the outer authorisationInfo should be present
+        expect(raw.authoriseWith.authorisationInfo).toBeDefined()
+        expect(raw.authoriseWith.authorisationInfo.description).toBe('Outer')
       })
     })
   })
