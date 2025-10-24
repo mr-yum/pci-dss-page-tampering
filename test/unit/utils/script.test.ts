@@ -905,4 +905,227 @@ describe('Script Conversion Functions', () => {
       })
     })
   })
+
+  describe('Nested composite matcher tests (T041-T044)', () => {
+    describe('T041: 3-level nested composites preserve structure', () => {
+      it('should preserve OrMatcher > AndMatcher > ContentMatchers structure', () => {
+        const inventoryScript: InventoryScriptInfo = {
+          identifyWith: createMatcher({ nameMatcher: '^https://example\\.com/.*$' }),
+          authoriseWith: {
+            matcher: new OrMatcher([new AndMatcher([new ContentMatcher('required1'), new ContentMatcher('required2')]), new ContentMatcher('pattern3')]),
+            authorisationInfo: { description: 'Test', authorised: true, date: new Date('2025-10-24T00:00:00.000Z') },
+          },
+        }
+
+        const serialized = inventoryScriptInfoToRawInventoryScriptInfo(inventoryScript)
+        const deserialized = rawInventoryScriptInfoToInventoryScriptInfo(serialized)
+
+        // Verify top-level OrMatcher
+        expect(deserialized.authoriseWith.matcher.getType()).toBe('or')
+        const orChildren = deserialized.authoriseWith.matcher.getPattern() as any[]
+        expect(orChildren).toHaveLength(2)
+
+        // Verify first child is AndMatcher
+        expect(orChildren[0]!.getType()).toBe('and')
+        const andChildren = orChildren[0]!.getPattern() as any[]
+        expect(andChildren).toHaveLength(2)
+
+        // Verify AndMatcher children are ContentMatchers
+        expect(andChildren[0]!.getType()).toBe('content')
+        expect(andChildren[1]!.getType()).toBe('content')
+        expect(andChildren[0]!.getPattern()).toBe('required1')
+        expect(andChildren[1]!.getPattern()).toBe('required2')
+
+        // Verify second child is ContentMatcher
+        expect(orChildren[1]!.getType()).toBe('content')
+        expect(orChildren[1]!.getPattern()).toBe('pattern3')
+      })
+    })
+
+    describe('T042: 10-level deeply nested structure', () => {
+      it('should handle 10-level nesting without stack overflow', () => {
+        // Build 10-level nested structure: Or > And > Or > And > ... (alternating)
+        let deeplyNested: any = new ContentMatcher('leaf-pattern')
+
+        for (let i = 0; i < 10; i++) {
+          if (i % 2 === 0) {
+            deeplyNested = new OrMatcher([deeplyNested, new ContentMatcher(`fallback-${i}`)])
+          } else {
+            deeplyNested = new AndMatcher([deeplyNested, new ContentMatcher(`required-${i}`)])
+          }
+        }
+
+        const inventoryScript: InventoryScriptInfo = {
+          identifyWith: createMatcher({ nameMatcher: '^test$' }),
+          authoriseWith: {
+            matcher: deeplyNested,
+            authorisationInfo: { description: 'Deep nesting test', authorised: true, date: new Date('2025-10-24T00:00:00.000Z') },
+          },
+        }
+
+        // Should not throw during serialization
+        const serialized = inventoryScriptInfoToRawInventoryScriptInfo(inventoryScript)
+
+        // Should not throw during deserialization
+        const deserialized = rawInventoryScriptInfoToInventoryScriptInfo(serialized)
+
+        // Verify top-level type
+        expect(deserialized.authoriseWith.matcher.getType()).toBe('and')
+
+        // Verify we can navigate down the structure
+        let current: any = deserialized.authoriseWith.matcher
+        let depth = 0
+        while (current.getType() === 'and' || current.getType() === 'or') {
+          const children = current.getPattern() as any[]
+          expect(children.length).toBeGreaterThan(0)
+          current = children[0]
+          depth++
+          if (depth > 20) break // Safety limit for test
+        }
+
+        // Verify we reached reasonable depth
+        expect(depth).toBeGreaterThanOrEqual(10)
+      })
+    })
+
+    describe('T043: Nested composites with authorization metadata at multiple levels', () => {
+      it('should preserve authorization metadata at multiple nesting levels', () => {
+        const inventoryScript: InventoryScriptInfo = {
+          identifyWith: createMatcher({ nameMatcher: '^test$' }),
+          authoriseWith: {
+            matcher: new OrMatcher(
+              [
+                new AndMatcher([new ContentMatcher('pattern1'), new ContentMatcher('pattern2')], {
+                  description: 'AND level metadata',
+                  authorised: true,
+                  date: new Date('2025-10-24T10:00:00.000Z'),
+                }),
+                new ContentMatcher('pattern3'),
+              ],
+              {
+                description: 'OR level metadata',
+                authorised: true,
+                date: new Date('2025-10-24T12:00:00.000Z'),
+              },
+            ),
+            authorisationInfo: {
+              description: 'Top level metadata',
+              authorised: true,
+              date: new Date('2025-10-24T14:00:00.000Z'),
+            },
+          },
+        }
+
+        const serialized = inventoryScriptInfoToRawInventoryScriptInfo(inventoryScript)
+        const deserialized = rawInventoryScriptInfoToInventoryScriptInfo(serialized)
+
+        // Verify top-level metadata
+        expect(deserialized.authoriseWith.authorisationInfo.description).toBe('Top level metadata')
+        expect(deserialized.authoriseWith.authorisationInfo.date.toISOString()).toBe('2025-10-24T14:00:00.000Z')
+
+        // Verify OR matcher metadata
+        const orMatcher = deserialized.authoriseWith.matcher as OrMatcher
+        const orAuthInfo = orMatcher.getAuthorisationInfo()
+        expect(orAuthInfo?.description).toBe('OR level metadata')
+        expect(orAuthInfo?.date.toISOString()).toBe('2025-10-24T12:00:00.000Z')
+
+        // Verify AND matcher metadata
+        const orChildren = orMatcher.getPattern() as any[]
+        const andMatcher = orChildren[0] as AndMatcher
+        const andAuthInfo = andMatcher.getAuthorisationInfo()
+        expect(andAuthInfo?.description).toBe('AND level metadata')
+        expect(andAuthInfo?.date.toISOString()).toBe('2025-10-24T10:00:00.000Z')
+      })
+    })
+
+    describe('T044: Mixed child types (leaf and composite)', () => {
+      it('should handle OrMatcher with mixed leaf and composite children', () => {
+        const inventoryScript: InventoryScriptInfo = {
+          identifyWith: createMatcher({ nameMatcher: '^test$' }),
+          authoriseWith: {
+            matcher: new OrMatcher([
+              new ContentMatcher('simple-pattern'),
+              new HashMatcher([{ timestamp: new Date('2025-10-01T00:00:00.000Z'), hash: { value: 'abc123'.padEnd(64, '0') } }]),
+              new AndMatcher([new ContentMatcher('req1'), new ContentMatcher('req2')]),
+            ]),
+            authorisationInfo: { description: 'Mixed children', authorised: true, date: new Date('2025-10-24T00:00:00.000Z') },
+          },
+        }
+
+        const serialized = inventoryScriptInfoToRawInventoryScriptInfo(inventoryScript)
+        const deserialized = rawInventoryScriptInfoToInventoryScriptInfo(serialized)
+
+        // Verify structure preserved
+        expect(deserialized.authoriseWith.matcher.getType()).toBe('or')
+        const children = deserialized.authoriseWith.matcher.getPattern() as any[]
+        expect(children).toHaveLength(3)
+
+        // Verify first child: ContentMatcher
+        expect(children[0]!.getType()).toBe('content')
+        expect(children[0]!.getPattern()).toBe('simple-pattern')
+
+        // Verify second child: HashMatcher
+        expect(children[1]!.getType()).toBe('hash')
+
+        // Verify third child: AndMatcher
+        expect(children[2]!.getType()).toBe('and')
+        const andChildren = children[2]!.getPattern() as any[]
+        expect(andChildren).toHaveLength(2)
+        expect(andChildren[0]!.getType()).toBe('content')
+        expect(andChildren[1]!.getType()).toBe('content')
+      })
+    })
+  })
+
+  describe('Performance tests (T045-T046)', () => {
+    describe('T045: Serialization performance with 100 children', () => {
+      it('should serialize composite with 100 children in under 100ms', () => {
+        const children = Array.from({ length: 100 }, (_, i) => new ContentMatcher(`pattern${i}`))
+
+        const inventoryScript: InventoryScriptInfo = {
+          identifyWith: createMatcher({ nameMatcher: '^https://example\\.com/.*$' }),
+          authoriseWith: {
+            matcher: new OrMatcher(children),
+            authorisationInfo: { description: 'Test', authorised: true, date: new Date('2025-10-24T00:00:00.000Z') },
+          },
+        }
+
+        const start = performance.now()
+        const serialized = inventoryScriptInfoToRawInventoryScriptInfo(inventoryScript)
+        const end = performance.now()
+
+        const duration = end - start
+        expect(duration).toBeLessThan(100)
+        expect((serialized.authoriseWith as any).orMatcher).toHaveLength(100)
+      })
+    })
+
+    describe('T046: Deserialization performance with 100 children', () => {
+      it('should deserialize composite with 100 children in under 100ms', () => {
+        const rawChildren = Array.from({ length: 100 }, (_, i) => ({ contentMatcher: `pattern${i}` }))
+
+        const raw: RawInventoryScriptInfo = {
+          identifyWith: { nameMatcher: '^test$' },
+          authoriseWith: {
+            orMatcher: rawChildren,
+            authorisationInfo: {
+              description: 'Test',
+              authorised: true,
+              date: '2025-10-24T00:00:00.000Z',
+            },
+          },
+        }
+
+        const start = performance.now()
+        const deserialized = rawInventoryScriptInfoToInventoryScriptInfo(raw)
+        const end = performance.now()
+
+        const duration = end - start
+        expect(duration).toBeLessThan(100)
+        expect(deserialized.authoriseWith.matcher.getType()).toBe('or')
+        const children = deserialized.authoriseWith.matcher.getPattern() as any[]
+        expect(children).toHaveLength(100)
+      })
+    })
+  })
 })

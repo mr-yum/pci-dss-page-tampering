@@ -13,8 +13,11 @@
 import type { InventoryAuthorisationInfo } from '../../src/types/inventory/model'
 import { AndMatcher } from '../../src/types/matcher/and-matcher'
 import { ContentMatcher } from '../../src/types/matcher/content-matcher'
+import { HashMatcher } from '../../src/types/matcher/hash-matcher'
 import type { Matchable } from '../../src/types/matcher/matcher.interface'
+import { createMatcher } from '../../src/types/matcher/matcher-factory'
 import { OrMatcher } from '../../src/types/matcher/or-matcher'
+import { inventoryScriptInfoToRawInventoryScriptInfo, rawInventoryScriptInfoToInventoryScriptInfo } from '../../src/utils/script'
 
 describe('Composite Matcher Integration Tests (T041-T043)', () => {
   // Helper to create authorization info
@@ -512,6 +515,240 @@ describe('Composite Matcher Integration Tests (T041-T043)', () => {
       expect(reportingResult.authorized).toBe(true)
       expect(reportingResult.metadataPath).toHaveLength(1) // Only Level 1
       expect(reportingResult.metadataPath![0]!.description).toContain('Level 1')
+    })
+  })
+
+  describe('Serialization/Deserialization Integration (T050-T051)', () => {
+    describe('T050: Full inventory workflow with composite matchers', () => {
+      it('should serialize and deserialize composite matchers in full inventory workflow', () => {
+        // This tests the full round-trip: Create inventory → Serialize to JSON → Deserialize back → Verify structure
+
+        // Create inventory script with composite matcher
+        const originalScript = {
+          identifyWith: createMatcher({ nameMatcher: '^https://example\\.com/analytics\\.js$' }),
+          authoriseWith: {
+            matcher: new OrMatcher(
+              [
+                new HashMatcher([{ timestamp: new Date('2025-10-24T12:00:00.000Z'), hash: { value: 'version1hash'.padEnd(64, '0') } }]),
+                new HashMatcher([{ timestamp: new Date('2025-10-24T14:00:00.000Z'), hash: { value: 'version2hash'.padEnd(64, '0') } }]),
+              ],
+              {
+                description: 'Analytics script - accept version 1.0 or 2.0',
+                authorised: true,
+                date: new Date('2025-10-24T12:00:00.000Z'),
+              },
+            ),
+            authorisationInfo: {
+              description: 'Third-party analytics for conversion tracking',
+              authorised: true,
+              date: new Date('2025-10-24T12:00:00.000Z'),
+            },
+          },
+        }
+
+        // Step 1: Serialize to JSON (simulates saving to Git)
+        const serialized = inventoryScriptInfoToRawInventoryScriptInfo(originalScript)
+
+        // Verify serialized structure
+        expect(serialized.authoriseWith).toHaveProperty('orMatcher')
+        expect((serialized.authoriseWith as any).orMatcher).toHaveLength(2)
+        expect((serialized.authoriseWith as any).orMatcher[0]).toHaveProperty('hashes')
+        expect((serialized.authoriseWith as any).orMatcher[1]).toHaveProperty('hashes')
+
+        // Step 2: Simulate JSON round-trip (stringify/parse)
+        const jsonString = JSON.stringify(serialized)
+        const parsedJson = JSON.parse(jsonString)
+
+        // Step 3: Deserialize back to Matcher instances (simulates loading from Git)
+        const deserialized = rawInventoryScriptInfoToInventoryScriptInfo(parsedJson)
+
+        // Step 4: Verify structure preserved
+        expect(deserialized.authoriseWith.matcher.getType()).toBe('or')
+        const children = deserialized.authoriseWith.matcher.getPattern() as any[]
+        expect(children).toHaveLength(2)
+        expect(children[0]!.getType()).toBe('hash')
+        expect(children[1]!.getType()).toBe('hash')
+
+        // Step 5: Verify top-level authorization metadata preserved
+        expect(deserialized.authoriseWith.authorisationInfo.description).toBe('Third-party analytics for conversion tracking')
+        expect(deserialized.authoriseWith.authorisationInfo.authorised).toBe(true)
+        expect(deserialized.authoriseWith.authorisationInfo.date.toISOString()).toBe('2025-10-24T12:00:00.000Z')
+
+        // Note: The nested authorisationInfo on OrMatcher itself is not preserved in the current
+        // serialization format. The authorisationInfo lives at the authoriseWith level, not nested
+        // inside the matcher config.
+
+        // Step 6: Verify the deserialized matcher structure is correct
+        // The OrMatcher should have 2 HashMatcher children
+        const orChildren = deserialized.authoriseWith.matcher.getPattern() as any[]
+        expect(orChildren[0]!.getType()).toBe('hash')
+        expect(orChildren[1]!.getType()).toBe('hash')
+
+        // Verify hashes are preserved
+        const hash1Pattern = orChildren[0]!.getPattern() as Array<{ timestamp: Date; hash: { value: string } }>
+        const hash2Pattern = orChildren[1]!.getPattern() as Array<{ timestamp: Date; hash: { value: string } }>
+        expect(hash1Pattern[0]!.hash.value).toBe('version1hash'.padEnd(64, '0'))
+        expect(hash2Pattern[0]!.hash.value).toBe('version2hash'.padEnd(64, '0'))
+      })
+
+      it('should handle nested composite matchers in full workflow', () => {
+        // Create nested composite: OrMatcher containing AndMatcher
+        const originalScript = {
+          identifyWith: createMatcher({ nameMatcher: '^https://payment\\.example\\.com/.*$' }),
+          authoriseWith: {
+            matcher: new OrMatcher(
+              [
+                new AndMatcher([new ContentMatcher('paymentProcessor'), new ContentMatcher('secureCheckout')], {
+                  description: 'Secure payment flow',
+                  authorised: true,
+                  date: new Date('2025-10-24T10:00:00.000Z'),
+                }),
+                new ContentMatcher('legacyPaymentFlow'),
+              ],
+              {
+                description: 'Payment script - secure or legacy flow',
+                authorised: true,
+                date: new Date('2025-10-24T12:00:00.000Z'),
+              },
+            ),
+            authorisationInfo: {
+              description: 'Payment page script',
+              authorised: true,
+              date: new Date('2025-10-24T00:00:00.000Z'),
+            },
+          },
+        }
+
+        // Serialize → JSON round-trip → Deserialize
+        const serialized = inventoryScriptInfoToRawInventoryScriptInfo(originalScript)
+        const jsonString = JSON.stringify(serialized)
+        const parsedJson = JSON.parse(jsonString)
+        const deserialized = rawInventoryScriptInfoToInventoryScriptInfo(parsedJson)
+
+        // Verify nested structure preserved
+        expect(deserialized.authoriseWith.matcher.getType()).toBe('or')
+        const orChildren = deserialized.authoriseWith.matcher.getPattern() as any[]
+        expect(orChildren).toHaveLength(2)
+        expect(orChildren[0]!.getType()).toBe('and')
+        expect(orChildren[1]!.getType()).toBe('content')
+
+        // Verify nested AND matcher
+        const andChildren = orChildren[0]!.getPattern() as any[]
+        expect(andChildren).toHaveLength(2)
+        expect(andChildren[0]!.getType()).toBe('content')
+        expect(andChildren[1]!.getType()).toBe('content')
+
+        // Verify top-level metadata
+        expect(deserialized.authoriseWith.authorisationInfo.description).toBe('Payment page script')
+        expect(deserialized.authoriseWith.authorisationInfo.authorised).toBe(true)
+        expect(deserialized.authoriseWith.authorisationInfo.date.toISOString()).toBe('2025-10-24T00:00:00.000Z')
+
+        // Note: Nested authorisationInfo on composite matchers is not preserved in current format
+      })
+    })
+
+    describe('T051: Git commit with composite matcher inventory', () => {
+      it('should produce valid JSON that can be committed to Git', () => {
+        const inventoryScript = {
+          identifyWith: createMatcher({ nameMatcher: '^https://cdn\\.example\\.com/.*$' }),
+          authoriseWith: {
+            matcher: new OrMatcher([new HashMatcher([{ timestamp: new Date('2025-10-24T12:00:00.000Z'), hash: { value: 'hash1'.padEnd(64, '0') } }]), new ContentMatcher('fallback-pattern')], {
+              description: 'CDN script with hash verification or pattern fallback',
+              authorised: true,
+              date: new Date('2025-10-24T12:00:00.000Z'),
+            }),
+            authorisationInfo: {
+              description: 'CDN-hosted script',
+              authorised: true,
+              date: new Date('2025-10-24T00:00:00.000Z'),
+            },
+          },
+        }
+
+        // Serialize to raw format
+        const serialized = inventoryScriptInfoToRawInventoryScriptInfo(inventoryScript)
+
+        // Convert to JSON string (what gets committed to Git)
+        const jsonString = JSON.stringify(serialized, null, 2)
+
+        // Verify JSON is valid
+        expect(() => JSON.parse(jsonString)).not.toThrow()
+
+        // Verify JSON structure is correct for Git storage
+        const parsed = JSON.parse(jsonString)
+        expect(parsed).toHaveProperty('identifyWith')
+        expect(parsed).toHaveProperty('authoriseWith')
+        expect(parsed.authoriseWith).toHaveProperty('orMatcher')
+        expect(parsed.authoriseWith).toHaveProperty('authorisationInfo')
+
+        // Verify dates are ISO strings (human-readable in Git diffs)
+        expect(typeof parsed.authoriseWith.authorisationInfo.date).toBe('string')
+        expect(parsed.authoriseWith.authorisationInfo.date).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
+
+        // Verify no circular references (would break JSON.stringify)
+        expect(jsonString).not.toContain('[Circular]')
+
+        // Verify nested matcher structure is serialized
+        expect(parsed.authoriseWith.orMatcher).toBeInstanceOf(Array)
+        expect(parsed.authoriseWith.orMatcher).toHaveLength(2)
+      })
+
+      it('should support multiple scripts with different composite matcher types in same inventory', () => {
+        // Script 1: OrMatcher
+        const script1 = {
+          identifyWith: createMatcher({ nameMatcher: '^script1$' }),
+          authoriseWith: {
+            matcher: new OrMatcher([new ContentMatcher('pattern-a'), new ContentMatcher('pattern-b')]),
+            authorisationInfo: { description: 'Script 1', authorised: true, date: new Date('2025-10-24T00:00:00.000Z') },
+          },
+        }
+
+        // Script 2: AndMatcher
+        const script2 = {
+          identifyWith: createMatcher({ nameMatcher: '^script2$' }),
+          authoriseWith: {
+            matcher: new AndMatcher([new ContentMatcher('req1'), new ContentMatcher('req2')]),
+            authorisationInfo: { description: 'Script 2', authorised: true, date: new Date('2025-10-24T00:00:00.000Z') },
+          },
+        }
+
+        // Script 3: Nested composite
+        const script3 = {
+          identifyWith: createMatcher({ nameMatcher: '^script3$' }),
+          authoriseWith: {
+            matcher: new OrMatcher([new AndMatcher([new ContentMatcher('a'), new ContentMatcher('b')]), new ContentMatcher('c')]),
+            authorisationInfo: { description: 'Script 3', authorised: true, date: new Date('2025-10-24T00:00:00.000Z') },
+          },
+        }
+
+        // Serialize all scripts
+        const serialized1 = inventoryScriptInfoToRawInventoryScriptInfo(script1)
+        const serialized2 = inventoryScriptInfoToRawInventoryScriptInfo(script2)
+        const serialized3 = inventoryScriptInfoToRawInventoryScriptInfo(script3)
+
+        // Create inventory JSON (what gets committed)
+        const inventory = {
+          scripts: [serialized1, serialized2, serialized3],
+          headers: [],
+          target: { inventory: 'https://example.com', detection: 'https://example.com' },
+          alerts: {},
+        }
+
+        const jsonString = JSON.stringify(inventory, null, 2)
+
+        // Verify valid JSON
+        expect(() => JSON.parse(jsonString)).not.toThrow()
+
+        // Verify all scripts serialized correctly
+        const parsed = JSON.parse(jsonString)
+        expect(parsed.scripts).toHaveLength(3)
+        expect(parsed.scripts[0].authoriseWith).toHaveProperty('orMatcher')
+        expect(parsed.scripts[1].authoriseWith).toHaveProperty('andMatcher')
+        expect(parsed.scripts[2].authoriseWith).toHaveProperty('orMatcher')
+
+        // Verify nested structure in script3
+        expect(parsed.scripts[2].authoriseWith.orMatcher[0]).toHaveProperty('andMatcher')
+      })
     })
   })
 })

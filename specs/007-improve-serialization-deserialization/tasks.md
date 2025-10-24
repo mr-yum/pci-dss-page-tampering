@@ -354,10 +354,10 @@ test('OrMatcher with ContentMatchers survives round-trip', () => {
 
 ### 5.1: Nested Composite Tests for User Story 4
 
-- [ ] T041 [P] [US4] Add test for 3-level nested composites (OrMatcher > AndMatcher > ContentMatchers) in test/unit/utils/script.test.ts
-- [ ] T042 [P] [US4] Add test for 10-level deeply nested structure in test/unit/utils/script.test.ts
-- [ ] T043 [P] [US4] Add test for nested composites with authorization metadata at multiple levels in test/unit/utils/script.test.ts
-- [ ] T044 [P] [US4] Add test for mixed child types (OrMatcher with leaf and composite children) in test/unit/utils/script.test.ts
+- [x] T041 [P] [US4] Add test for 3-level nested composites (OrMatcher > AndMatcher > ContentMatchers) in test/unit/utils/script.test.ts
+- [x] T042 [P] [US4] Add test for 10-level deeply nested structure in test/unit/utils/script.test.ts
+- [x] T043 [P] [US4] Add test for nested composites with authorization metadata at multiple levels in test/unit/utils/script.test.ts
+- [x] T044 [P] [US4] Add test for mixed child types (OrMatcher with leaf and composite children) in test/unit/utils/script.test.ts
 
 **Test Pattern Example (T041)**:
 
@@ -389,8 +389,8 @@ test('3-level nested composites preserve structure', () => {
 
 ### 5.2: Performance Tests for User Story 4
 
-- [ ] T045 [US4] Add performance test for serializing composite with 100 children in test/unit/utils/script.test.ts
-- [ ] T046 [US4] Verify serialization completes in under 100ms for 100-child composite
+- [x] T045 [US4] Add performance test for serializing composite with 100 children in test/unit/utils/script.test.ts
+- [x] T046 [US4] Verify serialization completes in under 100ms for 100-child composite
 
 **Test Pattern Example (T045)**:
 
@@ -417,16 +417,16 @@ test('serializes composite with 100 children in under 100ms', () => {
 
 ### 5.3: Verify User Story 4 Completion
 
-- [ ] T047 [US4] Run unit tests with `npm run test:unit` and verify all US4 tests pass
-- [ ] T048 [US4] Verify no stack overflow for 10-level nesting
-- [ ] T049 [US4] Verify performance requirement met (100 children < 100ms)
+- [x] T047 [US4] Run unit tests with `npm run test:unit` and verify all US4 tests pass
+- [x] T048 [US4] Verify no stack overflow for 10-level nesting
+- [x] T049 [US4] Verify performance requirement met (100 children < 100ms)
 
 **Completion Criteria for US4**:
 
-- [ ] Nested composites up to 10 levels work correctly
-- [ ] Mixed child types (leaf + composite) serialize correctly
-- [ ] Performance requirements met (100 children < 100ms)
-- [ ] All unit tests pass
+- [x] Nested composites up to 10 levels work correctly
+- [x] Mixed child types (leaf + composite) serialize correctly
+- [x] Performance requirements met (100 children < 100ms)
+- [x] All unit tests pass
 
 ---
 
@@ -438,8 +438,8 @@ test('serializes composite with 100 children in under 100ms', () => {
 
 ### 6.1: Integration Testing
 
-- [ ] T050 [P] Add integration test for full inventory workflow with composite matchers in test/integration/inventory-service.test.ts
-- [ ] T051 [P] Add integration test for Git commit with composite matcher inventory in test/integration/inventory-service.test.ts
+- [x] T050 [P] Add integration test for full inventory workflow with composite matchers in test/integration/composite-matcher-workflow.test.ts
+- [x] T051 [P] Add integration test for Git commit with composite matcher inventory in test/integration/composite-matcher-workflow.test.ts
 
 **Test Pattern Example (T050)**:
 
@@ -479,25 +479,25 @@ test('full inventory workflow with composite matchers', async () => {
 
 ### 6.2: Code Quality & Documentation
 
-- [ ] T052 Run full test suite with `npm run test:unit && npm run test:integration`
-- [ ] T053 Run linting with `npm run check:linting` and fix any issues
-- [ ] T054 Run formatting with `npm run check:formatting` and fix any issues
-- [ ] T055 Run type checking with `npm run check:typing` and fix any issues
-- [ ] T056 Review all modified files for code comments and documentation
-- [ ] T057 Update CLAUDE.md if needed with composite matcher serialization details
+- [x] T052 Run full test suite with `npm run test:unit && npm run test:integration`
+- [x] T053 Run linting with `npm run check:linting` and fix any issues
+- [x] T054 Run formatting with `npm run check:formatting` and fix any issues
+- [x] T055 Run type checking with `npm run check:typing` and fix any issues
+- [x] T056 Review all modified files for code comments and documentation
+- [x] T057 Update CLAUDE.md if needed with composite matcher serialization details
 
 ### 6.3: Final Validation
 
-- [ ] T058 Verify all user story acceptance criteria met (review spec.md)
-- [ ] T059 Verify all success criteria met (review spec.md SC-001 through SC-006)
-- [ ] T060 Run precommit checks with `npm run precommit`
+- [x] T058 Verify all user story acceptance criteria met (review spec.md)
+- [x] T059 Verify all success criteria met (review spec.md SC-001 through SC-006)
+- [x] T060 Run precommit checks with `npm run precommit`
 
 **Completion Criteria for Phase 6**:
 
-- [ ] All tests pass (unit + integration)
-- [ ] No linting, formatting, or type errors
-- [ ] All acceptance criteria met
-- [ ] Code ready for pull request
+- [x] All tests pass (unit + integration)
+- [x] No linting, formatting, or type errors
+- [x] All acceptance criteria met
+- [x] Code ready for pull request
 
 ---
 
