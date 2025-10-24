@@ -11,6 +11,7 @@ export type TargetDetection = Target & {
 
 export type Target = {
   type: 'inventory' | 'detection'
+  name?: string | undefined
   url: string
   workflow: Workflow
   logger: Logger

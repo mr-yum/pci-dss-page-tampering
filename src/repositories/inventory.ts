@@ -29,12 +29,19 @@ export class ScriptInventoryRepository implements IScriptInventoryRepository {
       const inventoryWorkflow = await getWorkflowFromFile(payload.rawInventory.target.inventory.workflow)
       const detectionWorkflow = await getWorkflowFromFile(payload.rawInventory.target.detection.workflow)
 
+      // Default name to filename (without .json extension) if not specified
+      const defaultName = payload.fileName.replace(/\.json$/, '')
+      const inventoryName = payload.rawInventory.target.inventory.name ?? defaultName
+      const detectionName = payload.rawInventory.target.detection.name ?? defaultName
+
       const inventoryTarget = {
         type: payload.rawInventory.target.inventory.type,
+        name: inventoryName,
         url: payload.rawInventory.target.inventory.url,
         workflow: inventoryWorkflow,
         logger: createTargetLogger({
           type: payload.rawInventory.target.inventory.type,
+          name: inventoryName,
           url: payload.rawInventory.target.inventory.url,
           workflow: inventoryWorkflow,
           logger: undefined as any, // Temporary for creating logger
@@ -43,10 +50,12 @@ export class ScriptInventoryRepository implements IScriptInventoryRepository {
 
       const detectionTarget = {
         type: payload.rawInventory.target.detection.type,
+        name: detectionName,
         url: payload.rawInventory.target.detection.url,
         workflow: detectionWorkflow,
         logger: createTargetLogger({
           type: payload.rawInventory.target.detection.type,
+          name: detectionName,
           url: payload.rawInventory.target.detection.url,
           workflow: detectionWorkflow,
           logger: undefined as any, // Temporary for creating logger

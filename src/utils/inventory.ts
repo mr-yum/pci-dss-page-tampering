@@ -19,11 +19,13 @@ export function inventoryToRawInventory(inventory: Inventory): RawInventory {
     target: {
       inventory: {
         type: inventory.target.inventory.type,
+        ...(inventory.target.inventory.name !== undefined && { name: inventory.target.inventory.name }),
         url: inventory.target.inventory.url,
         workflow: inventory.target.inventory.workflow.fileName,
       },
       detection: {
         type: inventory.target.detection.type,
+        ...(inventory.target.detection.name !== undefined && { name: inventory.target.detection.name }),
         url: inventory.target.detection.url,
         workflow: inventory.target.detection.workflow.fileName,
       },

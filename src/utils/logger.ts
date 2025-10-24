@@ -8,12 +8,14 @@ export interface Logger {
 }
 
 /**
- * Creates a logger with a prefix based on the target URL
- * @param target - Target object containing URL and type
+ * Creates a logger with a prefix based on the target name (or URL if name not provided)
+ * @param target - Target object containing name (optional), URL, and type
  * @returns Logger instance with prefixed methods
  */
 export function createTargetLogger(target: Target): Logger {
-  const prefix = `[${target.type}:${target.url}]`
+  // Use name if provided, otherwise fall back to URL for backward compatibility
+  const identifier = target.name ?? target.url
+  const prefix = `[${target.type}:${identifier}]`
 
   return {
     log: (message: string, ...args: any[]): void => {

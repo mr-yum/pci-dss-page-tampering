@@ -35,6 +35,7 @@ export const InventoryAlertSchema: z.ZodType<InventoryAlert> = z.object({
  */
 const TargetSchema = z.object({
   type: z.enum(['inventory', 'detection']),
+  name: z.string().optional(),
   url: z.url(),
 })
 
@@ -43,20 +44,20 @@ const TargetSchema = z.object({
  * It intersects the base TargetSchema and refines the 'type' literal.
  * Corresponds to `RawTargetInventory`.
  */
-export const RawTargetInventorySchema: z.ZodType<RawTargetInventory> = TargetSchema.extend({
+export const RawTargetInventorySchema = TargetSchema.extend({
   type: z.literal('inventory'),
   workflow: z.string(),
-})
+}) satisfies z.ZodType<RawTargetInventory>
 
 /**
  * Schema for a Detection Target.
  * It intersects the base TargetSchema and refines the 'type' literal.
  * Corresponds to `RawTargetDetection`.
  */
-export const RawTargetDetectionSchema: z.ZodType<RawTargetDetection> = TargetSchema.extend({
+export const RawTargetDetectionSchema = TargetSchema.extend({
   type: z.literal('detection'),
   workflow: z.string(),
-})
+}) satisfies z.ZodType<RawTargetDetection>
 
 /**
  * Schema for script authorisation details.
