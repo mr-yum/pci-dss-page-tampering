@@ -23,7 +23,6 @@ import type { RawInventory } from '../../src/types/inventory/raw'
 import { RawInventorySchema } from '../../src/types/inventory/zod'
 import { inventoryToRawInventory, rawInventoryHeaderInfoToInventoryHeaderInfo } from '../../src/utils/inventory'
 import { rawInventoryScriptInfoToInventoryScriptInfo } from '../../src/utils/script'
-import { getWorkflowFromFile } from '../../src/utils/workflow'
 
 describe('Round-Trip Serialization Integration Tests', () => {
   const complexExamplePath = path.join(__dirname, 'complex-example.json')
@@ -31,10 +30,14 @@ describe('Round-Trip Serialization Integration Tests', () => {
   /**
    * Helper function to convert RawInventory to typed Inventory.
    * Mimics the conversion logic in ScriptInventoryRepository.
+   * Uses mock workflow for testing - we don't need real workflow files for serialization tests.
    */
   async function rawInventoryToInventory(raw: RawInventory, fileName: string): Promise<Inventory> {
-    const inventoryWorkflow = await getWorkflowFromFile(raw.target.inventory.workflow)
-    const detectionWorkflow = await getWorkflowFromFile(raw.target.detection.workflow)
+    // Mock workflow for testing - serialization tests don't need real workflow execution
+    const mockWorkflow = {
+      fileName: raw.target.inventory.workflow,
+      definition: { steps: [] },
+    }
 
     const defaultName = fileName.replace(/\.json$/, '')
     const inventoryName = raw.target.inventory.name ?? defaultName
@@ -48,14 +51,14 @@ describe('Round-Trip Serialization Integration Tests', () => {
           type: raw.target.inventory.type,
           name: inventoryName,
           url: raw.target.inventory.url,
-          workflow: inventoryWorkflow,
+          workflow: mockWorkflow,
           logger: undefined as any, // Not needed for serialization test
         },
         detection: {
           type: raw.target.detection.type,
           name: detectionName,
           url: raw.target.detection.url,
-          workflow: detectionWorkflow,
+          workflow: { ...mockWorkflow, fileName: raw.target.detection.workflow },
           logger: undefined as any, // Not needed for serialization test
         },
       },
