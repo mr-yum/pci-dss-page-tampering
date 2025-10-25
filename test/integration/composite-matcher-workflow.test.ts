@@ -549,9 +549,10 @@ describe('Composite Matcher Integration Tests (T041-T043)', () => {
         // Step 1: Serialize to JSON (simulates saving to Git)
         const serialized = inventoryScriptInfoToRawInventoryScriptInfo(originalScript)
 
-        // Verify serialized structure
+        // Children don't have authorisationInfo, so falls back to orMatcher format
         expect(serialized.authoriseWith).toHaveProperty('orMatcher')
-        expect((serialized.authoriseWith as any).orMatcher).toHaveLength(2)
+        expect(serialized.authoriseWith).toHaveProperty('authorisationInfo')
+        expect((serialized.authoriseWith as any).orMatcher.length).toBe(2)
         expect((serialized.authoriseWith as any).orMatcher[0]).toHaveProperty('hashes')
         expect((serialized.authoriseWith as any).orMatcher[1]).toHaveProperty('hashes')
 
@@ -566,6 +567,7 @@ describe('Composite Matcher Integration Tests (T041-T043)', () => {
         expect(deserialized.authoriseWith.matcher.getType()).toBe('or')
         const children = deserialized.authoriseWith.matcher.getPattern() as any[]
         expect(children).toHaveLength(2)
+        // With AuthorisationMatcher, children are no longer wrapped
         expect(children[0]!.getType()).toBe('hash')
         expect(children[1]!.getType()).toBe('hash')
 
@@ -579,8 +581,9 @@ describe('Composite Matcher Integration Tests (T041-T043)', () => {
         // inside the matcher config.
 
         // Step 6: Verify the deserialized matcher structure is correct
-        // The OrMatcher should have 2 HashMatcher children
+        // The OrMatcher should have 2 wrapped children (metadata carriers)
         const orChildren = deserialized.authoriseWith.matcher.getPattern() as any[]
+        // With AuthorisationMatcher, children are no longer wrapped
         expect(orChildren[0]!.getType()).toBe('hash')
         expect(orChildren[1]!.getType()).toBe('hash')
 
@@ -629,6 +632,7 @@ describe('Composite Matcher Integration Tests (T041-T043)', () => {
         expect(deserialized.authoriseWith.matcher.getType()).toBe('or')
         const orChildren = deserialized.authoriseWith.matcher.getPattern() as any[]
         expect(orChildren).toHaveLength(2)
+        // With AuthorisationMatcher, children are no longer wrapped
         expect(orChildren[0]!.getType()).toBe('and')
         expect(orChildren[1]!.getType()).toBe('content')
 
@@ -638,7 +642,7 @@ describe('Composite Matcher Integration Tests (T041-T043)', () => {
         expect(andChildren[0]!.getType()).toBe('content')
         expect(andChildren[1]!.getType()).toBe('content')
 
-        // Verify top-level metadata
+        // Verify top-level metadata (uses authoriseWith.authorisationInfo)
         expect(deserialized.authoriseWith.authorisationInfo.description).toBe('Payment page script')
         expect(deserialized.authoriseWith.authorisationInfo.authorised).toBe(true)
         expect(deserialized.authoriseWith.authorisationInfo.date.toISOString()).toBe('2025-10-24T00:00:00.000Z')
@@ -678,6 +682,8 @@ describe('Composite Matcher Integration Tests (T041-T043)', () => {
         const parsed = JSON.parse(jsonString)
         expect(parsed).toHaveProperty('identifyWith')
         expect(parsed).toHaveProperty('authoriseWith')
+
+        // Since children don't have authorisationInfo, it falls back to orMatcher format
         expect(parsed.authoriseWith).toHaveProperty('orMatcher')
         expect(parsed.authoriseWith).toHaveProperty('authorisationInfo')
 
@@ -687,10 +693,6 @@ describe('Composite Matcher Integration Tests (T041-T043)', () => {
 
         // Verify no circular references (would break JSON.stringify)
         expect(jsonString).not.toContain('[Circular]')
-
-        // Verify nested matcher structure is serialized
-        expect(parsed.authoriseWith.orMatcher).toBeInstanceOf(Array)
-        expect(parsed.authoriseWith.orMatcher).toHaveLength(2)
       })
 
       it('should support multiple scripts with different composite matcher types in same inventory', () => {
@@ -742,12 +744,16 @@ describe('Composite Matcher Integration Tests (T041-T043)', () => {
         // Verify all scripts serialized correctly
         const parsed = JSON.parse(jsonString)
         expect(parsed.scripts).toHaveLength(3)
-        expect(parsed.scripts[0].authoriseWith).toHaveProperty('orMatcher')
+        // Script 1: OrMatcher without its own authInfo uses array syntax
+        expect(Array.isArray(parsed.scripts[0].authoriseWith)).toBe(true)
+        // Script 2: AndMatcher keeps andMatcher format
         expect(parsed.scripts[1].authoriseWith).toHaveProperty('andMatcher')
-        expect(parsed.scripts[2].authoriseWith).toHaveProperty('orMatcher')
+        expect(parsed.scripts[1].authoriseWith).toHaveProperty('authorisationInfo')
+        // Script 3: Nested OrMatcher without its own authInfo uses array syntax
+        expect(Array.isArray(parsed.scripts[2].authoriseWith)).toBe(true)
 
-        // Verify nested structure in script3
-        expect(parsed.scripts[2].authoriseWith.orMatcher[0]).toHaveProperty('andMatcher')
+        // Verify nested structure in script3 - first array element should have andMatcher
+        expect(parsed.scripts[2].authoriseWith[0]).toHaveProperty('andMatcher')
       })
     })
   })

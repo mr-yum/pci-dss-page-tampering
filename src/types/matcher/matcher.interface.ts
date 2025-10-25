@@ -13,6 +13,27 @@ import type { InventoryScriptHashInfo } from '../inventory/model'
 import type { AuthorizationResult } from './authorization-result'
 
 /**
+ * Authorization metadata for matchers.
+ * Contains information about the authorization decision for audit trail.
+ */
+export interface AuthorisationInfo {
+  /**
+   * Human-readable description of what this matcher authorizes
+   */
+  description: string
+
+  /**
+   * Whether this matcher is authorized (true) or explicitly denied (false)
+   */
+  authorised: boolean
+
+  /**
+   * Date when this authorization was granted or denied
+   */
+  date: Date
+}
+
+/**
  * Generic matchable resource (script or header).
  * Provides common structure for matcher operations.
  *
@@ -140,4 +161,40 @@ export interface Matcher<T extends Matchable = Matchable> {
    * - Top-level authorisationInfo.authorised: false always denies regardless of matcher result
    */
   authorize(resource: T): AuthorizationResult
+}
+
+/**
+ * Matcher with optional authorization metadata.
+ *
+ * This interface extends Matcher to support matchers that carry their own
+ * authorization metadata. This is essential for:
+ * - Array syntax where each element has its own authorisationInfo
+ * - Composite matchers where children have individual authorization metadata
+ * - Preserving authorization context through serialization/deserialization
+ *
+ * All concrete matcher implementations (except HeaderNameMatcher which is only
+ * used for identification) can be AuthorisationMatchers.
+ *
+ * @example
+ * // Simple matcher with authorization metadata
+ * const matcher = new ContentMatcher(/analytics/, {
+ *   description: "Analytics script for conversion tracking",
+ *   authorised: true,
+ *   date: new Date('2025-10-21')
+ * })
+ *
+ * @example
+ * // Composite matcher with metadata at multiple levels
+ * const matcher = new OrMatcher([
+ *   new HashMatcher([hash1], { description: "Version 1.0", authorised: true, date: ... }),
+ *   new HashMatcher([hash2], { description: "Version 2.0", authorised: true, date: ... })
+ * ], { description: "Accept either version", authorised: true, date: ... })
+ */
+export interface AuthorisationMatcher<T extends Matchable = Matchable> extends Matcher<T> {
+  /**
+   * Optional authorization metadata for this matcher.
+   * When present, provides audit trail context for authorization decisions.
+   * When absent, matcher is purely structural (e.g., intermediate composite nodes).
+   */
+  getAuthorisationInfo(): AuthorisationInfo | undefined
 }

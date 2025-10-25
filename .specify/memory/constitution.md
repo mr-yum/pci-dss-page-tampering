@@ -81,8 +81,11 @@ All comparison logic, hash validation, and alert generation MUST be covered by a
 
 **Requirements**:
 
-- Unit tests MUST cover: ScriptComparisonService, HeaderComparisonService, hash utilities
-- Integration tests MUST cover: Full workflows with mock Puppeteer responses
+- Unit tests MUST be co-located with source files in the `src/` hierarchy (e.g., `src/services/detection.test.ts` alongside `src/services/detection.ts`)
+- Unit tests MUST NOT be placed in a separate `test/unit/` directory
+- Integration tests MUST be placed in `test/integration/` directory
+- Unit tests MUST cover: ScriptComparisonService, HeaderComparisonService, hash utilities, matcher implementations
+- Integration tests MUST cover: Full workflows with mock Puppeteer responses, end-to-end detection flows
 - Test scenarios MUST include: New scripts, hash mismatches, missing headers, malformed data
 - Tests MUST verify correct alert categories are generated
 - Refactoring MUST NOT reduce test coverage (use code coverage tools to verify)
@@ -148,7 +151,7 @@ All changes MUST pass before merge:
 
 When refactoring comparison or detection logic:
 
-1. Write tests that capture current behavior FIRST (tests along implementations, not in separate unit test folder)
+1. Write tests that capture current behavior FIRST (unit tests co-located with source files in `src/` hierarchy)
 2. Verify tests pass with current implementation
 3. Refactor code
 4. Verify tests still pass (no behavior change)

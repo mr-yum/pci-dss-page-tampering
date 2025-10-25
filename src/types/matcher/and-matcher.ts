@@ -22,9 +22,8 @@
  * @see ../../../specs/005-enhance-the-schema/data-model.md for entity definitions
  */
 
-import type { InventoryAuthorisationInfo } from '../inventory/model'
 import type { AuthorizationResult } from './authorization-result'
-import type { Matchable, Matcher } from './matcher.interface'
+import type { AuthorisationInfo, AuthorisationMatcher, Matchable, Matcher } from './matcher.interface'
 
 /**
  * AndMatcher - Composite matcher with AND logic (all children must match).
@@ -44,9 +43,9 @@ import type { Matchable, Matcher } from './matcher.interface'
  * - Any child authorization failure triggers unauthorized result (short-circuit)
  * - Top-level authorised: false always denies (FR-011)
  */
-export class AndMatcher<T extends Matchable = Matchable> implements Matcher<T> {
+export class AndMatcher<T extends Matchable = Matchable> implements AuthorisationMatcher<T> {
   private readonly children: Matcher<T>[]
-  private readonly authorisationInfo: InventoryAuthorisationInfo | undefined
+  private readonly authorisationInfo: AuthorisationInfo | undefined
 
   /**
    * Creates an AndMatcher with the given child matchers.
@@ -59,7 +58,7 @@ export class AndMatcher<T extends Matchable = Matchable> implements Matcher<T> {
    * JavaScript Array.every([]) returns true, which would authorize everything.
    * This would be a SECURITY VIOLATION for AND logic.
    */
-  constructor(children: Matcher<T>[], authorisationInfo?: InventoryAuthorisationInfo) {
+  constructor(children: Matcher<T>[], authorisationInfo?: AuthorisationInfo) {
     // FR-008, FR-012: Reject empty arrays (fail-secure)
     // CRITICAL: Prevents Array.every([]) === true (vacuous truth security violation)
     if (!children || children.length === 0) {
@@ -97,7 +96,7 @@ export class AndMatcher<T extends Matchable = Matchable> implements Matcher<T> {
    * Returns authorization metadata for serialization.
    * @returns Authorization info if present, undefined otherwise
    */
-  getAuthorisationInfo(): InventoryAuthorisationInfo | undefined {
+  getAuthorisationInfo(): AuthorisationInfo | undefined {
     return this.authorisationInfo
   }
 
