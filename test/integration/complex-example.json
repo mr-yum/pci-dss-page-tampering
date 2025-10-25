@@ -1,0 +1,2486 @@
+{
+  "target": {
+    "inventory": {
+      "name": "2.0 staging",
+      "type": "inventory",
+      "url": "https://staging.meandu.app/pcidsscompliance",
+      "workflow": "2.0_uat-workflow.json"
+    },
+    "detection": {
+      "name": "2.0 production",
+      "type": "detection",
+      "url": "https://meandu.app/pcidsscompliance?number=10",
+      "workflow": "2.0_production-workflow.json"
+    }
+  },
+  "alerts": {
+    "inventory": {
+      "newScriptIdentified": {
+        "destination": "#_pci-page-tampering-alerts"
+      },
+      "newHeaderIdentified": {
+        "destination": "#_pci-page-tampering-alerts"
+      }
+    },
+    "detection": {
+      "newScriptDetected": {
+        "destination": "#_pci-page-tampering-alerts"
+      },
+      "scriptMismatchDetected": {
+        "destination": "#_pci-page-tampering-alerts"
+      },
+      "newHeaderDetected": {
+        "destination": "#_pci-page-tampering-alerts"
+      }
+    }
+  },
+  "scripts": [
+    {
+      "identifyWith": {
+        "nameMatcher": "^https:\\/\\/www\\.recaptcha\\.net\\/recaptcha\\/enterprise\\/webworker\\.js\\?.*$"
+      },
+      "authoriseWith": {
+        "contentMatcher": ".*",
+        "authorisationInfo": {
+          "description": "(re)captcha bot prevention",
+          "authorised": true,
+          "date": "2025-08-25T00:00:00.000Z"
+        }
+      }
+    },
+    {
+      "identifyWith": {
+        "nameMatcher": "^https:\\/\\/hcaptcha\\.com\\/1\\/api\\.js\\?.*$"
+      },
+      "authoriseWith": {
+        "hashes": [
+          {
+            "timestamp": "2025-08-26T05:58:41.265Z",
+            "hash": {
+              "value": "2d70875557ec2cd30d5dd986b695b517b54e0a0e33e42f8a7c7c2cd593e08b40"
+            }
+          },
+          {
+            "timestamp": "2025-09-12T04:36:07.656Z",
+            "hash": {
+              "value": "0c6bd30b4df581d97757ec269fcfd81ec1ae5757fc6b885bb2d9e924b85aa798"
+            }
+          },
+          {
+            "timestamp": "2025-09-13T12:07:49.173Z",
+            "hash": {
+              "value": "69c0706a3e031dcaddd12aaa2449d445f1f98ceff08ae6524694844918131e0d"
+            }
+          },
+          {
+            "timestamp": "2025-09-24T00:54:35.332Z",
+            "hash": {
+              "value": "6f4a60a62031255ce0cdbe7095e656baa34c88443f770a369acfe043dbf49e35"
+            }
+          },
+          {
+            "timestamp": "2025-09-25T17:43:16.076Z",
+            "hash": {
+              "value": "9de93a350c68674afa178eabf27ef57cb0b9788d0cd8e06929a23bcde29f6480"
+            }
+          },
+          {
+            "timestamp": "2025-09-26T12:08:33.984Z",
+            "hash": {
+              "value": "e79db7fb0f8ead51324adc806a8afec0b8f6ebc08e48e503fbd0a79789709300"
+            }
+          },
+          {
+            "timestamp": "2025-09-30T12:08:42.283Z",
+            "hash": {
+              "value": "e970352785aef3c827ed472333070f03bd05562cd22f33c3010e57b7d10b3f46"
+            }
+          },
+          {
+            "timestamp": "2025-10-02T12:07:57.446Z",
+            "hash": {
+              "value": "45bad909c0a82ac8bf8f1361d17f7958ee1b08c133c97a47ad211ef5e175ddb3"
+            }
+          },
+          {
+            "timestamp": "2025-10-14T06:08:35.100Z",
+            "hash": {
+              "value": "1619154f611c3fd00234b537abfdce11d10e98bcd4f5c28726067cb98c349a27"
+            }
+          },
+          {
+            "timestamp": "2025-10-16T04:50:24.736Z",
+            "hash": {
+              "value": "773c9c0760dc1644c24282fcd057a8a9449883484dd3528f5b0752612486eb2b"
+            }
+          },
+          {
+            "timestamp": "2025-10-20T03:12:14.445Z",
+            "hash": {
+              "value": "88e0d2c9a36b98cb980c6ff8dad0e6666d297a0653444e62f71501478966ea82"
+            }
+          }
+        ],
+        "authorisationInfo": {
+          "description": "(re)captcha bot prevention",
+          "authorised": true,
+          "date": "2025-08-25T00:00:00.000Z"
+        }
+      }
+    },
+    {
+      "identifyWith": {
+        "nameMatcher": "^https:\\/\\/connect\\.facebook\\.net\\/signals\\/config\\/\\d+\\?.*$"
+      },
+      "authoriseWith": {
+        "contentMatcher": ".*",
+        "authorisationInfo": {
+          "description": "Facebook Connect part of Facebook Pixel used by our customers to track analytics to their electronic menus",
+          "authorised": true,
+          "date": "2025-08-25T00:00:00.000Z"
+        }
+      }
+    },
+    {
+      "identifyWith": {
+        "contentMatcher": "https:\\/\\/connect\\.facebook\\.net\\/en_US\\/fbevents\\.js"
+      },
+      "authoriseWith": {
+        "contentMatcher": "https:\\/\\/connect\\.facebook\\.net\\/en_US\\/fbevents\\.js",
+        "authorisationInfo": {
+          "description": "Facebook Pixel used by our customers to track analytics to their electronic menus",
+          "authorised": true,
+          "date": "2025-08-25T00:00:00.000Z"
+        }
+      }
+    },
+    {
+      "identifyWith": {
+        "nameMatcher": "^inline_script\\/cloudflare-bot-fight$"
+      },
+      "authoriseWith": {
+        "contentMatcher": "a.src='\\/cdn-cgi\\/challenge-platform\\/scripts\\/jsd\\/main.js'",
+        "authorisationInfo": {
+          "description": "Cloudflare Bot Mode script",
+          "authorised": true,
+          "date": "2025-09-10T00:00:00.000Z"
+        }
+      }
+    },
+    {
+      "identifyWith": {
+        "nameMatcher": "^inline_script\\/nextjs-ssr$"
+      },
+      "authoriseWith": {
+        "contentMatcher": "self.__next_f\\.push",
+        "authorisationInfo": {
+          "description": "Next.js SSR scripts",
+          "authorised": true,
+          "date": "2025-09-10T00:00:00.000Z"
+        }
+      }
+    },
+    {
+      "identifyWith": {
+        "nameMatcher": "^inline_script\\/react-server-component$"
+      },
+      "authoriseWith": {
+        "contentMatcher": "^\\$R[CS]",
+        "authorisationInfo": {
+          "description": "React server components",
+          "authorised": true,
+          "date": "2025-09-18T00:00:00.000Z"
+        }
+      }
+    },
+    {
+      "identifyWith": {
+        "nameMatcher": "^https:\\/\\/www\\.googletagmanager\\.com\\/gtag\\/js\\?id=G-[A-Z0-9]{10}$"
+      },
+      "authoriseWith": {
+        "contentMatcher": ".*",
+        "authorisationInfo": {
+          "description": "Google Tag Manager used by our customers to track analytics to their electronic menus",
+          "authorised": true,
+          "date": "2025-08-25T00:00:00.000Z"
+        }
+      }
+    },
+    {
+      "identifyWith": {
+        "nameMatcher": "^inline_script\\/staging\\.meandu\\.app\\/.*$"
+      },
+      "authoriseWith": {
+        "hashes": [
+          {
+            "timestamp": "2025-08-26T05:58:41.265Z",
+            "hash": {
+              "value": "1054865d1f261638e84b5e329fba6b4d648f0caea40cdb200159aa7f9801f679"
+            }
+          },
+          {
+            "timestamp": "2025-09-02T04:19:55.844Z",
+            "hash": {
+              "value": "291d62edc7abea1026e0b2a425b3365c049eb1eea88c23ab2d72ee68242319d7"
+            }
+          }
+        ],
+        "authorisationInfo": {
+          "description": "Part of our 2.0 Guest App (Serve) product code",
+          "authorised": true,
+          "date": "2025-08-25T00:00:00.000Z"
+        }
+      }
+    },
+    {
+      "identifyWith": {
+        "nameMatcher": "^inline_script\\/staging\\.meandu\\.app\\/.*$"
+      },
+      "authoriseWith": {
+        "nameMatcher": "^inline_script\\/staging\\.meandu\\.app\\/.*$",
+        "authorisationInfo": {
+          "description": "Part of our 2.0 Guest App (Serve) product code",
+          "authorised": true,
+          "date": "2025-08-25T00:00:00.000Z"
+        }
+      }
+    },
+    {
+      "identifyWith": {
+        "nameMatcher": "^https:\\/\\/js\\.stripe\\.com\\/basil\\/stripe.js$"
+      },
+      "authoriseWith": {
+        "contentMatcher": ".*",
+        "authorisationInfo": {
+          "description": "Part of Stripe SDK used to integrate their iframe into our payment flow",
+          "authorised": true,
+          "date": "2025-08-25T00:00:00.000Z"
+        }
+      }
+    },
+    {
+      "identifyWith": {
+        "nameMatcher": "^https:\\/\\/connect\\.facebook\\.net\\/[a-zA-Z_]+\\/[a-zA-Z_]+\\.js$"
+      },
+      "authoriseWith": {
+        "contentMatcher": ".*",
+        "authorisationInfo": {
+          "description": "Facebook Connect part of Facebook Pixel used by our customers to track analytics to their electronic menus",
+          "authorised": true,
+          "date": "2025-08-25T00:00:00.000Z"
+        }
+      }
+    },
+    {
+      "identifyWith": {
+        "nameMatcher": "^https:\\/\\/js\\.stripe\\.com\\/v3\\/fingerprinted\\/js\\/.*?\\.js$"
+      },
+      "authoriseWith": {
+        "contentMatcher": ".*",
+        "authorisationInfo": {
+          "description": "Part of Stripe SDK used to integrate their iframe into our payment flow",
+          "authorised": true,
+          "date": "2025-08-25T00:00:00.000Z"
+        }
+      }
+    },
+    {
+      "identifyWith": {
+        "nameMatcher": "^https:\\/\\/m\\.stripe\\.network\\/.*?\\.js$"
+      },
+      "authoriseWith": {
+        "hashes": [
+          {
+            "timestamp": "2025-08-26T05:58:41.265Z",
+            "hash": {
+              "value": "bd6e71e0a8f18b3dd4bbeb6fd673015fec896bd92e17c11f3dc8fe96a06de1f4"
+            }
+          },
+          {
+            "timestamp": "2025-09-10T23:58:16.698Z",
+            "hash": {
+              "value": "f2a8a36c74c59cfbe7a73d441cfd180ca6e6a9942a74ef9b240191d1c6056a59"
+            }
+          }
+        ],
+        "authorisationInfo": {
+          "description": "Part of Stripe SDK used to integrate their iframe into our payment flow",
+          "authorised": true,
+          "date": "2025-08-25T00:00:00.000Z"
+        }
+      }
+    },
+    {
+      "identifyWith": {
+        "nameMatcher": "^https:\\/\\/static\\.meandu\\.app\\/app\\/front-end-web\\/deploy-[0-9]+\\/_next\\/static\\/(.*)\\/.*?\\.js$"
+      },
+      "authoriseWith": {
+        "contentMatcher": ".*",
+        "authorisationInfo": {
+          "description": "Part of our 2.0 Guest App (Serve) product code",
+          "authorised": true,
+          "date": "2025-08-25T00:00:00.000Z"
+        }
+      }
+    },
+    {
+      "identifyWith": {
+        "nameMatcher": "^https:\\/\\/challenges\\.cloudflare\\.com\\/turnstile\\/([^\\/]+)\\/([^\\/]+)\\/[a-zA-Z0-9]+\\/api\\.js$"
+      },
+      "authoriseWith": {
+        "hashes": [
+          {
+            "timestamp": "2025-08-26T05:58:41.265Z",
+            "hash": {
+              "value": "4ca696d2fb66b44648a8fd55bc9eeaa6958dd9e523c4a740365823c30d4fc087"
+            }
+          },
+          {
+            "timestamp": "2025-09-09T00:10:56.441Z",
+            "hash": {
+              "value": "3dd3733199c121286e02ea0668730c4fb8b1773a0d8b84b16471254e785c2c4e"
+            }
+          },
+          {
+            "timestamp": "2025-09-24T00:54:35.332Z",
+            "hash": {
+              "value": "e14d9d846b4464b05ad6cd15328f9d7196f960cc6ed30fc8a3a27a782e28f0ad"
+            }
+          },
+          {
+            "timestamp": "2025-10-02T12:07:57.446Z",
+            "hash": {
+              "value": "799b010b25d668823ea2b125204706cc803f3d733e1e9a08ac9a841caf94a710"
+            }
+          },
+          {
+            "timestamp": "2025-10-14T06:08:35.100Z",
+            "hash": {
+              "value": "78fe387787c8011054e92e36dd73b45334dead822f40451e51f4c0dcbc209f5e"
+            }
+          }
+        ],
+        "authorisationInfo": {
+          "description": "Part of Cloudflare Turnstile used to prevent bot attacks",
+          "authorised": true,
+          "date": "2025-08-25T00:00:00.000Z"
+        }
+      }
+    },
+    {
+      "identifyWith": {
+        "contentMatcher": "https:\\/\\/static\\.meandu\\.app\\/app\\/front-end-web\\/deploy-\\d+"
+      },
+      "authoriseWith": {
+        "contentMatcher": "https:\\/\\/static\\.meandu\\.app\\/app\\/front-end-web\\/deploy-\\d+",
+        "authorisationInfo": {
+          "description": "Part of our 2.0 Guest App (Serve) product code",
+          "authorised": true,
+          "date": "2025-08-25T00:00:00.000Z"
+        }
+      }
+    },
+    {
+      "identifyWith": {
+        "nameMatcher": "^inline_script\\/gtag-init$"
+      },
+      "authoriseWith": {
+        "hashes": [
+          {
+            "timestamp": "2025-09-09T11:35:00.000Z",
+            "hash": {
+              "value": "141b06af8d129fd557d0ea27999117db06de67dd31641833f31594e648236663"
+            }
+          },
+          {
+            "timestamp": "2025-08-26T05:58:41.265Z",
+            "hash": {
+              "value": "2feab93955103636bd748cb101e554a0866c72e68c0d56776cf2013234f6607f"
+            }
+          }
+        ],
+        "authorisationInfo": {
+          "description": "Part of Google Tag Manager used by our customers to track analytics to their electronic menus",
+          "authorised": true,
+          "date": "2025-08-25T00:00:00.000Z"
+        }
+      }
+    },
+    {
+      "identifyWith": {
+        "nameMatcher": "^https:\\/\\/pay\\.google\\.com\\/gp\\/p\\/js\\/pay\\.js$"
+      },
+      "authoriseWith": {
+        "contentMatcher": ".*",
+        "authorisationInfo": {
+          "description": "Part of Google Tag Manager used by our customers to track analytics to their electronic menus. Authorising any content from that URL as the hashes change constantly.",
+          "authorised": true,
+          "date": "2025-10-17T00:00:00.000Z"
+        }
+      }
+    },
+    {
+      "identifyWith": {
+        "nameMatcher": "^https:\\/\\/b\\.stripecdn\\.com\\/stripethirdparty-srv\\/assets\\/v[0-9]+\\.[0-9]+\\/.+\\.bundle\\.js$"
+      },
+      "authoriseWith": {
+        "hashes": [
+          {
+            "timestamp": "2025-08-26T05:58:41.265Z",
+            "hash": {
+              "value": "3e8243caa13f8fb85f26927c4872a40252a99d77019140baab7f31938770a5bf"
+            }
+          },
+          {
+            "timestamp": "2025-09-10T04:36:23.463Z",
+            "hash": {
+              "value": "5150250c68ade3c1b0633b3414b92534a47f40d0df043501613244adede83d7a"
+            }
+          },
+          {
+            "timestamp": "2025-09-10T04:36:23.463Z",
+            "hash": {
+              "value": "da24c409f2a7ae433ecedd29410f5d92decada16775d3e9d4ee1ff8b301432c0"
+            }
+          },
+          {
+            "timestamp": "2025-09-16T06:40:06.647Z",
+            "hash": {
+              "value": "bf265d22c6cb5e4492df5f742c57f632a721686e30a98689fe6f4cce068de615"
+            }
+          },
+          {
+            "timestamp": "2025-09-24T00:54:35.332Z",
+            "hash": {
+              "value": "e26832a62d5d0ae9ec538e7bd09f505c29bb49c9bdf4071de507065f872a0a0d"
+            }
+          },
+          {
+            "timestamp": "2025-09-24T00:56:13.000Z",
+            "hash": {
+              "value": "7ade4a2ceef10b2e4a125de6cc0e55b7b9e7d25fff44c42a975727564e18abbd"
+            }
+          },
+          {
+            "timestamp": "2025-09-25T02:59:03.800Z",
+            "hash": {
+              "value": "378a8fd3f3938cdce8686bd5d8e1764feafa8d79997cf7c21dd8dad62b658866"
+            }
+          },
+          {
+            "timestamp": "2025-09-26T12:08:33.984Z",
+            "hash": {
+              "value": "3060c54cd940f90555c6b2259b54209f6c4ab2a341a4881bf7ee4713f658406a"
+            }
+          },
+          {
+            "timestamp": "2025-09-26T12:08:33.984Z",
+            "hash": {
+              "value": "d5f78957299651dfbf1e406d160dbfba9394248d7ca15e13620a4be3760ceb84"
+            }
+          },
+          {
+            "timestamp": "2025-09-28T22:35:57.276Z",
+            "hash": {
+              "value": "82af16bcb11056c4252cfbee9209561290175e442823fc29202621d9a9605c75"
+            }
+          },
+          {
+            "timestamp": "2025-10-01T12:08:53.840Z",
+            "hash": {
+              "value": "bc01aafc5c4f46d02b58ada01dd43416076b1494ecc2f017b3ab244feeb6406e"
+            }
+          },
+          {
+            "timestamp": "2025-10-03T01:18:10.274Z",
+            "hash": {
+              "value": "e3bb33ea9f53a91aaaa65da353eb719bc68e3de1b410a6ee3295f6bcd6c0e196"
+            }
+          },
+          {
+            "timestamp": "2025-10-14T06:08:35.100Z",
+            "hash": {
+              "value": "ffb29b2d31a92414f7bfe92edb053723a174658f9e790bf23aca14a5517366ef"
+            }
+          },
+          {
+            "timestamp": "2025-10-14T06:08:35.100Z",
+            "hash": {
+              "value": "0aba261576432c92dd35af20170228b4020a0dd00ae69a8fe59c99e11a542fe7"
+            }
+          },
+          {
+            "timestamp": "2025-10-16T22:05:41.099Z",
+            "hash": {
+              "value": "877cc6b725fa0c63a6a7dee7f56946e54665fd4485ab583f2485f7961c7f8808"
+            }
+          }
+        ],
+        "authorisationInfo": {
+          "description": "Part of Stripe SDK used to integrate their iframe into our payment flow",
+          "authorised": true,
+          "date": "2025-08-25T00:00:00.000Z"
+        }
+      }
+    },
+    {
+      "identifyWith": {
+        "nameMatcher": "^https:\\/\\/www.gstatic.com\\/_\\/mss\\/boq-payments-consumer\\/_\\/js\\/?.*$"
+      },
+      "authoriseWith": {
+        "contentMatcher": ".*",
+        "authorisationInfo": {
+          "description": "Part of Stripe's integration with Google Pay, Google Pay uses BOQ payments in the background",
+          "authorised": true,
+          "date": "2025-08-27T03:18:59.894Z"
+        }
+      }
+    },
+    {
+      "identifyWith": {
+        "nameMatcher": "^https:\\/\\/static\\.cloudflareinsights\\.com\\/beacon\\.min\\.js\\/\\w+$"
+      },
+      "authoriseWith": {
+        "contentMatcher": ".*",
+        "authorisationInfo": {
+          "description": "This is the Cloudflare Web Analytics beacon. It's used to gather performance and usage metrics for the website.",
+          "authorised": true,
+          "date": "2025-08-29T08:32:59.619Z"
+        }
+      }
+    },
+    {
+      "identifyWith": {
+        "nameMatcher": "^https:\\/\\/www\\.meandu\\.app\\/cdn-cgi\\/challenge-platform\\/([^\\/]+)\\/([^\\/]+)\\/scripts\\/jsd\\/[0-9a-f]+\\/main\\.js\\?$"
+      },
+      "authoriseWith": {
+        "contentMatcher": ".*",
+        "authorisationInfo": {
+          "description": "This is a Cloudflare Bot Management or Turnstile script. It is part of the challenge process used to verify that a user is not a bot.",
+          "authorised": true,
+          "date": "2025-08-29T08:32:59.619Z"
+        }
+      }
+    },
+    {
+      "identifyWith": {
+        "nameMatcher": "^https:\\/\\/challenges\\.cloudflare\\.com\\/cdn-cgi\\/challenge-platform\\/([^\\/]+)\\/([^\\/]+)\\/orchestrate\\/chl_api\\/([^\\/]+)\\?ray=.+?&lang=([^&]+)$"
+      },
+      "authoriseWith": {
+        "hashes": [
+          {
+            "timestamp": "2025-09-10T04:24:31.037Z",
+            "hash": {
+              "value": "0b7ad5d6a6b02fa85774f6884c884e26fcf8307ce9974f92fd2bced02405d660"
+            }
+          }
+        ],
+        "authorisationInfo": {
+          "description": "This is a Cloudflare API script that orchestrates the challenges presented to a user to validate they are human and prevent bot attacks.",
+          "authorised": true,
+          "date": "2025-08-29T08:32:59.619Z"
+        }
+      }
+    },
+    {
+      "identifyWith": {
+        "nameMatcher": "^blob:https:\\/\\/challenges\\.cloudflare\\.com\\/[a-f0-9-]+$"
+      },
+      "authoriseWith": {
+        "contentMatcher": ".*",
+        "authorisationInfo": {
+          "description": "This is a Cloudflare API script that orchestrates the challenges presented to a user to validate they are human and prevent bot attacks.",
+          "authorised": true,
+          "date": "2025-09-19T00:00:00.000Z"
+        }
+      }
+    },
+    {
+      "identifyWith": {
+        "nameMatcher": "^inline_script\\/_next-ga-init$"
+      },
+      "authoriseWith": {
+        "hashes": [
+          {
+            "timestamp": "2025-09-16T06:14:43.276Z",
+            "hash": {
+              "value": "91593f18a8a6055c080d54849d2a046903a7cb6767305faf85abea6ef5948598"
+            }
+          },
+          {
+            "timestamp": "2025-09-25T02:59:03.800Z",
+            "hash": {
+              "value": "7eeb544fb05b5bfd1090fa23ec20e6cb901ef32920e3abbc703b14df99860797"
+            }
+          }
+        ],
+        "authorisationInfo": {
+          "description": "Used by Next.js to initialise Google Analytics for tracking purposes.",
+          "authorised": true,
+          "date": "2025-09-16T06:14:43.276Z"
+        }
+      }
+    },
+    {
+      "identifyWith": {
+        "nameMatcher": "^blob:https:\\/\\/newassets\\.hcaptcha\\.com\\/[a-f0-9-]+$"
+      },
+      "authoriseWith": {
+        "hashes": [
+          {
+            "timestamp": "2025-09-17T15:00:00.000Z",
+            "hash": {
+              "value": "4f12f26037d7a867724b0c21d574583ca5efc175b8a1f68983dd1f603f3c5ac9"
+            }
+          }
+        ],
+        "authorisationInfo": {
+          "description": "Blob URLs from hCaptcha's new assets domain. These are often used for running scripts like web workers in a sandboxed environment.",
+          "authorised": true,
+          "date": "2025-09-17T04:56:00.000Z"
+        }
+      }
+    },
+    {
+      "identifyWith": {
+        "nameMatcher": "^https:\\/\\/newassets\\.hcaptcha\\.com\\/c\\/[a-f0-9]+\\/hsw\\.js$"
+      },
+      "authoriseWith": {
+        "hashes": [
+          {
+            "timestamp": "2025-09-17T15:00:00.000Z",
+            "hash": {
+              "value": "ae4158b9b7fd332b6efb7e0ca6623f3c1bae30552625582f7be78456102b8cba"
+            }
+          }
+        ],
+        "authorisationInfo": {
+          "description": "hCaptcha web worker script (hsw.js), which performs proof-of-work challenges in the background.",
+          "authorised": true,
+          "date": "2025-09-17T05:05:00.000Z"
+        }
+      }
+    },
+    {
+      "identifyWith": {
+        "nameMatcher": "^inline_script\\/id_not_found_requestAni\\.\\.\\.e\\.now\\(\\)\\}\\);$"
+      },
+      "authoriseWith": {
+        "hashes": [
+          {
+            "timestamp": "2025-10-20T03:12:14.445Z",
+            "hash": {
+              "value": "ee6bb81f4e9fc030a39a7c71affc4d1f2b900baa4b4c7af83361388d7c39599b"
+            }
+          }
+        ],
+        "authorisationInfo": {
+          "description": "NO_DESCRIPTION",
+          "authorised": false,
+          "date": "2025-10-20T03:12:14.445Z"
+        }
+      }
+    },
+    {
+      "identifyWith": {
+        "nameMatcher": "^inline_script\\/id_not_found_\\(self\\.__ne\\.\\.\\.\\.push\\(\\[0\\]\\)$"
+      },
+      "authoriseWith": {
+        "hashes": [
+          {
+            "timestamp": "2025-10-20T03:12:14.445Z",
+            "hash": {
+              "value": "3814cddd18b2095e01abb745a99e5ada90178e709c09879324c3b623f2d829ea"
+            }
+          }
+        ],
+        "authorisationInfo": {
+          "description": "NO_DESCRIPTION",
+          "authorised": false,
+          "date": "2025-10-20T03:12:14.445Z"
+        }
+      }
+    },
+    {
+      "identifyWith": {
+        "nameMatcher": "^inline_script\\/id_not_found_\\$RB=\\[\\];\\$RV\\.\\.\\.:1\",\"S:1\"\\)$"
+      },
+      "authoriseWith": {
+        "hashes": [
+          {
+            "timestamp": "2025-10-20T03:12:14.445Z",
+            "hash": {
+              "value": "93268a0726ec1efaa676ae5171f84267e72b7c3d215b6190794cb4069d5f58d8"
+            }
+          }
+        ],
+        "authorisationInfo": {
+          "description": "NO_DESCRIPTION",
+          "authorised": false,
+          "date": "2025-10-20T03:12:14.445Z"
+        }
+      }
+    }
+  ],
+  "headers": [
+    {
+      "identifyWith": {
+        "headerNameMatcher": "^content-security-policy$"
+      },
+      "authoriseWith": [
+        {
+          "contentMatcher": "^default-src 'self' blob: \\*$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^script-src 'nonce-7G64WXq5' \\*\\.facebook\\.com \\*\\.fbcdn\\.net \\*\\.facebook\\.net 127\\.0\\.0\\.1:\\* blob: 'self' https:\\/\\/\\*\\.google-analytics\\.com \\*\\.google\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^style-src 'self' data: blob: 'unsafe-inline'$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^connect-src 'self' data: blob: https:\\/\\/edge-chat\\.facebook\\.net https:\\/\\/edge-chat-latest\\.facebook\\.net wss:\\/\\/edge-chat-latest\\.facebook\\.net wss:\\/\\/edge-chat\\.facebook\\.net wss:\\/\\/edge-chat\\.socialplugin\\.facebook\\.net wss:\\/\\/edge-chat-latest\\.socialplugin\\.facebook\\.net https:\\/\\/edge-chat\\.socialplugin\\.facebook\\.net https:\\/\\/edge-chat-latest\\.socialplugin\\.facebook\\.net \\*\\.facebook\\.com facebook\\.com \\*\\.fbcdn\\.net \\*\\.facebook\\.net wss:\\/\\/\\*\\.facebook\\.com:\\* wss:\\/\\/\\*\\.whatsapp\\.com:\\* wss:\\/\\/\\*\\.fbcdn\\.net attachment\\.fbsbx\\.com ws:\\/\\/localhost:\\* \\*\\.cdninstagram\\.com https:\\/\\/\\*\\.google-analytics\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^font-src 'self' data: blob: \\*$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^img-src 'self' data: blob: \\* https:\\/\\/\\*\\.google-analytics\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^media-src 'self' data: blob: \\*$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^child-src 'self' data: blob: \\*$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^frame-src 'self' data: blob: \\*$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^manifest-src 'self' data: blob: \\*$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^object-src 'self' data: blob: \\*$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^worker-src 'self' data: blob: \\*$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^block-all-mixed-content$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^upgrade-insecure-requests$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^require-trusted-types-for 'script'$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^default-src 'self'$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^base-uri 'self'$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^font-src 'self' https: data:$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^form-action 'self'$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^frame-ancestors 'self'$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^img-src 'self' data:$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^object-src 'none'$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^script-src 'self'$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^script-src-attr 'none'$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^style-src 'self' https: 'unsafe-inline'$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^base-uri 'none'$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^connect-src 'self' https:\\/\\/api\\.stripe\\.com https:\\/\\/merchant-ui-api\\.stripe\\.com https:\\/\\/stripe\\.com\\/cookie-settings\\/enforcement-mode https:\\/\\/errors\\.stripe\\.com https:\\/\\/r\\.stripe\\.com https:\\/\\/ppm\\.stripe\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^font-src 'none'$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^form-action 'none'$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^frame-src 'self'$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^img-src 'self' https:\\/\\/q\\.stripe\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^media-src 'none'$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^style-src 'self' 'sha256-0hAheEzaMe6uXIKV4EehS9pu1am1lj\\/KnnzrOYqckXk='$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^worker-src 'none'$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^report-uri https:\\/\\/q\\.stripe\\.com\\/csp-report$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^script-src 'nonce-32hwBJqt' \\*\\.facebook\\.com \\*\\.fbcdn\\.net \\*\\.facebook\\.net 127\\.0\\.0\\.1:\\* blob: 'self' https:\\/\\/\\*\\.google-analytics\\.com \\*\\.google\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^default-src blob: 'self' https:\\/\\/\\*\\.fbsbx\\.com \\*\\.facebook\\.com \\*\\.fbcdn\\.net$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^script-src \\*\\.facebook\\.com \\*\\.fbcdn\\.net \\*\\.facebook\\.net 127\\.0\\.0\\.1:\\* 'nonce-mAdWIrmd' blob: 'self' connect\\.facebook\\.net 'wasm-unsafe-eval' https:\\/\\/\\*\\.google-analytics\\.com \\*\\.google\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^style-src \\*\\.fbcdn\\.net data: \\*\\.facebook\\.com 'unsafe-inline' https:\\/\\/fonts\\.googleapis\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^connect-src \\*\\.facebook\\.com facebook\\.com \\*\\.fbcdn\\.net \\*\\.facebook\\.net wss:\\/\\/\\*\\.facebook\\.com:\\* wss:\\/\\/\\*\\.whatsapp\\.com:\\* wss:\\/\\/\\*\\.fbcdn\\.net attachment\\.fbsbx\\.com ws:\\/\\/localhost:\\* blob: \\*\\.cdninstagram\\.com 'self' http:\\/\\/localhost:3103 wss:\\/\\/gateway\\.facebook\\.com wss:\\/\\/edge-chat\\.facebook\\.com wss:\\/\\/snaptu-d\\.facebook\\.com wss:\\/\\/kaios-d\\.facebook\\.com\\/ v\\.whatsapp\\.net \\*\\.fbsbx\\.com \\*\\.fb\\.com https:\\/\\/\\*\\.google-analytics\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^font-src data: \\*\\.facebook\\.com \\*\\.fbcdn\\.net \\*\\.fbsbx\\.com https:\\/\\/fonts\\.gstatic\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^img-src \\*\\.fbcdn\\.net \\*\\.facebook\\.com data: https:\\/\\/\\*\\.fbsbx\\.com facebook\\.com \\*\\.cdninstagram\\.com fbsbx\\.com fbcdn\\.net connect\\.facebook\\.net \\*\\.carriersignal\\.info blob: android-webview-video-poster: \\*\\.whatsapp\\.net \\*\\.fb\\.com \\*\\.oculuscdn\\.com \\*\\.tenor\\.co \\*\\.tenor\\.com \\*\\.giphy\\.com https:\\/\\/trustly\\.one\\/ https:\\/\\/\\*\\.trustly\\.one\\/ https:\\/\\/paywithmybank\\.com\\/ https:\\/\\/\\*\\.paywithmybank\\.com\\/ https:\\/\\/www\\.googleadservices\\.com https:\\/\\/googleads\\.g\\.doubleclick\\.net https:\\/\\/\\*\\.google-analytics\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^media-src \\*\\.cdninstagram\\.com blob: \\*\\.fbcdn\\.net \\*\\.fbsbx\\.com www\\.facebook\\.com \\*\\.facebook\\.com data: \\*\\.tenor\\.co \\*\\.tenor\\.com https:\\/\\/\\*\\.giphy\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^child-src data: blob: 'self' https:\\/\\/\\*\\.fbsbx\\.com \\*\\.facebook\\.com \\*\\.fbcdn\\.net$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^frame-src \\*\\.facebook\\.com \\*\\.fbsbx\\.com fbsbx\\.com data: www\\.instagram\\.com \\*\\.fbcdn\\.net accounts\\.meta\\.com \\*\\.accounts\\.meta\\.com https:\\/\\/trustly\\.one\\/ https:\\/\\/\\*\\.trustly\\.one\\/ https:\\/\\/paywithmybank\\.com\\/ https:\\/\\/\\*\\.paywithmybank\\.com\\/ https:\\/\\/www\\.googleadservices\\.com https:\\/\\/googleads\\.g\\.doubleclick\\.net https:\\/\\/www\\.google\\.com https:\\/\\/td\\.doubleclick\\.net \\*\\.google\\.com \\*\\.doubleclick\\.net$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^manifest-src data: blob: 'self' https:\\/\\/\\*\\.fbsbx\\.com \\*\\.facebook\\.com \\*\\.fbcdn\\.net$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^object-src data: blob: 'self' https:\\/\\/\\*\\.fbsbx\\.com \\*\\.facebook\\.com \\*\\.fbcdn\\.net$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^worker-src blob: \\*\\.facebook\\.com data:$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^script-src \\*\\.facebook\\.com \\*\\.fbcdn\\.net \\*\\.facebook\\.net 127\\.0\\.0\\.1:\\* 'nonce-EaYZUehw' blob: 'self' connect\\.facebook\\.net 'wasm-unsafe-eval' https:\\/\\/\\*\\.google-analytics\\.com \\*\\.google\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^connect-src 'self' https:\\/\\/r\\.stripe\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^frame-src https:\\/\\/m\\.stripe\\.network$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^img-src https:\\/\\/q\\.stripe\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^style-src 'self'$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^connect-src https:\\/\\/m\\.stripe\\.network https:\\/\\/m\\.stripe\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^default-src 'none'$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^font-src https:\\/\\/m\\.stripe\\.network https:\\/\\/fonts\\.gstatic\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^frame-src https:\\/\\/m\\.stripe\\.network https:\\/\\/js\\.stripe\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^img-src https:\\/\\/m\\.stripe\\.network https:\\/\\/m\\.stripe\\.com https:\\/\\/b\\.stripecdn\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^script-src https:\\/\\/m\\.stripe\\.network 'sha256-e357n1PxCJ8d03\\/QCSKaHFmHF1JADyvSHdSfshxM494=' 'sha256-5DA\\+a07wxWmEka9IdoWjSPVHb17Cp5284\\/lJzfbl8KA=' 'sha256-\\/5Guo2nzv5n\\/w6ukZpOBZOtTJBJPSkJ6mhHpnBgm3Ls='$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^style-src https:\\/\\/m\\.stripe\\.network$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^script-src \\*\\.facebook\\.com \\*\\.fbcdn\\.net \\*\\.facebook\\.net 127\\.0\\.0\\.1:\\* 'nonce-a2Z5Q7PH' blob: 'self' connect\\.facebook\\.net 'wasm-unsafe-eval' https:\\/\\/\\*\\.google-analytics\\.com \\*\\.google\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^script-src \\*\\.facebook\\.com \\*\\.fbcdn\\.net \\*\\.facebook\\.net 127\\.0\\.0\\.1:\\* 'nonce-wYhGdM39' blob: 'self' connect\\.facebook\\.net 'wasm-unsafe-eval' https:\\/\\/\\*\\.google-analytics\\.com \\*\\.google\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^script-src \\*\\.facebook\\.com \\*\\.fbcdn\\.net \\*\\.facebook\\.net 127\\.0\\.0\\.1:\\* 'nonce-Olwad5TD' blob: 'self' connect\\.facebook\\.net 'wasm-unsafe-eval' https:\\/\\/\\*\\.google-analytics\\.com \\*\\.google\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^script-src \\*\\.facebook\\.com \\*\\.fbcdn\\.net \\*\\.facebook\\.net 127\\.0\\.0\\.1:\\* 'nonce-VNF3C1KI' blob: 'self' connect\\.facebook\\.net 'wasm-unsafe-eval' https:\\/\\/\\*\\.google-analytics\\.com \\*\\.google\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^frame-ancestors 'none'$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^script-src \\*\\.facebook\\.com \\*\\.fbcdn\\.net \\*\\.facebook\\.net 127\\.0\\.0\\.1:\\* 'nonce-acHQc6aN' blob: 'self' connect\\.facebook\\.net 'wasm-unsafe-eval' https:\\/\\/\\*\\.google-analytics\\.com \\*\\.google\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^script-src \\*\\.facebook\\.com \\*\\.fbcdn\\.net \\*\\.facebook\\.net 127\\.0\\.0\\.1:\\* 'nonce-PTC547FU' blob: 'self' connect\\.facebook\\.net 'wasm-unsafe-eval' https:\\/\\/\\*\\.google-analytics\\.com \\*\\.google\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^script-src \\*\\.facebook\\.com \\*\\.fbcdn\\.net \\*\\.facebook\\.net 127\\.0\\.0\\.1:\\* 'nonce-9w46ZsWV' blob: 'self' connect\\.facebook\\.net 'wasm-unsafe-eval' https:\\/\\/\\*\\.google-analytics\\.com \\*\\.google\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^script-src self 'unsafe-inline' 'unsafe-eval' https:\\/\\/cdn\\.mryum\\.com https:\\/\\/static\\.meandu\\.app https:\\/\\/connect\\.facebook\\.net https:\\/\\/www\\.google-analytics\\.com https:\\/\\/www\\.googletagmanager\\.com https:\\/\\/api\\.paystack\\.co https:\\/\\/api2\\.amplitude\\.com https:\\/\\/cdn\\.amplitude\\.com https:\\/\\/challenges\\.cloudflare\\.com https:\\/\\/js\\.paystack\\.co https:\\/\\/js\\.stripe\\.com https:\\/\\/maps\\.googleapis\\.com https:\\/\\/\\*\\.eonx\\.com https:\\/\\/cdn\\.eonx\\.com https:\\/\\/dev\\.meandu\\.app https:\\/\\/mryum\\.local$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^script-src \\*\\.facebook\\.com \\*\\.fbcdn\\.net \\*\\.facebook\\.net 127\\.0\\.0\\.1:\\* 'nonce-cx5UTZqK' blob: 'self' connect\\.facebook\\.net 'wasm-unsafe-eval' https:\\/\\/\\*\\.google-analytics\\.com \\*\\.google\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^script-src \\*\\.facebook\\.com \\*\\.fbcdn\\.net \\*\\.facebook\\.net 127\\.0\\.0\\.1:\\* 'nonce-x7rM7vbS' blob: 'self' connect\\.facebook\\.net 'wasm-unsafe-eval' https:\\/\\/\\*\\.google-analytics\\.com \\*\\.google\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^report-uri https:\\/\\/www\\.facebook\\.com\\/csp\\/reporting\\/\\?minimize=0$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^script-src \\*\\.facebook\\.com \\*\\.fbcdn\\.net \\*\\.facebook\\.net 127\\.0\\.0\\.1:\\* 'nonce-OEpPfomM' blob: 'self' connect\\.facebook\\.net 'wasm-unsafe-eval' https:\\/\\/\\*\\.google-analytics\\.com \\*\\.google\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^script-src \\*\\.facebook\\.com \\*\\.fbcdn\\.net \\*\\.facebook\\.net 127\\.0\\.0\\.1:\\* 'nonce-IzfZgbCC' blob: 'self' connect\\.facebook\\.net 'wasm-unsafe-eval' https:\\/\\/\\*\\.google-analytics\\.com \\*\\.google\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^script-src \\*\\.facebook\\.com \\*\\.fbcdn\\.net \\*\\.facebook\\.net 127\\.0\\.0\\.1:\\* 'nonce-iVegKZ8x' blob: 'self' connect\\.facebook\\.net 'wasm-unsafe-eval' https:\\/\\/\\*\\.google-analytics\\.com \\*\\.google\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^script-src \\*\\.facebook\\.com \\*\\.fbcdn\\.net \\*\\.facebook\\.net 127\\.0\\.0\\.1:\\* 'nonce-kvneDNlM' blob: 'self' connect\\.facebook\\.net 'wasm-unsafe-eval' https:\\/\\/\\*\\.google-analytics\\.com \\*\\.google\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^connect-src 'self' https:\\/\\/r\\.stripe\\.com https:\\/\\/google\\.com\\/pay https:\\/\\/www\\.google\\.com\\/pay https:\\/\\/pay\\.google\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^frame-src https:\\/\\/pay\\.google\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^img-src https:\\/\\/q\\.stripe\\.com https:\\/\\/www\\.gstatic\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^script-src 'self' https:\\/\\/pay\\.google\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^connect-src 'self' https:\\/\\/api\\.stripe\\.com https:\\/\\/errors\\.stripe\\.com https:\\/\\/r\\.stripe\\.com https:\\/\\/google\\.com\\/pay https:\\/\\/www\\.google\\.com\\/pay https:\\/\\/pay\\.google\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^img-src 'self' https:\\/\\/q\\.stripe\\.com https:\\/\\/www\\.gstatic\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^report-uri \\/gp\\/p\\/_\\/InstantbuyFrontendHttp\\/cspreport script-src 'report-sample' 'nonce-DJAcq_YsagtHeSRg8KnaMw' 'unsafe-inline'$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^report-uri \\/gp\\/p\\/_\\/InstantbuyFrontendHttp\\/cspreport$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^worker-src 'self' script-src 'unsafe-inline' 'unsafe-eval' blob: data: 'self' https:\\/\\/apis\\.google\\.com https:\\/\\/ssl\\.gstatic\\.com https:\\/\\/www\\.google\\.com https:\\/\\/www\\.googletagmanager\\.com https:\\/\\/www\\.gstatic\\.com https:\\/\\/www\\.google-analytics\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^report-uri \\/gp\\/p\\/_\\/InstantbuyFrontendHttp\\/cspreport\\/allowlist script-src 'unsafe-inline' 'unsafe-eval' blob: data:$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^report-uri \\/gp\\/p\\/_\\/InstantbuyFrontendHttp\\/cspreport\\/fine-allowlist$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^img-src 'self'$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^script-src 'self' 'report-sample'$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^report-uri https:\\/\\/q\\.stripe\\.com\\/csp-violation\\?q=Rgu0gMlirufjtH0e4QUO3noQKzGEcCAQCfWKvD9uotiR-JtgOCROrfR9SXSxyiOBzCXNMMPzkHL4myI%3D$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^report-uri \\/gp\\/p\\/_\\/InstantbuyFrontendBuyflowPayframeUi\\/cspreport script-src 'report-sample' 'nonce-wznkkX9l9gf4gQFhZT5qSQ' 'unsafe-inline'$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^report-uri \\/gp\\/p\\/_\\/InstantbuyFrontendBuyflowPayframeUi\\/cspreport$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^report-uri \\/gp\\/p\\/_\\/InstantbuyFrontendBuyflowPayframeUi\\/cspreport\\/allowlist script-src 'unsafe-inline' 'unsafe-eval' blob: data: https:\\/\\/www\\.gstatic\\.com\\/_\\/mss\\/boq-one-google\\/_\\/ https:\\/\\/www\\.gstatic\\.com\\/og\\/_\\/js\\/ https:\\/\\/apis\\.google\\.com\\/js\\/api\\.js https:\\/\\/apis\\.google\\.com\\/js\\/client\\.js https:\\/\\/www\\.googletagmanager\\.com\\/gtag\\/js https:\\/\\/www\\.google-analytics\\.com\\/analytics\\.js https:\\/\\/www\\.googletagmanager\\.com\\/gtag\\/destination https:\\/\\/www\\.gstatic\\.com\\/_\\/mss\\/boq-payments-consumer\\/_\\/js\\/k=boq-payments-consumer\\.InstantbuyFrontendBuyflowPayframeUi\\.en_US\\.3BNn7ddIQnU\\.2018\\.O\\/ https:\\/\\/apis\\.google\\.com\\/_\\/scs\\/abc-static\\/_\\/js\\/$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^report-uri \\/gp\\/p\\/_\\/InstantbuyFrontendBuyflowPayframeUi\\/cspreport\\/fine-allowlist$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^script-src 'report-sample' 'nonce-zlpY_2GaCcoFDBkEvA4TOA' 'unsafe-inline'$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^report-uri \\/gp\\/p\\/_\\/InstantbuyFrontendBuyflowPayUi\\/cspreport$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^worker-src 'self' script-src 'unsafe-inline' 'unsafe-eval' blob: data: 'self' https:\\/\\/apis\\.google\\.com https:\\/\\/ssl\\.gstatic\\.com https:\\/\\/www\\.google\\.com https:\\/\\/www\\.googletagmanager\\.com https:\\/\\/www\\.gstatic\\.com https:\\/\\/www\\.google-analytics\\.com https:\\/\\/sandbox\\.google\\.com https:\\/\\/payments\\.google\\.com https:\\/\\/payments\\.sandbox\\.google\\.com https:\\/\\/pay\\.google\\.com https:\\/\\/pay\\.sandbox\\.google\\.com https:\\/\\/payments\\.google\\.com\\/payments\\/v4\\/js\\/integrator\\.js https:\\/\\/payments\\.sandbox\\.google\\.com\\/payments\\/v4\\/js\\/integrator\\.js$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^report-uri \\/gp\\/p\\/_\\/InstantbuyFrontendBuyflowPayUi\\/cspreport\\/allowlist require-trusted-types-for 'script'$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^report-uri https:\\/\\/csp\\.withgoogle\\.com\\/csp\\/instantbuy-eng$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^connect-src 'self' https:\\/\\/api\\.stripe\\.com https:\\/\\/errors\\.stripe\\.com https:\\/\\/r\\.stripe\\.com https:\\/\\/ppm\\.stripe\\.com https:\\/\\/stripe\\.com\\/cookie-settings\\/enforcement-mode$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^font-src data: https:$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^frame-src 'self' https:\\/\\/www\\.affirm\\.com https:\\/\\/checkout\\.link\\.com https:\\/\\/b\\.stripecdn\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^img-src 'self' https:\\/\\/q\\.stripe\\.com https:\\/\\/b\\.stripecdn\\.com https:\\/\\/js\\.stripe\\.com https:\\/\\/files\\.stripe\\.com https:\\/\\/d1wqzb5bdbcre6\\.cloudfront\\.net https:\\/\\/stripe-camo\\.global\\.ssl\\.fastly\\.net https:\\/\\/img\\.stripecdn\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^style-src 'self' 'unsafe-inline'$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^connect-src 'self' https:\\/\\/r\\.stripe\\.com https:\\/\\/errors\\.stripe\\.com https:\\/\\/api\\.stripe\\.com https:\\/\\/merchant-ui-api\\.stripe\\.com https:\\/\\/js\\.stripe\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^frame-src 'self' https:\\/\\/b\\.stripecdn\\.com https:\\/\\/checkout\\.link\\.com https:\\/\\/connect\\.finicity\\.com https:\\/\\/connect2\\.finicity\\.com https:\\/\\/components\\.finicity\\.com https:\\/\\/widgets\\.moneydesktop\\.com https:\\/\\/int-widgets\\.moneydesktop\\.com https:\\/\\/connections-auth\\.stripe\\.com https:\\/\\/js\\.stripe\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^img-src 'self' https:\\/\\/js\\.stripe\\.com https:\\/\\/q\\.stripe\\.com https:\\/\\/qr\\.stripe\\.com https:\\/\\/b\\.stripecdn\\.com https:\\/\\/files\\.stripe\\.com https:\\/\\/stripe-camo\\.global\\.ssl\\.fastly\\.net https:\\/\\/d1wqzb5bdbcre6\\.cloudfront\\.net$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^connect-src 'self' https:\\/\\/errors\\.stripe\\.com https:\\/\\/r\\.stripe\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^frame-src 'self' https:\\/\\/b\\.stripecdn\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^script-src 'self' 'sha256-KHP4NJdcbZRN9Tx9BwJY07gLARlPVtmyjGaCHOk3rRk='$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^connect-src 'self' https:\\/\\/hcaptcha\\.com https:\\/\\/\\*\\.hcaptcha\\.com https:\\/\\/errors\\.stripe\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^frame-src https:\\/\\/hcaptcha\\.com https:\\/\\/\\*\\.hcaptcha\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^script-src 'self' https:\\/\\/hcaptcha\\.com https:\\/\\/\\*\\.hcaptcha\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "^style-src 'self' https:\\/\\/hcaptcha\\.com https:\\/\\/\\*\\.hcaptcha\\.com$",
+          "authorisationInfo": {
+            "description": "Known headers",
+            "authorised": true,
+            "date": "2025-10-20T03:12:14.445Z"
+          }
+        },
+        {
+          "contentMatcher": "report-uri https:\\/\\/sentry\\.hcaptcha\\.com\\/api\\/\\d+\\/security\\/\\?sentry_key=[a-f0-9]+&sentry_environment=\\w+&sentry_release=\\w+",
+          "authorisationInfo": {
+            "description": "This sends security violation reports to the Sentry error tracking service, specifically for an hCaptcha implementation.",
+            "authorised": true,
+            "date": "2025-09-13T12:07:49.173Z"
+          }
+        },
+        {
+          "contentMatcher": "connect-src 'self' data: blob: https:\\/\\/edge-chat\\.facebook\\.net https:\\/\\/edge-chat-latest\\.facebook\\.net wss:\\/\\/edge-chat-latest\\.facebook\\.net wss:\\/\\/edge-chat\\.facebook\\.net wss:\\/\\/edge-chat\\.socialplugin\\.facebook\\.net wss:\\/\\/edge-chat-latest\\.socialplugin\\.facebook\\.net https:\\/\\/edge-chat\\.socialplugin\\.facebook\\.net https:\\/\\/edge-chat-latest\\.socialplugin\\.facebook\\.net \\*\\.facebook\\.com facebook\\.com \\*\\.fbcdn\\.net \\*\\.facebook\\.net wss:\\/\\/\\*\\.facebook\\.com:\\* wss:\\/\\/\\*\\.whatsapp\\.com:\\* wss:\\/\\/\\*\\.fbcdn\\.net attachment\\.fbsbx\\.com ws:\\/\\/localhost:\\* \\*\\.cdninstagram\\.com https:\\/\\/\\*\\.google-analytics\\.com",
+          "authorisationInfo": {
+            "description": "Allows loading of resources from Facebook.",
+            "authorised": true,
+            "date": "2025-09-09T02:58:56.254Z"
+          }
+        },
+        {
+          "contentMatcher": "^report-uri \\/gp\\/p\\/_\\/InstantbuyFrontendBuyflowPayUi\\/cspreport",
+          "authorisationInfo": {
+            "description": "A CSP directive that sends violation reports to a relative path for Google Pay's UI.",
+            "authorised": true,
+            "date": "2025-09-09T01:21:00.000Z"
+          }
+        },
+        {
+          "contentMatcher": "^report-uri \\/gp\\/p\\/_\\/InstantbuyFrontendBuyflowPayUi\\/cspreport\\/allowlistsrequire-trusted-types-for 'script'$",
+          "authorisationInfo": {
+            "description": "A malformed CSP combining a reporting URI with the 'require-trusted-types-for' directive for Google Pay's UI.",
+            "authorised": true,
+            "date": "2025-09-09T01:21:00.000Z"
+          }
+        },
+        {
+          "contentMatcher": "connect-src 'self' https:\\/\\/errors\\.stripe\\.com https:\\/\\/r\\.stripe\\.com",
+          "authorisationInfo": {
+            "description": "A CSP that permits network connections (like API calls) to the same origin and to specific Stripe subdomains used for error reporting and telemetry.",
+            "authorised": true,
+            "date": "2025-09-05T14:50:36.048Z"
+          }
+        },
+        {
+          "contentMatcher": "frame-src 'self' https:\\/\\/b\\.stripecdn\\.com",
+          "authorisationInfo": {
+            "description": "A CSP that allows content to be embedded in iframes from the same origin and from Stripe's Content Delivery Network (CDN), which is typically used for payment forms.",
+            "authorised": true,
+            "date": "2025-09-05T14:50:36.048Z"
+          }
+        },
+        {
+          "contentMatcher": "script-src 'self' 'sha256-([A-Za-z0-9+/]{43}=|[A-Za-z0-9+/]{44})'",
+          "authorisationInfo": {
+            "description": "A CSP that restricts scripts to the same origin and authorises an additional trusted inline script via its hash.",
+            "authorised": true,
+            "date": "2025-09-05T14:50:36.048Z"
+          }
+        },
+        {
+          "contentMatcher": "frame-src 'self' https:\\/\\/b\\.stripecdn\\.com https:\\/\\/checkout\\.link\\.com",
+          "authorisationInfo": {
+            "description": "A CSP that permits iframes from the same origin, Stripe's CDN, and Stripe's 'Link' service for accelerated one-click checkouts.",
+            "authorised": true,
+            "date": "2025-09-05T14:50:36.048Z"
+          }
+        },
+        {
+          "contentMatcher": "img-src 'self' https:\\/\\/js\\.stripe\\.com https:\\/\\/q\\.stripe\\.com https:\\/\\/b\\.stripecdn\\.com",
+          "authorisationInfo": {
+            "description": "A CSP that restricts image sources to the same origin and various Stripe domains for displaying logos, icons, and other payment-related visuals.",
+            "authorised": true,
+            "date": "2025-09-05T14:50:36.048Z"
+          }
+        },
+        {
+          "contentMatcher": "connect-src 'self' https:\\/\\/hcaptcha\\.com https:\\/\\/\\*\\.hcaptcha\\.com https:\\/\\/errors\\.stripe\\.com",
+          "authorisationInfo": {
+            "description": "A CSP that allows network connections to the same origin, hCaptcha's services for bot verification, and Stripe's error reporting endpoint.",
+            "authorised": true,
+            "date": "2025-09-05T14:50:36.048Z"
+          }
+        },
+        {
+          "contentMatcher": "frame-src https:\\/\\/hcaptcha\\.com https:\\/\\/\\*\\.hcaptcha\\.com",
+          "authorisationInfo": {
+            "description": "A CSP that permits iframes from all hCaptcha domains, which is necessary to display the CAPTCHA challenge widget.",
+            "authorised": true,
+            "date": "2025-09-05T14:50:36.048Z"
+          }
+        },
+        {
+          "contentMatcher": "script-src 'self' https:\\/\\/hcaptcha\\.com https:\\/\\/\\*\\.hcaptcha\\.com",
+          "authorisationInfo": {
+            "description": "A CSP that allows JavaScript to be loaded from the same origin and all hCaptcha domains to enable the CAPTCHA functionality.",
+            "authorised": true,
+            "date": "2025-09-05T14:50:36.048Z"
+          }
+        },
+        {
+          "contentMatcher": "style-src 'self' https:\\/\\/hcaptcha\\.com https:\\/\\/\\*\\.hcaptcha\\.com",
+          "authorisationInfo": {
+            "description": "A CSP that allows stylesheets (CSS) to be loaded from the same origin and all hCaptcha domains to correctly style the CAPTCHA widget.",
+            "authorised": true,
+            "date": "2025-09-05T14:50:36.048Z"
+          }
+        },
+        {
+          "contentMatcher": "connect-src 'self' https:\\/\\/api\\.stripe\\.com https:\\/\\/errors\\.stripe\\.com https:\\/\\/r\\.stripe\\.com https:\\/\\/ppm\\.stripe\\.com https:\\/\\/stripe\\.com\\/cookie-settings\\/enforcement-mode",
+          "authorisationInfo": {
+            "description": "A CSP that allows network connections to the same origin and various Stripe API and service endpoints.",
+            "authorised": true,
+            "date": "2025-09-05T04:28:52.905Z"
+          }
+        },
+        {
+          "contentMatcher": "font-src data: https:",
+          "authorisationInfo": {
+            "description": "A CSP that allows fonts to be loaded from data URIs and any HTTPS source.",
+            "authorised": true,
+            "date": "2025-09-05T04:28:52.905Z"
+          }
+        },
+        {
+          "contentMatcher": "frame-src 'self' https:\\/\\/www\\.affirm\\.com https:\\/\\/checkout\\.link\\.com https:\\/\\/b\\.stripecdn\\.com",
+          "authorisationInfo": {
+            "description": "A CSP that allows iframes from the same origin, Affirm, and Stripe's checkout and CDN services.",
+            "authorised": true,
+            "date": "2025-09-05T04:28:52.905Z"
+          }
+        },
+        {
+          "contentMatcher": "style-src 'self' 'unsafe-inline'",
+          "authorisationInfo": {
+            "description": "A CSP that allows stylesheets from the same origin and also permits the use of inline style attributes.",
+            "authorised": true,
+            "date": "2025-09-05T04:28:52.905Z"
+          }
+        },
+        {
+          "contentMatcher": "default-src 'self' blob: \\*",
+          "authorisationInfo": {
+            "description": "A permissive default CSP that allows resources to be loaded from the same origin, blob URLs, and any other source.",
+            "authorised": true,
+            "date": "2025-09-05T04:13:34.216Z"
+          }
+        },
+        {
+          "contentMatcher": "script-src 'nonce-\\S+' \\*\\.facebook\\.com \\*\\.fbcdn\\.net \\*\\.facebook\\.net 127\\.0\\.0\\.1:\\* blob: 'self' https:\\/\\/\\*\\.google-analytics\\.com \\*\\.google\\.com",
+          "authorisationInfo": {
+            "description": "A CSP that allows scripts from a dynamic nonce, various Facebook domains, localhost, blob URLs, the same origin, and Google Analytics.",
+            "authorised": true,
+            "date": "2025-09-05T04:13:34.216Z"
+          }
+        },
+        {
+          "contentMatcher": "style-src 'self' data: blob: 'unsafe-inline'",
+          "authorisationInfo": {
+            "description": "A CSP that allows stylesheets from the same origin, data URIs, blob URLs, and inline style elements.",
+            "authorised": true,
+            "date": "2025-09-05T04:13:34.216Z"
+          }
+        },
+        {
+          "contentMatcher": "connect-src 'self' data: blob: https:\\/\\/edge-chat\\.facebook\\.net https:\\/\\/edge-chat-latest\\.facebook\\.net wss:\\/\\/edge-chat-latest\\.facebook\\.net wss:\\/\\/edge-chat\\.facebook\\.net wss:\\/\\/edge-chat\\.socialplugin\\.facebook\\.net wss:\\/\\/edge-chat-latest\\.socialplugin\\.facebook\\.net https:\\/\\/edge-chat\\.socialplugin\\.facebook\\.net https:\\/\\/edge-chat-latest\\.socialplugin\\.facebook\\.net \\*\\.facebook\\.com facebook\\.com \\*\\.fbcdn\\.net \\*\\.facebook\\.net wss:\\/\\/\\*\\.facebook\\.com:\\* wss:\\/\\/\\*\\.whatsapp\\.com:\\* attachment\\.fbsbx\\.com ws:\\/\\/localhost:\\* \\*\\.cdninstagram\\.com https:\\/\\/\\*\\.google-analytics\\.com",
+          "authorisationInfo": {
+            "description": "A highly permissive CSP for network connections, allowing a wide range of Facebook, WhatsApp, Instagram, and Google Analytics domains.",
+            "authorised": true,
+            "date": "2025-09-05T04:13:34.216Z"
+          }
+        },
+        {
+          "contentMatcher": "font-src 'self' data: blob: \\*",
+          "authorisationInfo": {
+            "description": "A permissive CSP that allows fonts to be loaded from the same origin, data URIs, blob URLs, and any other source.",
+            "authorised": true,
+            "date": "2025-09-05T04:13:34.216Z"
+          }
+        },
+        {
+          "contentMatcher": "media-src 'self' data: blob: \\*",
+          "authorisationInfo": {
+            "description": "A permissive CSP that allows media (audio, video) to be loaded from the same origin, data URIs, blob URLs, and any other source.",
+            "authorised": true,
+            "date": "2025-09-05T04:13:34.216Z"
+          }
+        },
+        {
+          "contentMatcher": "child-src 'self' data: blob: \\*",
+          "authorisationInfo": {
+            "description": "A permissive CSP that allows child frames and workers to be loaded from the same origin, data URIs, blob URLs, and any other source.",
+            "authorised": true,
+            "date": "2025-09-05T04:13:34.216Z"
+          }
+        },
+        {
+          "contentMatcher": "frame-src 'self' data: blob: \\*",
+          "authorisationInfo": {
+            "description": "A permissive CSP that allows iframes to be loaded from the same origin, data URIs, blob URLs, and any other source.",
+            "authorised": true,
+            "date": "2025-09-05T04:13:34.216Z"
+          }
+        },
+        {
+          "contentMatcher": "manifest-src 'self' data: blob: \\*",
+          "authorisationInfo": {
+            "description": "A permissive CSP that allows web manifests to be loaded from the same origin, data URIs, blob URLs, and any other source.",
+            "authorised": true,
+            "date": "2025-09-05T04:13:34.216Z"
+          }
+        },
+        {
+          "contentMatcher": "object-src 'self' data: blob: \\*",
+          "authorisationInfo": {
+            "description": "A permissive CSP that allows legacy objects (like Flash) to be loaded from the same origin, data URIs, blob URLs, and any other source.",
+            "authorised": true,
+            "date": "2025-09-05T04:13:34.216Z"
+          }
+        },
+        {
+          "contentMatcher": "worker-src 'self' data: blob: \\*",
+          "authorisationInfo": {
+            "description": "A permissive CSP that allows web workers to be loaded from the same origin, data URIs, blob URLs, and any other source.",
+            "authorised": true,
+            "date": "2025-09-05T04:13:34.216Z"
+          }
+        },
+        {
+          "contentMatcher": "block-all-mixed-content",
+          "authorisationInfo": {
+            "description": "A CSP directive that prevents the browser from loading any HTTP assets on an HTTPS page, enhancing security.",
+            "authorised": true,
+            "date": "2025-09-05T04:13:34.216Z"
+          }
+        },
+        {
+          "contentMatcher": "default-src blob: 'self' https:\\/\\/\\*\\.fbsbx\\.com \\*\\.facebook\\.com \\*\\.fbcdn\\.net",
+          "authorisationInfo": {
+            "description": "A default CSP directive that allows resources from blob URLs, the same origin, and various Facebook subdomains.",
+            "authorised": true,
+            "date": "2025-09-05T04:13:34.216Z"
+          }
+        },
+        {
+          "contentMatcher": "script-src \\*\\.facebook\\.com \\*\\.fbcdn\\.net \\*\\.facebook\\.net 127\\.0\\.0\\.1:\\* 'nonce-\\S+' blob: 'self' connect\\.facebook\\.net 'wasm-unsafe-eval' https:\\/\\/\\*\\.google-analytics\\.com \\*\\.google\\.com",
+          "authorisationInfo": {
+            "description": "A CSP that allows scripts from various Facebook domains, localhost, a dynamic nonce, blob URLs, the same origin, and Google Analytics, while also permitting WebAssembly.",
+            "authorised": true,
+            "date": "2025-09-05T04:13:34.216Z"
+          }
+        },
+        {
+          "contentMatcher": "style-src \\*\\.fbcdn\\.net data: \\*\\.facebook\\.com 'unsafe-inline' https:\\/\\/fonts\\.googleapis\\.com",
+          "authorisationInfo": {
+            "description": "A CSP that allows stylesheets from Facebook's CDN, data URIs, Facebook domains, inline styles, and Google Fonts.",
+            "authorised": true,
+            "date": "2025-09-05T04:13:34.216Z"
+          }
+        },
+        {
+          "contentMatcher": "connect-src \\*\\.facebook\\.com facebook\\.com \\*\\.fbcdn\\.net \\*\\.facebook\\.net wss:\\/\\/\\*\\.facebook\\.com:\\* wss:\\/\\/\\*\\.whatsapp\\.com:\\* wss:\\/\\/\\*\\.fbcdn\\.net attachment\\.fbsbx\\.com ws:\\/\\/localhost:\\* blob: \\*\\.cdninstagram\\.com 'self' http:\\/\\/localhost:3103 wss:\\/\\/gateway\\.facebook\\.com wss:\\/\\/edge-chat\\.facebook\\.com wss:\\/\\/snaptu-d\\.facebook\\.com wss:\\/\\/kaios-d\\.facebook\\.com\\/ v\\.whatsapp\\.net \\*\\.fbsbx\\.com \\*\\.fb\\.com https:\\/\\/\\*\\.google-analytics\\.com",
+          "authorisationInfo": {
+            "description": "A very broad CSP for network connections, primarily for Facebook/Meta services, allowing numerous domains, protocols (including WebSocket), and Google Analytics.",
+            "authorised": true,
+            "date": "2025-09-05T04:13:34.216Z"
+          }
+        },
+        {
+          "contentMatcher": "font-src data: \\*\\.facebook\\.com \\*\\.fbcdn\\.net \\*\\.fbsbx\\.com https:\\/\\/fonts\\.gstatic\\.com",
+          "authorisationInfo": {
+            "description": "A CSP that allows fonts from data URIs, various Facebook domains, and Google's static font hosting.",
+            "authorised": true,
+            "date": "2025-09-05T04:13:34.216Z"
+          }
+        },
+        {
+          "contentMatcher": "img-src \\*\\.fbcdn\\.net \\*\\.facebook\\.com data: https:\\/\\/\\*\\.fbsbx\\.com facebook\\.com \\*\\.cdninstagram\\.com fbsbx\\.com fbcdn\\.net connect\\.facebook\\.net \\*\\.carriersignal\\.info blob: android-webview-video-poster: \\*\\.whatsapp\\.net \\*\\.fb\\.com \\*\\.oculuscdn\\.com \\*\\.tenor\\.co \\*\\.tenor\\.com \\*\\.giphy\\.com https:\\/\\/trustly\\.one\\/ https:\\/\\/\\*\\.trustly\\.one\\/ https:\\/\\/paywithmybank\\.com\\/ https:\\/\\/\\*\\.paywithmybank\\.com\\/ https:\\/\\/www\\.googleadservices\\.com https:\\/\\/googleads\\.g\\.doubleclick\\.net https:\\/\\/\\*\\.google-analytics\\.com",
+          "authorisationInfo": {
+            "description": "An extremely permissive CSP for images, allowing them from a vast range of Facebook/Meta, analytics, advertising, and payment service domains.",
+            "authorised": true,
+            "date": "2025-09-05T04:13:34.216Z"
+          }
+        },
+        {
+          "contentMatcher": "media-src \\*\\.cdninstagram\\.com blob: \\*\\.fbcdn\\.net \\*\\.fbsbx\\.com www\\.facebook\\.com \\*\\.facebook\\.com data: \\*\\.tenor\\.co \\*\\.tenor\\.com https:\\/\\/\\*\\.giphy\\.com",
+          "authorisationInfo": {
+            "description": "A CSP for media elements, allowing content from Instagram's CDN, blob URLs, various Facebook domains, data URIs, and GIF hosting services.",
+            "authorised": true,
+            "date": "2025-09-05T04:13:34.216Z"
+          }
+        },
+        {
+          "contentMatcher": "child-src data: blob: 'self' https:\\/\\/\\*\\.fbsbx\\.com \\*\\.facebook\\.com \\*\\.fbcdn\\.net",
+          "authorisationInfo": {
+            "description": "A CSP allowing child frames and workers from data URIs, blob URLs, the same origin, and various Facebook domains.",
+            "authorised": true,
+            "date": "2025-09-05T04:13:34.216Z"
+          }
+        },
+        {
+          "contentMatcher": "frame-src \\*\\.facebook\\.com \\*\\.fbsbx\\.com fbsbx\\.com data: www\\.instagram\\.com \\*\\.fbcdn\\.net accounts\\.meta\\.com \\*\\.accounts\\.meta\\.com https:\\/\\/trustly\\.one\\/ https:\\/\\/\\*\\.trustly\\.one\\/ https:\\/\\/paywithmybank\\.com\\/ https:\\/\\/\\*\\.paywithmybank\\.com\\/ https:\\/\\/www\\.googleadservices\\.com https:\\/\\/googleads\\.g\\.doubleclick\\.net https:\\/\\/www\\.google\\.com https:\\/\\/td\\.doubleclick\\.net \\*\\.google\\.com \\*\\.doubleclick\\.net",
+          "authorisationInfo": {
+            "description": "An extremely permissive CSP for iframes, allowing embedding from a wide range of Facebook/Meta, payment, and Google advertising domains.",
+            "authorised": true,
+            "date": "2025-09-05T04:13:34.216Z"
+          }
+        },
+        {
+          "contentMatcher": "manifest-src data: blob: 'self' https:\\/\\/\\*\\.fbsbx\\.com \\*\\.facebook\\.com \\*\\.fbcdn\\.net",
+          "authorisationInfo": {
+            "description": "A CSP allowing web manifests from data URIs, blob URLs, the same origin, and various Facebook domains.",
+            "authorised": true,
+            "date": "2025-09-05T04:13:34.216Z"
+          }
+        },
+        {
+          "contentMatcher": "object-src data: blob: 'self' https:\\/\\/\\*\\.fbsbx\\.com \\*\\.facebook\\.com \\*\\.fbcdn\\.net",
+          "authorisationInfo": {
+            "description": "A CSP allowing legacy objects from data URIs, blob URLs, the same origin, and various Facebook domains.",
+            "authorised": true,
+            "date": "2025-09-05T04:13:34.216Z"
+          }
+        },
+        {
+          "contentMatcher": "worker-src blob: \\*\\.facebook\\.com data:",
+          "authorisationInfo": {
+            "description": "A CSP that allows web workers from blob URLs, Facebook domains, and data URIs.",
+            "authorised": true,
+            "date": "2025-09-05T04:13:34.216Z"
+          }
+        },
+        {
+          "contentMatcher": "^default-src 'none'$",
+          "authorisationInfo": {
+            "description": "A restrictive default CSP that blocks all resources unless explicitly allowed by other directives.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^navigate-to 'none'$",
+          "authorisationInfo": {
+            "description": "A CSP directive that blocks all top-level navigation, preventing the user from leaving the current page.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^form-action 'none'$",
+          "authorisationInfo": {
+            "description": "A CSP directive that prevents any form submissions from this page.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^img-src data:",
+          "authorisationInfo": {
+            "description": "A CSP that allows images to be loaded from data URIs.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^base-uri 'none'$",
+          "authorisationInfo": {
+            "description": "A CSP that prevents attacks that could hijack relative URLs by disallowing the <base> tag.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^connect-src 'self' https:\\/\\/api\\.stripe\\.com https:\\/\\/merchant-ui-api\\.stripe\\.com https:\\/\\/stripe\\.com\\/cookie-settings\\/enforcement-mode https:\\/\\/errors\\.stripe\\.com https:\\/\\/r\\.stripe\\.com https:\\/\\/ppm\\.stripe\\.com",
+          "authorisationInfo": {
+            "description": "A CSP that allows network connections to the same origin and various Stripe API and service endpoints.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^default-src 'self'$",
+          "authorisationInfo": {
+            "description": "A default CSP directive that allows resources to be loaded only from the same origin.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^font-src 'none'$",
+          "authorisationInfo": {
+            "description": "A CSP directive that blocks all custom fonts from being loaded.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^frame-src 'self'$",
+          "authorisationInfo": {
+            "description": "A CSP directive that allows iframes to be embedded only from the same origin.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^img-src 'self' https:\\/\\/q\\.stripe\\.com",
+          "authorisationInfo": {
+            "description": "A CSP that allows images from the same origin and Stripe's telemetry endpoint.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^media-src 'none'$",
+          "authorisationInfo": {
+            "description": "A CSP directive that blocks all media (audio and video) from being loaded.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^object-src 'none'$",
+          "authorisationInfo": {
+            "description": "A CSP directive that blocks legacy objects (like Flash) from being loaded.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^script-src 'self'$",
+          "authorisationInfo": {
+            "description": "A CSP directive that allows scripts to be loaded only from the same origin.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^style-src 'self' 'sha256-.+?'$",
+          "authorisationInfo": {
+            "description": "A CSP that allows stylesheets from the same origin and specific inline style blocks identified by their hash.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^worker-src 'none'$",
+          "authorisationInfo": {
+            "description": "A CSP directive that blocks all web workers from being loaded.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^report-uri https:\\/\\/q\\.stripe\\.com\\/csp-report",
+          "authorisationInfo": {
+            "description": "A CSP directive that sends violation reports to Stripe's reporting endpoint.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^base-uri 'self'$",
+          "authorisationInfo": {
+            "description": "A CSP that prevents attacks that could hijack relative URLs by restricting the document's base URL to the same origin.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^font-src 'self' https: data:",
+          "authorisationInfo": {
+            "description": "A CSP that allows fonts from the same origin, any HTTPS source, and data URIs.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^form-action 'self'$",
+          "authorisationInfo": {
+            "description": "A CSP that allows form submissions only to the same origin.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^frame-ancestors 'self'$",
+          "authorisationInfo": {
+            "description": "A CSP directive that prevents clickjacking by only allowing the page to be iframed by itself.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^img-src 'self' data:",
+          "authorisationInfo": {
+            "description": "A CSP that allows images from the same origin and from data URIs.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^script-src-attr 'none'$",
+          "authorisationInfo": {
+            "description": "A CSP directive that disallows inline event handlers (like onclick) to mitigate XSS attacks.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^style-src 'self' https: 'unsafe-inline'$",
+          "authorisationInfo": {
+            "description": "A CSP that allows stylesheets from the same origin, any HTTPS source, and inline style elements.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^upgrade-insecure-requests",
+          "authorisationInfo": {
+            "description": "A CSP directive that instructs the browser to treat all of the site's insecure URLs (those served over HTTP) as though they have been replaced with secure URLs (those served over HTTPS).",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^frame-ancestors 'none'$",
+          "authorisationInfo": {
+            "description": "A CSP directive that prevents the page from being embedded in any iframe, protecting against clickjacking.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^connect-src 'self' https:\\/\\/r\\.stripe\\.com",
+          "authorisationInfo": {
+            "description": "A CSP that allows network connections to the same origin and Stripe's telemetry endpoint.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^frame-src https:\\/\\/m\\.stripe\\.network",
+          "authorisationInfo": {
+            "description": "A CSP that allows iframes only from Stripe's mobile network domain.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^img-src https:\\/\\/q\\.stripe\\.com",
+          "authorisationInfo": {
+            "description": "A CSP that allows images to be loaded only from Stripe's telemetry endpoint.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^style-src 'self'$",
+          "authorisationInfo": {
+            "description": "A CSP that allows stylesheets to be loaded only from the same origin.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^connect-src https:\\/\\/m\\.stripe\\.network https:\\/\\/m\\.stripe\\.com",
+          "authorisationInfo": {
+            "description": "A CSP that allows network connections to Stripe's mobile network and primary domains.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^font-src https:\\/\\/m\\.stripe\\.network https:\\/\\/fonts\\.gstatic\\.com",
+          "authorisationInfo": {
+            "description": "A CSP that allows fonts to be loaded from Stripe's mobile network and Google's static font hosting.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^frame-src https:\\/\\/m\\.stripe\\.network https:\\/\\/js\\.stripe\\.com",
+          "authorisationInfo": {
+            "description": "A CSP that allows iframes from Stripe's mobile network and its main JavaScript SDK domain.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^img-src https:\\/\\/m\\.stripe\\.network https:\\/\\/m\\.stripe\\.com https:\\/\\/b\\.stripecdn\\.com",
+          "authorisationInfo": {
+            "description": "A CSP that allows images from Stripe's mobile network, primary domain, and CDN.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^script-src https:\\/\\/m\\.stripe\\.network 'sha256-.+?' 'sha256-.+?'$",
+          "authorisationInfo": {
+            "description": "A CSP that allows scripts from Stripe's mobile network and two specific inline scripts identified by their hashes.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^style-src https:\\/\\/m\\.stripe\\.network",
+          "authorisationInfo": {
+            "description": "A CSP that allows stylesheets to be loaded only from Stripe's mobile network domain.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^connect-src 'self' https:\\/\\/r\\.stripe\\.com https:\\/\\/google\\.com\\/pay https:\\/\\/www\\.google\\.com\\/pay https:\\/\\/pay\\.google\\.com",
+          "authorisationInfo": {
+            "description": "A CSP that allows network connections to the same origin, Stripe's telemetry endpoint, and various Google Pay domains.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^frame-src https:\\/\\/pay\\.google\\.com",
+          "authorisationInfo": {
+            "description": "A CSP that allows iframes from the main Google Pay domain.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^img-src https:\\/\\/q\\.stripe\\.com https:\\/\\/www\\.gstatic\\.com",
+          "authorisationInfo": {
+            "description": "A CSP that allows images from Stripe's telemetry endpoint and Google's static content domain.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^script-src 'self' https:\\/\\/pay\\.google\\.com",
+          "authorisationInfo": {
+            "description": "A CSP that allows scripts from the same origin and the main Google Pay domain.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^connect-src 'self' https:\\/\\/api\\.stripe\\.com https:\\/\\/errors\\.stripe\\.com https:\\/\\/r\\.stripe\\.com https:\\/\\/google\\.com\\/pay https:\\/\\/www\\.google\\.com\\/pay https:\\/\\/pay\\.google\\.com",
+          "authorisationInfo": {
+            "description": "A CSP allowing network connections to the same origin, various Stripe APIs, and Google Pay domains.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^img-src 'self' https:\\/\\/q\\.stripe\\.com https:\\/\\/www\\.gstatic\\.com",
+          "authorisationInfo": {
+            "description": "A CSP allowing images from the same origin, Stripe's telemetry endpoint, and Google's static content domain.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^img-src 'self'$",
+          "authorisationInfo": {
+            "description": "A CSP that allows images to be loaded only from the same origin.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^script-src 'self' 'report-sample'$",
+          "authorisationInfo": {
+            "description": "A CSP allowing scripts from the same origin and includes a sample of the violating code in violation reports.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^report-uri https:\\/\\/q\\.stripe\\.com\\/csp-violation\\?q=.+",
+          "authorisationInfo": {
+            "description": "A CSP directive that sends violation reports to a specific Stripe endpoint with query parameters.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^script-src 'report-sample' 'nonce-\\S+' 'unsafe-inline'$",
+          "authorisationInfo": {
+            "description": "A CSP allowing scripts with a dynamic nonce, inline scripts, and including a sample of violating code in reports.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^report-uri \\/gp\\/p\\/_\\/InstantbuyFrontendHttp\\/cspreport",
+          "authorisationInfo": {
+            "description": "A CSP directive that sends violation reports to a relative path for Google Pay's instant buy service.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^worker-src 'self'sscript-src 'unsafe-inline' 'unsafe-eval' blob: data: 'self' https:\\/\\/apis\\.google\\.com https:\\/\\/ssl\\.gstatic\\.com https:\\/\\/www\\.google\\.com https:\\/\\/www\\.googletagmanager\\.com https:\\/\\/www\\.gstatic\\.com https:\\/\\/www\\.google-analytics\\.com",
+          "authorisationInfo": {
+            "description": "A malformed and highly permissive CSP allowing workers from self and scripts from a wide range of insecure sources and Google services.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^report-uri \\/gp\\/p\\/_\\/InstantbuyFrontendHttp\\/cspreport\\/allowlistsscript-src 'unsafe-inline' 'unsafe-eval' blob: data:",
+          "authorisationInfo": {
+            "description": "A malformed CSP combining a reporting URI with an insecure script-src directive.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^report-uri \\/gp\\/p\\/_\\/InstantbuyFrontendHttp\\/cspreport\\/fine-allowlistsrequire-trusted-types-for 'script'$",
+          "authorisationInfo": {
+            "description": "A malformed CSP combining a reporting URI with the 'require-trusted-types-for' directive.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^require-trusted-types-for 'script'$",
+          "authorisationInfo": {
+            "description": "A CSP directive that enforces Trusted Types for scripts to mitigate DOM XSS.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^report-uri \\/gp\\/p\\/_\\/InstantbuyFrontendBuyflowPayframeUi\\/cspreportsscript-src 'report-sample' 'nonce-\\S+' 'unsafe-inline'$",
+          "authorisationInfo": {
+            "description": "A malformed CSP combining a reporting URI with a script-src directive for Google Pay's UI.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^report-uri \\/gp\\/p\\/_\\/InstantbuyFrontendBuyflowPayframeUi\\/cspreport",
+          "authorisationInfo": {
+            "description": "A CSP directive that sends violation reports to a relative path for Google Pay's UI.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^report-uri \\/gp\\/p\\/_\\/InstantbuyFrontendBuyflowPayframeUi\\/cspreport\\/allowlistsscript-src 'unsafe-inline' 'unsafe-eval' blob: data: https:\\/\\/www\\.gstatic\\.com\\/_\\/mss\\/boq-one-google\\/_\\/ https:\\/\\/www\\.gstatic\\.com\\/og\\/_\\/js\\/ https:\\/\\/apis\\.google\\.com\\/js\\/api\\.js https:\\/\\/apis\\.google\\.com\\/js\\/client\\.js https:\\/\\/www\\.googletagmanager\\.com\\/gtag\\/js https:\\/\\/www\\.google-analytics\\.com\\/analytics\\.js https:\\/\\/www\\.googletagmanager\\.com\\/gtag\\/destination https:\\/\\/www\\.gstatic\\.com\\/_\\/mss\\/boq-payments-consumer\\/_\\/js\\/k=boq-payments-consumer\\.InstantbuyFrontendBuyflowPayframeUi\\.en_US\\.xsL3K8LmF1Q\\.2018\\.O\\/ https:\\/\\/apis\\.google\\.com\\/_\\/scs\\/abc-static\\/_\\/js\\/",
+          "authorisationInfo": {
+            "description": "A malformed and highly permissive CSP combining a reporting URI with a long list of insecure script sources for Google Pay.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^report-uri \\/gp\\/p\\/_\\/InstantbuyFrontendBuyflowPayframeUi\\/cspreport\\/fine-allowlist",
+          "authorisationInfo": {
+            "description": "A CSP directive for sending fine-grained violation reports to a Google Pay UI endpoint.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^report-uri https:\\/\\/csp\\.withgoogle\\.com\\/csp\\/instantbuy-eng$",
+          "authorisationInfo": {
+            "description": "A CSP directive that sends violation reports to Google's instant buy engineering team.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^report-uri https:\\/\\/www\\.facebook\\.com\\/csp\\/reporting\\/(\\?.*)?$",
+          "authorisationInfo": {
+            "description": "A CSP directive that sends violation reports to Facebook's reporting endpoint.",
+            "authorised": true,
+            "date": "2025-09-05T01:04:01.510Z"
+          }
+        },
+        {
+          "contentMatcher": "^script-src 'nonce-.+?' 'unsafe-eval'",
+          "authorisationInfo": {
+            "description": "A CSP that allows scripts with a dynamic nonce and the use of 'unsafe-eval'.",
+            "authorised": true,
+            "date": "2025-09-05T05:12:01.000Z"
+          }
+        },
+        {
+          "contentMatcher": "^worker-src blob:$",
+          "authorisationInfo": {
+            "description": "A CSP that allows web workers to be loaded from blob URLs.",
+            "authorised": true,
+            "date": "2025-09-05T05:12:02.000Z"
+          }
+        },
+        {
+          "contentMatcher": "^style-src 'unsafe-inline'$",
+          "authorisationInfo": {
+            "description": "A CSP that allows the use of inline style attributes and <style> blocks.",
+            "authorised": true,
+            "date": "2025-09-05T05:12:03.000Z"
+          }
+        },
+        {
+          "contentMatcher": "^connect-src 'self'$",
+          "authorisationInfo": {
+            "description": "A CSP that allows network connections only to the same origin.",
+            "authorised": true,
+            "date": "2025-09-05T05:12:04.000Z"
+          }
+        },
+        {
+          "contentMatcher": "^frame-src 'self' blob:$",
+          "authorisationInfo": {
+            "description": "A CSP that allows iframes to be loaded from the same origin and from blob URLs.",
+            "authorised": true,
+            "date": "2025-09-05T05:12:05.000Z"
+          }
+        },
+        {
+          "contentMatcher": "^child-src 'self' blob:$",
+          "authorisationInfo": {
+            "description": "A CSP that allows child frames and workers to be loaded from the same origin and from blob URLs.",
+            "authorised": true,
+            "date": "2025-09-05T05:12:06.000Z"
+          }
+        },
+        {
+          "contentMatcher": "^sandbox allow-same-origin allow-scripts allow-popups allow-forms$",
+          "authorisationInfo": {
+            "description": "A CSP that applies a sandbox to the resource, allowing same-origin requests, scripts, popups, and forms.",
+            "authorised": true,
+            "date": "2025-09-05T05:12:07.000Z"
+          }
+        },
+        {
+          "contentMatcher": "^worker-src 'self', script-src 'unsafe-inline' 'unsafe-eval' blob: data: 'self' https:\\/\\/apis\\.google\\.com https:\\/\\/ssl\\.gstatic\\.com https:\\/\\/www\\.google\\.com https:\\/\\/www\\.googletagmanager\\.com https:\\/\\/www\\.gstatic\\.com https:\\/\\/www\\.google-analytics\\.com(?: https:\\/\\/sandbox\\.google\\.com https:\\/\\/payments\\.google\\.com https:\\/\\/payments\\.sandbox\\.google\\.com https:\\/\\/pay\\.google\\.com https:\\/\\/pay\\.sandbox\\.google\\.com https:\\/\\/payments\\.google\\.com\\/payments\\/v4\\/js\\/integrator\\.js https:\\/\\/payments\\.sandbox\\.google\\.com\\/payments\\/v4\\/js\\/integrator\\.js)?$",
+          "authorisationInfo": {
+            "description": "A combined CSP that allows worker and script sources from the same origin, various Google services (Analytics, APIs, Tag Manager), and optionally Google Payments/Pay domains for handling transactions.",
+            "authorised": true,
+            "date": "2025-09-17T16:29:00.000Z"
+          }
+        }
+      ]
+    }
+  ]
+}

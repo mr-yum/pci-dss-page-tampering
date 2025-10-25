@@ -535,4 +535,28 @@ describe('AndMatcher', () => {
       expect(result.metadataPath).toContainEqual(authInfo)
     })
   })
+
+  describe('getAuthorisationInfo() (T017)', () => {
+    it('should return authorisationInfo when present', () => {
+      const authInfo = createAuthInfo('Test authorization', true)
+      const matcher = new AndMatcher<Matchable>([new ContentMatcher('test')], authInfo)
+
+      expect(matcher.getAuthorisationInfo()).toEqual(authInfo)
+    })
+
+    it('should return undefined when authorisationInfo not provided', () => {
+      const matcher = new AndMatcher<Matchable>([new ContentMatcher('test')])
+
+      expect(matcher.getAuthorisationInfo()).toBeUndefined()
+    })
+
+    it('should preserve date instance in returned authorisationInfo', () => {
+      const authInfo = createAuthInfo('Test', true)
+      const matcher = new AndMatcher<Matchable>([new ContentMatcher('test')], authInfo)
+
+      const retrieved = matcher.getAuthorisationInfo()
+      expect(retrieved?.date).toBeInstanceOf(Date)
+      expect(retrieved?.date.toISOString()).toBe('2025-10-22T12:00:00.000Z')
+    })
+  })
 })

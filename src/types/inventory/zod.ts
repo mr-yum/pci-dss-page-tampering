@@ -179,7 +179,8 @@ export const RawInventorySchema: z.ZodType<RawInventory> = z.object({
  * Handles two cases:
  * 1. Single matcher: Returns AuthorizeWithConfig with matcher and authorisationInfo
  * 2. Array syntax (FR-006): Converts array to OrMatcher automatically
- *    - Each array element becomes a child matcher in the OrMatcher
+ *    - Each array element becomes a child matcher with its own authorisationInfo preserved
+ *    - AuthorisationMatcher design ensures metadata is preserved exactly as specified
  *    - Uses first element's authorisationInfo as the top-level authorization metadata
  *
  * @param rawConfig - Raw authorization configuration (single matcher or array)
@@ -189,21 +190,17 @@ export function processAuthorizeWith(rawConfig: RawAuthorizeWithConfig): Authori
   if (Array.isArray(rawConfig)) {
     // Array syntax: Convert to OrMatcher (FR-006)
     // Each array element must have authorisationInfo (validated by Zod schema)
-    const children = rawConfig.map((element) => {
-      const { authorisationInfo: _, ...matcherConfig } = element
-      return createMatcher(matcherConfig)
-    })
+    //
+    // With AuthorisationMatcher design, each child preserves its own authorisationInfo
+    // The OrMatcher itself does NOT have authorisationInfo (to preserve array syntax on serialization)
+    const children = rawConfig.map((element) => createMatcher(element as any))
 
-    // Use first element's authorisationInfo as the top-level authorization metadata
-    // This provides the overall context for the OR matcher
+    // Use first element's authorisationInfo as the AuthorizeWithConfig's authorisationInfo
+    // This is separate from the matcher's authorisationInfo
     const firstElementInfo = rawConfig[0].authorisationInfo
 
     return {
-      matcher: new OrMatcher(children, {
-        description: firstElementInfo.description,
-        authorised: firstElementInfo.authorised,
-        date: new Date(firstElementInfo.date),
-      }),
+      matcher: new OrMatcher(children), // No authorisationInfo on the matcher itself
       authorisationInfo: {
         description: firstElementInfo.description,
         authorised: firstElementInfo.authorised,

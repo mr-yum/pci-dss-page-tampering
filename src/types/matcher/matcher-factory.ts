@@ -7,14 +7,39 @@
  * @see ../../../specs/001-refactor-script-identification/data-model.md for MatcherConfig schema
  */
 
-import type { InventoryAuthorisationInfo, InventoryScriptHashInfo } from '../inventory/model'
+import type { InventoryScriptHashInfo } from '../inventory/model'
 import { AndMatcher } from './and-matcher'
 import { ContentMatcher } from './content-matcher'
 import { HashMatcher } from './hash-matcher'
 import { HeaderNameMatcher } from './header-name-matcher'
-import type { Matcher } from './matcher.interface'
+import type { AuthorisationInfo, Matcher } from './matcher.interface'
 import { NameMatcher } from './name-matcher'
 import { OrMatcher } from './or-matcher'
+
+/**
+ * Raw authorization info as it appears in JSON (with string date).
+ * Will be converted to AuthorisationInfo (with Date object) during matcher creation.
+ */
+type RawAuthorisationInfo = {
+  description: string
+  authorised: boolean
+  date: string
+}
+
+/**
+ * Converts raw authorization info (with string date) to AuthorisationInfo (with Date object).
+ * Handles the date conversion needed during deserialization.
+ */
+function convertAuthorisationInfo(raw: RawAuthorisationInfo | undefined): AuthorisationInfo | undefined {
+  if (!raw) {
+    return undefined
+  }
+  return {
+    description: raw.description,
+    authorised: raw.authorised,
+    date: new Date(raw.date),
+  }
+}
 
 /**
  * Configuration for creating a matcher instance.
@@ -23,18 +48,19 @@ import { OrMatcher } from './or-matcher'
  * Note: This type is duplicated from matcher-config-schema.ts (RawMatcherConfig)
  * to avoid circular dependencies. The Zod schema is the source of truth for validation.
  *
- * Enhanced with composite matcher support (OrMatcher, AndMatcher):
- * - orMatcher: Array of child matchers (any child matches)
- * - andMatcher: Array of child matchers (all children match)
- * - Both support optional authorisationInfo for top-level override
+ * Enhanced with AuthorisationMatcher support:
+ * - All matchers (except HeaderNameMatcher for identification) can have optional authorisationInfo
+ * - Composite matchers (OrMatcher, AndMatcher) support nested authorisationInfo at any level
+ * - Authorization metadata is preserved exactly as specified in inventory files
+ * - AuthorisationInfo has string dates (from JSON), converted to Date objects in constructors
  */
 export type MatcherConfig =
-  | { nameMatcher: string }
+  | { nameMatcher: string; authorisationInfo?: RawAuthorisationInfo }
   | { headerNameMatcher: string }
-  | { contentMatcher: string }
-  | { hashes: InventoryScriptHashInfo[] }
-  | { orMatcher: MatcherConfig[]; authorisationInfo?: InventoryAuthorisationInfo }
-  | { andMatcher: MatcherConfig[]; authorisationInfo?: InventoryAuthorisationInfo }
+  | { contentMatcher: string; authorisationInfo?: RawAuthorisationInfo }
+  | { hashes: InventoryScriptHashInfo[]; authorisationInfo?: RawAuthorisationInfo }
+  | { orMatcher: MatcherConfig[]; authorisationInfo?: RawAuthorisationInfo }
+  | { andMatcher: MatcherConfig[]; authorisationInfo?: RawAuthorisationInfo }
 
 /**
  * Factory function for creating matcher instances from configuration.
@@ -72,9 +98,9 @@ export type MatcherConfig =
  * ```
  */
 export function createMatcher(config: MatcherConfig): Matcher {
-  // Leaf matchers (existing)
+  // Leaf matchers
   if ('nameMatcher' in config) {
-    return new NameMatcher(config.nameMatcher)
+    return new NameMatcher(config.nameMatcher, convertAuthorisationInfo(config.authorisationInfo))
   }
 
   if ('headerNameMatcher' in config) {
@@ -82,24 +108,24 @@ export function createMatcher(config: MatcherConfig): Matcher {
   }
 
   if ('contentMatcher' in config) {
-    return new ContentMatcher(config.contentMatcher)
+    return new ContentMatcher(config.contentMatcher, convertAuthorisationInfo(config.authorisationInfo))
   }
 
   if ('hashes' in config) {
-    return new HashMatcher(config.hashes)
+    return new HashMatcher(config.hashes, convertAuthorisationInfo(config.authorisationInfo))
   }
 
-  // Composite matchers (new)
+  // Composite matchers
   if ('orMatcher' in config) {
-    // Recursively create child matchers
+    // Recursively create child matchers (they can have their own authorisationInfo)
     const children = config.orMatcher.map((childConfig) => createMatcher(childConfig))
-    return new OrMatcher(children, config.authorisationInfo)
+    return new OrMatcher(children, convertAuthorisationInfo(config.authorisationInfo))
   }
 
   if ('andMatcher' in config) {
-    // Recursively create child matchers
+    // Recursively create child matchers (they can have their own authorisationInfo)
     const children = config.andMatcher.map((childConfig) => createMatcher(childConfig))
-    return new AndMatcher(children, config.authorisationInfo)
+    return new AndMatcher(children, convertAuthorisationInfo(config.authorisationInfo))
   }
 
   // This should never happen if Zod schema validation is working

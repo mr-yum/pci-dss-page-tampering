@@ -39,22 +39,30 @@ const InventoryAuthorisationInfoRawSchema = z.object({
 })
 
 /**
- * Leaf matcher schemas (existing)
+ * Leaf matcher schemas
+ *
+ * All matchers (except HeaderNameMatcher) support optional authorisationInfo.
+ * This enables authorization metadata to be attached at any level in the matcher tree,
+ * preserving the exact structure specified in inventory files.
  */
 const NameMatcherConfigSchema = z.object({
   nameMatcher: z.string().min(1, 'nameMatcher must not be empty'),
+  authorisationInfo: InventoryAuthorisationInfoRawSchema.optional(),
 })
 
 const HeaderNameMatcherConfigSchema = z.object({
   headerNameMatcher: z.string().min(1, 'headerNameMatcher must not be empty'),
+  // No authorisationInfo - HeaderNameMatcher is only for identification, not authorization
 })
 
 const ContentMatcherConfigSchema = z.object({
   contentMatcher: z.string().min(1, 'contentMatcher must not be empty'),
+  authorisationInfo: InventoryAuthorisationInfoRawSchema.optional(),
 })
 
 const HashMatcherConfigSchema = z.object({
   hashes: z.array(InventoryScriptHashInfoSchema).min(1, 'hashes array must contain at least 1 hash'),
+  authorisationInfo: InventoryAuthorisationInfoRawSchema.optional(),
 })
 
 /**

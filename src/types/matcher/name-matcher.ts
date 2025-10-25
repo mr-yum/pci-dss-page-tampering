@@ -8,7 +8,7 @@
  */
 
 import type { AuthorizationResult } from './authorization-result'
-import type { DetectedScript, Matcher } from './matcher.interface'
+import type { AuthorisationInfo, AuthorisationMatcher, DetectedScript } from './matcher.interface'
 
 /**
  * Matches scripts by name/URL using regex patterns.
@@ -22,16 +22,19 @@ import type { DetectedScript, Matcher } from './matcher.interface'
  * - authorize(): Tests script.content against pattern (same pattern for both)
  * - Returns false for null/undefined script names
  */
-export class NameMatcher implements Matcher {
+export class NameMatcher implements AuthorisationMatcher {
   private readonly pattern: RegExp
+  private readonly authorisationInfo: AuthorisationInfo | undefined
 
   /**
    * Creates a new NameMatcher with the specified regex pattern.
    *
    * @param patternString - Regex pattern string (validated by Zod schema before instantiation)
+   * @param authorisationInfo - Optional authorization metadata
    */
-  constructor(patternString: string) {
+  constructor(patternString: string, authorisationInfo: AuthorisationInfo | undefined = undefined) {
     this.pattern = new RegExp(patternString)
+    this.authorisationInfo = authorisationInfo
   }
 
   /**
@@ -64,6 +67,15 @@ export class NameMatcher implements Matcher {
   }
 
   /**
+   * Returns the authorization metadata for this matcher.
+   *
+   * @returns Authorization metadata if present, undefined otherwise
+   */
+  getAuthorisationInfo(): AuthorisationInfo | undefined {
+    return this.authorisationInfo
+  }
+
+  /**
    * Identifies if a detected script matches this pattern by testing the script name.
    *
    * @param script - The detected script to test
@@ -91,11 +103,18 @@ export class NameMatcher implements Matcher {
     }
 
     const matches = this.pattern.test(script.content)
-    return matches
+    const result: AuthorizationResult = matches
       ? { authorized: true }
       : {
           authorized: false,
           reason: `content does not match pattern: ${this.pattern.source}`,
         }
+
+    // Include authorisationInfo in metadataPath if present
+    if (this.authorisationInfo) {
+      result.metadataPath = [this.authorisationInfo]
+    }
+
+    return result
   }
 }

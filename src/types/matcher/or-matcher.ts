@@ -22,9 +22,8 @@
  * @see ../../../specs/005-enhance-the-schema/data-model.md for entity definitions
  */
 
-import type { InventoryAuthorisationInfo } from '../inventory/model'
 import type { AuthorizationResult } from './authorization-result'
-import type { Matchable, Matcher } from './matcher.interface'
+import type { AuthorisationInfo, AuthorisationMatcher, Matchable, Matcher } from './matcher.interface'
 
 /**
  * OrMatcher - Composite matcher with OR logic (any child matches).
@@ -41,9 +40,9 @@ import type { Matchable, Matcher } from './matcher.interface'
  * - No matching child triggers unauthorized result
  * - Top-level authorised: false always denies (FR-011)
  */
-export class OrMatcher<T extends Matchable = Matchable> implements Matcher<T> {
+export class OrMatcher<T extends Matchable = Matchable> implements AuthorisationMatcher<T> {
   private readonly children: Matcher<T>[]
-  private readonly authorisationInfo: InventoryAuthorisationInfo | undefined
+  private readonly authorisationInfo: AuthorisationInfo | undefined
 
   /**
    * Creates an OrMatcher with the given child matchers.
@@ -52,7 +51,7 @@ export class OrMatcher<T extends Matchable = Matchable> implements Matcher<T> {
    * @param authorisationInfo - Optional top-level authorization metadata
    * @throws Error if children array is empty or null (fail-secure: FR-008, FR-012)
    */
-  constructor(children: Matcher<T>[], authorisationInfo?: InventoryAuthorisationInfo) {
+  constructor(children: Matcher<T>[], authorisationInfo?: AuthorisationInfo) {
     // FR-008, FR-012: Reject empty arrays (fail-secure)
     // CRITICAL: Prevents vacuous logic and ensures at least one authorization path exists
     if (!children || children.length === 0) {
@@ -84,6 +83,14 @@ export class OrMatcher<T extends Matchable = Matchable> implements Matcher<T> {
   getDescription(): string {
     const childDescriptions = this.children.length > 3 ? `${this.children.length} matchers` : this.children.map((child) => child.getDescription()).join(', ')
     return `or:[${childDescriptions}]`
+  }
+
+  /**
+   * Returns authorization metadata for serialization.
+   * @returns Authorization info if present, undefined otherwise
+   */
+  getAuthorisationInfo(): AuthorisationInfo | undefined {
+    return this.authorisationInfo
   }
 
   /**
