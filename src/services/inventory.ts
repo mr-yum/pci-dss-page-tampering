@@ -133,6 +133,21 @@ export class ScriptInventoryService implements IInventoryService {
         if (!hashAlreadyExists) {
           rawInventoryScript.authoriseWith.hashes.push(newHashInfo)
         }
+      } else if (Array.isArray(rawInventoryScript.authoriseWith)) {
+        // FR-002b: Already array syntax, append new hash matcher
+        const hashAlreadyExists = rawInventoryScript.authoriseWith.some((element: any) => {
+          return 'hashes' in element && element.hashes.some((h: any) => h.hash.value === newHashInfo.hash.value)
+        })
+        if (!hashAlreadyExists) {
+          rawInventoryScript.authoriseWith.push({
+            hashes: [newHashInfo],
+            authorisationInfo: {
+              description: `Hash detected during inventory run ${updateDate.toISOString()}`,
+              authorised: true,
+              date: updateDate.toISOString(),
+            },
+          })
+        }
       } else {
         // FR-002b: Convert single matcher to array syntax
         rawInventoryScript.authoriseWith = [

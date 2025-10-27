@@ -36,7 +36,7 @@ This is a PCI DSS compliance system implementing **requirements 6.4.3 (Script Ma
 ### Testing
 
 - `npm run test:unit` - Run unit tests
-- `npm run test:integration` - Run integration tests in Docker
+- `npm run test:integration` - Run integration tests
 - `npm run test:integration:watch` - Watch integration tests
 - `npm run test:smoke` - Run smoke tests in Docker
 
@@ -47,6 +47,10 @@ This is a PCI DSS compliance system implementing **requirements 6.4.3 (Script Ma
 - `npm run check:linting` - Run ESLint checks
 - `npm run fix:linting` - Auto-fix linting issues
 - `npm run check:typing` - Run TypeScript type checking
+
+### Before commit
+
+- `npm run precommit` - All of the above testing and quality checks (run this to validate work is complete)
 
 ### Setup
 
