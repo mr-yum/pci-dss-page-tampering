@@ -1,11 +1,10 @@
-import { HashMatcher } from 'src/types/matcher/hash-matcher'
-
 import type { IInventoryService, IScriptInventoryRepository } from '../interfaces/inventory'
 import type { ComparisonResultType, KnownScriptWithUnauthorisedContentFound, UnknownScriptFound } from '../types/comparison'
 import type { KnownHeaderWithUnauthorisedContentFound } from '../types/comparison/known-header-unauthorised-content-found'
 import type { UnknownHeaderFound } from '../types/comparison/unknown-header-found'
 import type { Inventory, InventoryDifferenceResult, InventoryHeaderInfo, InventoryScriptInfo } from '../types/inventory/model'
 import type { InventoryServiceProps } from '../types/inventory/props'
+import { HashMatcher } from '../types/matcher/hash-matcher'
 import { createMatcher } from '../types/matcher/matcher-factory'
 import type { PullTarget } from '../types/target'
 import { copyInventory, inventoryHeaderInfoToRawInventoryHeaderInfo, rawInventoryHeaderInfoToInventoryHeaderInfo } from '../utils/inventory'
