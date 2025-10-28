@@ -1,3 +1,5 @@
+import { HashMatcher } from 'src/types/matcher/hash-matcher'
+
 import type { IInventoryService, IScriptInventoryRepository } from '../interfaces/inventory'
 import type { ComparisonResultType, KnownScriptWithUnauthorisedContentFound, UnknownScriptFound } from '../types/comparison'
 import type { KnownHeaderWithUnauthorisedContentFound } from '../types/comparison/known-header-unauthorised-content-found'
@@ -67,7 +69,11 @@ export class ScriptInventoryService implements IInventoryService {
         return this.addNewScript(result, inventory, updateDate)
 
       case 'known_script_unauthorised_content':
-        return this.updateScriptWithNewHash(result, inventory, updateDate)
+        if (result.authorizationMatcher instanceof HashMatcher) {
+          // Only add new hash to existing entry if the authorization matcher is a hash matcher
+          return this.updateScriptWithNewHash(result, inventory, updateDate)
+        }
+        return inventory
 
       case 'authorized_script':
         // Script already authorized, no changes needed

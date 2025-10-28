@@ -79,19 +79,11 @@ describe('ScriptInventoryService', () => {
     })
 
     describe('Bug Fix: Array syntax handling', () => {
-      it('should append new hash to existing array syntax (not create nested array)', async () => {
-        // Arrange: Script with array syntax in authoriseWith (the bug scenario)
+      it('should append new hash to existing array syntax when authorized by hash matcher', async () => {
+        // Arrange: Script with array syntax containing only hash matchers
         const existingScript = rawInventoryScriptInfoToInventoryScriptInfo({
           identifyWith: { nameMatcher: '^inline_script\\/staging\\.example\\.com\\/.*$' },
           authoriseWith: [
-            {
-              nameMatcher: '^inline_script\\/staging\\.example\\.com\\/.*$',
-              authorisationInfo: {
-                description: 'Accept any content from staging URL',
-                authorised: true,
-                date: '2025-08-25T00:00:00.000Z',
-              },
-            },
             {
               hashes: [
                 {
@@ -100,9 +92,22 @@ describe('ScriptInventoryService', () => {
                 },
               ],
               authorisationInfo: {
-                description: 'Hash detected during inventory run',
+                description: 'Hash v1',
                 authorised: true,
                 date: '2025-10-26T23:04:48.921Z',
+              },
+            },
+            {
+              hashes: [
+                {
+                  timestamp: '2025-10-26T23:05:00.000Z',
+                  hash: { value: 'xyz789' },
+                },
+              ],
+              authorisationInfo: {
+                description: 'Hash v2',
+                authorised: true,
+                date: '2025-10-26T23:05:00.000Z',
               },
             },
           ],
@@ -110,7 +115,11 @@ describe('ScriptInventoryService', () => {
 
         const inventory = createMockInventory([existingScript])
 
-        // Create comparison result: same script with new hash
+        // Get the hash matcher from the array (OrMatcher contains hash matchers)
+        const orMatcher = existingScript.authoriseWith.matcher as OrMatcher
+        const hashMatcher = orMatcher.getPattern()[0] as import('../types/matcher/hash-matcher').HashMatcher
+
+        // Create comparison result: same script with new hash, authorized by specific hash matcher
         const comparisonResult = new KnownScriptWithUnauthorisedContentFound(
           createMockTarget(),
           new Date('2025-10-27T10:00:00.000Z'),
@@ -120,7 +129,7 @@ describe('ScriptInventoryService', () => {
             hash: { value: 'def456' },
           },
           existingScript,
-          existingScript.authoriseWith.matcher,
+          hashMatcher, // Use hash matcher, not the whole OrMatcher
           'hash def456 not in authorized list',
         )
 
@@ -158,8 +167,8 @@ describe('ScriptInventoryService', () => {
 
         // Verify the matcher is still an OrMatcher with 3 children
         expect(updatedScript.authoriseWith.matcher.getType()).toBe('or')
-        const orMatcher = updatedScript.authoriseWith.matcher as OrMatcher
-        expect(orMatcher.getPattern()).toHaveLength(3)
+        const orMatcher2 = updatedScript.authoriseWith.matcher as OrMatcher
+        expect(orMatcher2.getPattern()).toHaveLength(3)
       })
 
       it('should not add duplicate hash to existing array', async () => {
@@ -322,8 +331,8 @@ describe('ScriptInventoryService', () => {
       })
     })
 
-    describe('Conversion: Non-hash matcher to array syntax', () => {
-      it('should convert single non-hash matcher to array syntax when new hash added', async () => {
+    describe('Conversion: Non-hash matcher behavior', () => {
+      it('should NOT convert single non-hash matcher to array syntax (hash not added)', async () => {
         // Arrange: Script with contentMatcher (not hashes)
         const existingScript = rawInventoryScriptInfoToInventoryScriptInfo({
           identifyWith: { nameMatcher: '^inline_script\\/.*$' },
@@ -339,7 +348,7 @@ describe('ScriptInventoryService', () => {
 
         const inventory = createMockInventory([existingScript])
 
-        // Create comparison result: new hash
+        // Create comparison result: new hash but authorized by contentMatcher
         const comparisonResult = new KnownScriptWithUnauthorisedContentFound(
           createMockTarget(),
           new Date('2025-10-27T10:00:00.000Z'),
@@ -349,36 +358,187 @@ describe('ScriptInventoryService', () => {
             hash: { value: 'new-hash-123' },
           },
           existingScript,
-          existingScript.authoriseWith.matcher,
+          existingScript.authoriseWith.matcher, // contentMatcher, not hashMatcher
           'content does not match pattern',
         )
 
         // Act
         const result = await service.diff(inventory, [comparisonResult])
 
-        // Assert: Should be converted to array syntax with 2 elements
+        // Assert: Should remain unchanged (no conversion to array syntax)
         const updatedScript = result.newInventory.scripts[0]
         expect(updatedScript).toBeDefined()
         if (!updatedScript) return
 
         const rawUpdatedScript = inventoryScriptInfoToRawInventoryScriptInfo(updatedScript)
 
-        expect(Array.isArray(rawUpdatedScript.authoriseWith)).toBe(true)
-        if (Array.isArray(rawUpdatedScript.authoriseWith)) {
-          expect(rawUpdatedScript.authoriseWith.length).toBe(2)
+        // Should still be a single contentMatcher (not array)
+        expect(Array.isArray(rawUpdatedScript.authoriseWith)).toBe(false)
+        expect('contentMatcher' in rawUpdatedScript.authoriseWith).toBe(true)
 
-          // First element should be the original contentMatcher
-          expect('contentMatcher' in rawUpdatedScript.authoriseWith[0]).toBe(true)
+        // Verify no hashes were added
+        expect('hashes' in rawUpdatedScript.authoriseWith).toBe(false)
 
-          // Second element should be the new hash
-          expect('hashes' in rawUpdatedScript.authoriseWith[1]).toBe(true)
-          if ('hashes' in rawUpdatedScript.authoriseWith[1]) {
-            expect(rawUpdatedScript.authoriseWith[1].hashes[0].hash.value).toBe('new-hash-123')
-          }
+        // Verify the matcher is still a ContentMatcher (not OrMatcher)
+        expect(updatedScript.authoriseWith.matcher.getType()).toBe('content')
+      })
+    })
+
+    describe('Detection phase behavior: Only add hash when authorized by hashes', () => {
+      it('should NOT add new hash when script is authorized by contentMatcher', async () => {
+        // Arrange: Script with contentMatcher (not hashes)
+        const existingScript = rawInventoryScriptInfoToInventoryScriptInfo({
+          identifyWith: { nameMatcher: '^inline_script\\/staging\\.example\\.com\\/.*$' },
+          authoriseWith: {
+            contentMatcher: "fbq\\('init'",
+            authorisationInfo: {
+              description: 'Facebook Pixel initialization',
+              authorised: true,
+              date: '2025-10-20T00:00:00.000Z',
+            },
+          },
+        })
+
+        const inventory = createMockInventory([existingScript])
+
+        // Create comparison result: known script with unauthorized content
+        // BUT authorized by contentMatcher, not hashes
+        const comparisonResult = new KnownScriptWithUnauthorisedContentFound(
+          createMockTarget(),
+          new Date('2025-10-27T10:00:00.000Z'),
+          {
+            name: 'inline_script/staging.example.com/checkout.js',
+            content: 'different fbq code',
+            hash: { value: 'new-hash-789' },
+          },
+          existingScript,
+          existingScript.authoriseWith.matcher, // contentMatcher, not hashMatcher
+          'content does not match pattern',
+        )
+
+        // Act
+        const result = await service.diff(inventory, [comparisonResult])
+
+        // Assert: Inventory should remain UNCHANGED (no hash added)
+        const updatedScript = result.newInventory.scripts[0]
+        expect(updatedScript).toBeDefined()
+        if (!updatedScript) return
+
+        const rawUpdatedScript = inventoryScriptInfoToRawInventoryScriptInfo(updatedScript)
+
+        // Should still be a single contentMatcher (not converted to array)
+        expect(Array.isArray(rawUpdatedScript.authoriseWith)).toBe(false)
+        expect('contentMatcher' in rawUpdatedScript.authoriseWith).toBe(true)
+
+        // Verify no hashes were added
+        expect('hashes' in rawUpdatedScript.authoriseWith).toBe(false)
+
+        // Verify the matcher is still a ContentMatcher (not OrMatcher)
+        expect(updatedScript.authoriseWith.matcher.getType()).toBe('content')
+      })
+
+      it('should add new hash when script is authorized by hashMatcher', async () => {
+        // Arrange: Script with hashes matcher
+        const existingScript = rawInventoryScriptInfoToInventoryScriptInfo({
+          identifyWith: { nameMatcher: '^https://cdn\\.example\\.com/payment\\.js$' },
+          authoriseWith: {
+            hashes: [
+              {
+                timestamp: '2025-10-20T00:00:00.000Z',
+                hash: { value: 'old-hash' },
+              },
+            ],
+            authorisationInfo: {
+              description: 'Payment script',
+              authorised: true,
+              date: '2025-10-20T00:00:00.000Z',
+            },
+          },
+        })
+
+        const inventory = createMockInventory([existingScript])
+
+        // Create comparison result: known script with unauthorized hash
+        const comparisonResult = new KnownScriptWithUnauthorisedContentFound(
+          createMockTarget(),
+          new Date('2025-10-27T10:00:00.000Z'),
+          {
+            name: 'https://cdn.example.com/payment.js',
+            content: 'updated content',
+            hash: { value: 'new-hash' },
+          },
+          existingScript,
+          existingScript.authoriseWith.matcher, // hashMatcher
+          'hash new-hash not in authorized list',
+        )
+
+        // Act
+        const result = await service.diff(inventory, [comparisonResult])
+
+        // Assert: New hash should be added
+        const updatedScript = result.newInventory.scripts[0]
+        expect(updatedScript).toBeDefined()
+        if (!updatedScript) return
+
+        const rawUpdatedScript = inventoryScriptInfoToRawInventoryScriptInfo(updatedScript)
+
+        expect('hashes' in rawUpdatedScript.authoriseWith).toBe(true)
+        if ('hashes' in rawUpdatedScript.authoriseWith) {
+          expect(rawUpdatedScript.authoriseWith.hashes.length).toBe(2)
+          expect(rawUpdatedScript.authoriseWith.hashes[0].hash.value).toBe('old-hash')
+          expect(rawUpdatedScript.authoriseWith.hashes[1].hash.value).toBe('new-hash')
         }
+      })
 
-        // Verify the matcher is now an OrMatcher
-        expect(updatedScript.authoriseWith.matcher.getType()).toBe('or')
+      it('should NOT add new hash when script is authorized by nameMatcher', async () => {
+        // Arrange: Script with nameMatcher (not hashes)
+        const existingScript = rawInventoryScriptInfoToInventoryScriptInfo({
+          identifyWith: { nameMatcher: '^https://cdn\\.example\\.com/.*\\.js$' },
+          authoriseWith: {
+            nameMatcher: '^https://cdn\\.example\\.com/v[0-9]+\\.js$',
+            authorisationInfo: {
+              description: 'CDN scripts with version pattern',
+              authorised: true,
+              date: '2025-10-20T00:00:00.000Z',
+            },
+          },
+        })
+
+        const inventory = createMockInventory([existingScript])
+
+        // Create comparison result: known script with unauthorized name
+        const comparisonResult = new KnownScriptWithUnauthorisedContentFound(
+          createMockTarget(),
+          new Date('2025-10-27T10:00:00.000Z'),
+          {
+            name: 'https://cdn.example.com/custom.js',
+            content: 'some content',
+            hash: { value: 'new-hash-456' },
+          },
+          existingScript,
+          existingScript.authoriseWith.matcher, // nameMatcher, not hashMatcher
+          'name does not match pattern',
+        )
+
+        // Act
+        const result = await service.diff(inventory, [comparisonResult])
+
+        // Assert: Inventory should remain UNCHANGED (no hash added)
+        const updatedScript = result.newInventory.scripts[0]
+        expect(updatedScript).toBeDefined()
+        if (!updatedScript) return
+
+        const rawUpdatedScript = inventoryScriptInfoToRawInventoryScriptInfo(updatedScript)
+
+        // Should still be a single nameMatcher (not converted to array)
+        expect(Array.isArray(rawUpdatedScript.authoriseWith)).toBe(false)
+        expect('nameMatcher' in rawUpdatedScript.authoriseWith).toBe(true)
+
+        // Verify no hashes were added
+        expect('hashes' in rawUpdatedScript.authoriseWith).toBe(false)
+
+        // Verify the matcher is still a NameMatcher (not OrMatcher)
+        expect(updatedScript.authoriseWith.matcher.getType()).toBe('name')
       })
     })
 
