@@ -69,8 +69,10 @@ export class ScriptInventoryService implements IInventoryService {
         return this.addNewScript(result, inventory, updateDate)
 
       case 'known_script_unauthorised_content':
+        // Only add new hash to existing entry if the authorization matcher is a hash matcher.
+        // Content or name matchers authorize scripts by pattern matching, not by hash values,
+        // so adding hashes would be inappropriate for those matcher types.
         if (result.authorizationMatcher instanceof HashMatcher) {
-          // Only add new hash to existing entry if the authorization matcher is a hash matcher
           return this.updateScriptWithNewHash(result, inventory, updateDate)
         }
         return inventory
