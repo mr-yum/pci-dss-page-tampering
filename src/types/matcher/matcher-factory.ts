@@ -129,5 +129,5 @@ export function createMatcher(config: MatcherConfig): Matcher {
   }
 
   // This should never happen if Zod schema validation is working
-  throw new Error('Invalid MatcherConfig: must have nameMatcher, headerNameMatcher, contentMatcher, hashes, orMatcher, or andMatcher')
+  throw new Error(`Invalid MatcherConfig: must have nameMatcher, headerNameMatcher, contentMatcher, hashes, orMatcher, or andMatcher: ${JSON.stringify(config)}`)
 }

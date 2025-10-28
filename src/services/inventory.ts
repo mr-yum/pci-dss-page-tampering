@@ -1,3 +1,5 @@
+import { HashMatcher } from 'src/types/matcher/hash-matcher'
+
 import type { IInventoryService, IScriptInventoryRepository } from '../interfaces/inventory'
 import type { ComparisonResultType, KnownScriptWithUnauthorisedContentFound, UnknownScriptFound } from '../types/comparison'
 import type { KnownHeaderWithUnauthorisedContentFound } from '../types/comparison/known-header-unauthorised-content-found'
@@ -67,7 +69,13 @@ export class ScriptInventoryService implements IInventoryService {
         return this.addNewScript(result, inventory, updateDate)
 
       case 'known_script_unauthorised_content':
-        return this.updateScriptWithNewHash(result, inventory, updateDate)
+        // Only add new hash to existing entry if the authorization matcher is a hash matcher.
+        // Content or name matchers authorize scripts by pattern matching, not by hash values,
+        // so adding hashes would be inappropriate for those matcher types.
+        if (result.authorizationMatcher instanceof HashMatcher) {
+          return this.updateScriptWithNewHash(result, inventory, updateDate)
+        }
+        return inventory
 
       case 'authorized_script':
         // Script already authorized, no changes needed
@@ -132,6 +140,21 @@ export class ScriptInventoryService implements IInventoryService {
         const hashAlreadyExists = rawInventoryScript.authoriseWith.hashes.some((h: any) => h.hash.value === newHashInfo.hash.value)
         if (!hashAlreadyExists) {
           rawInventoryScript.authoriseWith.hashes.push(newHashInfo)
+        }
+      } else if (Array.isArray(rawInventoryScript.authoriseWith)) {
+        // FR-002b: Already array syntax, append new hash matcher
+        const hashAlreadyExists = rawInventoryScript.authoriseWith.some((element: any) => {
+          return 'hashes' in element && element.hashes.some((h: any) => h.hash.value === newHashInfo.hash.value)
+        })
+        if (!hashAlreadyExists) {
+          rawInventoryScript.authoriseWith.push({
+            hashes: [newHashInfo],
+            authorisationInfo: {
+              description: `Hash detected during inventory run ${updateDate.toISOString()}`,
+              authorised: true,
+              date: updateDate.toISOString(),
+            },
+          })
         }
       } else {
         // FR-002b: Convert single matcher to array syntax
