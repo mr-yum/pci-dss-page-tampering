@@ -9,6 +9,7 @@
 
 import { KnownScriptWithUnauthorisedContentFound } from '../types/comparison/known-script-unauthorised-content-found'
 import type { Inventory, InventoryScriptInfo } from '../types/inventory/model'
+import type { HashMatcher } from '../types/matcher/hash-matcher'
 import type { OrMatcher } from '../types/matcher/or-matcher'
 import type { Target, TargetDetection, TargetInventory } from '../types/target'
 import type { Workflow } from '../types/workflow'
@@ -117,7 +118,7 @@ describe('ScriptInventoryService', () => {
 
         // Get the hash matcher from the array (OrMatcher contains hash matchers)
         const orMatcher = existingScript.authoriseWith.matcher as OrMatcher
-        const hashMatcher = orMatcher.getPattern()[0] as import('../types/matcher/hash-matcher').HashMatcher
+        const hashMatcher = orMatcher.getPattern()[0] as HashMatcher
 
         // Create comparison result: same script with new hash, authorized by specific hash matcher
         const comparisonResult = new KnownScriptWithUnauthorisedContentFound(
