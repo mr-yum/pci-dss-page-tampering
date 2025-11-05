@@ -86,34 +86,34 @@ export class ScriptComparisonService implements IScriptComparisonService {
     }
 
     // First-match-wins identification using matcher pipeline
-    const startIdentificationTime = Date.now()
     const matchedEntry = this.findMatchingInventoryEntry(detectedScript, inventoryScripts)
-    const identificationTime = Date.now() - startIdentificationTime
 
     // T055: Script not identified in inventory
     if (!matchedEntry) {
-      target.logger.log(`Script '${scriptSourceValue}' not identified in inventory (no identifyWith matcher matched). Identification took ${identificationTime}ms.`)
+      target.logger.log(`Script '${scriptSourceValue}' not identified in inventory (no identifyWith matcher matched).`)
       return new UnknownScriptFound(target, timestamp, detectedScript)
     }
 
     // Log successful identification with matcher details
     const identifyDescription = matchedEntry.identifyWith.getDescription()
-    target.logger.log(`Script '${scriptSourceValue}' identified using ${identifyDescription} in ${identificationTime}ms.`)
+    target.logger.log(`Script '${scriptSourceValue}' identified using ${identifyDescription}.`)
 
     // Authorization using authoriseWith matcher
-    const startAuthorizationTime = Date.now()
     const authorizationResult = matchedEntry.authoriseWith.matcher.authorize(detectedScript)
-    const authorizationTime = Date.now() - startAuthorizationTime
 
     // Log authorization result with matcher details
     const authorizeDescription = matchedEntry.authoriseWith.matcher.getDescription()
     const authStatus = authorizationResult.authorized ? 'AUTHORIZED' : `UNAUTHORIZED (${authorizationResult.reason})`
-    target.logger.log(`Script '${scriptSourceValue}' authorization via ${authorizeDescription}: ${authStatus} in ${authorizationTime}ms.`)
+
+    // Build full metadata path: top-level authorisationInfo + nested metadataPath
+    const fullPath = [matchedEntry.authoriseWith.authorisationInfo, ...(authorizationResult.metadataPath ?? [])]
+    const metadataPathDesc = fullPath.length > 0 ? ` Auth: ${fullPath.map((m) => m.description).join(' > ')}` : ''
+
+    target.logger.log(`Script '${scriptSourceValue}' authorization via ${authorizeDescription}: ${authStatus}.${metadataPathDesc}`)
 
     // T056: Known script but unauthorized content
     // T029: Pass metadataPath from AuthorizationResult for composite matcher support
     if (!authorizationResult.authorized) {
-      target.logger.log(`Script '${scriptSourceValue}' found in inventory but authorization failed: ${authorizationResult.reason}.`)
       return new KnownScriptWithUnauthorisedContentFound(
         target,
         timestamp,

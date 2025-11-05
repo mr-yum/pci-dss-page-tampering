@@ -111,10 +111,20 @@ describe('NameMatcher', () => {
   })
 
   describe('authorize', () => {
-    describe('content matches pattern', () => {
-      it('should authorize when content matches pattern', () => {
-        const matcher = new NameMatcher('analytics')
-        const script = createDetectedScript('https://example.com/script.js', 'analytics.track()')
+    describe('name matches pattern', () => {
+      it('should authorize when name matches pattern', () => {
+        const matcher = new NameMatcher('^https://example\\.com/.*$')
+        const script = createDetectedScript('https://example.com/script.js', 'any content here')
+
+        const result = matcher.authorize(script)
+
+        expect(result.authorized).toBe(true)
+        expect(result.reason).toBeUndefined()
+      })
+
+      it('should authorize when name matches pattern regardless of content', () => {
+        const matcher = new NameMatcher('^inline_script.\\w*.?meandu\\.app\\/.*$')
+        const script = createDetectedScript('inline_script/staging.meandu.app/pcidsscompliance', 'dynamic content')
 
         const result = matcher.authorize(script)
 
@@ -123,47 +133,48 @@ describe('NameMatcher', () => {
       })
     })
 
-    describe('content does not match pattern', () => {
-      it('should not authorize when content does not match pattern', () => {
-        const matcher = new NameMatcher('analytics')
-        const script = createDetectedScript('https://example.com/script.js', 'different.code()')
+    describe('name does not match pattern', () => {
+      it('should not authorize when name does not match pattern', () => {
+        const pattern = '^https://example\\.com/.*$'
+        const matcher = new NameMatcher(pattern)
+        const script = createDetectedScript('https://other.com/script.js', 'any content')
 
         const result = matcher.authorize(script)
 
         expect(result.authorized).toBe(false)
-        expect(result.reason).toBe('content does not match pattern: analytics')
+        expect(result.reason).toBe(`name does not match pattern: ${new RegExp(pattern).source}`)
       })
     })
 
-    describe('null/empty content', () => {
-      it('should not authorize when content is null', () => {
+    describe('null/empty name', () => {
+      it('should not authorize when name is null', () => {
         const matcher = new NameMatcher('.*')
-        const script = createDetectedScript('https://example.com/script.js', null)
+        const script = createDetectedScript('', 'some content')
 
         const result = matcher.authorize(script)
 
         expect(result.authorized).toBe(false)
-        expect(result.reason).toBe('content is null or empty')
+        expect(result.reason).toBe('name is null or empty')
       })
 
-      it('should not authorize when content is empty string', () => {
+      it('should not authorize when name is empty string', () => {
         const matcher = new NameMatcher('.*')
-        const script = createDetectedScript('https://example.com/script.js', '')
+        const script = createDetectedScript('', 'some content')
 
         const result = matcher.authorize(script)
 
         expect(result.authorized).toBe(false)
-        expect(result.reason).toBe('content is null or empty')
+        expect(result.reason).toBe('name is null or empty')
       })
 
-      it('should not authorize when content is whitespace-only', () => {
+      it('should not authorize when name is whitespace-only', () => {
         const matcher = new NameMatcher('.*')
-        const script = createDetectedScript('https://example.com/script.js', '   ')
+        const script = createDetectedScript('   ', 'some content')
 
         const result = matcher.authorize(script)
 
         expect(result.authorized).toBe(false)
-        expect(result.reason).toBe('content is null or empty')
+        expect(result.reason).toBe('name is null or empty')
       })
     })
   })

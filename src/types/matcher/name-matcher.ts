@@ -19,7 +19,7 @@ import type { AuthorisationInfo, AuthorisationMatcher, DetectedScript } from './
  *
  * Behavior:
  * - identify(): Tests script.name against pattern
- * - authorize(): Tests script.content against pattern (same pattern for both)
+ * - authorize(): Tests script.name against pattern (same pattern for both)
  * - Returns false for null/undefined script names
  */
 export class NameMatcher implements AuthorisationMatcher {
@@ -89,25 +89,25 @@ export class NameMatcher implements AuthorisationMatcher {
   }
 
   /**
-   * Authorizes a detected script by testing the script content against the pattern.
+   * Authorizes a detected script by testing the script name against the pattern.
    *
    * @param script - The detected script to authorize
-   * @returns AuthorizationResult with authorized=true if content matches, authorized=false with reason otherwise
+   * @returns AuthorizationResult with authorized=true if name matches, authorized=false with reason otherwise
    */
   authorize(script: DetectedScript): AuthorizationResult {
-    if (!script.content || script.content.trim() === '') {
+    if (!script.name || script.name.trim() === '') {
       return {
         authorized: false,
-        reason: 'content is null or empty',
+        reason: 'name is null or empty',
       }
     }
 
-    const matches = this.pattern.test(script.content)
+    const matches = this.pattern.test(script.name)
     const result: AuthorizationResult = matches
       ? { authorized: true }
       : {
           authorized: false,
-          reason: `content does not match pattern: ${this.pattern.source}`,
+          reason: `name does not match pattern: ${this.pattern.source}`,
         }
 
     // Include authorisationInfo in metadataPath if present
