@@ -250,6 +250,23 @@ export class SlackAlertService implements IAlertService {
                   },
                 ],
               },
+              {
+                type: 'rich_text',
+                elements: [
+                  {
+                    type: 'rich_text_section',
+                    elements: [
+                      {
+                        type: 'text',
+                        text: 'Content Snippet',
+                        style: {
+                          bold: true,
+                        },
+                      },
+                    ],
+                  },
+                ],
+              },
             ],
             ...scripts.slice(0, 19).map((scriptInfo) => this.scriptInfoToTableItem(scriptInfo)),
           ],
@@ -768,13 +785,16 @@ export class SlackAlertService implements IAlertService {
 
   private scriptInfoToTableItem(scriptInfo: ScriptInfo) {
     let scriptIdentifier: string
+    let contentSnippet: string
 
     switch (scriptInfo.source.type) {
       case 'external':
         scriptIdentifier = scriptInfo.source.url
+        contentSnippet = 'N/A (external)'
         break
       case 'inline':
         scriptIdentifier = scriptInfo.source.id
+        contentSnippet = this.createContentSnippet(scriptInfo.source.content)
         break
     }
 
@@ -802,6 +822,20 @@ export class SlackAlertService implements IAlertService {
               {
                 type: 'text',
                 text: this.truncateText(scriptInfo.hash.value),
+              },
+            ],
+          },
+        ],
+      },
+      {
+        type: 'rich_text',
+        elements: [
+          {
+            type: 'rich_text_section',
+            elements: [
+              {
+                type: 'text',
+                text: contentSnippet,
               },
             ],
           },
@@ -849,5 +883,27 @@ export class SlackAlertService implements IAlertService {
 
   private truncateText(text: string): string {
     return text.length > this.maxStringLength ? text.slice(0, this.maxStringLength - 4).concat('...') : text
+  }
+
+  /**
+   * Creates a content snippet showing the first 30 and last 30 characters
+   * of the script content, with "..." in between for easier identification.
+   */
+  private createContentSnippet(content: string): string {
+    if (!content || content.length === 0) {
+      return '(empty)'
+    }
+
+    // Remove leading/trailing whitespace and normalize line breaks for cleaner display
+    const normalized = content.trim().replace(/\s+/g, ' ')
+
+    if (normalized.length <= 63) {
+      // 30 + 3 ("...") + 30 = 63
+      return normalized
+    }
+
+    const start = normalized.slice(0, 30)
+    const end = normalized.slice(-30)
+    return `${start}...${end}`
   }
 }
