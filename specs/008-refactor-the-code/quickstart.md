@@ -41,6 +41,7 @@ npm start -- --help
 ```
 
 Output includes:
+
 - All available parameters
 - Required vs. optional flags
 - Default values
@@ -56,6 +57,7 @@ npm start -- \
 ```
 
 This runs `--mode all` (default):
+
 1. Executes inventory workflow (updates baseline)
 2. Pushes changes to `updates/scripts` branch
 3. Executes detection workflow (monitors against baseline)
@@ -72,6 +74,7 @@ npm start -- \
 ```
 
 Use cases:
+
 - CI/CD pipeline validation during deployment
 - Updating baseline after authorized script changes
 - Feature branch testing with `--inventory-branch`
@@ -87,6 +90,7 @@ npm start -- \
 ```
 
 Use cases:
+
 - On-demand production monitoring
 - Testing detection logic without modifying inventory
 - Monitoring specific targets with `--target`
@@ -133,6 +137,7 @@ npm start -- \
 ```
 
 Requirements:
+
 - Local directory must have same structure as GitHub repository
 - Must contain `targets/` and `workflows/` directories
 - Git token required (use "dummy" for file:// repos)
@@ -147,30 +152,31 @@ npm start -- \
 ```
 
 Alerts are logged to console instead of Slack. Useful for:
+
 - Local development
 - CI/CD pipelines with different alerting
 - Testing detection logic
 
 ## Parameter Reference
 
-| Parameter           | Required | Default            | Description                                                       |
-| ------------------- | -------- | ------------------ | ----------------------------------------------------------------- |
-| `--repo <url>`      | Yes      | -                  | Inventory repository URL (HTTPS or file://)                       |
-| `--git-token <tok>` | Yes      | -                  | Git authentication token                                          |
-| `--mode <mode>`     | No       | all                | Execution mode: inventory \| detection \| all                     |
-| `--target <name>`   | No       | all targets        | Process specific target (e.g., "1.0")                             |
-| `--slack-token <t>` | No       | console logs       | Slack OAuth token for alerts                                      |
-| `--inventory-branch`| No       | updates/scripts    | Branch for inventory operations                                   |
-| `--detection-branch`| No       | main               | Branch for detection operations                                   |
-| `--help`            | No       | false              | Display help and exit                                             |
+| Parameter            | Required | Default         | Description                                   |
+| -------------------- | -------- | --------------- | --------------------------------------------- |
+| `--repo <url>`       | Yes      | -               | Inventory repository URL (HTTPS or file://)   |
+| `--git-token <tok>`  | Yes      | -               | Git authentication token                      |
+| `--mode <mode>`      | No       | all             | Execution mode: inventory \| detection \| all |
+| `--target <name>`    | No       | all targets     | Process specific target (e.g., "1.0")         |
+| `--slack-token <t>`  | No       | console logs    | Slack OAuth token for alerts                  |
+| `--inventory-branch` | No       | updates/scripts | Branch for inventory operations               |
+| `--detection-branch` | No       | main            | Branch for detection operations               |
+| `--help`             | No       | false           | Display help and exit                         |
 
 ## Exit Codes
 
-| Code | Meaning            | Example Scenarios                                              |
-| ---- | ------------------ | -------------------------------------------------------------- |
-| 0    | Success            | Workflows completed, help displayed                            |
-| 1    | Validation Error   | Missing --repo, invalid URL, unknown --mode value              |
-| 2    | Execution Error    | Git clone failed, target not found, network error              |
+| Code | Meaning          | Example Scenarios                                 |
+| ---- | ---------------- | ------------------------------------------------- |
+| 0    | Success          | Workflows completed, help displayed               |
+| 1    | Validation Error | Missing --repo, invalid URL, unknown --mode value |
+| 2    | Execution Error  | Git clone failed, target not found, network error |
 
 ## CI/CD Integration
 
@@ -227,7 +233,7 @@ inventory-check:
   only:
     - main
     - staging
-  allow_failure: false  # Fail pipeline on exit code 1 or 2
+  allow_failure: false # Fail pipeline on exit code 1 or 2
 ```
 
 ## Common Workflows
@@ -250,6 +256,7 @@ npm start -- \
 ```
 
 Cron entry:
+
 ```cron
 0 12 * * * /path/to/daily-monitoring.sh >> /var/log/pci-monitoring.log 2>&1
 ```
@@ -305,6 +312,7 @@ echo "Review changes at: https://github.com/org/inventory/tree/$FEATURE_BRANCH"
 **Cause**: Invalid `--repo` format
 
 **Solution**: Ensure URL starts with `https://` or `file://`
+
 ```bash
 # ❌ Wrong
 --repo github.com/org/inventory
@@ -319,6 +327,7 @@ echo "Review changes at: https://github.com/org/inventory/tree/$FEATURE_BRANCH"
 **Cause**: Invalid or expired `--git-token`
 
 **Solution**: Verify token has correct permissions:
+
 - GitHub: `repo` scope (read/write access)
 - GitLab: `api` or `read_repository` + `write_repository` scopes
 
@@ -332,6 +341,7 @@ git clone https://x-access-token:$TOKEN@github.com/org/inventory test-clone
 **Cause**: Specified `--target` doesn't exist in `targets/` directory
 
 **Solution**: List available targets:
+
 ```bash
 # Clone repository manually
 git clone https://github.com/org/inventory temp-inventory
@@ -348,6 +358,7 @@ ls temp-inventory/targets/
 **Cause**: Invalid `--inventory-branch` or `--detection-branch`
 
 **Solution**: Verify branch exists:
+
 ```bash
 git ls-remote --heads https://github.com/org/inventory
 # Look for refs/heads/your-branch-name
@@ -356,6 +367,7 @@ git ls-remote --heads https://github.com/org/inventory
 ### Exit Code 2 (Execution Failure)
 
 **Debugging Steps**:
+
 1. Check Git access: `git clone https://... test`
 2. Verify network connectivity
 3. Check branch names exist
@@ -364,6 +376,7 @@ git ls-remote --heads https://github.com/org/inventory
 ## Migration from Environment Variables
 
 **Before** (old approach):
+
 ```bash
 # .env file
 INVENTORY_REPO_PAT=ghp_abc123
@@ -376,6 +389,7 @@ npm start
 ```
 
 **After** (new approach):
+
 ```bash
 # CLI parameters (no .env file needed)
 npm start -- \
@@ -387,6 +401,7 @@ npm start -- \
 ```
 
 **Benefits**:
+
 - ✅ No hardcoded repository URL (works for any organization)
 - ✅ Explicit configuration (no hidden environment state)
 - ✅ Per-execution control (different repos/branches per run)
@@ -397,6 +412,7 @@ npm start -- \
 ### Token Handling
 
 **✅ DO**:
+
 ```bash
 # CI/CD: Use secrets
 --git-token ${{ secrets.GITHUB_TOKEN }}
@@ -411,6 +427,7 @@ npm start -- --repo ... --git-token "$GITHUB_TOKEN"
 ```
 
 **❌ DON'T**:
+
 ```bash
 # Never hardcode tokens in scripts
 --git-token ghp_abc123xyz  # ❌ Token visible in process list
@@ -438,6 +455,7 @@ git add .env  # ❌ If .env contains tokens
 ### Single Target Execution
 
 Process one target at a time for faster builds:
+
 ```bash
 # Instead of processing all targets (45s)
 npm start -- --repo ... --git-token ...
@@ -449,6 +467,7 @@ npm start -- --target 1.0 --repo ... --git-token ...
 ### Local Repository Cache
 
 Use local clone for repeated testing:
+
 ```bash
 # Clone once
 git clone https://github.com/org/inventory local-inventory
@@ -460,6 +479,7 @@ npm start -- --repo file://$(pwd)/local-inventory --git-token dummy
 ### Parallel Target Processing
 
 Run multiple targets in parallel (separate processes):
+
 ```bash
 npm start -- --target 1.0 --repo ... --git-token ... &
 npm start -- --target 2.0 --repo ... --git-token ... &
@@ -539,6 +559,7 @@ npm run precommit
 ## Support
 
 **Issues**: Open GitHub issue with:
+
 - CLI command used
 - Full error message
 - Exit code received

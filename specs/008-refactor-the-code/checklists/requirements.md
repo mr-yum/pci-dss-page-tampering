@@ -34,6 +34,7 @@
 All validation items pass. The specification is complete and ready for planning phase.
 
 **Validation Summary**:
+
 - 22 functional requirements covering CLI arguments, execution modes, target selection, credential handling, branch configuration, help documentation, workflow sequencing, and error handling
 - 3 prioritized user stories (P1: Build Pipeline with branch override and scheduled monitoring, P2: Detection with branch override, P3: Local Testing with help)
 - 9 measurable success criteria focused on performance, integration, resource usage, documentation, vendor neutrality, and scheduled workflows
@@ -42,12 +43,14 @@ All validation items pass. The specification is complete and ready for planning 
 - Out of scope explicitly excludes backward compatibility for environment variables and graceful recovery for mode=all failures
 
 **Amendment (2025-11-12) - Branch Override Support**:
+
 - FR-006: --inventory-branch parameter (defaults to "updates/scripts")
 - FR-007: --detection-branch parameter (defaults to "main")
 - Updated user stories to include branch override scenarios
 - Added edge cases for non-existent branch handling
 
 **Amendment (2025-11-12) - Environment Variable Removal & Help Documentation**:
+
 - **BREAKING CHANGE**: FR-018 removes all environment variable support for CLI-controllable parameters
 - FR-003: --repo now REQUIRED (no hardcoded "mr-yum/script-inventory" default)
 - FR-004: --git-token now REQUIRED for HTTPS repos (no INVENTORY_REPO_PAT fallback)
@@ -58,6 +61,7 @@ All validation items pass. The specification is complete and ready for planning 
 - Out of scope: Backward compatibility for environment variables
 
 **Amendment (2025-11-12) - Mode "all" Support & Default Behavior**:
+
 - **BEHAVIOR CHANGE**: FR-001 makes --mode OPTIONAL (defaults to "all" if omitted)
 - FR-013: --mode all executes inventory workflow first, then detection workflow sequentially
 - FR-014: --mode all pulls from inventory branch, updates/pushes, then pulls from detection branch

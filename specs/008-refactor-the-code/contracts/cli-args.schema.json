@@ -20,10 +20,7 @@
       "type": "string",
       "format": "uri",
       "description": "Inventory repository URL. Supports HTTPS (requires git-token) and file:// protocols for local testing.",
-      "examples": [
-        "https://github.com/org/script-inventory",
-        "file:///Users/dev/local-inventory"
-      ]
+      "examples": ["https://github.com/org/script-inventory", "file:///Users/dev/local-inventory"]
     },
     "gitToken": {
       "type": "string",

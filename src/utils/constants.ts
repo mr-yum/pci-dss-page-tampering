@@ -5,5 +5,5 @@ export const WORKFLOW_DIRECTORY_NAME = 'workflows'
 export const TARGET_PATH = `${GIT_CLONE_PATH}/${TARGET_DIRECTORY_NAME}`
 export const WORKFLOW_PATH = `${GIT_CLONE_PATH}/${WORKFLOW_DIRECTORY_NAME}`
 
-export const GIT_DETECTION_SCRIPTS_BRANCH_NAME = process.env['GIT_DETECTION_SCRIPTS_BRANCH_NAME'] || 'main'
-export const GIT_UPDATED_SCRIPTS_BRANCH_NAME = process.env['GIT_UPDATED_SCRIPTS_BRANCH_NAME'] || 'updates/scripts'
+export const GIT_DETECTION_SCRIPTS_BRANCH_NAME = 'main'
+export const GIT_UPDATED_SCRIPTS_BRANCH_NAME = 'updates/scripts'

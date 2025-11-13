@@ -19,7 +19,7 @@ export class GitInventoryStore implements IInventoryStore {
     this.repositoryTarget = args.repositoryTarget
   }
 
-  async pull(target: PullTarget): Promise<InventoryPullResult> {
+  async pull(target: PullTarget, branchName?: string): Promise<InventoryPullResult> {
     // Clone repository
     console.log(`[Inventory → Store] Cloning repository '${this.repositoryTarget}' to path '${GIT_CLONE_PATH}'.`)
     await this.initialGitClient.clone(this.repositoryTarget, GIT_CLONE_PATH)
@@ -34,15 +34,9 @@ export class GitInventoryStore implements IInventoryStore {
       this.repositoryGitClient = simpleGit(GIT_CLONE_PATH)
     }
 
-    // Checkout branch
-    switch (target) {
-      case PullTarget.Inventory:
-        await this.switchBranch(this.repositoryGitClient, GIT_UPDATED_SCRIPTS_BRANCH_NAME)
-        break
-      case PullTarget.Detection:
-        await this.switchBranch(this.repositoryGitClient, GIT_DETECTION_SCRIPTS_BRANCH_NAME)
-        break
-    }
+    // Checkout branch (use provided branchName or fall back to constants)
+    const targetBranch = branchName ?? (target === PullTarget.Inventory ? GIT_UPDATED_SCRIPTS_BRANCH_NAME : GIT_DETECTION_SCRIPTS_BRANCH_NAME)
+    await this.switchBranch(this.repositoryGitClient, targetBranch)
 
     // Get and return raw inventory from files
     console.log(`[Inventory → Store] Reading and returning raw inventory.`)
@@ -72,7 +66,7 @@ export class GitInventoryStore implements IInventoryStore {
     }
   }
 
-  async push(_inventory: Inventory[]): Promise<void> {
+  async push(_inventory: Inventory[], branchName?: string): Promise<void> {
     console.log(`[Inventory → Store] Setting user.name and user.email for the local repo.`)
     await this.repositoryGitClient?.addConfig('user.name', 'me&u (formerly Mr Yum) Dev [bot]')
     await this.repositoryGitClient?.addConfig('user.email', 'dev@mryum.com')
@@ -84,8 +78,9 @@ export class GitInventoryStore implements IInventoryStore {
     console.log(`[Inventory → Store] Committing changes with message '${commitMessage}'`)
     await this.repositoryGitClient?.commit(commitMessage)
 
-    console.log(`[Inventory → Store] Pushing changes to branch '${GIT_UPDATED_SCRIPTS_BRANCH_NAME}'`)
-    await this.repositoryGitClient?.push('origin', GIT_UPDATED_SCRIPTS_BRANCH_NAME)
+    const targetBranch = branchName ?? GIT_UPDATED_SCRIPTS_BRANCH_NAME
+    console.log(`[Inventory → Store] Pushing changes to branch '${targetBranch}'`)
+    await this.repositoryGitClient?.push('origin', targetBranch)
 
     return Promise.resolve()
   }
