@@ -1,0 +1,111 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/pci-dss-page-tampering/cli-args.schema.json",
+  "title": "CLI Arguments Schema",
+  "description": "JSON Schema representation of command-line arguments for PCI DSS Page Tampering Detection system",
+  "type": "object",
+  "properties": {
+    "mode": {
+      "type": "string",
+      "enum": ["inventory", "detection", "all"],
+      "default": "all",
+      "description": "Execution mode: 'inventory' updates baseline, 'detection' monitors production, 'all' executes both sequentially"
+    },
+    "target": {
+      "type": "string",
+      "description": "Specific target name to process (e.g., '1.0'). If omitted, all targets in repository are processed.",
+      "examples": ["1.0", "2.0", "staging-app"]
+    },
+    "repo": {
+      "type": "string",
+      "format": "uri",
+      "description": "Inventory repository URL. Supports HTTPS (requires git-token) and file:// protocols for local testing.",
+      "examples": [
+        "https://github.com/org/script-inventory",
+        "file:///Users/dev/local-inventory"
+      ]
+    },
+    "gitToken": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Git authentication token. Required for HTTPS repositories. Use GitHub Personal Access Token or similar.",
+      "examples": ["ghp_abc123xyz"]
+    },
+    "slackToken": {
+      "type": "string",
+      "description": "Slack OAuth token for sending alerts. If omitted, alerts are logged to console instead.",
+      "examples": ["xoxb-1234-5678-abcd"]
+    },
+    "inventoryBranch": {
+      "type": "string",
+      "default": "updates/scripts",
+      "description": "Git branch for inventory operations. Inventory workflow pulls from and pushes to this branch.",
+      "examples": ["updates/scripts", "feature/new-baseline", "staging"]
+    },
+    "detectionBranch": {
+      "type": "string",
+      "default": "main",
+      "description": "Git branch for detection operations. Detection workflow pulls baseline from this branch (read-only).",
+      "examples": ["main", "release/v2.0", "production"]
+    },
+    "help": {
+      "type": "boolean",
+      "default": false,
+      "description": "Display help documentation and exit. When true, all other parameters are ignored."
+    }
+  },
+  "required": ["repo", "gitToken"],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "$comment": "Full workflow (inventory + detection) for all targets",
+      "repo": "https://github.com/org/inventory",
+      "gitToken": "ghp_token123",
+      "slackToken": "xoxb-slack-token"
+    },
+    {
+      "$comment": "Inventory only for specific target",
+      "mode": "inventory",
+      "target": "1.0",
+      "repo": "https://github.com/org/inventory",
+      "gitToken": "ghp_token123"
+    },
+    {
+      "$comment": "Detection with custom branch",
+      "mode": "detection",
+      "detectionBranch": "release/v2.0",
+      "repo": "https://github.com/org/inventory",
+      "gitToken": "ghp_token123",
+      "slackToken": "xoxb-slack-token"
+    },
+    {
+      "$comment": "Local testing with file protocol",
+      "repo": "file:///Users/dev/test-inventory",
+      "gitToken": "dummy"
+    },
+    {
+      "$comment": "Display help",
+      "help": true
+    }
+  ],
+  "definitions": {
+    "ExecutionMode": {
+      "type": "string",
+      "enum": ["inventory", "detection", "all"],
+      "description": "Workflow execution modes"
+    },
+    "RepositoryProtocol": {
+      "type": "string",
+      "enum": ["https", "file"],
+      "description": "Supported repository URL protocols"
+    }
+  },
+  "metadata": {
+    "version": "1.0.0",
+    "lastModified": "2025-11-12",
+    "compatibility": {
+      "node": ">=22",
+      "typescript": ">=5.0"
+    }
+  }
+}
