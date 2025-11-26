@@ -97,17 +97,17 @@
 
 ### Implementation for User Story 2
 
-- [ ] T033 [US2] Implement --mode detection logic in main.ts (execute detection workflow only, pass detection branch to GitInventoryStore.pull)
-- [ ] T034 [US2] Ensure detection mode is read-only in main.ts (never calls GitInventoryStore.push)
-- [ ] T035 [US2] Implement --detection-branch override in main.ts (pass to GitInventoryStore.pull for detection workflow)
-- [ ] T036 [US2] Verify alert routing works in detection mode (SlackAlertService or console based on --slack-token)
+- [x] T033 [US2] Implement --mode detection logic in main.ts (execute detection workflow only, pass detection branch to GitInventoryStore.pull)
+- [x] T034 [US2] Ensure detection mode is read-only in main.ts (never calls GitInventoryStore.push)
+- [x] T035 [US2] Implement --detection-branch override in main.ts (pass to GitInventoryStore.pull for detection workflow)
+- [x] T036 [US2] Verify alert routing works in detection mode (SlackAlertService or console based on --slack-token)
 
 ### Integration Tests for User Story 2
 
-- [ ] T037 [P] [US2] Integration test for --mode detection in test/integration/cli-modes.test.ts
-- [ ] T038 [P] [US2] Integration test for --detection-branch override in test/integration/cli-branches.test.ts
-- [ ] T039 [P] [US2] Integration test verifying detection mode doesn't modify inventory in test/integration/cli-modes.test.ts
-- [ ] T040 [P] [US2] Integration test for alert routing (console vs Slack) in test/integration/cli-modes.test.ts
+- [x] T037 [P] [US2] Integration test for --mode detection in test/integration/cli-modes.test.ts
+- [x] T038 [P] [US2] Integration test for --detection-branch override in test/integration/cli-branches.test.ts
+- [x] T039 [P] [US2] Integration test verifying detection mode doesn't modify inventory in test/integration/cli-modes.test.ts
+- [x] T040 [P] [US2] Integration test for alert routing (console vs Slack) in test/integration/cli-modes.test.ts
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work independently - detection can run separately from inventory
 
