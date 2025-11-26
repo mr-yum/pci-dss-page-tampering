@@ -74,14 +74,14 @@
 
 ### Integration Tests for User Story 1
 
-- [ ] T025 [P] [US1] Integration test for --mode inventory in test/integration/cli-modes.test.ts
-- [ ] T026 [P] [US1] Integration test for --mode all in test/integration/cli-modes.test.ts
-- [ ] T027 [P] [US1] Integration test for --target filtering in test/integration/cli-modes.test.ts
-- [ ] T028 [P] [US1] Integration test for --help flag in test/integration/cli-help.test.ts
-- [ ] T029 [P] [US1] Integration test for missing required parameters in test/integration/cli-validation.test.ts
-- [ ] T030 [P] [US1] Integration test for invalid target name in test/integration/cli-validation.test.ts
-- [ ] T031 [P] [US1] Integration test for --inventory-branch override in test/integration/cli-branches.test.ts
-- [ ] T032 [P] [US1] Integration test for exit codes in test/integration/cli-validation.test.ts
+- [x] T025 [P] [US1] Integration test for --mode inventory in test/integration/cli-modes.test.ts
+- [x] T026 [P] [US1] Integration test for --mode all in test/integration/cli-modes.test.ts
+- [x] T027 [P] [US1] Integration test for --target filtering in test/integration/cli-modes.test.ts
+- [x] T028 [P] [US1] Integration test for --help flag in test/integration/cli-help.test.ts
+- [x] T029 [P] [US1] Integration test for missing required parameters in test/integration/cli-validation.test.ts
+- [x] T030 [P] [US1] Integration test for invalid target name in test/integration/cli-validation.test.ts
+- [x] T031 [P] [US1] Integration test for --inventory-branch override in test/integration/cli-branches.test.ts
+- [x] T032 [P] [US1] Integration test for exit codes in test/integration/cli-validation.test.ts
 
 **Checkpoint**: At this point, User Story 1 should be fully functional - CI/CD pipelines can use --mode inventory with --target, --help works, --mode all works for scheduled monitoring, proper exit codes
 
