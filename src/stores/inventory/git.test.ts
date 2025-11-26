@@ -2,8 +2,8 @@ import { readdir } from 'fs/promises'
 import { SimpleGit, simpleGit } from 'simple-git'
 
 import { PullTarget } from '../../types/target'
-import { getInventoryFileNames, getRawInventoryFromFile } from '../../utils/file'
 import { GIT_DETECTION_SCRIPTS_BRANCH_NAME, GIT_UPDATED_SCRIPTS_BRANCH_NAME } from '../../utils/constants'
+import { getInventoryFileNames, getRawInventoryFromFile } from '../../utils/file'
 import { GitInventoryStore } from './git'
 
 // Mock simple-git

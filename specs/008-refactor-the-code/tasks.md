@@ -60,17 +60,17 @@
 
 ### Implementation for User Story 1
 
-- [ ] T014 [US1] Refactor main.ts to accept RuntimeConfiguration instead of environment variables
-- [ ] T015 [US1] Implement CLI argument parsing and validation in main.ts (call parser.ts and config.ts)
-- [ ] T016 [US1] Implement --help flag handling in main.ts (display help and exit with code 0)
-- [ ] T017 [US1] Implement --mode inventory logic in main.ts (execute inventory workflow only, pass branch to GitInventoryStore)
-- [ ] T018 [US1] Implement --target filtering in main.ts (filter inventory array to single target if specified)
-- [ ] T019 [US1] Implement exit code handling in main.ts (ExitCode.Success, ValidationError, ExecutionError)
-- [ ] T020 [US1] Remove hardcoded repository URL from main.ts (use config.repository.url and config.authentication.repositoryTarget)
-- [ ] T021 [US1] Implement --mode all logic in main.ts (inventory first, then detection sequentially)
-- [ ] T022 [US1] Implement fail-fast for --mode all in main.ts (exit on inventory failure without running detection)
-- [ ] T023 [US1] Add error handling for missing required parameters in main.ts (display help, exit with code 1)
-- [ ] T024 [US1] Add error handling for target validation in main.ts (check target exists in inventory, exit with code 2 if not)
+- [x] T014 [US1] Refactor main.ts to accept RuntimeConfiguration instead of environment variables
+- [x] T015 [US1] Implement CLI argument parsing and validation in main.ts (call parser.ts and config.ts)
+- [x] T016 [US1] Implement --help flag handling in main.ts (display help and exit with code 0)
+- [x] T017 [US1] Implement --mode inventory logic in main.ts (execute inventory workflow only, pass branch to GitInventoryStore)
+- [x] T018 [US1] Implement --target filtering in main.ts (filter inventory array to single target if specified)
+- [x] T019 [US1] Implement exit code handling in main.ts (ExitCode.Success, ValidationError, ExecutionError)
+- [x] T020 [US1] Remove hardcoded repository URL from main.ts (use config.repository.url and config.authentication.repositoryTarget)
+- [x] T021 [US1] Implement --mode all logic in main.ts (inventory first, then detection sequentially)
+- [x] T022 [US1] Implement fail-fast for --mode all in main.ts (exit on inventory failure without running detection)
+- [x] T023 [US1] Add error handling for missing required parameters in main.ts (display help, exit with code 1)
+- [x] T024 [US1] Add error handling for target validation in main.ts (check target exists in inventory, exit with code 2 if not)
 
 ### Integration Tests for User Story 1
 

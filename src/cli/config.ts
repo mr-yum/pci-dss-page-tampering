@@ -1,5 +1,5 @@
 import type { CliArguments } from '../types/cli.js'
-import type { AlertingConfiguration,AuthenticationConfiguration, BranchConfiguration, ExecutionMode, RepositoryConfiguration, RuntimeConfiguration, TargetFilter } from '../types/config.js'
+import type { AlertingConfiguration, AuthenticationConfiguration, BranchConfiguration, ExecutionMode, RepositoryConfiguration, RuntimeConfiguration, TargetFilter } from '../types/config.js'
 
 /**
  * Build runtime configuration from validated CLI arguments
