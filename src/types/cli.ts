@@ -16,13 +16,69 @@ export type RawCliArgs = {
 }
 
 /**
+ * T051: Custom URL validation with helpful error messages
+ * Accepts https:// and file:// protocols
+ */
+const repoUrlSchema = z.string().superRefine((value, ctx) => {
+  // Check if empty
+  if (!value || value.trim() === '') {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Repository URL is required. Example: https://github.com/org/repo or file:///path/to/repo',
+    })
+    return
+  }
+
+  // Check for supported protocols
+  const trimmedValue = value.trim()
+  const hasHttps = trimmedValue.startsWith('https://')
+  const hasFile = trimmedValue.startsWith('file://')
+
+  if (!hasHttps && !hasFile) {
+    // Provide specific suggestions based on what they might have meant
+    if (trimmedValue.startsWith('http://')) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Insecure http:// URLs are not supported. Use https:// instead. Example: https://github.com/org/repo',
+      })
+    } else if (trimmedValue.startsWith('git@') || (trimmedValue.includes(':') && !trimmedValue.includes('://'))) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'SSH URLs (git@...) are not supported. Use HTTPS format instead. Example: https://github.com/org/repo',
+      })
+    } else if (trimmedValue.startsWith('/') || trimmedValue.startsWith('./') || trimmedValue.startsWith('~')) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Local paths must use file:// protocol. Try: file://${trimmedValue.startsWith('/') ? trimmedValue : '/' + trimmedValue}`,
+      })
+    } else {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Invalid repository URL format. Supported formats: https://github.com/org/repo or file:///path/to/repo',
+      })
+    }
+    return
+  }
+
+  // Validate URL structure
+  try {
+    new URL(trimmedValue)
+  } catch {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `Invalid URL format: "${trimmedValue}". Please provide a valid URL.`,
+    })
+  }
+})
+
+/**
  * Zod schema for CLI argument validation
  * Applies type checking, format validation, and default values
  */
 export const CliArgsSchema = z.object({
   mode: z.enum(['inventory', 'detection', 'all']).default('all'),
   target: z.string().optional(),
-  repo: z.string().url('Repository must be a valid URL'),
+  repo: repoUrlSchema,
   gitToken: z.string().min(1, 'Git token is required for HTTPS repositories'),
   slackToken: z.string().optional(),
   inventoryBranch: z.string().default('updates/scripts'),

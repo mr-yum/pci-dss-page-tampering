@@ -2,6 +2,20 @@ name: Run inventory and detection
 
 on:
   workflow_dispatch:
+    inputs:
+      target:
+        description: 'Specific target to process (leave empty for all targets)'
+        required: false
+        type: string
+      mode:
+        description: 'Execution mode'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - inventory
+          - detection
   schedule:
     # Run daily at 12:00 PM UTC, night time in Sydney/Melbourne
     - cron: '0 12 * * *'
@@ -9,8 +23,6 @@ on:
     branches: ['main']
 
 env:
-  INVENTORY_REPO_PAT: ${{ secrets.INVENTORY_REPO_PAT }}
-  SLACK_OAUTH_TOKEN: ${{ secrets.SLACK_OAUTH_TOKEN }}
   NPMRC: ${{ secrets.NPMRC_RO_FILE }}
 
 jobs:
@@ -26,13 +38,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      - name: Configure git for inventory and detection
+      - name: Validate required secrets
         run: |
-          [ -n "${INVENTORY_REPO_PAT:-}" ] || { echo "INVENTORY_REPO_PAT is empty"; exit 1; }
-
-      - name: Configure Slack for alerting
-        run: |
-          [ -n "${SLACK_OAUTH_TOKEN:-}" ] || { echo "SLACK_OAUTH_TOKEN is empty"; exit 1; }
+          [ -n "${{ secrets.INVENTORY_REPO_PAT }}" ] || { echo "INVENTORY_REPO_PAT secret is missing"; exit 1; }
+          [ -n "${{ secrets.SLACK_OAUTH_TOKEN }}" ] || { echo "SLACK_OAUTH_TOKEN secret is missing"; exit 1; }
 
       - name: Configure npm auth for both registries
         run: |
@@ -96,9 +105,27 @@ jobs:
             wget \
             xdg-utils
 
-      - name: Run start command
+      - name: Run PCI DSS detection
         timeout-minutes: 30
         run: |
-          echo "▶️ Testing start command..."
-          npm start
-          echo "✅ Start command test completed"
+          echo "▶️ Running PCI DSS Page Tampering Detection..."
+
+          # Build CLI arguments
+          CLI_ARGS="--repo https://github.com/mr-yum/script-inventory"
+          CLI_ARGS="$CLI_ARGS --git-token ${{ secrets.INVENTORY_REPO_PAT }}"
+          CLI_ARGS="$CLI_ARGS --slack-token ${{ secrets.SLACK_OAUTH_TOKEN }}"
+
+          # Add mode (default: all for scheduled runs)
+          MODE="${{ github.event.inputs.mode || 'all' }}"
+          CLI_ARGS="$CLI_ARGS --mode $MODE"
+
+          # Add target if specified (for workflow_dispatch)
+          TARGET="${{ github.event.inputs.target }}"
+          if [ -n "$TARGET" ]; then
+            CLI_ARGS="$CLI_ARGS --target $TARGET"
+          fi
+
+          echo "Executing: npm start -- $CLI_ARGS"
+          npm start -- $CLI_ARGS
+
+          echo "✅ PCI DSS detection completed successfully"

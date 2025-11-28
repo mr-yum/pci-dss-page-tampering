@@ -161,11 +161,12 @@ describe('CLI Validation Integration Tests', () => {
       expect(result.status).not.toBe(1)
     })
 
-    it('should accept http:// protocol URLs for --repo (upgraded to https)', () => {
+    it('should reject http:// protocol URLs for --repo (security: requires https)', () => {
       const result = executeCli(['--repo', 'http://github.com/test/repo', '--git-token', 'dummy-token'])
 
-      // Should not fail validation (may fail execution)
-      expect(result.status).not.toBe(1)
+      // T051: Should fail validation - insecure http:// not allowed for PCI DSS compliance
+      expect(result.status).toBe(1)
+      expect(result.stderr).toContain('http://')
     })
 
     it('should reject empty string for --git-token', () => {

@@ -42,6 +42,9 @@ async function main() {
     // T014: Build runtime configuration from validated arguments
     const config = buildConfiguration(cliArgs)
 
+    // T052: Log configuration at startup (redact sensitive tokens)
+    logConfiguration(config)
+
     // Execute workflows based on configuration
     await executeWorkflows(config)
 
@@ -60,14 +63,17 @@ async function main() {
       process.exit(ExitCode.ValidationError)
     }
 
-    // T019: Handle execution errors (Git, network, workflow failures)
+    // T048, T049, T050: Handle execution errors with comprehensive messages
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    const enhancedError = getEnhancedErrorMessage(errorMessage)
+
     console.error('[Main]: Application execution failed')
-    if (error instanceof Error) {
-      console.error(`[Main]: Error name: ${error.name}`)
-      console.error(`[Main]: Error message: ${error.message}`)
+    console.error(`[Main]: ${enhancedError.category}: ${enhancedError.message}`)
+    if (enhancedError.suggestion) {
+      console.error(`[Main]: Suggestion: ${enhancedError.suggestion}`)
+    }
+    if (error instanceof Error && error.stack) {
       console.error(`[Main]: Stack trace:`, error.stack)
-    } else {
-      console.error(`[Main]: Error: ${error}`)
     }
     process.exit(ExitCode.ExecutionError)
   }
@@ -236,6 +242,130 @@ function filterInventoryByTarget(inventory: Inventory[], targetName: string | nu
   }
 
   return filtered
+}
+
+/**
+ * T052: Log CLI configuration at startup
+ * Redacts sensitive tokens to avoid exposing credentials in logs
+ */
+function logConfiguration(config: RuntimeConfiguration): void {
+  const redactToken = (token: string | null): string => {
+    if (!token) return '(not provided)'
+    if (token.length <= 8) return '***'
+    return `${token.substring(0, 4)}...${token.substring(token.length - 4)} (${token.length} chars)`
+  }
+
+  console.log('[Main]: Starting PCI DSS Page Tampering Detection')
+  console.log('[Main]: Configuration:')
+  console.log(`[Main]:   Mode: ${config.executionMode}`)
+  console.log(`[Main]:   Target: ${config.targetFilter.targetName ?? 'all targets'}`)
+  console.log(`[Main]:   Repository: ${config.repository.url}`)
+  console.log(`[Main]:   Inventory Branch: ${config.branches.inventory}`)
+  console.log(`[Main]:   Detection Branch: ${config.branches.detection}`)
+  console.log(`[Main]:   Git Token: ${redactToken(config.authentication.gitToken)}`)
+  console.log(`[Main]:   Alerting: ${config.alerting.mode}${config.alerting.mode === 'slack' ? ` (token: ${redactToken(config.alerting.slackToken)})` : ''}`)
+  console.log('')
+}
+
+/**
+ * T048, T049, T050: Enhanced error message helper
+ * Classifies errors and provides helpful suggestions for common failure scenarios
+ */
+type EnhancedErrorInfo = {
+  category: string
+  message: string
+  suggestion?: string
+}
+
+function getEnhancedErrorMessage(errorMessage: string): EnhancedErrorInfo {
+  const lowerMessage = errorMessage.toLowerCase()
+
+  // T048: Git authentication failures
+  if (lowerMessage.includes('authentication') || lowerMessage.includes('401') || lowerMessage.includes('403') || lowerMessage.includes('could not read username') || lowerMessage.includes('invalid credentials')) {
+    return {
+      category: 'Git Authentication Error',
+      message: errorMessage,
+      suggestion: 'Verify that --git-token is a valid GitHub Personal Access Token with "repo" scope. For GitHub Actions, use ${{ secrets.GITHUB_TOKEN }} or a PAT.',
+    }
+  }
+
+  // T048: Git permission errors
+  if (lowerMessage.includes('permission denied') || lowerMessage.includes('access denied')) {
+    return {
+      category: 'Git Permission Error',
+      message: errorMessage,
+      suggestion: 'The provided token may not have sufficient permissions. Ensure the token has "repo" scope for private repositories or "public_repo" for public repositories.',
+    }
+  }
+
+  // T049: Repository URL errors (malformed or not found)
+  if (lowerMessage.includes('repository not found') || lowerMessage.includes('404') || lowerMessage.includes('could not find repository')) {
+    return {
+      category: 'Repository Not Found',
+      message: errorMessage,
+      suggestion: 'Verify that --repo points to a valid repository URL. Check for typos in the organization/repository name and ensure the repository exists.',
+    }
+  }
+
+  // T049: Invalid URL format
+  if (lowerMessage.includes('invalid url') || lowerMessage.includes('malformed') || lowerMessage.includes('unable to parse')) {
+    return {
+      category: 'Invalid Repository URL',
+      message: errorMessage,
+      suggestion: 'The --repo parameter must be a valid URL. Examples: https://github.com/org/repo or file:///path/to/local/repo',
+    }
+  }
+
+  // T050: Branch name errors
+  if (lowerMessage.includes('branch') && (lowerMessage.includes('not found') || lowerMessage.includes('does not exist') || lowerMessage.includes('invalid ref'))) {
+    return {
+      category: 'Invalid Branch Name',
+      message: errorMessage,
+      suggestion: 'The specified branch does not exist. Check --inventory-branch or --detection-branch values. Available defaults: "updates/scripts" for inventory, "main" for detection.',
+    }
+  }
+
+  // T050: Git ref errors
+  if (lowerMessage.includes('refname') || lowerMessage.includes('invalid reference')) {
+    return {
+      category: 'Invalid Git Reference',
+      message: errorMessage,
+      suggestion: 'Branch names must be valid Git references. Avoid special characters and ensure the branch exists in the repository.',
+    }
+  }
+
+  // Network errors
+  if (lowerMessage.includes('network') || lowerMessage.includes('econnrefused') || lowerMessage.includes('enotfound') || lowerMessage.includes('timeout') || lowerMessage.includes('etimedout')) {
+    return {
+      category: 'Network Error',
+      message: errorMessage,
+      suggestion: 'Unable to connect to the Git server. Check your network connection and verify the repository URL is accessible.',
+    }
+  }
+
+  // Clone directory errors
+  if (lowerMessage.includes('already exists') && lowerMessage.includes('clone')) {
+    return {
+      category: 'Clone Directory Exists',
+      message: errorMessage,
+      suggestion: 'The local clone directory already exists. This may be from a previous run. Delete the ./pulled_repo directory and retry.',
+    }
+  }
+
+  // SSL/TLS errors
+  if (lowerMessage.includes('ssl') || lowerMessage.includes('certificate')) {
+    return {
+      category: 'SSL/TLS Error',
+      message: errorMessage,
+      suggestion: 'There was an SSL certificate error. This may indicate a network proxy or certificate issue. Verify your network configuration.',
+    }
+  }
+
+  // Default: return original error
+  return {
+    category: 'Execution Error',
+    message: errorMessage,
+  }
 }
 
 // Execute main function

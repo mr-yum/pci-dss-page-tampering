@@ -142,15 +142,15 @@
 
 **Purpose**: Improvements that affect multiple user stories, error handling enhancements, documentation
 
-- [ ] T048 Add comprehensive error messages for Git authentication failures in main.ts
-- [ ] T049 Add comprehensive error messages for malformed repository URLs in main.ts
-- [ ] T050 Add comprehensive error messages for invalid branch names in main.ts
-- [ ] T051 [P] Validate URL format for --repo parameter returns helpful error (not just "invalid URL")
-- [ ] T052 [P] Add logging for CLI configuration at startup (log parsed config, redact sensitive tokens)
-- [ ] T053 [P] Update README.md or CLAUDE.md with CLI usage instructions (reference quickstart.md)
-- [ ] T054 Verify all environment variable reads removed from codebase (grep for INVENTORY_REPO_PAT, SLACK_OAUTH_TOKEN, etc.)
-- [ ] T055 Run full precommit check (formatting, linting, typing, unit tests, integration tests)
-- [ ] T056 Manual testing with GitHub Actions workflow (update .github/workflows/ to use CLI parameters)
+- [x] T048 Add comprehensive error messages for Git authentication failures in main.ts
+- [x] T049 Add comprehensive error messages for malformed repository URLs in main.ts
+- [x] T050 Add comprehensive error messages for invalid branch names in main.ts
+- [x] T051 [P] Validate URL format for --repo parameter returns helpful error (not just "invalid URL")
+- [x] T052 [P] Add logging for CLI configuration at startup (log parsed config, redact sensitive tokens)
+- [x] T053 [P] Update README.md or CLAUDE.md with CLI usage instructions (reference quickstart.md)
+- [x] T054 Verify all environment variable reads removed from codebase (grep for INVENTORY_REPO_PAT, SLACK_OAUTH_TOKEN, etc.)
+- [x] T055 Run full precommit check (formatting, linting, typing, unit tests, integration tests)
+- [x] T056 Manual testing with GitHub Actions workflow (update .github/workflows/ to use CLI parameters)
 
 ---
 
