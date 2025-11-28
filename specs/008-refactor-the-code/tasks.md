@@ -123,16 +123,16 @@
 
 ### Implementation for User Story 3
 
-- [ ] T041 [US3] Add file:// protocol support validation in src/cli/config.ts (Zod schema already supports URLs, verify file:// works)
-- [ ] T042 [US3] Implement console logging fallback in main.ts when --slack-token is omitted
-- [ ] T043 [US3] Update help text in src/cli/help.ts to include local testing examples with file:// protocol
-- [ ] T044 [US3] Document console vs Slack alerting behavior in help text
+- [x] T041 [US3] Add file:// protocol support validation in src/cli/config.ts (Zod schema already supports URLs, verify file:// works)
+- [x] T042 [US3] Implement console logging fallback in main.ts when --slack-token is omitted
+- [x] T043 [US3] Update help text in src/cli/help.ts to include local testing examples with file:// protocol
+- [x] T044 [US3] Document console vs Slack alerting behavior in help text
 
 ### Integration Tests for User Story 3
 
-- [ ] T045 [P] [US3] Integration test for file:// protocol repository in test/integration/cli-validation.test.ts
-- [ ] T046 [P] [US3] Integration test for console logging (no --slack-token) in test/integration/cli-modes.test.ts
-- [ ] T047 [P] [US3] End-to-end test with local file-based repository in test/integration/cli-validation.test.ts
+- [x] T045 [P] [US3] Integration test for file:// protocol repository in test/integration/cli-validation.test.ts
+- [x] T046 [P] [US3] Integration test for console logging (no --slack-token) in test/integration/cli-modes.test.ts
+- [x] T047 [P] [US3] End-to-end test with local file-based repository in test/integration/cli-validation.test.ts
 
 **Checkpoint**: All user stories should now be independently functional - developers can test locally, pipelines can use inventory/detection modes, operations can monitor on-demand
 

@@ -180,4 +180,59 @@ describe('CLI Modes Integration Tests', () => {
       })
     })
   })
+
+  /**
+   * T046: Integration test for console logging (no --slack-token)
+   * Tests that the system works correctly without Slack alerting, using console logging instead
+   */
+  describe('T046: Console logging fallback (no --slack-token)', () => {
+    it('should work without --slack-token parameter', () => {
+      const result = executeCli(['--mode', 'detection', '--repo', 'file:///tmp/test-repo', '--git-token', 'dummy-token'])
+
+      // Should not fail validation (slack-token is optional)
+      expect(result.status).not.toBe(1)
+    })
+
+    it('should not require --slack-token for any execution mode', () => {
+      const modes = ['inventory', 'detection', 'all']
+
+      modes.forEach((mode) => {
+        const result = executeCli(['--mode', mode, '--repo', 'file:///tmp/test-repo', '--git-token', 'dummy-token'])
+
+        // No mode should require --slack-token
+        expect(result.status).not.toBe(1)
+      })
+    })
+
+    it('should document console logging in help text', () => {
+      const result = executeCli(['--help'])
+
+      expect(result.status).toBe(0)
+      // Help should mention console logging behavior
+      expect(result.stdout).toContain('console')
+      expect(result.stdout).toContain('--slack-token')
+    })
+
+    it('should indicate console vs Slack alerting in help', () => {
+      const result = executeCli(['--help'])
+
+      expect(result.status).toBe(0)
+      // Help should explain the alerting behavior difference
+      expect(result.stdout).toMatch(/without.*slack-token|omit.*console|logged.*console/i)
+    })
+
+    it('should accept --slack-token when provided', () => {
+      const result = executeCli(['--mode', 'detection', '--repo', 'file:///tmp/test-repo', '--git-token', 'dummy-token', '--slack-token', 'xoxb-test-token'])
+
+      // Should not fail validation when slack-token is provided
+      expect(result.status).not.toBe(1)
+    })
+
+    it('should work with all required parameters but no --slack-token', () => {
+      const result = executeCli(['--mode', 'inventory', '--target', '1.0', '--repo', 'file:///tmp/test-repo', '--git-token', 'dummy-token', '--inventory-branch', 'updates/scripts', '--detection-branch', 'main'])
+
+      // Should not fail validation - all required params present, slack-token optional
+      expect(result.status).not.toBe(1)
+    })
+  })
 })

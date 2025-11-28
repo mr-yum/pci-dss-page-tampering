@@ -5,7 +5,9 @@ import { ZodError } from 'zod'
 import { buildConfiguration } from './cli/config.js'
 import { displayHelp } from './cli/help.js'
 import { parseArguments } from './cli/parser.js'
+import type { IAlertService } from './interfaces/alert'
 import { ScriptInventoryRepository } from './repositories/inventory'
+import { ConsoleAlertService } from './services/alert/console'
 import { SlackAlertService } from './services/alert/slack'
 import { HeaderComparisonService } from './services/comparison/header'
 import { ScriptComparisonService } from './services/comparison/script'
@@ -87,8 +89,9 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
   const scriptComparisonService = new ScriptComparisonService()
   const headerComparisonService = new HeaderComparisonService()
 
-  // Initialize alert service based on configuration
-  const slackAlertService = config.alerting.slackToken ? new SlackAlertService(config.alerting.slackToken) : new SlackAlertService('') // Console fallback
+  // T042: Initialize alert service based on configuration
+  // Use ConsoleAlertService for local development/testing when --slack-token is omitted
+  const alertService: IAlertService = config.alerting.slackToken ? new SlackAlertService(config.alerting.slackToken) : new ConsoleAlertService()
 
   const log = (message: string): void => {
     console.log(`[Main]: ${message}`)
@@ -115,8 +118,8 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
       const headerComparisonResults = await headerComparisonService.compare(detectionSummaryForTarget.target, payload, detectionSummaryForTarget.headerSummary)
 
       // Alert for inventory and target using typed results
-      await slackAlertService.alertForTypedResults(scriptComparisonResults, target, payload.alerts)
-      await slackAlertService.alertForTypedResults(headerComparisonResults, target, payload.alerts)
+      await alertService.alertForTypedResults(scriptComparisonResults, target, payload.alerts)
+      await alertService.alertForTypedResults(headerComparisonResults, target, payload.alerts)
 
       // Run inventory sanity check and return to push to inventory (only for inventory mode)
       if (target.type === 'inventory') {
