@@ -17,9 +17,9 @@ export class ScriptInventoryService implements IInventoryService {
     this._repository = args.inventoryRepository
   }
 
-  async pull(target: PullTarget): Promise<Inventory[]> {
+  async pull(target: PullTarget, branchName?: string): Promise<Inventory[]> {
     console.log('[Inventory → Service] Pulling inventory from store.')
-    return await this._repository.pull(target)
+    return await this._repository.pull(target, branchName)
   }
 
   diff(inventory: Inventory, comparisonResults: ComparisonResultType[]): Promise<InventoryDifferenceResult> {
@@ -43,11 +43,11 @@ export class ScriptInventoryService implements IInventoryService {
     })
   }
 
-  push(diffs: InventoryDifferenceResult[]): Promise<void> {
+  push(diffs: InventoryDifferenceResult[], branchName?: string): Promise<void> {
     if (diffs.length !== 0) {
       console.log('[Inventory → Service] Pushing script differences to inventory.')
       const inventoriesToPush = diffs.map((diff) => diff.newInventory)
-      return this._repository.push(inventoriesToPush)
+      return this._repository.push(inventoriesToPush, branchName)
     }
 
     return Promise.resolve()

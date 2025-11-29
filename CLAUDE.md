@@ -25,11 +25,74 @@ This is a PCI DSS compliance system implementing **requirements 6.4.3 (Script Ma
 - **Security-impacting HTTP headers** (CSP, security headers)
 - **Puppeteer workflows** simulating real user payment flows
 
+## CLI Usage
+
+The system is configured entirely via command-line parameters. No environment variables are used for execution configuration.
+
+### Basic Syntax
+
+```bash
+npm start -- [OPTIONS]
+```
+
+### Required Parameters
+
+| Parameter             | Description                                   | Example                            |
+| --------------------- | --------------------------------------------- | ---------------------------------- |
+| `--repo <url>`        | Inventory repository URL (HTTPS or file://)   | `https://github.com/org/inventory` |
+| `--git-token <token>` | Git authentication token (required for HTTPS) | `${{ secrets.GITHUB_TOKEN }}`      |
+
+### Optional Parameters
+
+| Parameter                   | Description                                         | Default           |
+| --------------------------- | --------------------------------------------------- | ----------------- |
+| `--mode <mode>`             | Execution mode: `inventory`, `detection`, or `all`  | `all`             |
+| `--target <name>`           | Process specific target (e.g., "1.0")               | all targets       |
+| `--slack-token <token>`     | Slack token for alerts (logs to console if omitted) | -                 |
+| `--inventory-branch <name>` | Branch for inventory operations                     | `updates/scripts` |
+| `--detection-branch <name>` | Branch for detection operations                     | `main`            |
+| `--help`                    | Display help message and exit                       | -                 |
+
+### Usage Examples
+
+```bash
+# Run full workflow (inventory + detection) for all targets
+npm start -- --repo https://github.com/org/inventory --git-token $TOKEN
+
+# Run inventory only for a specific target
+npm start -- --mode inventory --target 1.0 --repo https://github.com/org/inventory --git-token $TOKEN
+
+# Run detection with Slack alerts
+npm start -- --mode detection --repo https://github.com/org/inventory --git-token $TOKEN --slack-token $SLACK_TOKEN
+
+# Run detection with custom branches
+npm start -- --mode detection --detection-branch release/v2.0 --repo https://github.com/org/inventory --git-token $TOKEN
+
+# Local testing with file protocol (no authentication needed)
+npm start -- --repo file:///path/to/local/inventory --git-token dummy
+```
+
+### Exit Codes
+
+| Code | Meaning                                          |
+| ---- | ------------------------------------------------ |
+| 0    | Success (including --help)                       |
+| 1    | Validation error (invalid arguments)             |
+| 2    | Execution error (Git, network, workflow failure) |
+
+### Execution Modes
+
+- **`inventory`**: Updates baseline inventory, pushes changes to Git
+- **`detection`**: Read-only comparison against inventory, sends alerts
+- **`all`**: Runs inventory first, then detection (default)
+
+For detailed implementation documentation, see `specs/008-refactor-the-code/quickstart.md`.
+
 ## Commands
 
 ### Development
 
-- `npm run start` - Run the main detection process
+- `npm run start -- [OPTIONS]` - Run with CLI parameters (see CLI Usage above)
 - `npm run develop` - Build in watch mode for development
 - `npm run build:js` - Build TypeScript to JavaScript
 
@@ -266,10 +329,19 @@ Workflows are defined as step-by-step instructions for Puppeteer in `src/workflo
 - NPM >= 10 (Yarn/PNPM not supported)
 - Chrome dependencies for Puppeteer (see GitHub Actions workflow)
 
-## Required Environment Variables
+## Configuration
 
-- `INVENTORY_REPO_PAT` - GitHub Personal Access Token for script-inventory repository access
-- Slack webhook URLs for alerting (configured in SlackAlertService)
+**CLI Parameters Only**: The system no longer uses environment variables for runtime configuration. All configuration is provided via CLI parameters (see CLI Usage section above).
+
+**For GitHub Actions**: Pass secrets via CLI parameters:
+
+```yaml
+run: |
+  npm start -- \
+    --repo https://github.com/org/inventory \
+    --git-token ${{ secrets.INVENTORY_REPO_PAT }} \
+    --slack-token ${{ secrets.SLACK_TOKEN }}
+```
 
 ## Scheduled Execution
 
