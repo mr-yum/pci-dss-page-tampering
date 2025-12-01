@@ -17,12 +17,12 @@ export class ScriptInventoryRepository implements IScriptInventoryRepository {
     this.inventoryStore = args.inventoryStore
   }
 
-  async pull(target: PullTarget): Promise<Inventory[]> {
+  async pull(target: PullTarget, branchName?: string): Promise<Inventory[]> {
     // Clean up any existing clones
     console.log(`[Inventory → Repository] Removing any existing clones from path '${GIT_CLONE_PATH}'.`)
     await this.cleanUpExistingClone()
 
-    const pullResult = await this.inventoryStore.pull(target)
+    const pullResult = await this.inventoryStore.pull(target, branchName)
     const payloads = pullResult.payloads
 
     const payloadsToProcess = payloads.map(async (payload): Promise<Inventory> => {
@@ -80,7 +80,7 @@ export class ScriptInventoryRepository implements IScriptInventoryRepository {
     return Promise.resolve(processedPayloads)
   }
 
-  push(inventories: Inventory[]): Promise<void> {
+  push(inventories: Inventory[], branchName?: string): Promise<void> {
     const rawInventories = inventories.map((inventory) => {
       return {
         fileName: inventory.fileName,
@@ -99,7 +99,7 @@ export class ScriptInventoryRepository implements IScriptInventoryRepository {
       await writeFile(filePath, jsonString)
     })
 
-    return this.inventoryStore.push(inventories)
+    return this.inventoryStore.push(inventories, branchName)
   }
 
   /* This will clean up any cloned repos if it exists to ensure that we always have a clean slate to work with */
