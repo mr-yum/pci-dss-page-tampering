@@ -16,7 +16,7 @@
   },
   "devDependencies": {
     "@mr-yum/docker-tools": "^7",
-    "@mr-yum/dotenv-tools": "^4.0.0",
+    "@mr-yum/dotenv-tools": "^5.0.0",
     "@mr-yum/mryum-yaml": "^2.6.19",
     "@mr-yum/node-builder": "^5.0.0",
     "@types/jest": "^30.0.0",
