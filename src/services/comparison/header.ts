@@ -105,11 +105,12 @@ export class HeaderComparisonService implements IHeaderComparisonService {
     // T065: Log authorization result with matcher details
     const authorizeDescription = matchedEntry.authoriseWith.matcher.getDescription()
     const authStatus = isAuthorized ? 'AUTHORIZED' : `UNAUTHORIZED (${authorizationResult.reason || 'authorization failed'})`
-    target.logger.log(`Header '${header.name}' authorization via ${authorizeDescription}: ${authStatus}.`)
+    target.logger.log(`Header '${header.name}'='${header.value}' authorization via ${authorizeDescription}: ${authStatus}.`)
 
     // Return appropriate result
     // T030: Pass metadataPath from AuthorizationResult for composite matcher support
     if (!isAuthorized) {
+      target.logger.log(`\t Suggested regex:'${header.value.replace(/[.*+?^${}()/|[\]\\]/g, '\\$&').replace(/\\/g, '\\\\')}'`)
       return new KnownHeaderWithUnauthorisedContentFound_Header(
         target,
         timestamp,
