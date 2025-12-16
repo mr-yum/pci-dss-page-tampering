@@ -1,0 +1,120 @@
+{
+  "$schema": "https://api.slack.com/reference/block-kit/blocks",
+  "description": "Slack Block Kit payload for success execution notifications",
+  "example": {
+    "channel": "#pci-monitoring",
+    "blocks": [
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": ":white_check_mark: *Workflow Execution Completed Successfully* :white_check_mark:"
+        }
+      },
+      {
+        "type": "divider"
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*Execution Mode*: `all`"
+        }
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*Targets Processed*: 1.0, 2.0, 3.0"
+        }
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*Repository*: `https://github.com/org/inventory`"
+        }
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*Branches Used*: `updates/scripts` (inventory), `main` (detection)"
+        }
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*Resources Monitored*: 42 scripts and headers"
+        }
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*Completed At*: 2025-12-17T14:30:00.000Z"
+        }
+      }
+    ]
+  },
+  "variations": {
+    "mode_inventory_only": {
+      "description": "When mode=inventory, show only inventory branch",
+      "branches_section": {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*Branch Used*: `updates/scripts`"
+        }
+      }
+    },
+    "mode_detection_only": {
+      "description": "When mode=detection, show only detection branch",
+      "branches_section": {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*Branch Used*: `main`"
+        }
+      }
+    },
+    "truncated_targets": {
+      "description": "When > 5 targets processed, truncate list",
+      "targets_section": {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*Targets Processed*: 1.0, 2.0, 3.0, and 7 more"
+        }
+      }
+    },
+    "single_target": {
+      "description": "When only 1 target processed, singular message",
+      "targets_section": {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*Target Processed*: 1.0"
+        }
+      }
+    },
+    "zero_resources": {
+      "description": "Edge case: workflow completed but found zero resources (may indicate issue)",
+      "resources_section": {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*Resources Monitored*: 0 scripts and headers ⚠️ This may warrant investigation"
+        }
+      }
+    }
+  },
+  "notes": [
+    "Uses green check mark emoji (:white_check_mark:) instead of warning emoji (:warning:) used for violation alerts",
+    "No action buttons needed (informational only, no review required)",
+    "No tables needed (metadata fields only, not listing individual resources)",
+    "Channel selection based on workflow mode (see alert-service.interface.ts contract)",
+    "Error handling: If Slack API returns error, log to console and continue (non-blocking)"
+  ]
+}
