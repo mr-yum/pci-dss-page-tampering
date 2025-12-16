@@ -5,6 +5,8 @@ import type { KnownHeaderWithUnauthorisedContentFound } from '../../types/compar
 import type { KnownScriptWithUnauthorisedContentFound } from '../../types/comparison/known-script-unauthorised-content-found'
 import type { UnknownHeaderFound } from '../../types/comparison/unknown-header-found'
 import type { UnknownScriptFound } from '../../types/comparison/unknown-script-found'
+import { ExecutionMode } from '../../types/config'
+import type { ExecutionSummary } from '../../types/execution-summary'
 import type { InventoryAlert } from '../../types/inventory/model'
 import type { Target } from '../../types/target'
 
@@ -128,5 +130,91 @@ export class ConsoleAlertService implements IAlertService {
       return text
     }
     return text.slice(0, this.maxContentLength - 3) + '...'
+  }
+
+  /**
+   * Alert for successful workflow execution.
+   * Logs structured text to console with execution details.
+   * Parallel implementation to SlackAlertService for local testing.
+   */
+  async alertOnSuccess(summary: ExecutionSummary, _alertDestinations: InventoryAlert): Promise<void> {
+    console.log(`[Console Alert -> Success]: Workflow execution completed successfully`)
+    console.log(`  Mode: ${summary.mode}`)
+
+    // Format target list (truncate if > 5)
+    const targetDisplay = this.formatTargetList(summary.targetsProcessed)
+    console.log(`  Targets Processed: ${targetDisplay}`)
+
+    console.log(`  Repository: ${summary.repositoryUrl}`)
+
+    // Format branch display based on mode
+    const branchDisplay = this.formatBranchDisplay(summary)
+    console.log(`  Branch${summary.mode === ExecutionMode.All ? 'es' : ''}: ${branchDisplay}`)
+
+    // Format resource count with edge case warning
+    const resourceDisplay = this.formatResourceCount(summary.resourceCount)
+    console.log(`  Resources Monitored: ${resourceDisplay}`)
+
+    console.log(`  Completed At: ${summary.completedAt.toISOString()}`)
+
+    // Optional: execution duration (P3 enhancement)
+    if (summary.executionDuration !== undefined && summary.executionDuration !== null) {
+      console.log(`  Execution Duration: ${this.formatDuration(summary.executionDuration)}`)
+    }
+
+    console.log()
+  }
+
+  /**
+   * Format target list for display.
+   * Shows first 3 targets + "and N more" if > 5 targets.
+   */
+  private formatTargetList(targets: string[]): string {
+    if (targets.length <= 5) {
+      return targets.join(', ')
+    }
+    const firstThree = targets.slice(0, 3)
+    const remaining = targets.length - 3
+    return `${firstThree.join(', ')}, and ${remaining} more`
+  }
+
+  /**
+   * Format branch display based on execution mode.
+   */
+  private formatBranchDisplay(summary: ExecutionSummary): string {
+    switch (summary.mode) {
+      case ExecutionMode.Inventory:
+        return summary.inventoryBranch ?? 'unknown'
+      case ExecutionMode.Detection:
+        return summary.detectionBranch ?? 'unknown'
+      case ExecutionMode.All:
+        return `${summary.inventoryBranch ?? 'unknown'} (inventory), ${summary.detectionBranch ?? 'unknown'} (detection)`
+    }
+  }
+
+  /**
+   * Format resource count with edge case warning for zero resources.
+   */
+  private formatResourceCount(count: number): string {
+    if (count === 0) {
+      return '0 scripts and headers (This may warrant investigation)'
+    }
+    return `${count} scripts and headers`
+  }
+
+  /**
+   * Format duration in human-readable format.
+   */
+  private formatDuration(milliseconds: number): string {
+    if (milliseconds < 1000) {
+      return `${milliseconds}ms`
+    }
+    const seconds = Math.floor(milliseconds / 1000)
+    if (seconds < 60) {
+      return `${seconds}s`
+    }
+    const minutes = Math.floor(seconds / 60)
+    const remainingSeconds = seconds % 60
+    return `${minutes}m ${remainingSeconds}s`
   }
 }

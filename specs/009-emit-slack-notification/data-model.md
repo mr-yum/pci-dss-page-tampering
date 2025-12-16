@@ -13,18 +13,19 @@ Aggregated data about a completed workflow execution used to generate success no
 
 **Fields**:
 
-| Field | Type | Required | Description | Validation |
-|---|---|---|---|---|
-| `mode` | `ExecutionMode` | Yes | Workflow execution mode | One of: 'inventory', 'detection', 'all' |
-| `targetsProcessed` | `string[]` | Yes | Names of targets that were processed | Non-empty array, each string is target name or filename |
-| `repositoryUrl` | `string` | Yes | Git repository URL that was monitored | Valid URL format (https:// or file://) |
-| `inventoryBranch` | `string \| null` | No | Git branch used for inventory workflow | Required if mode='inventory' or mode='all', null for mode='detection' |
-| `detectionBranch` | `string \| null` | No | Git branch used for detection workflow | Required if mode='detection' or mode='all', null for mode='inventory' |
-| `resourceCount` | `number` | Yes | Total scripts + headers monitored across all targets | Non-negative integer |
-| `completedAt` | `Date` | Yes | Timestamp when workflow completed | ISO 8601 datetime |
-| `executionDuration` | `number \| null` | No | Milliseconds from start to completion (optional P3 enhancement) | Positive integer or null |
+| Field               | Type             | Required | Description                                                     | Validation                                                            |
+| ------------------- | ---------------- | -------- | --------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `mode`              | `ExecutionMode`  | Yes      | Workflow execution mode                                         | One of: 'inventory', 'detection', 'all'                               |
+| `targetsProcessed`  | `string[]`       | Yes      | Names of targets that were processed                            | Non-empty array, each string is target name or filename               |
+| `repositoryUrl`     | `string`         | Yes      | Git repository URL that was monitored                           | Valid URL format (https:// or file://)                                |
+| `inventoryBranch`   | `string \| null` | No       | Git branch used for inventory workflow                          | Required if mode='inventory' or mode='all', null for mode='detection' |
+| `detectionBranch`   | `string \| null` | No       | Git branch used for detection workflow                          | Required if mode='detection' or mode='all', null for mode='inventory' |
+| `resourceCount`     | `number`         | Yes      | Total scripts + headers monitored across all targets            | Non-negative integer                                                  |
+| `completedAt`       | `Date`           | Yes      | Timestamp when workflow completed                               | ISO 8601 datetime                                                     |
+| `executionDuration` | `number \| null` | No       | Milliseconds from start to completion (optional P3 enhancement) | Positive integer or null                                              |
 
 **Relationships**:
+
 - References `ExecutionMode` enum (already exists in `src/types/config.ts`)
 - Used by both `SlackAlertService.alertOnSuccess()` and `ConsoleAlertService.alertOnSuccess()`
 - Constructed in `main.ts` from `RuntimeConfiguration` and workflow execution results
@@ -32,6 +33,7 @@ Aggregated data about a completed workflow execution used to generate success no
 **State Transitions**: N/A (immutable data structure created once at workflow completion)
 
 **Example**:
+
 ```typescript
 const summary: ExecutionSummary = {
   mode: ExecutionMode.All,
@@ -52,6 +54,7 @@ const summary: ExecutionSummary = {
 Reused from existing `src/types/inventory/model.ts` - no modifications needed.
 
 **Usage in this feature**: Success notifications select destination based on workflow mode:
+
 - `alerts.inventory.newScriptIdentified` for mode='inventory'
 - `alerts.detection.newScriptDetected` for mode='detection' or mode='all'
 
@@ -64,6 +67,7 @@ Reused from existing `src/types/inventory/model.ts` - no modifications needed.
 **Source**: Validated at construction site in `main.ts` before passing to alert service.
 
 **Rules**:
+
 1. **Mode-Branch Consistency**:
    - If `mode === 'inventory'`: `inventoryBranch` MUST be non-null, `detectionBranch` MUST be null
    - If `mode === 'detection'`: `detectionBranch` MUST be non-null, `inventoryBranch` MUST be null
@@ -83,6 +87,7 @@ Reused from existing `src/types/inventory/model.ts` - no modifications needed.
    - If `executionDuration !== null`: MUST be positive integer
 
 **Error Handling**:
+
 - Validation failures log error and skip success notification (non-blocking per FR-009)
 - Invalid summary treated as notification failure (workflow still succeeds)
 
@@ -172,6 +177,7 @@ export function validateExecutionSummary(summary: ExecutionSummary): void {
 **Location**: After workflow completion (before `process.exit(ExitCode.Success)`)
 
 **Data Sources**:
+
 - `mode`: From `config.executionMode`
 - `targetsProcessed`: Extracted from `filteredInventory.map(inv => inv.fileName.replace(/\.json$/, ''))`
 - `repositoryUrl`: From `config.repository.url`
@@ -183,11 +189,13 @@ export function validateExecutionSummary(summary: ExecutionSummary): void {
 ### 2. Consumption by Alert Services
 
 **SlackAlertService**:
+
 - New method: `alertOnSuccess(summary: ExecutionSummary, alertDestinations: InventoryAlert): Promise<void>`
 - Formats Slack Block Kit message with green success styling
 - Selects destination based on `summary.mode`
 
 **ConsoleAlertService**:
+
 - New method: `alertOnSuccess(summary: ExecutionSummary, alertDestinations: InventoryAlert): Promise<void>`
 - Logs structured text to console with same information
 - Parallel implementation for local testing
@@ -195,6 +203,7 @@ export function validateExecutionSummary(summary: ExecutionSummary): void {
 ### 3. Interface Extension
 
 **IAlertService** (`src/interfaces/alert.ts`):
+
 ```typescript
 export interface IAlertService {
   alertForTypedResults(comparisonResults: ComparisonResultType[], target: Target, alertDestinations: InventoryAlert): Promise<void>
@@ -218,11 +227,13 @@ export interface IAlertService {
 ### Unit Tests
 
 **File**: `src/types/execution-summary.test.ts`
+
 - Test `validateExecutionSummary()` with valid/invalid inputs
 - Test mode-branch consistency rules
 - Test edge cases (zero resources, empty targets, future timestamps)
 
 **Files**: `src/services/alert/slack.test.ts`, `src/services/alert/console.test.ts`
+
 - Mock `alertOnSuccess()` calls with various ExecutionSummary payloads
 - Verify message formatting (target list truncation, branch display)
 - Verify error handling for invalid summaries
@@ -230,6 +241,7 @@ export interface IAlertService {
 ### Integration Tests
 
 **File**: `test/integration/success-notification.test.ts`
+
 - End-to-end workflow execution with success notification
 - Verify notification sent after inventory workflow completion
 - Verify notification sent after detection workflow completion

@@ -82,24 +82,24 @@ npm start -- --mode inventory --repo file:///path/to/local/inventory --git-token
 
 Success notifications include:
 
-| Field | Description | Example |
-|---|---|---|
-| Mode | Workflow execution mode | `inventory`, `detection`, `all` |
-| Targets Processed | Names of targets processed | `1.0, 2.0, 3.0` or `1.0, 2.0, 3.0, and 7 more` |
-| Repository | Git repository URL | `https://github.com/org/inventory` |
-| Branch(es) | Git branch(es) used | `updates/scripts` or `updates/scripts (inventory), main (detection)` |
-| Resources Monitored | Total scripts + headers | `42 scripts and headers` |
-| Completed At | Completion timestamp | `2025-12-17T14:30:00.000Z` |
+| Field               | Description                | Example                                                              |
+| ------------------- | -------------------------- | -------------------------------------------------------------------- |
+| Mode                | Workflow execution mode    | `inventory`, `detection`, `all`                                      |
+| Targets Processed   | Names of targets processed | `1.0, 2.0, 3.0` or `1.0, 2.0, 3.0, and 7 more`                       |
+| Repository          | Git repository URL         | `https://github.com/org/inventory`                                   |
+| Branch(es)          | Git branch(es) used        | `updates/scripts` or `updates/scripts (inventory), main (detection)` |
+| Resources Monitored | Total scripts + headers    | `42 scripts and headers`                                             |
+| Completed At        | Completion timestamp       | `2025-12-17T14:30:00.000Z`                                           |
 
 ## Alert Destination Routing
 
 Success notifications route to different Slack channels based on workflow mode:
 
-| Mode | Destination | Rationale |
-|---|---|---|
+| Mode        | Destination                            | Rationale                                             |
+| ----------- | -------------------------------------- | ----------------------------------------------------- |
 | `inventory` | `alerts.inventory.newScriptIdentified` | Inventory team sees inventory execution confirmations |
-| `detection` | `alerts.detection.newScriptDetected` | Detection team sees detection execution confirmations |
-| `all` | `alerts.detection.newScriptDetected` | Production monitoring channel (priority) |
+| `detection` | `alerts.detection.newScriptDetected`   | Detection team sees detection execution confirmations |
+| `all`       | `alerts.detection.newScriptDetected`   | Production monitoring channel (priority)              |
 
 **Note**: Alert destinations come from inventory configuration files. No new schema fields required.
 
@@ -144,12 +144,14 @@ npm run test:integration -- success-notification.test.ts
 ### Manual Testing
 
 1. **Local file repository** (no Slack):
+
    ```bash
    npm start -- --mode inventory --repo file:///tmp/test-inventory --git-token dummy
    # Verify console output shows success notification
    ```
 
 2. **Real Slack notification** (requires token):
+
    ```bash
    npm start -- --mode detection --repo https://github.com/org/inventory --git-token $TOKEN --slack-token $SLACK_TOKEN
    # Verify Slack message appears in configured channel

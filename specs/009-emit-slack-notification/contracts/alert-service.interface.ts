@@ -17,11 +17,7 @@ export interface IAlertService {
    * EXISTING METHOD: Alert for typed comparison results (scripts/headers).
    * Handles violation alerts during inventory and detection workflows.
    */
-  alertForTypedResults(
-    comparisonResults: ComparisonResultType[],
-    target: Target,
-    alertDestinations: InventoryAlert
-  ): Promise<void>
+  alertForTypedResults(comparisonResults: ComparisonResultType[], target: Target, alertDestinations: InventoryAlert): Promise<void>
 
   /**
    * NEW METHOD: Alert for successful workflow execution.
@@ -44,10 +40,7 @@ export interface IAlertService {
    * - ConsoleAlertService: Logs structured text to console
    * - Error handling: Wrap in try-catch at invocation site (main.ts), log error, continue execution
    */
-  alertOnSuccess(
-    summary: ExecutionSummary,
-    alertDestinations: InventoryAlert
-  ): Promise<void>
+  alertOnSuccess(summary: ExecutionSummary, alertDestinations: InventoryAlert): Promise<void>
 }
 
 /**

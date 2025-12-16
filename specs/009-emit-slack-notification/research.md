@@ -11,6 +11,7 @@
 **Question**: Which alert destination should success notifications use from the inventory configuration?
 
 **Context**: Current inventory schema defines separate destinations for different violation types:
+
 - `alerts.inventory.newScriptIdentified` - New scripts discovered during inventory workflow
 - `alerts.detection.newScriptDetected` - Unknown scripts found during detection workflow
 - `alerts.detection.scriptMismatchDetected` - Known scripts with hash changes
@@ -20,6 +21,7 @@ Success notifications are NOT violation alerts - they're informational confirmat
 **Investigation**:
 
 Examined existing inventory schema and alert routing logic:
+
 1. Inventory files define `alerts` object with workflow-specific destinations
 2. Each alert destination targets a specific Slack channel
 3. Violation alerts route to appropriate channels based on workflow type (inventory vs detection)
@@ -28,6 +30,7 @@ Examined existing inventory schema and alert routing logic:
 **Decision**: Reuse existing alert destinations based on workflow type
 
 **Rationale**:
+
 1. **No new schema required**: Avoid modifying inventory schema (Principle VI: Minimal Complexity)
 2. **Workflow-appropriate routing**: Success notifications follow the same workflow-based routing as violations
    - Inventory success → Use `alerts.inventory.newScriptIdentified` destination (same channel sees inventory discoveries)
@@ -36,6 +39,7 @@ Examined existing inventory schema and alert routing logic:
 4. **Fail-secure fallback**: If workflow type is ambiguous or mode=all, prefer detection destination (production monitoring channel)
 
 **Alternatives Considered**:
+
 - **Alt 1: Add new `alerts.successNotification` destination to schema**
   - Rejected: Requires inventory schema migration across all targets
   - Rejected: Adds complexity for marginal benefit (success alerts not security-critical)
@@ -45,12 +49,11 @@ Examined existing inventory schema and alert routing logic:
   - Rejected: Creates noise in channels (duplicate notifications)
 
 **Implementation Impact**:
+
 - `alertOnSuccess()` method signature includes `alertDestinations: InventoryAlert` and `workflowMode: ExecutionMode`
 - Logic selects destination based on workflow mode:
   ```typescript
-  const destination = workflowMode === ExecutionMode.Inventory
-    ? alertDestinations.inventory.newScriptIdentified
-    : alertDestinations.detection.newScriptDetected
+  const destination = workflowMode === ExecutionMode.Inventory ? alertDestinations.inventory.newScriptIdentified : alertDestinations.detection.newScriptDetected
   ```
 - For mode=all (both workflows), prefer detection destination (production monitoring priority)
 
@@ -63,12 +66,14 @@ Examined existing inventory schema and alert routing logic:
 **Investigation**:
 
 Reviewed existing Slack message payloads in `SlackAlertService`:
+
 1. Uses Slack Block Kit format with `blocks` array
 2. Standard sections: title (with emoji), divider, metadata fields, table of violations, action buttons
 3. Metadata includes: target type, target URL, count of changes
 4. Truncation logic: max 20 items in tables, max 100 chars in text fields
 
 Reviewed feature requirements (from spec.md):
+
 - FR-002: Execution mode (inventory, detection, or all)
 - FR-003: List of target names processed
 - FR-004: Repository URL
@@ -79,6 +84,7 @@ Reviewed feature requirements (from spec.md):
 **Decision**: Use Slack Block Kit with informational styling (success emoji, green color accent)
 
 **Message Structure**:
+
 ```
 🟢 Workflow Execution Completed Successfully
 
@@ -91,6 +97,7 @@ Completed At: 2025-12-17T14:30:00Z
 ```
 
 **Rationale**:
+
 1. **Visual distinction**: Green circle emoji (🟢) vs warning emoji (⚠️) for violations
 2. **Structured metadata**: Consistent with existing violation alert format
 3. **Concise target list**: If > 5 targets, show "N targets" with first 3 + "and N more"
@@ -98,6 +105,7 @@ Completed At: 2025-12-17T14:30:00Z
 5. **No action buttons**: Success notifications are informational only (no review needed)
 
 **Alternatives Considered**:
+
 - **Alt 1: Detailed tables of every script/header monitored**
   - Rejected: Too verbose for informational message, exceeds Slack message limits for large inventories
 - **Alt 2: Plain text console-style output**
@@ -106,6 +114,7 @@ Completed At: 2025-12-17T14:30:00Z
   - Rejected: Doesn't meet FR-002 through FR-007 requirements (needs execution details for audit)
 
 **Implementation Impact**:
+
 - Reuse `createScriptMessagePayload` pattern for Block Kit formatting
 - Create new `createSuccessMessagePayload()` helper method
 - No tables needed (metadata fields only)
@@ -120,6 +129,7 @@ Completed At: 2025-12-17T14:30:00Z
 **Investigation**:
 
 Reviewed existing error handling in `SlackAlertService.alertForTypedResults()`:
+
 1. Each alert category wrapped in separate try-catch blocks
 2. Errors logged to console with `[Alert Error]` prefix
 3. Execution continues even if one alert type fails
@@ -130,6 +140,7 @@ Reviewed constitution Principle IV: "Alert failures MUST NOT block detection (lo
 **Decision**: Wrap `alertOnSuccess()` call in try-catch at invocation site (main.ts)
 
 **Rationale**:
+
 1. **Consistency**: Matches existing error handling pattern for violation alerts
 2. **Non-blocking**: Execution exits with success code even if notification fails (FR-009)
 3. **Visibility**: Error logged to console for debugging (visible in GitHub Actions logs)
@@ -137,6 +148,7 @@ Reviewed constitution Principle IV: "Alert failures MUST NOT block detection (lo
 5. **Graceful degradation**: If Slack is down, workflow still succeeds and logs remain accessible
 
 **Implementation**:
+
 ```typescript
 // In main.ts after workflow completion
 try {
@@ -148,6 +160,7 @@ try {
 ```
 
 **Alternatives Considered**:
+
 - **Alt 1: Retry logic with exponential backoff**
   - Rejected: Adds complexity, delays workflow completion, not critical for informational alerts
 - **Alt 2: Fail workflow execution if notification fails**
@@ -156,6 +169,7 @@ try {
   - Rejected: Requires persistence layer, overkill for simple informational message
 
 **Implementation Impact**:
+
 - Error handling at call site in `main.ts` (not inside `alertOnSuccess()` method)
 - Console error message follows existing format: `[Main]: Failed to send success notification`
 - No changes to `IAlertService` interface error handling
@@ -164,13 +178,13 @@ try {
 
 ## Summary of Decisions
 
-| Decision Point | Choice | Impact |
-|---|---|---|
-| Alert destination routing | Reuse existing workflow-based destinations | No schema changes, workflow-appropriate channels |
-| Message format | Slack Block Kit with green success styling | Consistent with violation alerts, visually distinct |
-| Error handling | Try-catch at invocation site, log and continue | Non-blocking failures, visible in logs |
-| Target list truncation | Show first 3 + "and N more" if > 5 targets | Avoid Slack message size limits |
-| Branch display for mode=all | "branch1 (inventory), branch2 (detection)" | Clear which branch used for which workflow |
-| Execution duration | Optional enhancement (P3 user story) | Not required for P1/P2, can add later |
+| Decision Point              | Choice                                         | Impact                                              |
+| --------------------------- | ---------------------------------------------- | --------------------------------------------------- |
+| Alert destination routing   | Reuse existing workflow-based destinations     | No schema changes, workflow-appropriate channels    |
+| Message format              | Slack Block Kit with green success styling     | Consistent with violation alerts, visually distinct |
+| Error handling              | Try-catch at invocation site, log and continue | Non-blocking failures, visible in logs              |
+| Target list truncation      | Show first 3 + "and N more" if > 5 targets     | Avoid Slack message size limits                     |
+| Branch display for mode=all | "branch1 (inventory), branch2 (detection)"     | Clear which branch used for which workflow          |
+| Execution duration          | Optional enhancement (P3 user story)           | Not required for P1/P2, can add later               |
 
 All NEEDS CLARIFICATION items from Technical Context and Constitution Check are now resolved.
