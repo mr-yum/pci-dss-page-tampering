@@ -17,7 +17,8 @@ import { GitInventoryStore } from './stores/inventory/git'
 import { CliArgsSchema, ExitCode } from './types/cli.js'
 import type { ComparisonResultType } from './types/comparison'
 import { ExecutionMode, type RuntimeConfiguration } from './types/config.js'
-import type { Inventory, InventoryDifferenceResult } from './types/inventory/model'
+import type { ExecutionSummary } from './types/execution-summary'
+import type { Inventory, InventoryAlert, InventoryDifferenceResult } from './types/inventory/model'
 import { PullTarget, type Target } from './types/target'
 import { getScriptContentMatchersFromInventory } from './utils/script/matcher'
 
@@ -82,6 +83,7 @@ async function main() {
 /**
  * Execute workflows based on runtime configuration
  * T017, T018, T021, T022: Implements mode-based workflow execution with target filtering
+ * T009-T011: Sends success notification after workflow completion
  */
 async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
   // Initialize services with configuration (T020: Use config, not hardcoded URL)
@@ -103,8 +105,14 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
     console.log(`[Main]: ${message}`)
   }
 
+  // T009: Track execution context for success notification
+  let totalResourceCount = 0
+  const processedTargets: string[] = []
+  let alertDestinations: InventoryAlert | null = null
+
   // Helper function to run workflow for a single target
-  const runForTargetAsync = async (browser: Browser, payload: Inventory, target: Target): Promise<InventoryDifferenceResult | null> => {
+  // T009: Returns resource count in addition to inventory diff result
+  const runForTargetAsync = async (browser: Browser, payload: Inventory, target: Target): Promise<{ diffResult: InventoryDifferenceResult | null; resourceCount: number }> => {
     try {
       console.log(`[Main]: Starting processing for target: ${target.url}`)
 
@@ -127,14 +135,18 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
       await alertService.alertForTypedResults(scriptComparisonResults, target, payload.alerts)
       await alertService.alertForTypedResults(headerComparisonResults, target, payload.alerts)
 
+      // T009: Calculate resource count for this target (scripts + headers)
+      const resourceCount = scriptComparisonResults.length + headerComparisonResults.length
+
       // Run inventory sanity check and return to push to inventory (only for inventory mode)
       if (target.type === 'inventory') {
         // Combine script and header comparison results for single-pass processing
         const allComparisonResults: ComparisonResultType[] = [...scriptComparisonResults, ...headerComparisonResults]
 
-        return await scriptInventoryService.diff(payload, allComparisonResults)
+        const diffResult = await scriptInventoryService.diff(payload, allComparisonResults)
+        return { diffResult, resourceCount }
       } else {
-        return null
+        return { diffResult: null, resourceCount }
       }
     } catch (error) {
       console.error(`[Main]: Error processing target: ${target.url}`)
@@ -165,12 +177,23 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
       // T018, T024: Filter to specific target if requested
       const filteredInventory = filterInventoryByTarget(inventory, config.targetFilter.targetName)
 
+      // T011: Store alert destinations from first processed inventory
+      if (filteredInventory.length > 0 && alertDestinations === null) {
+        alertDestinations = filteredInventory[0]!.alerts
+      }
+
       log('Preparing to run inventory workflow.')
       const inventoryDiffResults = await Promise.all(
         filteredInventory.map(async (inventory) => {
-          const inventoryResult = await runForTargetAsync(browser, inventory, inventory.target.inventory)
+          const result = await runForTargetAsync(browser, inventory, inventory.target.inventory)
+          // T009: Track resource count and target name
+          totalResourceCount += result.resourceCount
+          const targetName = inventory.fileName.replace(/\.json$/, '')
+          if (!processedTargets.includes(targetName)) {
+            processedTargets.push(targetName)
+          }
           return {
-            inventoryResult: inventoryResult ?? (await Promise.reject('Expected inventory diff result to exist, but received null!')),
+            inventoryResult: result.diffResult ?? (await Promise.reject('Expected inventory diff result to exist, but received null!')),
           }
         }),
       )
@@ -182,9 +205,12 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
 
       log('Inventory workflow completed successfully.')
 
-      // T022: If mode is 'inventory', stop here (don't run detection)
+      // T022: If mode is 'inventory', send success notification and stop here
       if (config.executionMode === ExecutionMode.Inventory) {
         await browser.close()
+
+        // T010: Send success notification with try-catch error handling
+        await sendSuccessNotification(alertService, config, processedTargets, totalResourceCount, alertDestinations, log)
         return
       }
 
@@ -201,11 +227,22 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
       // T018, T024: Filter to specific target if requested
       const filteredDetectionInventory = filterInventoryByTarget(detectionInventory, config.targetFilter.targetName)
 
+      // T011: Store alert destinations from first processed inventory (if not already set)
+      if (filteredDetectionInventory.length > 0 && alertDestinations === null) {
+        alertDestinations = filteredDetectionInventory[0]!.alerts
+      }
+
       // Run detection workflow
       log('Preparing to run detection workflow.')
       await Promise.all(
         filteredDetectionInventory.map(async (inventory) => {
-          await runForTargetAsync(browser, inventory, inventory.target.detection)
+          const result = await runForTargetAsync(browser, inventory, inventory.target.detection)
+          // T009: Track resource count and target name
+          totalResourceCount += result.resourceCount
+          const targetName = inventory.fileName.replace(/\.json$/, '')
+          if (!processedTargets.includes(targetName)) {
+            processedTargets.push(targetName)
+          }
         }),
       )
 
@@ -214,6 +251,53 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
   } finally {
     // Always close browser
     await browser.close()
+  }
+
+  // T010: Send success notification with try-catch error handling (for detection and all modes)
+  await sendSuccessNotification(alertService, config, processedTargets, totalResourceCount, alertDestinations, log)
+}
+
+/**
+ * T009, T010, T011: Send success notification after workflow completion
+ * Constructs ExecutionSummary and calls alertOnSuccess() with non-blocking error handling
+ */
+async function sendSuccessNotification(
+  alertService: IAlertService,
+  config: RuntimeConfiguration,
+  processedTargets: string[],
+  totalResourceCount: number,
+  alertDestinations: InventoryAlert | null,
+  log: (message: string) => void,
+): Promise<void> {
+  // Skip if no targets were processed (should not happen, but fail-safe)
+  if (processedTargets.length === 0) {
+    log('No targets processed, skipping success notification.')
+    return
+  }
+
+  // Skip if no alert destinations available (should not happen, but fail-safe)
+  if (alertDestinations === null) {
+    log('No alert destinations available, skipping success notification.')
+    return
+  }
+
+  // T009: Construct ExecutionSummary from config and execution results
+  const summary: ExecutionSummary = {
+    mode: config.executionMode,
+    targetsProcessed: processedTargets,
+    repositoryUrl: config.repository.url,
+    inventoryBranch: config.executionMode === ExecutionMode.Detection ? null : config.branches.inventory,
+    detectionBranch: config.executionMode === ExecutionMode.Inventory ? null : config.branches.detection,
+    resourceCount: totalResourceCount,
+    completedAt: new Date(),
+  }
+
+  // T010: Call alertOnSuccess() with try-catch error handling (non-blocking per FR-009)
+  try {
+    await alertService.alertOnSuccess(summary, alertDestinations)
+  } catch (error) {
+    // Log error but don't fail workflow - success notification is informational only
+    console.error('[Main]: Failed to send success notification:', error)
   }
 }
 
