@@ -29,7 +29,7 @@ If you have your tokens in .env.secrets (see below for setup):
 
 ```bash
 source .env.secrets
-SLACK_OAUTH_TOKEN=$SLACK_OAUTH_TOKEN INVENTORY_REPO_PAT=$INVENTORY_REPO_PAT 
+SLACK_OAUTH_TOKEN=$SLACK_OAUTH_TOKEN INVENTORY_REPO_PAT=$INVENTORY_REPO_PAT
 npm start -- \
   --repo https://github.com/org/inventory \
   --git-token $SLACK_OAUTH_TOKEN \
