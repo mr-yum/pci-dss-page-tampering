@@ -687,6 +687,7 @@ describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
       )
     })
 
+    // T014 [US2] Unit test for single target display (singular "Target" vs "Targets")
     it('should use singular "Target Processed" for single target', async () => {
       const summary = createSummary({ targetsProcessed: ['1.0'] })
 
@@ -700,6 +701,96 @@ describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
             expect.objectContaining({
               text: expect.objectContaining({
                 text: '*Target Processed*: 1.0',
+              }),
+            }),
+          ]),
+        }),
+      )
+    })
+
+    // T014 [US2] Additional test: plural "Targets Processed" for multiple targets
+    it('should use plural "Targets Processed" for multiple targets', async () => {
+      const summary = createSummary({ targetsProcessed: ['1.0', '2.0'] })
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertOnSuccess(summary, mockAlertDestinations)
+
+      expect(sendMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          blocks: expect.arrayContaining([
+            expect.objectContaining({
+              text: expect.objectContaining({
+                text: '*Targets Processed*: 1.0, 2.0',
+              }),
+            }),
+          ]),
+        }),
+      )
+    })
+
+    // T012 [US2] Unit test for target list truncation logic (>5 targets shows "and N more")
+    it('should truncate target list when > 5 targets, showing first 3 and "and N more"', async () => {
+      const summary = createSummary({
+        targetsProcessed: ['1.0', '2.0', '3.0', '4.0', '5.0', '6.0', '7.0', '8.0'],
+      })
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertOnSuccess(summary, mockAlertDestinations)
+
+      expect(sendMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          blocks: expect.arrayContaining([
+            expect.objectContaining({
+              text: expect.objectContaining({
+                text: '*Targets Processed*: 1.0, 2.0, 3.0, and 5 more',
+              }),
+            }),
+          ]),
+        }),
+      )
+    })
+
+    // T012 [US2] Additional test: exactly 6 targets (boundary case)
+    it('should truncate target list with exactly 6 targets to show first 3 and "and 3 more"', async () => {
+      const summary = createSummary({
+        targetsProcessed: ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta'],
+      })
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertOnSuccess(summary, mockAlertDestinations)
+
+      expect(sendMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          blocks: expect.arrayContaining([
+            expect.objectContaining({
+              text: expect.objectContaining({
+                text: '*Targets Processed*: alpha, beta, gamma, and 3 more',
+              }),
+            }),
+          ]),
+        }),
+      )
+    })
+
+    // T012 [US2] Additional test: exactly 5 targets (boundary - no truncation)
+    it('should display all 5 targets without truncation when exactly 5', async () => {
+      const summary = createSummary({
+        targetsProcessed: ['1.0', '2.0', '3.0', '4.0', '5.0'],
+      })
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertOnSuccess(summary, mockAlertDestinations)
+
+      expect(sendMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          blocks: expect.arrayContaining([
+            expect.objectContaining({
+              text: expect.objectContaining({
+                text: '*Targets Processed*: 1.0, 2.0, 3.0, 4.0, 5.0',
               }),
             }),
           ]),
@@ -758,6 +849,7 @@ describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
     })
   })
 
+  // T013 [US2] Unit tests for zero resources edge case warning display
   describe('Zero resources edge case', () => {
     it('should include warning emoji for zero resources', async () => {
       const summary = createSummary({ resourceCount: 0 })
@@ -772,6 +864,48 @@ describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
             expect.objectContaining({
               text: expect.objectContaining({
                 text: expect.stringContaining('0 scripts and headers :warning:'),
+              }),
+            }),
+          ]),
+        }),
+      )
+    })
+
+    // T013 [US2] Additional test: verify full warning message text
+    it('should display investigation suggestion for zero resources', async () => {
+      const summary = createSummary({ resourceCount: 0 })
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertOnSuccess(summary, mockAlertDestinations)
+
+      expect(sendMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          blocks: expect.arrayContaining([
+            expect.objectContaining({
+              text: expect.objectContaining({
+                text: '*Resources Monitored*: 0 scripts and headers :warning: This may warrant investigation',
+              }),
+            }),
+          ]),
+        }),
+      )
+    })
+
+    // T013 [US2] Additional test: non-zero resources should not show warning
+    it('should not include warning emoji for non-zero resources', async () => {
+      const summary = createSummary({ resourceCount: 10 })
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertOnSuccess(summary, mockAlertDestinations)
+
+      expect(sendMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          blocks: expect.arrayContaining([
+            expect.objectContaining({
+              text: expect.objectContaining({
+                text: '*Resources Monitored*: 10 scripts and headers',
               }),
             }),
           ]),
