@@ -84,8 +84,12 @@ async function main() {
  * Execute workflows based on runtime configuration
  * T017, T018, T021, T022: Implements mode-based workflow execution with target filtering
  * T009-T011: Sends success notification after workflow completion
+ * T020-T021: Tracks execution start time and calculates duration for incident response context
  */
 async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
+  // T020: Track execution start time for calculating execution duration
+  const executionStartTime = Date.now()
+
   // Initialize services with configuration (T020: Use config, not hardcoded URL)
   const gitInventoryStore = new GitInventoryStore({
     gitClient: simpleGit(),
@@ -210,7 +214,8 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
         await browser.close()
 
         // T010: Send success notification with try-catch error handling
-        await sendSuccessNotification(alertService, config, processedTargets, totalResourceCount, alertDestinations, log)
+        // T021: Pass execution start time for duration calculation
+        await sendSuccessNotification(alertService, config, processedTargets, totalResourceCount, alertDestinations, executionStartTime, log)
         return
       }
 
@@ -254,11 +259,13 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
   }
 
   // T010: Send success notification with try-catch error handling (for detection and all modes)
-  await sendSuccessNotification(alertService, config, processedTargets, totalResourceCount, alertDestinations, log)
+  // T021: Pass execution start time for duration calculation
+  await sendSuccessNotification(alertService, config, processedTargets, totalResourceCount, alertDestinations, executionStartTime, log)
 }
 
 /**
  * T009, T010, T011: Send success notification after workflow completion
+ * T020, T021: Calculates execution duration from start time
  * Constructs ExecutionSummary and calls alertOnSuccess() with non-blocking error handling
  */
 async function sendSuccessNotification(
@@ -267,6 +274,7 @@ async function sendSuccessNotification(
   processedTargets: string[],
   totalResourceCount: number,
   alertDestinations: InventoryAlert | null,
+  executionStartTime: number,
   log: (message: string) => void,
 ): Promise<void> {
   // Skip if no targets were processed (should not happen, but fail-safe)
@@ -281,7 +289,11 @@ async function sendSuccessNotification(
     return
   }
 
+  // T021: Calculate execution duration
+  const executionDuration = Date.now() - executionStartTime
+
   // T009: Construct ExecutionSummary from config and execution results
+  // T021: Include calculated execution duration
   const summary: ExecutionSummary = {
     mode: config.executionMode,
     targetsProcessed: processedTargets,
@@ -290,6 +302,7 @@ async function sendSuccessNotification(
     detectionBranch: config.executionMode === ExecutionMode.Inventory ? null : config.branches.detection,
     resourceCount: totalResourceCount,
     completedAt: new Date(),
+    executionDuration,
   }
 
   // T010: Call alertOnSuccess() with try-catch error handling (non-blocking per FR-009)
