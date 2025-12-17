@@ -446,3 +446,572 @@ describe('SlackAlertService - Typed Results Handling (Phase 4)', () => {
     })
   })
 })
+
+/**
+ * Unit tests for SlackAlertService.alertOnSuccess()
+ *
+ * Tests for Phase 3 (User Story 1):
+ * - T008: SlackAlertService.alertOnSuccess() message payload verification
+ *   - Sends to correct channel based on mode
+ *   - Uses Slack Block Kit format with green check mark emoji
+ *   - Includes all required execution details
+ *   - Handles optional executionDuration
+ *   - Error handling (logs and continues)
+ */
+import { ExecutionMode } from '../../types/config'
+import type { ExecutionSummary } from '../../types/execution-summary'
+
+describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
+  let service: SlackAlertService
+  let mockAlertDestinations: InventoryAlert
+
+  beforeEach(() => {
+    service = new SlackAlertService('test-token')
+
+    mockAlertDestinations = {
+      inventory: {
+        newScriptIdentified: { destination: 'inventory-script-channel' },
+        newHeaderIdentified: { destination: 'inventory-header-channel' },
+      },
+      detection: {
+        newScriptDetected: { destination: 'detection-script-channel' },
+        scriptMismatchDetected: { destination: 'script-mismatch-channel' },
+        newHeaderDetected: { destination: 'detection-header-channel' },
+      },
+    }
+  })
+
+  const createSummary = (overrides: Partial<ExecutionSummary> = {}): ExecutionSummary => ({
+    mode: ExecutionMode.All,
+    targetsProcessed: ['1.0', '2.0'],
+    repositoryUrl: 'https://github.com/org/inventory',
+    inventoryBranch: 'updates/scripts',
+    detectionBranch: 'main',
+    resourceCount: 42,
+    completedAt: new Date('2025-12-17T14:30:00.000Z'),
+    ...overrides,
+  })
+
+  describe('Alert destination routing', () => {
+    it('should route to inventory.newScriptIdentified for inventory mode', async () => {
+      const summary = createSummary({
+        mode: ExecutionMode.Inventory,
+        inventoryBranch: 'updates/scripts',
+        detectionBranch: null,
+      })
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertOnSuccess(summary, mockAlertDestinations)
+
+      expect(sendMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          channel: 'inventory-script-channel',
+        }),
+      )
+    })
+
+    it('should route to detection.newScriptDetected for detection mode', async () => {
+      const summary = createSummary({
+        mode: ExecutionMode.Detection,
+        inventoryBranch: null,
+        detectionBranch: 'main',
+      })
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertOnSuccess(summary, mockAlertDestinations)
+
+      expect(sendMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          channel: 'detection-script-channel',
+        }),
+      )
+    })
+
+    it('should route to detection.newScriptDetected for all mode (production priority)', async () => {
+      const summary = createSummary({
+        mode: ExecutionMode.All,
+        inventoryBranch: 'updates/scripts',
+        detectionBranch: 'main',
+      })
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertOnSuccess(summary, mockAlertDestinations)
+
+      expect(sendMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          channel: 'detection-script-channel',
+        }),
+      )
+    })
+  })
+
+  describe('Slack Block Kit message format', () => {
+    it('should include success header with green check mark emoji', async () => {
+      const summary = createSummary()
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertOnSuccess(summary, mockAlertDestinations)
+
+      expect(sendMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          blocks: expect.arrayContaining([
+            expect.objectContaining({
+              type: 'section',
+              text: expect.objectContaining({
+                type: 'mrkdwn',
+                text: ':white_check_mark: *Workflow Execution Completed Successfully* :white_check_mark:',
+              }),
+            }),
+          ]),
+        }),
+      )
+    })
+
+    it('should include divider after header', async () => {
+      const summary = createSummary()
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertOnSuccess(summary, mockAlertDestinations)
+
+      expect(sendMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          blocks: expect.arrayContaining([expect.objectContaining({ type: 'divider' })]),
+        }),
+      )
+    })
+
+    it('should include execution mode in message', async () => {
+      const summary = createSummary({ mode: ExecutionMode.Inventory })
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertOnSuccess(summary, mockAlertDestinations)
+
+      expect(sendMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          blocks: expect.arrayContaining([
+            expect.objectContaining({
+              text: expect.objectContaining({
+                text: '*Execution Mode*: `inventory`',
+              }),
+            }),
+          ]),
+        }),
+      )
+    })
+
+    it('should include repository URL in message', async () => {
+      const summary = createSummary({ repositoryUrl: 'https://github.com/test/repo' })
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertOnSuccess(summary, mockAlertDestinations)
+
+      expect(sendMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          blocks: expect.arrayContaining([
+            expect.objectContaining({
+              text: expect.objectContaining({
+                text: '*Repository*: `https://github.com/test/repo`',
+              }),
+            }),
+          ]),
+        }),
+      )
+    })
+
+    it('should include resource count in message', async () => {
+      const summary = createSummary({ resourceCount: 42 })
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertOnSuccess(summary, mockAlertDestinations)
+
+      expect(sendMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          blocks: expect.arrayContaining([
+            expect.objectContaining({
+              text: expect.objectContaining({
+                text: '*Resources Monitored*: 42 scripts and headers',
+              }),
+            }),
+          ]),
+        }),
+      )
+    })
+
+    it('should include completion timestamp in message', async () => {
+      const summary = createSummary({ completedAt: new Date('2025-12-17T14:30:00.000Z') })
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertOnSuccess(summary, mockAlertDestinations)
+
+      expect(sendMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          blocks: expect.arrayContaining([
+            expect.objectContaining({
+              text: expect.objectContaining({
+                text: '*Completed At*: 2025-12-17T14:30:00.000Z',
+              }),
+            }),
+          ]),
+        }),
+      )
+    })
+  })
+
+  describe('Target list formatting', () => {
+    it('should display all targets when <= 5', async () => {
+      const summary = createSummary({ targetsProcessed: ['1.0', '2.0', '3.0'] })
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertOnSuccess(summary, mockAlertDestinations)
+
+      expect(sendMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          blocks: expect.arrayContaining([
+            expect.objectContaining({
+              text: expect.objectContaining({
+                text: '*Targets Processed*: 1.0, 2.0, 3.0',
+              }),
+            }),
+          ]),
+        }),
+      )
+    })
+
+    // T014 [US2] Unit test for single target display (singular "Target" vs "Targets")
+    it('should use singular "Target Processed" for single target', async () => {
+      const summary = createSummary({ targetsProcessed: ['1.0'] })
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertOnSuccess(summary, mockAlertDestinations)
+
+      expect(sendMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          blocks: expect.arrayContaining([
+            expect.objectContaining({
+              text: expect.objectContaining({
+                text: '*Target Processed*: 1.0',
+              }),
+            }),
+          ]),
+        }),
+      )
+    })
+
+    // T014 [US2] Additional test: plural "Targets Processed" for multiple targets
+    it('should use plural "Targets Processed" for multiple targets', async () => {
+      const summary = createSummary({ targetsProcessed: ['1.0', '2.0'] })
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertOnSuccess(summary, mockAlertDestinations)
+
+      expect(sendMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          blocks: expect.arrayContaining([
+            expect.objectContaining({
+              text: expect.objectContaining({
+                text: '*Targets Processed*: 1.0, 2.0',
+              }),
+            }),
+          ]),
+        }),
+      )
+    })
+
+    // T012 [US2] Unit test for target list truncation logic (>5 targets shows "and N more")
+    it('should truncate target list when > 5 targets, showing first 3 and "and N more"', async () => {
+      const summary = createSummary({
+        targetsProcessed: ['1.0', '2.0', '3.0', '4.0', '5.0', '6.0', '7.0', '8.0'],
+      })
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertOnSuccess(summary, mockAlertDestinations)
+
+      expect(sendMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          blocks: expect.arrayContaining([
+            expect.objectContaining({
+              text: expect.objectContaining({
+                text: '*Targets Processed*: 1.0, 2.0, 3.0, and 5 more',
+              }),
+            }),
+          ]),
+        }),
+      )
+    })
+
+    // T012 [US2] Additional test: exactly 6 targets (boundary case)
+    it('should truncate target list with exactly 6 targets to show first 3 and "and 3 more"', async () => {
+      const summary = createSummary({
+        targetsProcessed: ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta'],
+      })
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertOnSuccess(summary, mockAlertDestinations)
+
+      expect(sendMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          blocks: expect.arrayContaining([
+            expect.objectContaining({
+              text: expect.objectContaining({
+                text: '*Targets Processed*: alpha, beta, gamma, and 3 more',
+              }),
+            }),
+          ]),
+        }),
+      )
+    })
+
+    // T012 [US2] Additional test: exactly 5 targets (boundary - no truncation)
+    it('should display all 5 targets without truncation when exactly 5', async () => {
+      const summary = createSummary({
+        targetsProcessed: ['1.0', '2.0', '3.0', '4.0', '5.0'],
+      })
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertOnSuccess(summary, mockAlertDestinations)
+
+      expect(sendMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          blocks: expect.arrayContaining([
+            expect.objectContaining({
+              text: expect.objectContaining({
+                text: '*Targets Processed*: 1.0, 2.0, 3.0, 4.0, 5.0',
+              }),
+            }),
+          ]),
+        }),
+      )
+    })
+  })
+
+  describe('Branch display based on mode', () => {
+    it('should display singular "Branch Used" for inventory mode', async () => {
+      const summary = createSummary({
+        mode: ExecutionMode.Inventory,
+        inventoryBranch: 'updates/scripts',
+        detectionBranch: null,
+      })
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertOnSuccess(summary, mockAlertDestinations)
+
+      expect(sendMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          blocks: expect.arrayContaining([
+            expect.objectContaining({
+              text: expect.objectContaining({
+                text: '*Branch Used*: `updates/scripts`',
+              }),
+            }),
+          ]),
+        }),
+      )
+    })
+
+    it('should display plural "Branches Used" for all mode', async () => {
+      const summary = createSummary({
+        mode: ExecutionMode.All,
+        inventoryBranch: 'updates/scripts',
+        detectionBranch: 'main',
+      })
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertOnSuccess(summary, mockAlertDestinations)
+
+      expect(sendMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          blocks: expect.arrayContaining([
+            expect.objectContaining({
+              text: expect.objectContaining({
+                text: '*Branches Used*: `updates/scripts` (inventory), `main` (detection)',
+              }),
+            }),
+          ]),
+        }),
+      )
+    })
+  })
+
+  // T013 [US2] Unit tests for zero resources edge case warning display
+  describe('Zero resources edge case', () => {
+    it('should include warning emoji for zero resources', async () => {
+      const summary = createSummary({ resourceCount: 0 })
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertOnSuccess(summary, mockAlertDestinations)
+
+      expect(sendMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          blocks: expect.arrayContaining([
+            expect.objectContaining({
+              text: expect.objectContaining({
+                text: expect.stringContaining('0 scripts and headers :warning:'),
+              }),
+            }),
+          ]),
+        }),
+      )
+    })
+
+    // T013 [US2] Additional test: verify full warning message text
+    it('should display investigation suggestion for zero resources', async () => {
+      const summary = createSummary({ resourceCount: 0 })
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertOnSuccess(summary, mockAlertDestinations)
+
+      expect(sendMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          blocks: expect.arrayContaining([
+            expect.objectContaining({
+              text: expect.objectContaining({
+                text: '*Resources Monitored*: 0 scripts and headers :warning: This may warrant investigation',
+              }),
+            }),
+          ]),
+        }),
+      )
+    })
+
+    // T013 [US2] Additional test: non-zero resources should not show warning
+    it('should not include warning emoji for non-zero resources', async () => {
+      const summary = createSummary({ resourceCount: 10 })
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertOnSuccess(summary, mockAlertDestinations)
+
+      expect(sendMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          blocks: expect.arrayContaining([
+            expect.objectContaining({
+              text: expect.objectContaining({
+                text: '*Resources Monitored*: 10 scripts and headers',
+              }),
+            }),
+          ]),
+        }),
+      )
+    })
+  })
+
+  describe('Optional executionDuration', () => {
+    it('should not include executionDuration block when omitted', async () => {
+      // Don't pass executionDuration at all - it's optional
+      const summary = createSummary({})
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertOnSuccess(summary, mockAlertDestinations)
+
+      const callArg = sendMessageSpy.mock.calls[0]?.[0] as { blocks: Array<{ text?: { text: string } }> }
+      const blockTexts = callArg.blocks.filter((b) => b.text?.text).map((b) => b.text?.text)
+      expect(blockTexts.some((text) => text?.includes('Execution Duration'))).toBe(false)
+    })
+
+    it('should include executionDuration block when provided', async () => {
+      const summary = createSummary({ executionDuration: 5000 })
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertOnSuccess(summary, mockAlertDestinations)
+
+      expect(sendMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          blocks: expect.arrayContaining([
+            expect.objectContaining({
+              text: expect.objectContaining({
+                text: '*Execution Duration*: 5s',
+              }),
+            }),
+          ]),
+        }),
+      )
+    })
+
+    it('should format executionDuration in milliseconds when < 1000ms', async () => {
+      const summary = createSummary({ executionDuration: 500 })
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertOnSuccess(summary, mockAlertDestinations)
+
+      expect(sendMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          blocks: expect.arrayContaining([
+            expect.objectContaining({
+              text: expect.objectContaining({
+                text: '*Execution Duration*: 500ms',
+              }),
+            }),
+          ]),
+        }),
+      )
+    })
+
+    it('should format executionDuration in minutes and seconds when >= 60s', async () => {
+      const summary = createSummary({ executionDuration: 125000 })
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertOnSuccess(summary, mockAlertDestinations)
+
+      expect(sendMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          blocks: expect.arrayContaining([
+            expect.objectContaining({
+              text: expect.objectContaining({
+                text: '*Execution Duration*: 2m 5s',
+              }),
+            }),
+          ]),
+        }),
+      )
+    })
+  })
+
+  describe('Error handling', () => {
+    it('should log error and not throw if sendMessage fails', async () => {
+      const summary = createSummary()
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation()
+      jest.spyOn(service as any, 'sendMessage').mockRejectedValue(new Error('Slack API error'))
+
+      await expect(service.alertOnSuccess(summary, mockAlertDestinations)).resolves.not.toThrow()
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith('[Alert Error] Failed to send success notification:', expect.any(Error))
+
+      consoleErrorSpy.mockRestore()
+    })
+
+    it('should log to console before sending message', async () => {
+      const summary = createSummary()
+      const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation()
+      jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertOnSuccess(summary, mockAlertDestinations)
+
+      expect(consoleLogSpy).toHaveBeenCalledWith('[Alert → Success]: Workflow execution completed successfully')
+
+      consoleLogSpy.mockRestore()
+    })
+  })
+})

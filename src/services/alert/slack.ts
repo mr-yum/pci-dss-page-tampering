@@ -7,6 +7,8 @@ import type { KnownHeaderWithUnauthorisedContentFound } from '../../types/compar
 import type { KnownScriptWithUnauthorisedContentFound } from '../../types/comparison/known-script-unauthorised-content-found'
 import type { UnknownHeaderFound } from '../../types/comparison/unknown-header-found'
 import type { UnknownScriptFound } from '../../types/comparison/unknown-script-found'
+import { ExecutionMode } from '../../types/config'
+import type { ExecutionSummary } from '../../types/execution-summary'
 import type { HeaderInfo } from '../../types/header'
 import type { AlertDestination, InventoryAlert } from '../../types/inventory/model'
 import type { ScriptInfo } from '../../types/script'
@@ -905,5 +907,182 @@ export class SlackAlertService implements IAlertService {
     const start = normalized.slice(0, 30)
     const end = normalized.slice(-30)
     return `${start}...${end}`
+  }
+
+  /**
+   * Alert for successful workflow execution.
+   * Sends informational Slack notification when workflows complete without errors.
+   * Selects alert destination based on summary.mode per research.md decisions.
+   */
+  async alertOnSuccess(summary: ExecutionSummary, alertDestinations: InventoryAlert): Promise<void> {
+    try {
+      // Select destination based on workflow mode
+      const destination = this.selectSuccessDestination(summary.mode, alertDestinations)
+
+      // Create and send message
+      const messagePayload = this.createSuccessMessagePayload(summary, destination)
+      this.log(AlertType.Success, 'Workflow execution completed successfully')
+      await this.sendMessage(messagePayload)
+    } catch (error) {
+      console.error('[Alert Error] Failed to send success notification:', error)
+    }
+  }
+
+  /**
+   * Select alert destination based on workflow mode.
+   * - Inventory mode: Use inventory.newScriptIdentified (inventory team channel)
+   * - Detection mode or All mode: Use detection.newScriptDetected (production priority)
+   */
+  private selectSuccessDestination(mode: ExecutionMode, alertDestinations: InventoryAlert): AlertDestination {
+    switch (mode) {
+      case ExecutionMode.Inventory:
+        return alertDestinations.inventory.newScriptIdentified
+      case ExecutionMode.Detection:
+      case ExecutionMode.All:
+        return alertDestinations.detection.newScriptDetected
+    }
+  }
+
+  /**
+   * Create Slack Block Kit payload for success notification.
+   * Uses green check mark emoji for visual distinction from violation alerts.
+   */
+  private createSuccessMessagePayload(summary: ExecutionSummary, destination: AlertDestination): object {
+    return {
+      channel: destination.destination,
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: ':white_check_mark: *Workflow Execution Completed Successfully* :white_check_mark:',
+          },
+        },
+        {
+          type: 'divider',
+        },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*Execution Mode*: \`${summary.mode}\``,
+          },
+        },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*${this.formatTargetLabel(summary.targetsProcessed.length)}*: ${this.formatTargetList(summary.targetsProcessed)}`,
+          },
+        },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*Repository*: \`${summary.repositoryUrl}\``,
+          },
+        },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*${this.formatBranchLabel(summary.mode)}*: ${this.formatBranchDisplay(summary)}`,
+          },
+        },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*Resources Monitored*: ${this.formatResourceCount(summary.resourceCount)}`,
+          },
+        },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*Completed At*: ${summary.completedAt.toISOString()}`,
+          },
+        },
+        // Optional: execution duration (P3 enhancement)
+        ...(summary.executionDuration !== undefined && summary.executionDuration !== null
+          ? [
+              {
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: `*Execution Duration*: ${this.formatDuration(summary.executionDuration)}`,
+                },
+              },
+            ]
+          : []),
+      ],
+    }
+  }
+
+  /**
+   * Format target label (singular/plural).
+   */
+  private formatTargetLabel(count: number): string {
+    return count === 1 ? 'Target Processed' : 'Targets Processed'
+  }
+
+  /**
+   * Format target list for display.
+   * Shows first 3 targets + "and N more" if > 5 targets.
+   */
+  private formatTargetList(targets: string[]): string {
+    if (targets.length <= 5) {
+      return targets.join(', ')
+    }
+    const firstThree = targets.slice(0, 3)
+    const remaining = targets.length - 3
+    return `${firstThree.join(', ')}, and ${remaining} more`
+  }
+
+  /**
+   * Format branch label based on execution mode (singular/plural).
+   */
+  private formatBranchLabel(mode: ExecutionMode): string {
+    return mode === ExecutionMode.All ? 'Branches Used' : 'Branch Used'
+  }
+
+  /**
+   * Format branch display based on execution mode.
+   */
+  private formatBranchDisplay(summary: ExecutionSummary): string {
+    switch (summary.mode) {
+      case ExecutionMode.Inventory:
+        return `\`${summary.inventoryBranch ?? 'unknown'}\``
+      case ExecutionMode.Detection:
+        return `\`${summary.detectionBranch ?? 'unknown'}\``
+      case ExecutionMode.All:
+        return `\`${summary.inventoryBranch ?? 'unknown'}\` (inventory), \`${summary.detectionBranch ?? 'unknown'}\` (detection)`
+    }
+  }
+
+  /**
+   * Format resource count with edge case warning for zero resources.
+   */
+  private formatResourceCount(count: number): string {
+    if (count === 0) {
+      return '0 scripts and headers :warning: This may warrant investigation'
+    }
+    return `${count} scripts and headers`
+  }
+
+  /**
+   * Format duration in human-readable format.
+   */
+  private formatDuration(milliseconds: number): string {
+    if (milliseconds < 1000) {
+      return `${milliseconds}ms`
+    }
+    const seconds = Math.floor(milliseconds / 1000)
+    if (seconds < 60) {
+      return `${seconds}s`
+    }
+    const minutes = Math.floor(seconds / 60)
+    const remainingSeconds = seconds % 60
+    return `${minutes}m ${remainingSeconds}s`
   }
 }
