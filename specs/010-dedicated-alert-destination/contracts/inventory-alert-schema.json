@@ -1,0 +1,71 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "inventory-alert-schema.json",
+  "title": "InventoryAlert",
+  "description": "Alert configuration for PCI DSS compliance monitoring (updated with dedicated success notification)",
+  "type": "object",
+  "required": ["inventory", "detection", "successNotification"],
+  "additionalProperties": false,
+  "properties": {
+    "inventory": {
+      "$ref": "#/$defs/AlertInventory"
+    },
+    "detection": {
+      "$ref": "#/$defs/AlertDetection"
+    },
+    "successNotification": {
+      "$ref": "#/$defs/AlertDestination",
+      "description": "Dedicated destination for successful workflow completion notifications"
+    }
+  },
+  "$defs": {
+    "AlertDestination": {
+      "type": "object",
+      "required": ["destination"],
+      "additionalProperties": false,
+      "properties": {
+        "destination": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Slack channel ID (e.g., '#channel-name' or 'C0123456789') or webhook URL"
+        }
+      }
+    },
+    "AlertInventory": {
+      "type": "object",
+      "description": "Alert destinations for inventory workflow events",
+      "required": ["newScriptIdentified", "newHeaderIdentified"],
+      "additionalProperties": false,
+      "properties": {
+        "newScriptIdentified": {
+          "$ref": "#/$defs/AlertDestination",
+          "description": "Destination for newly discovered scripts during inventory update"
+        },
+        "newHeaderIdentified": {
+          "$ref": "#/$defs/AlertDestination",
+          "description": "Destination for newly discovered headers during inventory update"
+        }
+      }
+    },
+    "AlertDetection": {
+      "type": "object",
+      "description": "Alert destinations for detection workflow violations",
+      "required": ["newScriptDetected", "scriptMismatchDetected", "newHeaderDetected"],
+      "additionalProperties": false,
+      "properties": {
+        "newScriptDetected": {
+          "$ref": "#/$defs/AlertDestination",
+          "description": "Destination for uninventoried scripts found during detection"
+        },
+        "scriptMismatchDetected": {
+          "$ref": "#/$defs/AlertDestination",
+          "description": "Destination for known scripts with hash mismatch (tampering indicator)"
+        },
+        "newHeaderDetected": {
+          "$ref": "#/$defs/AlertDestination",
+          "description": "Destination for uninventoried headers found during detection"
+        }
+      }
+    }
+  }
+}
