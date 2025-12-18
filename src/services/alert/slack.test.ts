@@ -56,7 +56,57 @@ describe('SlackAlertService - Typed Results Handling (Phase 4)', () => {
         scriptMismatchDetected: { destination: 'script-mismatch-channel' },
         newHeaderDetected: { destination: 'detection-header-channel' },
       },
+      successNotification: { destination: 'success-channel' },
     }
+  })
+
+  /**
+   * T006: Verify alertForTypedResults continues using violation destinations unchanged
+   * Feature 010: Success notifications get dedicated destination, but violation alerts are unchanged.
+   */
+  describe('T006: alertForTypedResults violation destinations unchanged', () => {
+    it('T006: should continue routing unknown scripts to detection.newScriptDetected (not successNotification)', async () => {
+      const script: DetectedScript = {
+        name: 'https://malicious.com/script.js',
+        content: 'alert("xss")',
+        hash: { value: 'hash123' },
+      }
+
+      const result = new UnknownScriptFound(mockTarget, new Date(), script)
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertForTypedResults([result], mockTarget, mockAlertDestinations)
+
+      // Feature 010: Violation alerts continue to use detection destinations, NOT successNotification
+      expect(sendMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          channel: 'detection-script-channel', // NOT 'success-channel'
+        }),
+      )
+    })
+
+    it('T006: should continue routing unknown headers to detection.newHeaderDetected (not successNotification)', async () => {
+      const header: DetectedHeader = {
+        name: 'x-custom-header',
+        value: 'value',
+        target: mockTarget,
+        workflow: mockTarget.workflow,
+      }
+
+      const result = new UnknownHeaderFound(mockTarget, new Date(), header)
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertForTypedResults([result], mockTarget, mockAlertDestinations)
+
+      // Feature 010: Violation alerts continue to use detection destinations, NOT successNotification
+      expect(sendMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          channel: 'detection-header-channel', // NOT 'success-channel'
+        }),
+      )
+    })
   })
 
   describe('T023: UnknownHeaderFound alert routing', () => {
@@ -478,6 +528,7 @@ describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
         scriptMismatchDetected: { destination: 'script-mismatch-channel' },
         newHeaderDetected: { destination: 'detection-header-channel' },
       },
+      successNotification: { destination: 'success-channel' },
     }
   })
 
@@ -492,8 +543,13 @@ describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
     ...overrides,
   })
 
-  describe('Alert destination routing', () => {
-    it('should route to inventory.newScriptIdentified for inventory mode', async () => {
+  /**
+   * T005: Tests for alertOnSuccess using successNotification destination
+   * Feature 010: Success notifications should route to dedicated successNotification destination
+   * regardless of execution mode, instead of mode-based routing.
+   */
+  describe('Alert destination routing (Feature 010)', () => {
+    it('T005: should route to successNotification destination for inventory mode', async () => {
       const summary = createSummary({
         mode: ExecutionMode.Inventory,
         inventoryBranch: 'updates/scripts',
@@ -504,14 +560,15 @@ describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
 
       await service.alertOnSuccess(summary, mockAlertDestinations)
 
+      // Feature 010: Uses successNotification directly instead of mode-based routing
       expect(sendMessageSpy).toHaveBeenCalledWith(
         expect.objectContaining({
-          channel: 'inventory-script-channel',
+          channel: 'success-channel',
         }),
       )
     })
 
-    it('should route to detection.newScriptDetected for detection mode', async () => {
+    it('T005: should route to successNotification destination for detection mode', async () => {
       const summary = createSummary({
         mode: ExecutionMode.Detection,
         inventoryBranch: null,
@@ -522,14 +579,15 @@ describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
 
       await service.alertOnSuccess(summary, mockAlertDestinations)
 
+      // Feature 010: Uses successNotification directly instead of mode-based routing
       expect(sendMessageSpy).toHaveBeenCalledWith(
         expect.objectContaining({
-          channel: 'detection-script-channel',
+          channel: 'success-channel',
         }),
       )
     })
 
-    it('should route to detection.newScriptDetected for all mode (production priority)', async () => {
+    it('T005: should route to successNotification destination for all mode', async () => {
       const summary = createSummary({
         mode: ExecutionMode.All,
         inventoryBranch: 'updates/scripts',
@@ -540,9 +598,10 @@ describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
 
       await service.alertOnSuccess(summary, mockAlertDestinations)
 
+      // Feature 010: Uses successNotification directly instead of mode-based routing
       expect(sendMessageSpy).toHaveBeenCalledWith(
         expect.objectContaining({
-          channel: 'detection-script-channel',
+          channel: 'success-channel',
         }),
       )
     })

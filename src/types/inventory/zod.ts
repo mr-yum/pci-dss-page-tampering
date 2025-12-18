@@ -9,7 +9,7 @@ import type { AlertDestination, AlertDetection, AlertInventory, AuthorizeWithCon
 import type { RawAuthorizeWithConfig, RawInventory, RawInventoryHeaderInfo, RawInventoryScriptInfo, RawInventoryTarget } from './raw'
 
 export const AlertDestinationSchema: z.ZodType<AlertDestination> = z.object({
-  destination: z.string(),
+  destination: z.string().min(1, 'Alert destination cannot be empty'),
 })
 
 export const AlertInventorySchema: z.ZodType<AlertInventory> = z.object({
@@ -26,6 +26,7 @@ export const AlertDetectionSchema: z.ZodType<AlertDetection> = z.object({
 export const InventoryAlertSchema: z.ZodType<InventoryAlert> = z.object({
   inventory: AlertInventorySchema,
   detection: AlertDetectionSchema,
+  successNotification: AlertDestinationSchema,
 })
 
 /**

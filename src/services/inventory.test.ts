@@ -40,6 +40,7 @@ describe('ScriptInventoryService', () => {
         scriptMismatchDetected: { destination: 'https://example.com/webhook4' },
         newHeaderDetected: { destination: 'https://example.com/webhook5' },
       },
+      successNotification: { destination: 'https://example.com/webhook6' },
     },
     target: {
       inventory: {

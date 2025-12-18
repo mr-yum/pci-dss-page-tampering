@@ -36,6 +36,7 @@ describe('ConsoleAlertService - alertOnSuccess (Phase 3)', () => {
         scriptMismatchDetected: { destination: 'script-mismatch-channel' },
         newHeaderDetected: { destination: 'detection-header-channel' },
       },
+      successNotification: { destination: 'success-channel' },
     }
   })
 

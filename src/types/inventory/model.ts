@@ -70,6 +70,7 @@ export type AlertDetection = {
 export type InventoryAlert = {
   inventory: AlertInventory
   detection: AlertDetection
+  successNotification: AlertDestination
 }
 
 export type Inventory = {

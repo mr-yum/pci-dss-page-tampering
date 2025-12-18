@@ -32,6 +32,9 @@
       "newHeaderDetected": {
         "destination": "#_pci-page-tampering-alerts"
       }
+    },
+    "successNotification": {
+      "destination": "#_pci-page-tampering-success"
     }
   },
   "scripts": [

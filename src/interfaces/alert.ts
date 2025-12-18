@@ -11,15 +11,13 @@ export interface IAlertService {
    * Sends informational notification when workflows complete without errors.
    *
    * @param summary - Aggregated execution context (mode, targets, branches, counts, timestamp)
-   * @param alertDestinations - Inventory alert configuration (selects destination based on summary.mode)
+   * @param alertDestinations - Inventory alert configuration containing successNotification destination
    *
    * Behavior:
-   * - Selects alert destination based on summary.mode:
-   *   - ExecutionMode.Inventory → alertDestinations.inventory.newScriptIdentified
-   *   - ExecutionMode.Detection → alertDestinations.detection.newScriptDetected
-   *   - ExecutionMode.All → alertDestinations.detection.newScriptDetected (production priority)
+   * - Uses alertDestinations.successNotification for all modes (Feature 010)
+   * - Routes to dedicated success destination separate from violation alerts
    * - Formats success message with execution details
-   * - Error handling: Errors logged to console, method returns normally (non-blocking per FR-009)
+   * - Error handling: Errors logged to console, method returns normally (non-blocking)
    */
   alertOnSuccess(summary: ExecutionSummary, alertDestinations: InventoryAlert): Promise<void>
 }
