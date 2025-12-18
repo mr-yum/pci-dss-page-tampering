@@ -20,6 +20,7 @@ export class InMemoryInventoryStore implements IInventoryStore {
           scriptMismatchDetected: { destination: 'test-channel' },
           newHeaderDetected: { destination: 'test-channel' },
         },
+        successNotification: { destination: 'test-channel' },
       },
       scripts: [
         this.createDefaultInventoryScript(RegExp('^https://app-dev\\.meandu\\.com/config\\.production\\.js\\?v=.+$')),
@@ -45,6 +46,7 @@ export class InMemoryInventoryStore implements IInventoryStore {
           scriptMismatchDetected: { destination: 'test-channel' },
           newHeaderDetected: { destination: 'test-channel' },
         },
+        successNotification: { destination: 'test-channel' },
       },
       scripts: [
         this.createDefaultInventoryScript(RegExp('^https://www\\.googletagmanager\\.com/gtag/js\\?id=G-[A-Z0-9]+$')),

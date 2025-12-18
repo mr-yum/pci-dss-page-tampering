@@ -14,7 +14,7 @@
  */
 
 import { MatcherConfigSchema } from './matcher-config-schema'
-import { RawInventoryScriptInfoSchema } from './zod'
+import { AlertDestinationSchema, InventoryAlertSchema, RawInventoryScriptInfoSchema } from './zod'
 
 describe('MatcherConfigSchema', () => {
   describe('Invalid regex patterns (T027)', () => {
@@ -980,6 +980,103 @@ describe('RawInventoryScriptInfoSchema', () => {
         const result = RawInventoryScriptInfoSchema.safeParse(mixedSchema)
         expect(result.success).toBe(true)
       })
+    })
+  })
+})
+
+/**
+ * Feature 010: Dedicated successNotification destination
+ * Schema validation tests for InventoryAlertSchema with successNotification field.
+ */
+describe('InventoryAlertSchema (Feature 010)', () => {
+  // Helper to create valid alert destinations for testing
+  const createValidAlertDestinations = (overrides: Record<string, unknown> = {}) => ({
+    inventory: {
+      newScriptIdentified: { destination: 'inventory-script-channel' },
+      newHeaderIdentified: { destination: 'inventory-header-channel' },
+    },
+    detection: {
+      newScriptDetected: { destination: 'detection-script-channel' },
+      scriptMismatchDetected: { destination: 'script-mismatch-channel' },
+      newHeaderDetected: { destination: 'detection-header-channel' },
+    },
+    successNotification: { destination: 'success-channel' },
+    ...overrides,
+  })
+
+  describe('T012: Missing successNotification field', () => {
+    it('should reject InventoryAlertSchema when successNotification is missing', () => {
+      const alertsWithoutSuccess = {
+        inventory: {
+          newScriptIdentified: { destination: 'inventory-script-channel' },
+          newHeaderIdentified: { destination: 'inventory-header-channel' },
+        },
+        detection: {
+          newScriptDetected: { destination: 'detection-script-channel' },
+          scriptMismatchDetected: { destination: 'script-mismatch-channel' },
+          newHeaderDetected: { destination: 'detection-header-channel' },
+        },
+        // successNotification intentionally omitted
+      }
+
+      const result = InventoryAlertSchema.safeParse(alertsWithoutSuccess)
+      expect(result.success).toBe(false)
+      if (!result.success) {
+        const issues = result.error.issues.map((issue) => issue.path.join('.'))
+        expect(issues).toContain('successNotification')
+      }
+    })
+  })
+
+  describe('T013: Empty destination string validation', () => {
+    it('should reject AlertDestinationSchema with empty destination string', () => {
+      const result = AlertDestinationSchema.safeParse({ destination: '' })
+
+      expect(result.success).toBe(false)
+      if (!result.success) {
+        expect(result.error.issues[0]!.message).toContain('Alert destination cannot be empty')
+      }
+    })
+
+    it('should reject successNotification with empty destination string', () => {
+      const alertsWithEmptyDestination = createValidAlertDestinations({
+        successNotification: { destination: '' },
+      })
+
+      const result = InventoryAlertSchema.safeParse(alertsWithEmptyDestination)
+      expect(result.success).toBe(false)
+      if (!result.success) {
+        expect(result.error.issues.some((issue) => issue.message.includes('Alert destination cannot be empty'))).toBe(true)
+      }
+    })
+
+    it('should accept AlertDestinationSchema with valid non-empty destination', () => {
+      const result = AlertDestinationSchema.safeParse({ destination: 'valid-channel' })
+      expect(result.success).toBe(true)
+    })
+  })
+
+  describe('T014: Valid successNotification field', () => {
+    it('should accept InventoryAlertSchema with valid successNotification', () => {
+      const validAlerts = createValidAlertDestinations()
+
+      const result = InventoryAlertSchema.safeParse(validAlerts)
+      expect(result.success).toBe(true)
+      if (result.success) {
+        expect(result.data.successNotification.destination).toBe('success-channel')
+      }
+    })
+
+    it('should accept successNotification with any valid non-empty string', () => {
+      const alertsWithCustomDestination = createValidAlertDestinations({
+        successNotification: { destination: '#my-custom-slack-channel' },
+      })
+
+      const result = InventoryAlertSchema.safeParse(alertsWithCustomDestination)
+      expect(result.success).toBe(true)
+      if (result.success) {
+        expect(result.data.successNotification.destination).toBe('#my-custom-slack-channel')
+      }
     })
   })
 })

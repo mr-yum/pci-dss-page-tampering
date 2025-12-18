@@ -24,7 +24,7 @@ This feature adds a required `successNotification` field to inventory alert conf
 export type InventoryAlert = {
   inventory: AlertInventory
   detection: AlertDetection
-  successNotification: AlertDestination  // NEW
+  successNotification: AlertDestination // NEW
 }
 ```
 
@@ -42,7 +42,7 @@ export const AlertDestinationSchema: z.ZodType<AlertDestination> = z.object({
 export const InventoryAlertSchema: z.ZodType<InventoryAlert> = z.object({
   inventory: AlertInventorySchema,
   detection: AlertDetectionSchema,
-  successNotification: AlertDestinationSchema,  // NEW
+  successNotification: AlertDestinationSchema, // NEW
 })
 ```
 
@@ -133,18 +133,18 @@ alertOnSuccess(summary: ExecutionSummary, alertDestinations: InventoryAlert): Pr
 describe('alertOnSuccess', () => {
   it('should use successNotification destination', async () => {
     const alertDestinations: InventoryAlert = {
-      inventory: { /* ... */ },
-      detection: { /* ... */ },
-      successNotification: { destination: '#success-channel' }
+      inventory: {
+        /* ... */
+      },
+      detection: {
+        /* ... */
+      },
+      successNotification: { destination: '#success-channel' },
     }
 
     await service.alertOnSuccess(summary, alertDestinations)
 
-    expect(axios.post).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({ channel: '#success-channel' }),
-      expect.any(Object)
-    )
+    expect(axios.post).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ channel: '#success-channel' }), expect.any(Object))
   })
 })
 ```
@@ -157,8 +157,12 @@ describe('alertOnSuccess', () => {
 describe('InventoryAlertSchema', () => {
   it('should require successNotification field', () => {
     const invalid = {
-      inventory: { /* valid */ },
-      detection: { /* valid */ }
+      inventory: {
+        /* valid */
+      },
+      detection: {
+        /* valid */
+      },
       // Missing successNotification
     }
 
@@ -167,9 +171,13 @@ describe('InventoryAlertSchema', () => {
 
   it('should reject empty destination string', () => {
     const invalid = {
-      inventory: { /* valid */ },
-      detection: { /* valid */ },
-      successNotification: { destination: '' }
+      inventory: {
+        /* valid */
+      },
+      detection: {
+        /* valid */
+      },
+      successNotification: { destination: '' },
     }
 
     const result = InventoryAlertSchema.safeParse(invalid)

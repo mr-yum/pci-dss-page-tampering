@@ -912,12 +912,14 @@ export class SlackAlertService implements IAlertService {
   /**
    * Alert for successful workflow execution.
    * Sends informational Slack notification when workflows complete without errors.
-   * Selects alert destination based on summary.mode per research.md decisions.
+   *
+   * Feature 010: Uses alertDestinations.successNotification directly for all modes.
+   * This routes success notifications to a dedicated destination separate from violation alerts.
    */
   async alertOnSuccess(summary: ExecutionSummary, alertDestinations: InventoryAlert): Promise<void> {
     try {
-      // Select destination based on workflow mode
-      const destination = this.selectSuccessDestination(summary.mode, alertDestinations)
+      // Feature 010: Direct access to dedicated success destination
+      const destination = alertDestinations.successNotification
 
       // Create and send message
       const messagePayload = this.createSuccessMessagePayload(summary, destination)
@@ -925,21 +927,6 @@ export class SlackAlertService implements IAlertService {
       await this.sendMessage(messagePayload)
     } catch (error) {
       console.error('[Alert Error] Failed to send success notification:', error)
-    }
-  }
-
-  /**
-   * Select alert destination based on workflow mode.
-   * - Inventory mode: Use inventory.newScriptIdentified (inventory team channel)
-   * - Detection mode or All mode: Use detection.newScriptDetected (production priority)
-   */
-  private selectSuccessDestination(mode: ExecutionMode, alertDestinations: InventoryAlert): AlertDestination {
-    switch (mode) {
-      case ExecutionMode.Inventory:
-        return alertDestinations.inventory.newScriptIdentified
-      case ExecutionMode.Detection:
-      case ExecutionMode.All:
-        return alertDestinations.detection.newScriptDetected
     }
   }
 

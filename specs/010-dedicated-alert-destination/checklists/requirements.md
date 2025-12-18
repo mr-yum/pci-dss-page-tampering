@@ -34,6 +34,7 @@
 All items pass validation. The specification is ready for `/speckit.plan`.
 
 **Validation Details:**
+
 - FR-001 through FR-006 are all testable with clear acceptance criteria in User Stories
 - Success criteria SC-001 through SC-004 are measurable and technology-agnostic
 - Edge cases cover validation errors (missing field, empty value) and same-destination usage

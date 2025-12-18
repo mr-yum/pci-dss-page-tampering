@@ -11,7 +11,7 @@ Existing entity reused for success notifications.
 
 ```typescript
 type AlertDestination = {
-  destination: string  // Slack channel ID or webhook URL
+  destination: string // Slack channel ID or webhook URL
 }
 ```
 
@@ -30,7 +30,7 @@ type InventoryAlert = {
 type InventoryAlert = {
   inventory: AlertInventory
   detection: AlertDetection
-  successNotification: AlertDestination  // NEW: Required field
+  successNotification: AlertDestination // NEW: Required field
 }
 ```
 
@@ -68,7 +68,7 @@ export const InventoryAlertSchema: z.ZodType<InventoryAlert> = z.object({
 export const InventoryAlertSchema: z.ZodType<InventoryAlert> = z.object({
   inventory: AlertInventorySchema,
   detection: AlertDetectionSchema,
-  successNotification: AlertDestinationSchema,  // NEW: Required
+  successNotification: AlertDestinationSchema, // NEW: Required
 })
 ```
 
@@ -90,9 +90,9 @@ export const AlertDestinationSchema: z.ZodType<AlertDestination> = z.object({
 
 ## Validation Rules
 
-| Field | Rule | Error Message |
-| ----- | ---- | ------------- |
-| `alerts.successNotification` | Required | "Required" (Zod default) |
+| Field                                    | Rule             | Error Message                       |
+| ---------------------------------------- | ---------------- | ----------------------------------- |
+| `alerts.successNotification`             | Required         | "Required" (Zod default)            |
 | `alerts.successNotification.destination` | Non-empty string | "Alert destination cannot be empty" |
 
 ## JSON Schema Example

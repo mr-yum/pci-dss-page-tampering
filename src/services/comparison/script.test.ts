@@ -50,6 +50,7 @@ describe('ScriptComparisonService', () => {
           scriptMismatchDetected: { destination: 'test-channel' },
           newHeaderDetected: { destination: 'test-channel' },
         },
+        successNotification: { destination: 'test-channel' },
       },
       scripts: [],
       headers: [],
