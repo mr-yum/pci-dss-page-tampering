@@ -44,14 +44,14 @@ npm start -- [OPTIONS]
 
 ### Optional Parameters
 
-| Parameter                   | Description                                         | Default           |
-| --------------------------- | --------------------------------------------------- | ----------------- |
-| `--mode <mode>`             | Execution mode: `inventory`, `detection`, or `all`  | `all`             |
-| `--target <name>`           | Process specific target (e.g., "1.0")               | all targets       |
-| `--slack-token <token>`     | Slack token for alerts (logs to console if omitted) | -                 |
-| `--inventory-branch <name>` | Branch for inventory operations                     | `updates/scripts` |
-| `--detection-branch <name>` | Branch for detection operations                     | `main`            |
-| `--help`                    | Display help message and exit                       | -                 |
+| Parameter                   | Description                                         | Default             |
+| --------------------------- | --------------------------------------------------- | ------------------- |
+| `--mode <mode>`             | Execution mode: `inventory`, `detection`, or `all`  | `all`               |
+| `--target <name>`           | Process specific target (e.g., "1.0")               | all targets         |
+| `--slack-token <token>`     | Slack token for alerts (logs to console if omitted) | -                   |
+| `--inventory-branch <name>` | Branch for inventory operations                     | `inventory-updates` |
+| `--detection-branch <name>` | Branch for detection operations                     | `main`              |
+| `--help`                    | Display help message and exit                       | -                   |
 
 ### Usage Examples
 

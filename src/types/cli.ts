@@ -81,7 +81,7 @@ export const CliArgsSchema = z.object({
   repo: repoUrlSchema,
   gitToken: z.string().min(1, 'Git token is required for HTTPS repositories'),
   slackToken: z.string().optional(),
-  inventoryBranch: z.string().default('updates/scripts'),
+  inventoryBranch: z.string().default('inventory-updates'),
   detectionBranch: z.string().default('main'),
   help: z.boolean().default(false),
 })

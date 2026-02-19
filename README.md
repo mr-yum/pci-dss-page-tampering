@@ -62,7 +62,7 @@ npm start -- \
 npm start -- \
   --repo https://github.com/org/inventory \
   --git-token <YOUR_TOKEN> \
-  --inventory-branch updates/scripts \
+  --inventory-branch inventory-updates \
   --detection-branch main
 ```
 
@@ -85,14 +85,14 @@ npm start -- \
 
 ### Optional Parameters
 
-| Parameter                   | Description                                         | Default           |
-| --------------------------- | --------------------------------------------------- | ----------------- |
-| `--mode <mode>`             | Execution mode: `inventory`, `detection`, or `all`  | `all`             |
-| `--target <name>`           | Process specific target (e.g., "1.0")               | all targets       |
-| `--slack-token <token>`     | Slack token for alerts (logs to console if omitted) | -                 |
-| `--inventory-branch <name>` | Branch for inventory operations                     | `updates/scripts` |
-| `--detection-branch <name>` | Branch for detection operations                     | `main`            |
-| `--help`                    | Display help message and exit                       | -                 |
+| Parameter                   | Description                                         | Default             |
+| --------------------------- | --------------------------------------------------- | ------------------- |
+| `--mode <mode>`             | Execution mode: `inventory`, `detection`, or `all`  | `all`               |
+| `--target <name>`           | Process specific target (e.g., "1.0")               | all targets         |
+| `--slack-token <token>`     | Slack token for alerts (logs to console if omitted) | -                   |
+| `--inventory-branch <name>` | Branch for inventory operations                     | `inventory-updates` |
+| `--detection-branch <name>` | Branch for detection operations                     | `main`              |
+| `--help`                    | Display help message and exit                       | -                   |
 
 ## Branch Usage
 
@@ -101,7 +101,7 @@ The system uses different branches for different purposes:
 ### Inventory Branch (`--inventory-branch`)
 
 - **Purpose**: Updates baseline inventory with newly discovered scripts/headers
-- **Default**: `updates/scripts`
+- **Default**: `inventory-updates`
 - **Behavior**: Reads from and pushes changes to this branch
 - **Use case**: Staging/development environment monitoring to update approved resource list
 
@@ -114,7 +114,7 @@ The system uses different branches for different purposes:
 
 ### Recommended Branch Strategy
 
-1. **Inventory workflow** → `updates/scripts` branch
+1. **Inventory workflow** → `inventory-updates` branch
    - Runs against staging/inventory URLs
    - Adds new scripts/headers as they're discovered
    - Creates alerts for resources needing manual authorization
@@ -125,7 +125,7 @@ The system uses different branches for different purposes:
    - Alerts on any unauthorized changes
 
 3. **Review process**:
-   - Review changes in `updates/scripts` branch
+   - Review changes in `inventory-updates` branch
    - Add authorization metadata for legitimate resources
    - Merge to `main` after approval
    - Detection workflow now recognizes these resources as authorized
@@ -136,11 +136,11 @@ The system uses different branches for different purposes:
 # Step 1: Run inventory to discover new resources
 npm start -- \
   --mode inventory \
-  --inventory-branch updates/scripts \
+  --inventory-branch inventory-updates \
   --repo https://github.com/org/inventory \
   --git-token <TOKEN>
 
-# Step 2: Review and approve changes in updates/scripts branch
+# Step 2: Review and approve changes in inventory-updates branch
 # (Manual review via pull request or direct commits)
 
 # Step 3: Run detection against approved baseline
@@ -163,7 +163,7 @@ For GitHub Actions, pass secrets via CLI parameters:
       --repo https://github.com/${{ github.repository }}-inventory \
       --git-token ${{ secrets.INVENTORY_REPO_PAT }} \
       --slack-token ${{ secrets.SLACK_TOKEN }} \
-      --inventory-branch updates/scripts \
+      --inventory-branch inventory-updates \
       --detection-branch main
 ```
 
