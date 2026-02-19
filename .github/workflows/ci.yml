@@ -47,7 +47,7 @@ jobs:
       - name: Audit dependencies
         run: |
           echo "📦 Auditing dependencies..."
-          npm audit
+          npm audit --audit-level=high
           echo "✅ Dependencies audited successfully"
 
       - name: Run formatting and linting commands
