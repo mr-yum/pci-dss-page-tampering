@@ -34,17 +34,17 @@ describe('CLI Branch Override Integration Tests', () => {
       expect(result.status).not.toBe(1)
     })
 
-    it('should use default "updates/scripts" when --inventory-branch is omitted', () => {
+    it('should use default "inventory-updates" when --inventory-branch is omitted', () => {
       // Verify default is documented in help
       const result = executeCli(['--help'])
 
       expect(result.status).toBe(0)
-      expect(result.stdout).toContain('updates/scripts')
+      expect(result.stdout).toContain('inventory-updates')
       expect(result.stdout).toContain('--inventory-branch')
     })
 
     it('should accept branch names with slashes', () => {
-      const branchNames = ['updates/scripts', 'feature/new-workflow', 'release/v1.0', 'hotfix/security-patch']
+      const branchNames = ['inventory-updates', 'feature/new-workflow', 'release/v1.0', 'hotfix/security-patch']
 
       branchNames.forEach((branchName) => {
         const result = executeCli(['--mode', 'inventory', '--inventory-branch', branchName, '--repo', 'file:///tmp/test-repo', '--git-token', 'dummy-token'])
@@ -149,7 +149,7 @@ describe('CLI Branch Override Integration Tests', () => {
     })
 
     it('should allow different branch names for inventory and detection', () => {
-      const result = executeCli(['--mode', 'all', '--inventory-branch', 'updates/scripts', '--detection-branch', 'main', '--repo', 'file:///tmp/test-repo', '--git-token', 'dummy-token'])
+      const result = executeCli(['--mode', 'all', '--inventory-branch', 'inventory-updates', '--detection-branch', 'main', '--repo', 'file:///tmp/test-repo', '--git-token', 'dummy-token'])
 
       // Should not fail validation (this is the recommended pattern)
       expect(result.status).not.toBe(1)
@@ -170,7 +170,7 @@ describe('CLI Branch Override Integration Tests', () => {
 
       expect(result.status).toBe(0)
       // Default inventory branch
-      expect(result.stdout).toContain('updates/scripts')
+      expect(result.stdout).toContain('inventory-updates')
       // Default detection branch
       expect(result.stdout).toContain('main')
     })
@@ -252,7 +252,7 @@ describe('CLI Branch Override Integration Tests', () => {
   })
 
   describe('Default behavior verification', () => {
-    it('should use updates/scripts for inventory when no override provided', () => {
+    it('should use inventory-updates for inventory when no override provided', () => {
       // This is tested implicitly - if default wasn't working, execution would fail differently
       const result = executeCli(['--mode', 'inventory', '--repo', 'file:///tmp/test-repo', '--git-token', 'dummy-token'])
 

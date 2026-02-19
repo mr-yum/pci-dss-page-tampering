@@ -37,7 +37,7 @@ OPTIONAL PARAMETERS:
                            If omitted, alerts will be logged to console
 
   --inventory-branch <NAME> Git branch for inventory operations
-                           Default: updates/scripts
+                           Default: inventory-updates
 
   --detection-branch <NAME> Git branch for detection operations
                            Default: main
@@ -81,7 +81,7 @@ EXAMPLES:
   5. Feature Branch Testing (custom inventory branch):
      npm start -- \\
        --mode inventory \\
-       --inventory-branch feature/new-scripts \\
+       --inventory-branch feature/new-inventory \\
        --repo https://github.com/org/inventory \\
        --git-token ghp_abc123xyz
 

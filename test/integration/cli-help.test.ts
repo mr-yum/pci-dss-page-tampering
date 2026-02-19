@@ -80,7 +80,7 @@ describe('CLI Help Integration Tests (T028)', () => {
     it('should document default values', () => {
       // Help should show defaults for mode, inventory-branch, detection-branch
       expect(helpOutput).toContain('all') // default mode
-      expect(helpOutput).toContain('updates/scripts') // default inventory branch
+      expect(helpOutput).toContain('inventory-updates') // default inventory branch
       expect(helpOutput).toContain('main') // default detection branch
     })
 

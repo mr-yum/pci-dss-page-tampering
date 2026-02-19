@@ -164,7 +164,7 @@ describe('Success Notification Integration Tests (Phase 6)', () => {
 
       expect(result.status).toBe(0)
       // Verify default branch values are documented
-      expect(result.stdout).toContain('updates/scripts') // Default inventory branch
+      expect(result.stdout).toContain('inventory-updates') // Default inventory branch
       expect(result.stdout).toContain('main') // Default detection branch
     })
   })
