@@ -11,7 +11,7 @@
   "dependencies": {
     "axios": "^1.11.0",
     "puppeteer": "^24.16.0",
-    "simple-git": "^3.28.0",
+    "simple-git": "^3.32.3",
     "zod": "^4.0.17"
   },
   "devDependencies": {
