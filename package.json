@@ -60,6 +60,7 @@
   },
   "license": "UNLICENSED",
   "overrides": {
-    "minimatch": "^10.2.1"
+    "minimatch": "^10.2.1",
+    "fast-xml-parser": "^5.4.2"
   }
 }

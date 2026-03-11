@@ -391,6 +391,23 @@ export class SlackAlertService implements IAlertService {
                     elements: [
                       {
                         type: 'text',
+                        text: 'Content',
+                        style: {
+                          bold: true,
+                        },
+                      },
+                    ],
+                  },
+                ],
+              },
+              {
+                type: 'rich_text',
+                elements: [
+                  {
+                    type: 'rich_text_section',
+                    elements: [
+                      {
+                        type: 'text',
                         text: 'Failure Reason',
                         style: {
                           bold: true,
@@ -447,6 +464,7 @@ export class SlackAlertService implements IAlertService {
     const matcherType = result.authorizationMatcher.getType()
     const pattern = JSON.stringify(result.authorizationMatcher.getPattern())
     const failureReason = `${matcherType}Matcher failed: ${result.failureReason} (expected: ${pattern})`
+    const contentSnippet = this.createContentSnippet(result.script.content ?? '')
 
     return [
       {
@@ -472,6 +490,20 @@ export class SlackAlertService implements IAlertService {
               {
                 type: 'text',
                 text: this.truncateText(scriptInfo.hash.value),
+              },
+            ],
+          },
+        ],
+      },
+      {
+        type: 'rich_text',
+        elements: [
+          {
+            type: 'rich_text_section',
+            elements: [
+              {
+                type: 'text',
+                text: contentSnippet,
               },
             ],
           },
@@ -654,7 +686,7 @@ export class SlackAlertService implements IAlertService {
             elements: [
               {
                 type: 'text',
-                text: this.truncateText(result.header.value),
+                text: result.header.value,
               },
             ],
           },
@@ -888,7 +920,7 @@ export class SlackAlertService implements IAlertService {
   }
 
   /**
-   * Creates a content snippet showing the first 30 and last 30 characters
+   * Creates a content snippet showing the first 100 and last 100 characters
    * of the script content, with "..." in between for easier identification.
    */
   private createContentSnippet(content: string): string {
@@ -899,13 +931,13 @@ export class SlackAlertService implements IAlertService {
     // Remove leading/trailing whitespace and normalize line breaks for cleaner display
     const normalized = content.trim().replace(/\s+/g, ' ')
 
-    if (normalized.length <= 63) {
-      // 30 + 3 ("...") + 30 = 63
+    if (normalized.length <= 203) {
+      // 100 + 3 ("...") + 100 = 203
       return normalized
     }
 
-    const start = normalized.slice(0, 30)
-    const end = normalized.slice(-30)
+    const start = normalized.slice(0, 100)
+    const end = normalized.slice(-100)
     return `${start}...${end}`
   }
 
