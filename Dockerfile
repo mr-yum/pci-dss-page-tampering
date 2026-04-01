@@ -1,7 +1,9 @@
 # syntax=docker/dockerfile:1
 # check=skip=InvalidDefaultArgInFrom;error=true
 
-FROM node:24-slim AS node-dev-deps
+ARG SERVE_DOCKER_REGISTRY
+
+FROM ${DOCKERTOOLS_REGISTRY}/base/node-24-install:v3 AS node-dev-deps
 WORKDIR /workdir
 
 # install all npm dependencies for development
@@ -11,14 +13,14 @@ RUN \
   --mount=type=cache,target=/root/.npm \
   npm ci
 
-FROM node:24-slim AS dev
+FROM ${DOCKERTOOLS_REGISTRY}/base/node-24-dev:v3 AS dev
 WORKDIR /workdir
 
 # copy in all npm dependencies for development
 COPY --link --from=node-dev-deps /workdir/node_modules node_modules
 
 
-FROM node:24-slim AS node-prod-deps
+FROM ${DOCKERTOOLS_REGISTRY}/base/node-24-install:v3 AS node-prod-deps
 WORKDIR /workdir
 
 # install minimal npm dependencies for production
