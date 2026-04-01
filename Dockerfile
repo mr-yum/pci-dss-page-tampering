@@ -3,7 +3,7 @@
 
 ARG SERVE_DOCKER_REGISTRY
 
-FROM ${DOCKERTOOLS_REGISTRY}/base/node-24-install:v3 AS node-dev-deps
+FROM ${SERVE_DOCKER_REGISTRY}/base/node-24-install:v3 AS node-dev-deps
 WORKDIR /workdir
 
 # install all npm dependencies for development
@@ -13,14 +13,14 @@ RUN \
   --mount=type=cache,target=/root/.npm \
   npm ci
 
-FROM ${DOCKERTOOLS_REGISTRY}/base/node-24-dev:v3 AS dev
+FROM ${SERVE_DOCKER_REGISTRY}/base/node-24-dev:v3 AS dev
 WORKDIR /workdir
 
 # copy in all npm dependencies for development
 COPY --link --from=node-dev-deps /workdir/node_modules node_modules
 
 
-FROM ${DOCKERTOOLS_REGISTRY}/base/node-24-install:v3 AS node-prod-deps
+FROM ${SERVE_DOCKER_REGISTRY}/base/node-24-install:v3 AS node-prod-deps
 WORKDIR /workdir
 
 # install minimal npm dependencies for production
