@@ -1,4 +1,0 @@
-services: {}
-secrets:
-  npmrc:
-    file: ${NPMRC_FILE}

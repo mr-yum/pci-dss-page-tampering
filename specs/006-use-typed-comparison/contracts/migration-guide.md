@@ -165,6 +165,7 @@ function sendAlert(result: ComparisonResultType) {
    - Add new tests for generic update handler
 
 3. **Integration tests**:
+
    ```bash
    npm run test:integration
    ```

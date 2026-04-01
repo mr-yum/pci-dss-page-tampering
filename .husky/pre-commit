@@ -1,7 +1,10 @@
 #!/bin/sh
 
 if [ -z "$CI" ]; then
-  npm run fix:formatting -- --only-staged
-  npm run fix:linting -- --only-staged
-  git add $(git diff --name-only --cached --diff-filter=AM)
+  STAGED_FILES=$(git diff --name-only --cached --diff-filter=AM)
+  if [ -n "$STAGED_FILES" ]; then
+    echo "$STAGED_FILES" | xargs npx prettier --write --ignore-unknown
+    echo "$STAGED_FILES" | grep -E '\.(ts|js)$' | xargs -r npx eslint --fix
+    echo "$STAGED_FILES" | xargs git add
+  fi
 fi

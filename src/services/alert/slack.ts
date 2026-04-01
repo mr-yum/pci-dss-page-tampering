@@ -16,10 +16,17 @@ import type { Target } from '../../types/target'
 
 export class SlackAlertService implements IAlertService {
   private readonly oAuthToken: string
+  private readonly repositoryUrl: string
   private readonly maxStringLength = 100
 
-  constructor(slackToken: string) {
+  constructor(slackToken: string, repositoryUrl: string) {
     this.oAuthToken = slackToken
+    this.repositoryUrl = repositoryUrl
+  }
+
+  private getReviewChangesUrl(): string {
+    const baseUrl = this.repositoryUrl.replace(/\.git$/, '')
+    return `${baseUrl}/compare/update/scripts?expand=1`
   }
 
   /**
@@ -289,7 +296,7 @@ export class SlackAlertService implements IAlertService {
                 type: 'plain_text',
                 text: 'Review changes',
               },
-              url: 'https://github.com/mr-yum/script-inventory/compare/update/scripts?expand=1',
+              url: this.getReviewChangesUrl(),
             },
           ],
         },
@@ -437,7 +444,7 @@ export class SlackAlertService implements IAlertService {
                 type: 'plain_text',
                 text: 'Review changes',
               },
-              url: 'https://github.com/mr-yum/script-inventory/compare/update/scripts?expand=1',
+              url: this.getReviewChangesUrl(),
             },
           ],
         },
@@ -647,7 +654,7 @@ export class SlackAlertService implements IAlertService {
                 type: 'plain_text',
                 text: 'Review changes',
               },
-              url: 'https://github.com/mr-yum/script-inventory/compare/update/scripts?expand=1',
+              url: this.getReviewChangesUrl(),
             },
           ],
         },
@@ -809,7 +816,7 @@ export class SlackAlertService implements IAlertService {
                 type: 'plain_text',
                 text: 'Review changes',
               },
-              url: 'https://github.com/mr-yum/script-inventory/compare/update/scripts?expand=1',
+              url: this.getReviewChangesUrl(),
             },
           ],
         },

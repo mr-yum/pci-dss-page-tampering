@@ -13,8 +13,7 @@ yalc.lock
 lib
 dist
 build
-.node-builder/
-.docker-tools/
+.swc
 
 # testing
 coverage
@@ -39,7 +38,6 @@ tsconfig.tsbuildinfo
 .npmrc-ci
 dist.tgz
 
-.node-builder
 tmp
 
 # jetbrains

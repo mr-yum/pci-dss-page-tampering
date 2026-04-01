@@ -34,7 +34,7 @@ describe('SlackAlertService - Typed Results Handling (Phase 4)', () => {
   let mockAlertDestinations: InventoryAlert
 
   beforeEach(() => {
-    service = new SlackAlertService('test-token')
+    service = new SlackAlertService('test-token', 'https://github.com/example/script-inventory')
 
     mockTarget = {
       type: 'detection',
@@ -516,7 +516,7 @@ describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
   let mockAlertDestinations: InventoryAlert
 
   beforeEach(() => {
-    service = new SlackAlertService('test-token')
+    service = new SlackAlertService('test-token', 'https://github.com/example/script-inventory')
 
     mockAlertDestinations = {
       inventory: {

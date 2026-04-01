@@ -42,6 +42,12 @@ OPTIONAL PARAMETERS:
   --detection-branch <NAME> Git branch for detection operations
                            Default: main
 
+  --git-user-name <NAME>   Git committer name for inventory updates
+                           Default: PCI DSS Page Tampering Bot
+
+  --git-user-email <EMAIL> Git committer email for inventory updates
+                           Default: noreply@example.com
+
   --help, -h               Display this help message and exit
 
 EXIT CODES:

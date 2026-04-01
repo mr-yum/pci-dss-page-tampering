@@ -29,11 +29,12 @@ If you have your tokens in .env.secrets (see below for setup):
 
 ```bash
 source .env.secrets
-SLACK_OAUTH_TOKEN=$SLACK_OAUTH_TOKEN INVENTORY_REPO_PAT=$INVENTORY_REPO_PAT
 npm start -- \
-  --repo https://github.com/org/inventory \
-  --git-token $SLACK_OAUTH_TOKEN \
-  --slack-token $INVENTORY_REPO_PAT
+  --repo $INVENTORY_REPO_URL \
+  --git-token $INVENTORY_REPO_PAT \
+  --slack-token $SLACK_OAUTH_TOKEN \
+  --git-user-name $GIT_USER_NAME \
+  --git-user-email $GIT_USER_EMAIL
 ```
 
 **Run inventory only for a specific target:**
@@ -92,6 +93,8 @@ npm start -- \
 | `--slack-token <token>`     | Slack token for alerts (logs to console if omitted) | -                   |
 | `--inventory-branch <name>` | Branch for inventory operations                     | `inventory-updates` |
 | `--detection-branch <name>` | Branch for detection operations                     | `main`              |
+| `--git-user-name <name>`   | Git committer name for inventory updates            | `PCI DSS Page Tampering Bot` |
+| `--git-user-email <email>` | Git committer email for inventory updates           | `noreply@example.com` |
 | `--help`                    | Display help message and exit                       | -                   |
 
 ## Branch Usage
@@ -164,7 +167,9 @@ For GitHub Actions, pass secrets via CLI parameters:
       --git-token ${{ secrets.INVENTORY_REPO_PAT }} \
       --slack-token ${{ secrets.SLACK_TOKEN }} \
       --inventory-branch inventory-updates \
-      --detection-branch main
+      --detection-branch main \
+      --git-user-name 'PCI DSS Bot' \
+      --git-user-email 'pci-bot@example.com'
 ```
 
 ## Local Testing with GitHub Actions
@@ -174,7 +179,6 @@ Requires `.env.secrets` file:
 ```
 # .env.secrets
 INVENTORY_REPO_PAT=<PAT secret>
-NPMRC_RO_FILE=<copy all of .npmrc content, remember to include newlines>
 ```
 
 Run locally:

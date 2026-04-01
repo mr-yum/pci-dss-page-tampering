@@ -13,6 +13,8 @@ describe('Configuration Builder', () => {
         slackToken: 'xoxb-slack-token',
         inventoryBranch: 'updates/scripts',
         detectionBranch: 'main',
+        gitUserName: 'PCI DSS Page Tampering Bot',
+        gitUserEmail: 'noreply@example.com',
         help: false,
       }
 
@@ -39,6 +41,8 @@ describe('Configuration Builder', () => {
         slackToken: undefined,
         inventoryBranch: 'updates/scripts',
         detectionBranch: 'main',
+        gitUserName: 'PCI DSS Page Tampering Bot',
+        gitUserEmail: 'noreply@example.com',
         help: false,
       }
 
@@ -56,6 +60,8 @@ describe('Configuration Builder', () => {
         slackToken: undefined,
         inventoryBranch: 'updates/scripts',
         detectionBranch: 'main',
+        gitUserName: 'PCI DSS Page Tampering Bot',
+        gitUserEmail: 'noreply@example.com',
         help: false,
       }
 
@@ -74,6 +80,8 @@ describe('Configuration Builder', () => {
         slackToken: undefined,
         inventoryBranch: 'updates/scripts',
         detectionBranch: 'main',
+        gitUserName: 'PCI DSS Page Tampering Bot',
+        gitUserEmail: 'noreply@example.com',
         help: false,
       }
 
@@ -91,6 +99,8 @@ describe('Configuration Builder', () => {
         slackToken: 'xoxb-token',
         inventoryBranch: 'updates/scripts',
         detectionBranch: 'staging',
+        gitUserName: 'PCI DSS Page Tampering Bot',
+        gitUserEmail: 'noreply@example.com',
         help: false,
       }
 
@@ -109,6 +119,8 @@ describe('Configuration Builder', () => {
         slackToken: undefined,
         inventoryBranch: 'feature/new-scripts',
         detectionBranch: 'release/v2.0',
+        gitUserName: 'PCI DSS Page Tampering Bot',
+        gitUserEmail: 'noreply@example.com',
         help: false,
       }
 

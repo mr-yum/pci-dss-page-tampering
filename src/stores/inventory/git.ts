@@ -12,11 +12,15 @@ import { getInventoryFileNames, getRawInventoryFromFile } from '../../utils/file
 export class GitInventoryStore implements IInventoryStore {
   private readonly initialGitClient: SimpleGit
   private readonly repositoryTarget: string
+  private readonly gitUserName: string
+  private readonly gitUserEmail: string
   private repositoryGitClient: SimpleGit | undefined
 
   constructor(args: GitInventoryStoreProps) {
     this.initialGitClient = args.gitClient
     this.repositoryTarget = args.repositoryTarget
+    this.gitUserName = args.gitUserName
+    this.gitUserEmail = args.gitUserEmail
   }
 
   async pull(target: PullTarget, branchName?: string): Promise<InventoryPullResult> {
@@ -68,8 +72,8 @@ export class GitInventoryStore implements IInventoryStore {
 
   async push(_inventory: Inventory[], branchName?: string): Promise<void> {
     console.log(`[Inventory → Store] Setting user.name and user.email for the local repo.`)
-    await this.repositoryGitClient?.addConfig('user.name', 'me&u (formerly Mr Yum) Dev [bot]')
-    await this.repositoryGitClient?.addConfig('user.email', 'dev@mryum.com')
+    await this.repositoryGitClient?.addConfig('user.name', this.gitUserName)
+    await this.repositoryGitClient?.addConfig('user.email', this.gitUserEmail)
 
     console.log(`[Inventory → Store] Adding all changed files found in '${GIT_CLONE_PATH}'.`)
     await this.repositoryGitClient?.add('.')

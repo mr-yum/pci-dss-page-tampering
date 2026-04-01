@@ -14,7 +14,7 @@ export function buildConfiguration(cliArgs: CliArguments): RuntimeConfiguration 
     targetFilter: buildTargetFilter(cliArgs.target),
     repository: buildRepositoryConfiguration(cliArgs.repo),
     branches: buildBranchConfiguration(cliArgs.inventoryBranch, cliArgs.detectionBranch),
-    authentication: buildAuthenticationConfiguration(cliArgs.repo, cliArgs.gitToken),
+    authentication: buildAuthenticationConfiguration(cliArgs.repo, cliArgs.gitToken, cliArgs.gitUserName, cliArgs.gitUserEmail),
     alerting: buildAlertingConfiguration(cliArgs.slackToken),
   }
 }
@@ -51,10 +51,12 @@ function buildBranchConfiguration(inventoryBranch: string, detectionBranch: stri
 /**
  * Build authentication configuration with formatted repository URL
  */
-function buildAuthenticationConfiguration(repo: string, gitToken: string): AuthenticationConfiguration {
+function buildAuthenticationConfiguration(repo: string, gitToken: string, gitUserName: string, gitUserEmail: string): AuthenticationConfiguration {
   return {
     gitToken,
     repositoryTarget: formatRepositoryUrl(repo, gitToken),
+    gitUserName,
+    gitUserEmail,
   }
 }
 

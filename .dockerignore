@@ -1,5 +1,3 @@
 node_modules
-
-# See https://www.notion.so/mryumteam/Local-secrets-797740a7b6d64fcb976363439384c276
 .env.secrets
 .env.local

@@ -11,8 +11,8 @@ This will be two new services to help us comply the following PCI DSS requiremen
 
 It will involve continuous monitoring, detection, and alerting of scripts running within both of our product offerings:
 
-- [2.0](https://github.com/mr-yum/)
-- [1.0](https://dev.azure.com/meandu/OrderingPlatform)
+- 2.0 (primary product)
+- 1.0 (legacy product)
 
 # Motivation
 

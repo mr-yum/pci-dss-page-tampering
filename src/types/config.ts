@@ -41,6 +41,8 @@ export type BranchConfiguration = Readonly<{
 export type AuthenticationConfiguration = Readonly<{
   gitToken: string
   repositoryTarget: string // Formatted as https://x-access-token:{token}@github.com/...
+  gitUserName: string
+  gitUserEmail: string
 }>
 
 /**

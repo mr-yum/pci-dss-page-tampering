@@ -1,9 +1,7 @@
 # syntax=docker/dockerfile:1
 # check=skip=InvalidDefaultArgInFrom;error=true
 
-ARG SERVE_DOCKER_REGISTRY
-
-FROM ${SERVE_DOCKER_REGISTRY}/mr-yum/base-images-build-22:v3 AS node-dev-deps
+FROM node:22-slim AS node-dev-deps
 WORKDIR /workdir
 
 # install all npm dependencies for development
@@ -11,17 +9,16 @@ WORKDIR /workdir
 COPY --link package-lock.json package.json ./
 RUN \
   --mount=type=cache,target=/root/.npm \
-  --mount=type=secret,id=npmrc,dst=/root/.npmrc \
   npm ci
 
-FROM ${SERVE_DOCKER_REGISTRY}/mr-yum/base-images-build-22:v3 AS dev
+FROM node:22-slim AS dev
 WORKDIR /workdir
 
 # copy in all npm dependencies for development
 COPY --link --from=node-dev-deps /workdir/node_modules node_modules
 
 
-FROM ${SERVE_DOCKER_REGISTRY}/mr-yum/base-images-build-22:v3 AS node-prod-deps
+FROM node:22-slim AS node-prod-deps
 WORKDIR /workdir
 
 # install minimal npm dependencies for production
@@ -29,20 +26,19 @@ WORKDIR /workdir
 COPY --link package-lock.json package.json ./
 RUN \
   --mount=type=cache,target=/root/.npm \
-  --mount=type=secret,id=npmrc,dst=/root/.npmrc \
   npm ci --omit=dev
 
 FROM dev AS build
 WORKDIR /workdir
 
 # copy in the minimal files to build the app code
-COPY --link package.json tsconfig.json ./
+COPY --link package.json tsconfig.json .swcrc ./
 COPY --link src ./src
 
 # build the app code
 RUN npm run build:js
 
-FROM ${SERVE_DOCKER_REGISTRY}/mr-yum/base-images-run-22:v3 AS service
+FROM node:22-slim AS service
 WORKDIR /workdir
 
 # copy in the minimal npm dependencies for production
@@ -56,12 +52,6 @@ COPY --link --chown=1000:1000 package.json ./
 
 # setup env vars
 ENV NODE_ENV=production
-
-# enable source maps
-# these come at a performance cost and since we're no longer bundling, the difference between
-# the source code and compiled code will be minimal, especially for a recent node version, so
-# you might not need to enable them
-# ENV NODE_OPTIONS=--enable-source-maps
 
 ENV PORT=3000
 EXPOSE 3000

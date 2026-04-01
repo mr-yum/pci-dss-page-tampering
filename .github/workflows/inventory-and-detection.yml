@@ -22,9 +22,6 @@ on:
   push:
     branches: ['main']
 
-env:
-  NPMRC: ${{ secrets.NPMRC_RO_FILE }}
-
 jobs:
   run-inventory-and-detection:
     runs-on: ubuntu-latest
@@ -42,15 +39,7 @@ jobs:
         run: |
           [ -n "${{ secrets.INVENTORY_REPO_PAT }}" ] || { echo "INVENTORY_REPO_PAT secret is missing"; exit 1; }
           [ -n "${{ secrets.SLACK_OAUTH_TOKEN }}" ] || { echo "SLACK_OAUTH_TOKEN secret is missing"; exit 1; }
-
-      - name: Configure npm auth for both registries
-        run: |
-          set -euo pipefail
-
-          # Safety checks so you fail fast if secrets are missing
-          [ -n "${NPMRC:-}" ] || { echo "NPMRC env variable is empty, make sure the NPMRC_RO_FILE secret is set"; exit 1; }
-
-          echo "$NPMRC" > $HOME/.npmrc
+          [ -n "${{ vars.INVENTORY_REPO_URL }}" ] || { echo "INVENTORY_REPO_URL variable is missing"; exit 1; }
 
       - name: Use Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v6
@@ -111,9 +100,11 @@ jobs:
           echo "▶️ Running PCI DSS Page Tampering Detection..."
 
           # Build CLI arguments
-          CLI_ARGS="--repo https://github.com/mr-yum/script-inventory"
+          CLI_ARGS="--repo ${{ vars.INVENTORY_REPO_URL }}"
           CLI_ARGS="$CLI_ARGS --git-token ${{ secrets.INVENTORY_REPO_PAT }}"
           CLI_ARGS="$CLI_ARGS --slack-token ${{ secrets.SLACK_OAUTH_TOKEN }}"
+          CLI_ARGS="$CLI_ARGS --git-user-name '${{ vars.GIT_USER_NAME }}'"
+          CLI_ARGS="$CLI_ARGS --git-user-email '${{ vars.GIT_USER_EMAIL }}'"
 
           # Add mode (default: all for scheduled runs)
           MODE="${{ github.event.inputs.mode || 'all' }}"

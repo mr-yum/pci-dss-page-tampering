@@ -12,6 +12,8 @@ export type RawCliArgs = {
   slackToken?: string
   inventoryBranch?: string
   detectionBranch?: string
+  gitUserName?: string
+  gitUserEmail?: string
   help?: boolean
 }
 
@@ -83,6 +85,8 @@ export const CliArgsSchema = z.object({
   slackToken: z.string().optional(),
   inventoryBranch: z.string().default('inventory-updates'),
   detectionBranch: z.string().default('main'),
+  gitUserName: z.string().default('PCI DSS Page Tampering Bot'),
+  gitUserEmail: z.string().default('noreply@example.com'),
   help: z.boolean().default(false),
 })
 

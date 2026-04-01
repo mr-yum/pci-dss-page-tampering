@@ -354,11 +354,8 @@ The system runs on CRON schedules:
 
 ## Build System
 
-Uses `@mr-yum/node-builder` for:
-
-- TypeScript compilation
-- ESLint configuration (extends `.node-builder/eslint-config.cjs`)
-- Prettier configuration
-- Jest testing setup
-
-Configuration files extend from `.node-builder/` with project-specific overrides in `eslint.config.js`.
+- **TypeScript compilation**: SWC via `@swc/cli` (config in `.swcrc`)
+- **Linting**: ESLint 9 flat config (`eslint.config.js`)
+- **Formatting**: Prettier (config in `package.json`)
+- **Testing**: Jest 30 with `@swc/jest` transform (`jest.config.js`)
+- **Type checking**: `tsc --noEmit` directly

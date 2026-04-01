@@ -9,6 +9,8 @@ export type InventoryServiceProps = {
 export type GitInventoryStoreProps = {
   gitClient: SimpleGit
   repositoryTarget: string
+  gitUserName: string
+  gitUserEmail: string
 }
 
 export type InventoryRepositoryProps = {
