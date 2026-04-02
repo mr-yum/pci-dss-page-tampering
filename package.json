@@ -2,6 +2,23 @@
   "private": true,
   "name": "pci-dss-page-tampering",
   "version": "0.0.1",
+  "description": "PCI DSS compliance system implementing requirements 6.4.3 and 11.6.1 for payment page tampering detection",
+  "author": "me&u AU Trading Pty Ltd",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mr-yum/pci-dss-page-tampering.git"
+  },
+  "homepage": "https://github.com/mr-yum/pci-dss-page-tampering#readme",
+  "bugs": {
+    "url": "https://github.com/mr-yum/pci-dss-page-tampering/issues"
+  },
+  "keywords": [
+    "pci-dss",
+    "compliance",
+    "page-tampering",
+    "e-skimming",
+    "security"
+  ],
   "engines": {
     "node": ">=22",
     "npm": ">=10",
