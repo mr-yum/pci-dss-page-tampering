@@ -123,8 +123,8 @@ describe('NameMatcher', () => {
       })
 
       it('should authorize when name matches pattern regardless of content', () => {
-        const matcher = new NameMatcher('^inline_script.\\w*.?meandu\\.app\\/.*$')
-        const script = createDetectedScript('inline_script/staging.meandu.app/pcidsscompliance', 'dynamic content')
+        const matcher = new NameMatcher('^inline_script.\\w*.?example\\.com\\/.*$')
+        const script = createDetectedScript('inline_script/staging.example.com/pcidsscompliance', 'dynamic content')
 
         const result = matcher.authorize(script)
 
