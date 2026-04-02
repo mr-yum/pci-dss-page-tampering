@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # check=skip=InvalidDefaultArgInFrom;error=true
 
-FROM node:22-slim AS node-dev-deps
+FROM node:24-slim AS node-dev-deps
 WORKDIR /workdir
 
 # install all npm dependencies for development
@@ -11,14 +11,14 @@ RUN \
   --mount=type=cache,target=/root/.npm \
   npm ci
 
-FROM node:22-slim AS dev
+FROM node:24-slim AS dev
 WORKDIR /workdir
 
 # copy in all npm dependencies for development
 COPY --link --from=node-dev-deps /workdir/node_modules node_modules
 
 
-FROM node:22-slim AS node-prod-deps
+FROM node:24-slim AS node-prod-deps
 WORKDIR /workdir
 
 # install minimal npm dependencies for production
@@ -38,7 +38,7 @@ COPY --link src ./src
 # build the app code
 RUN npm run build:js
 
-FROM node:22-slim AS service
+FROM node:24-slim AS service
 WORKDIR /workdir
 
 # copy in the minimal npm dependencies for production
