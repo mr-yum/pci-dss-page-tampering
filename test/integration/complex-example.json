@@ -3,38 +3,38 @@
     "inventory": {
       "name": "2.0 staging",
       "type": "inventory",
-      "url": "https://staging.meandu.app/pcidsscompliance",
+      "url": "https://staging.example.com/pcidsscompliance",
       "workflow": "2.0_uat-workflow.json"
     },
     "detection": {
       "name": "2.0 production",
       "type": "detection",
-      "url": "https://meandu.app/pcidsscompliance?number=10",
+      "url": "https://example.com/pcidsscompliance?number=10",
       "workflow": "2.0_production-workflow.json"
     }
   },
   "alerts": {
     "inventory": {
       "newScriptIdentified": {
-        "destination": "#_pci-page-tampering-alerts"
+        "destination": "#pci-alerts"
       },
       "newHeaderIdentified": {
-        "destination": "#_pci-page-tampering-alerts"
+        "destination": "#pci-alerts"
       }
     },
     "detection": {
       "newScriptDetected": {
-        "destination": "#_pci-page-tampering-alerts"
+        "destination": "#pci-alerts"
       },
       "scriptMismatchDetected": {
-        "destination": "#_pci-page-tampering-alerts"
+        "destination": "#pci-alerts"
       },
       "newHeaderDetected": {
-        "destination": "#_pci-page-tampering-alerts"
+        "destination": "#pci-alerts"
       }
     },
     "successNotification": {
-      "destination": "#_pci-page-tampering-success"
+      "destination": "#pci-success"
     }
   },
   "scripts": [
