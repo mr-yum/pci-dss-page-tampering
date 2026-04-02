@@ -118,7 +118,6 @@ For detailed implementation documentation, see `specs/008-refactor-the-code/quic
 ### Setup
 
 - `npm run setup` - Initialize project with Husky hooks
-- `npm run secrets:pull` - Pull environment secrets (requires dotenv-tools)
 
 ### Local Testing with GitHub Actions
 
