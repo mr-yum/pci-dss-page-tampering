@@ -13,33 +13,33 @@ Example inventory schema:
   "target": {
     "inventory": {
       "type": "inventory",
-      "url": "https://staging.meandu.app/pcidsscompliance",
+      "url": "https://staging.example.com/pcidsscompliance",
       "workflow": "2.0_uat-workflow.json"
     },
     "detection": {
       "type": "detection",
-      "url": "https://meandu.app/pcidsscompliance?number=10",
+      "url": "https://example.com/pcidsscompliance?number=10",
       "workflow": "2.0_production-workflow.json"
     }
   },
   "alerts": {
     "inventory": {
       "newScriptIdentified": {
-        "destination": "#_pci-page-tampering-alerts"
+        "destination": "#pci-alerts"
       },
       "newHeaderIdentified": {
-        "destination": "#_pci-page-tampering-alerts"
+        "destination": "#pci-alerts"
       }
     },
     "detection": {
       "newScriptDetected": {
-        "destination": "#_pci-page-tampering-alerts"
+        "destination": "#pci-alerts"
       },
       "scriptMismatchDetected": {
-        "destination": "#_pci-page-tampering-alerts"
+        "destination": "#pci-alerts"
       },
       "newHeaderDetected": {
-        "destination": "#_pci-page-tampering-alerts"
+        "destination": "#pci-alerts"
       }
     }
   },
@@ -133,7 +133,7 @@ Example inventory schema:
   "headers": [
     {
       "nameMatcher": "^content-security-policy$",
-      "contentMatcher": "script-src self 'unsafe-inline' 'unsafe-eval' https:\\/\\/cdn\\.mryum\\.com https:\\/\\/static\\.meandu\\.app https:\\/\\/connect\\.facebook\\.net https:\\/\\/www\\.google-analytics\\.com https:\\/\\/www\\.googletagmanager\\.com https:\\/\\/api\\.paystack\\.co https:\\/\\/api2\\.amplitude\\.com https:\\/\\/cdn\\.amplitude\\.com https:\\/\\/challenges\\.cloudflare\\.com https:\\/\\/js\\.paystack\\.co https:\\/\\/js\\.stripe\\.com https:\\/\\/maps\\.googleapis\\.com https:\\/\\/\\*\\.eonx\\.com https:\\/\\/cdn\\.eonx\\.com https:\\/\\/dev\\.meandu\\.app https:\\/\\/mryum\\.local",
+      "contentMatcher": "script-src self 'unsafe-inline' 'unsafe-eval' https:\\/\\/cdn\\.example\\.com https:\\/\\/static\\.example\\.com https:\\/\\/connect\\.facebook\\.net https:\\/\\/www\\.google-analytics\\.com https:\\/\\/www\\.googletagmanager\\.com https:\\/\\/api\\.paystack\\.co https:\\/\\/api2\\.amplitude\\.com https:\\/\\/cdn\\.amplitude\\.com https:\\/\\/challenges\\.cloudflare\\.com https:\\/\\/js\\.paystack\\.co https:\\/\\/js\\.stripe\\.com https:\\/\\/maps\\.googleapis\\.com https:\\/\\/\\*\\.example\\.org https:\\/\\/cdn\\.example\\.org https:\\/\\/dev\\.example\\.com https:\\/\\/localhost",
       "authorisationInfo": {
         "description": "NO_DESCRIPTION",
         "authorised": false,

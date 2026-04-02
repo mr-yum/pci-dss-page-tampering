@@ -123,7 +123,7 @@ ALERTING BEHAVIOR:
   - Useful for local development and testing
 
 For more information, see README.md or visit:
-https://github.com/mr-yum/pci-dss-page-tampering
+https://github.com/mr-yum/pci-dss-page-tampering#readme
 `.trim()
 }
 

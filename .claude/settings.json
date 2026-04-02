@@ -1,13 +1,5 @@
 {
   "permissions": {
-    "allow": [
-      "Bash(grep -r *)",
-      "Bash(grep -rE *)",
-      "Bash(find *)",
-      "Bash(npx tsc:*)",
-      "Bash(ls /Users/tal/dev/pci-dss-page-tampering/Tiltfile /Users/tal/dev/pci-dss-page-tampering/.meandu.yml /Users/tal/dev/pci-dss-page-tampering/docker-compose.*.yml)",
-      "Bash(npx prettier:*)",
-      "Bash(npm install:*)"
-    ]
+    "allow": ["Bash(npx tsc:*)", "Bash(npx prettier:*)", "Bash(npm install:*)"]
   }
 }

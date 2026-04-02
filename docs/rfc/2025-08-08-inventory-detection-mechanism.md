@@ -172,13 +172,13 @@ An example can be something like:
 
 ```json
 {
-  "inventory_target": "https://staging.meandu.app/pci-venue",
-  "detection_target": "https://meandu.app/pci-venue",
+  "inventory_target": "https://staging.example.com/pci-venue",
+  "detection_target": "https://example.com/pci-venue",
   "puppeteer_flow": "2.0-add-to-cary-and-checkout.js",
   "scripts": [
     {
       // we might need to offer regexp or some other flexibility for names of auto-generated chunks
-      "name": "https://static.meandu.app/app/front-end-web/**/_next/static/chunks/*.js",
+      "name": "https://static.example.com/app/front-end-web/**/_next/static/chunks/*.js",
 
        // contains previous history if we have it
       "hashes": [ { "timestamp": ... "hash": "hash1" }, { "timestamp": ... "hash": "hash1" } ],

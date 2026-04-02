@@ -47,3 +47,6 @@ tmp
 .vscode/
 
 pulled_repo/
+
+# claude code local settings
+.claude/settings.local.json

@@ -2,6 +2,8 @@
 
 A PCI DSS compliance system implementing requirements 6.4.3 (Script Management) and 11.6.1 (Detection and Alerting) to prevent page tampering and e-skimming attacks on payment pages.
 
+Note: This repository is largely agent developed.
+
 ## Quick Start
 
 ### Basic Usage
@@ -86,16 +88,16 @@ npm start -- \
 
 ### Optional Parameters
 
-| Parameter                   | Description                                         | Default             |
-| --------------------------- | --------------------------------------------------- | ------------------- |
-| `--mode <mode>`             | Execution mode: `inventory`, `detection`, or `all`  | `all`               |
-| `--target <name>`           | Process specific target (e.g., "1.0")               | all targets         |
-| `--slack-token <token>`     | Slack token for alerts (logs to console if omitted) | -                   |
-| `--inventory-branch <name>` | Branch for inventory operations                     | `inventory-updates` |
-| `--detection-branch <name>` | Branch for detection operations                     | `main`              |
-| `--git-user-name <name>`   | Git committer name for inventory updates            | `PCI DSS Page Tampering Bot` |
-| `--git-user-email <email>` | Git committer email for inventory updates           | `noreply@example.com` |
-| `--help`                    | Display help message and exit                       | -                   |
+| Parameter                   | Description                                         | Default                      |
+| --------------------------- | --------------------------------------------------- | ---------------------------- |
+| `--mode <mode>`             | Execution mode: `inventory`, `detection`, or `all`  | `all`                        |
+| `--target <name>`           | Process specific target (e.g., "1.0")               | all targets                  |
+| `--slack-token <token>`     | Slack token for alerts (logs to console if omitted) | -                            |
+| `--inventory-branch <name>` | Branch for inventory operations                     | `inventory-updates`          |
+| `--detection-branch <name>` | Branch for detection operations                     | `main`                       |
+| `--git-user-name <name>`    | Git committer name for inventory updates            | `PCI DSS Page Tampering Bot` |
+| `--git-user-email <email>`  | Git committer email for inventory updates           | `noreply@example.com`        |
+| `--help`                    | Display help message and exit                       | -                            |
 
 ## Branch Usage
 
