@@ -17,16 +17,18 @@ import type { Target } from '../../types/target'
 export class SlackAlertService implements IAlertService {
   private readonly oAuthToken: string
   private readonly repositoryUrl: string
+  private readonly inventoryBranch: string
   private readonly maxStringLength = 100
 
-  constructor(slackToken: string, repositoryUrl: string) {
+  constructor(slackToken: string, repositoryUrl: string, inventoryBranch: string) {
     this.oAuthToken = slackToken
     this.repositoryUrl = repositoryUrl
+    this.inventoryBranch = inventoryBranch
   }
 
   private getReviewChangesUrl(): string {
     const baseUrl = this.repositoryUrl.replace(/\.git$/, '')
-    return `${baseUrl}/compare/update/scripts?expand=1`
+    return `${baseUrl}/compare/${this.inventoryBranch}?expand=1`
   }
 
   /**
@@ -58,9 +60,13 @@ export class SlackAlertService implements IAlertService {
     }
 
     try {
-      // Handle unauthorized scripts
-      if (unauthorizedScripts.length > 0 && target.type === 'detection') {
-        await this.alertOnUnauthorizedScripts(unauthorizedScripts, target, alertDestinations.detection.scriptMismatchDetected)
+      // Handle scripts that were identified but had unauthorised content. In inventory mode the
+      // inventory service auto-adds the new hash to the existing entry (when authorisation uses a
+      // HashMatcher), which results in a commit — so the operator must be notified. In detection
+      // mode this is a potential tampering event.
+      if (unauthorizedScripts.length > 0) {
+        const destination = target.type === 'inventory' ? alertDestinations.inventory.newScriptIdentified : alertDestinations.detection.scriptMismatchDetected
+        await this.alertOnUnauthorizedScripts(unauthorizedScripts, target, destination)
       }
     } catch (error) {
       console.error('[Alert Error] Failed to send unauthorized script alerts:', error)
@@ -77,9 +83,13 @@ export class SlackAlertService implements IAlertService {
     }
 
     try {
-      // T032: Handle unauthorized headers
-      if (unauthorizedHeaders.length > 0 && target.type === 'detection') {
-        await this.alertOnUnauthorizedHeaders(unauthorizedHeaders, target, alertDestinations.detection.scriptMismatchDetected)
+      // Handle headers that were identified but had unauthorised content. In inventory mode the
+      // inventory service auto-adds the new content matcher to the existing entry, which results in
+      // a commit — so the operator must be notified. In detection mode this is a potential tampering
+      // event.
+      if (unauthorizedHeaders.length > 0) {
+        const destination = target.type === 'inventory' ? alertDestinations.inventory.newHeaderIdentified : alertDestinations.detection.scriptMismatchDetected
+        await this.alertOnUnauthorizedHeaders(unauthorizedHeaders, target, destination)
       }
     } catch (error) {
       console.error('[Alert Error] Failed to send unauthorized header alerts:', error)
@@ -106,7 +116,7 @@ export class SlackAlertService implements IAlertService {
    * Includes which matcher failed and why for debugging.
    */
   private async alertOnUnauthorizedScripts(unauthorizedScripts: KnownScriptWithUnauthorisedContentFound[], target: Target, destination: AlertDestination): Promise<void> {
-    const message = `Script hash mismatch detected for target!`
+    const message = target.type === 'inventory' ? `Inventory updated: existing script entry has new content` : `Script hash mismatch detected for target!`
 
     // T063: Enhanced message payload with matcher details
     const messagePayload = this.createUnauthorizedScriptMessagePayload(message, unauthorizedScripts, target, destination)
@@ -139,7 +149,7 @@ export class SlackAlertService implements IAlertService {
    * Includes matcher type, pattern, and why authorization failed.
    */
   private async alertOnUnauthorizedHeaders(unauthorizedHeaders: KnownHeaderWithUnauthorisedContentFound[], target: Target, destination: AlertDestination): Promise<void> {
-    const message = `Header content mismatch detected for target!`
+    const message = target.type === 'inventory' ? `Inventory updated: existing header entry has new value` : `Header content mismatch detected for target!`
 
     const messagePayload = this.createUnauthorizedHeaderMessagePayload(message, unauthorizedHeaders, target, destination)
 
@@ -223,83 +233,36 @@ export class SlackAlertService implements IAlertService {
         },
         {
           type: 'table',
+          column_settings: [{ is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }],
           rows: [
-            [
-              {
-                type: 'rich_text',
-                elements: [
-                  {
-                    type: 'rich_text_section',
-                    elements: [
-                      {
-                        type: 'text',
-                        text: 'Identifier',
-                        style: {
-                          bold: true,
-                        },
-                      },
-                    ],
-                  },
-                ],
-              },
-              {
-                type: 'rich_text',
-                elements: [
-                  {
-                    type: 'rich_text_section',
-                    elements: [
-                      {
-                        type: 'text',
-                        text: 'Hash',
-                        style: {
-                          bold: true,
-                        },
-                      },
-                    ],
-                  },
-                ],
-              },
-              {
-                type: 'rich_text',
-                elements: [
-                  {
-                    type: 'rich_text_section',
-                    elements: [
-                      {
-                        type: 'text',
-                        text: 'Content Snippet',
-                        style: {
-                          bold: true,
-                        },
-                      },
-                    ],
-                  },
-                ],
-              },
-            ],
-            ...scripts.slice(0, 19).map((scriptInfo) => this.scriptInfoToTableItem(scriptInfo)),
+            [this.buildBoldHeaderCell('Identifier'), this.buildBoldHeaderCell('Hash'), this.buildBoldHeaderCell('Content Snippet'), this.buildBoldHeaderCell('Suggested AI Prompt')],
+            ...scripts.slice(0, 19).map((scriptInfo) => [...this.scriptInfoToTableItem(scriptInfo), this.buildRichTextCell(this.buildScriptAiPrompt(scriptInfo, target))]),
           ],
         },
-        {
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: 'Please review the changes as soon as possible:',
-          },
-        },
-        {
-          type: 'actions',
-          elements: [
-            {
-              type: 'button',
-              text: {
-                type: 'plain_text',
-                text: 'Review changes',
+        ...(target.type === 'inventory'
+          ? [
+              {
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: 'Please review the changes as soon as possible:',
+                },
               },
-              url: this.getReviewChangesUrl(),
-            },
-          ],
-        },
+              {
+                type: 'actions',
+                elements: [
+                  {
+                    type: 'button',
+                    text: {
+                      type: 'plain_text',
+                      text: 'Review changes',
+                    },
+                    url: this.getReviewChangesUrl(),
+                  },
+                ],
+              },
+            ]
+          : []),
       ],
     }
   }
@@ -354,100 +317,36 @@ export class SlackAlertService implements IAlertService {
         },
         {
           type: 'table',
+          column_settings: [{ is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }],
           rows: [
-            [
-              {
-                type: 'rich_text',
-                elements: [
-                  {
-                    type: 'rich_text_section',
-                    elements: [
-                      {
-                        type: 'text',
-                        text: 'Identifier',
-                        style: {
-                          bold: true,
-                        },
-                      },
-                    ],
-                  },
-                ],
-              },
-              {
-                type: 'rich_text',
-                elements: [
-                  {
-                    type: 'rich_text_section',
-                    elements: [
-                      {
-                        type: 'text',
-                        text: 'Hash',
-                        style: {
-                          bold: true,
-                        },
-                      },
-                    ],
-                  },
-                ],
-              },
-              {
-                type: 'rich_text',
-                elements: [
-                  {
-                    type: 'rich_text_section',
-                    elements: [
-                      {
-                        type: 'text',
-                        text: 'Content',
-                        style: {
-                          bold: true,
-                        },
-                      },
-                    ],
-                  },
-                ],
-              },
-              {
-                type: 'rich_text',
-                elements: [
-                  {
-                    type: 'rich_text_section',
-                    elements: [
-                      {
-                        type: 'text',
-                        text: 'Failure Reason',
-                        style: {
-                          bold: true,
-                        },
-                      },
-                    ],
-                  },
-                ],
-              },
-            ],
-            ...unauthorizedScripts.slice(0, 19).map((result) => this.unauthorizedScriptToTableItem(result)),
+            [this.buildBoldHeaderCell('Identifier'), this.buildBoldHeaderCell('Hash'), this.buildBoldHeaderCell('Content'), this.buildBoldHeaderCell('Failure Reason'), this.buildBoldHeaderCell('Suggested AI Prompt')],
+            ...unauthorizedScripts.slice(0, 19).map((result) => [...this.unauthorizedScriptToTableItem(result), this.buildRichTextCell(this.buildUnauthorizedScriptAiPrompt(result))]),
           ],
         },
-        {
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: 'Please review the changes as soon as possible:',
-          },
-        },
-        {
-          type: 'actions',
-          elements: [
-            {
-              type: 'button',
-              text: {
-                type: 'plain_text',
-                text: 'Review changes',
+        ...(target.type === 'inventory'
+          ? [
+              {
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: 'Please review the changes as soon as possible:',
+                },
               },
-              url: this.getReviewChangesUrl(),
-            },
-          ],
-        },
+              {
+                type: 'actions',
+                elements: [
+                  {
+                    type: 'button',
+                    text: {
+                      type: 'plain_text',
+                      text: 'Review changes',
+                    },
+                    url: this.getReviewChangesUrl(),
+                  },
+                ],
+              },
+            ]
+          : []),
       ],
     }
   }
@@ -581,83 +480,36 @@ export class SlackAlertService implements IAlertService {
         },
         {
           type: 'table',
+          column_settings: [{ is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }],
           rows: [
-            [
-              {
-                type: 'rich_text',
-                elements: [
-                  {
-                    type: 'rich_text_section',
-                    elements: [
-                      {
-                        type: 'text',
-                        text: 'Header Name',
-                        style: {
-                          bold: true,
-                        },
-                      },
-                    ],
-                  },
-                ],
-              },
-              {
-                type: 'rich_text',
-                elements: [
-                  {
-                    type: 'rich_text_section',
-                    elements: [
-                      {
-                        type: 'text',
-                        text: 'Value',
-                        style: {
-                          bold: true,
-                        },
-                      },
-                    ],
-                  },
-                ],
-              },
-              {
-                type: 'rich_text',
-                elements: [
-                  {
-                    type: 'rich_text_section',
-                    elements: [
-                      {
-                        type: 'text',
-                        text: 'Failure Reason',
-                        style: {
-                          bold: true,
-                        },
-                      },
-                    ],
-                  },
-                ],
-              },
-            ],
-            ...unauthorizedHeaders.slice(0, 19).map((result) => this.unauthorizedHeaderToTableItem(result)),
+            [this.buildBoldHeaderCell('Header Name'), this.buildBoldHeaderCell('Value'), this.buildBoldHeaderCell('Failure Reason'), this.buildBoldHeaderCell('Suggested AI Prompt')],
+            ...unauthorizedHeaders.slice(0, 19).map((result) => [...this.unauthorizedHeaderToTableItem(result), this.buildRichTextCell(this.buildUnauthorizedHeaderAiPrompt(result))]),
           ],
         },
-        {
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: 'Please review the changes as soon as possible:',
-          },
-        },
-        {
-          type: 'actions',
-          elements: [
-            {
-              type: 'button',
-              text: {
-                type: 'plain_text',
-                text: 'Review changes',
+        ...(target.type === 'inventory'
+          ? [
+              {
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: 'Please review the changes as soon as possible:',
+                },
               },
-              url: this.getReviewChangesUrl(),
-            },
-          ],
-        },
+              {
+                type: 'actions',
+                elements: [
+                  {
+                    type: 'button',
+                    text: {
+                      type: 'plain_text',
+                      text: 'Review changes',
+                    },
+                    url: this.getReviewChangesUrl(),
+                  },
+                ],
+              },
+            ]
+          : []),
       ],
     }
   }
@@ -760,66 +612,36 @@ export class SlackAlertService implements IAlertService {
         },
         {
           type: 'table',
+          column_settings: [{ is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }],
           rows: [
-            [
+            [this.buildBoldHeaderCell('Header Name'), this.buildBoldHeaderCell('Value'), this.buildBoldHeaderCell('Suggested AI Prompt')],
+            ...headers.slice(0, 19).map((headerInfo) => [...this.headerInfoToTableItem(headerInfo), this.buildRichTextCell(this.buildHeaderAiPrompt(headerInfo, target))]),
+          ],
+        },
+        ...(target.type === 'inventory'
+          ? [
               {
-                type: 'rich_text',
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: 'Please review the changes as soon as possible:',
+                },
+              },
+              {
+                type: 'actions',
                 elements: [
                   {
-                    type: 'rich_text_section',
-                    elements: [
-                      {
-                        type: 'text',
-                        text: 'Header Name',
-                        style: {
-                          bold: true,
-                        },
-                      },
-                    ],
+                    type: 'button',
+                    text: {
+                      type: 'plain_text',
+                      text: 'Review changes',
+                    },
+                    url: this.getReviewChangesUrl(),
                   },
                 ],
               },
-              {
-                type: 'rich_text',
-                elements: [
-                  {
-                    type: 'rich_text_section',
-                    elements: [
-                      {
-                        type: 'text',
-                        text: 'Value',
-                        style: {
-                          bold: true,
-                        },
-                      },
-                    ],
-                  },
-                ],
-              },
-            ],
-            ...headers.slice(0, 19).map((headerInfo) => this.headerInfoToTableItem(headerInfo)),
-          ],
-        },
-        {
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: 'Please review the changes as soon as possible:',
-          },
-        },
-        {
-          type: 'actions',
-          elements: [
-            {
-              type: 'button',
-              text: {
-                type: 'plain_text',
-                text: 'Review changes',
-              },
-              url: this.getReviewChangesUrl(),
-            },
-          ],
-        },
+            ]
+          : []),
       ],
     }
   }
@@ -924,6 +746,82 @@ export class SlackAlertService implements IAlertService {
 
   private truncateText(text: string): string {
     return text.length > this.maxStringLength ? text.slice(0, this.maxStringLength - 4).concat('...') : text
+  }
+
+  /**
+   * Build a rich_text table cell containing a single text element.
+   * Used for the Suggested AI Prompt column where we want the prompt
+   * to render verbatim without truncation.
+   */
+  private buildRichTextCell(text: string): object {
+    return {
+      type: 'rich_text',
+      elements: [
+        {
+          type: 'rich_text_section',
+          elements: [
+            {
+              type: 'text',
+              text,
+            },
+          ],
+        },
+      ],
+    }
+  }
+
+  /**
+   * Build a bold rich_text table header cell containing the given label.
+   */
+  private buildBoldHeaderCell(label: string): object {
+    return {
+      type: 'rich_text',
+      elements: [
+        {
+          type: 'rich_text_section',
+          elements: [
+            {
+              type: 'text',
+              text: label,
+              style: { bold: true },
+            },
+          ],
+        },
+      ],
+    }
+  }
+
+  /**
+   * Suggested AI prompt for a previously-unknown script.
+   * Tells an AI assistant how to add the script to the inventory file.
+   */
+  private buildScriptAiPrompt(script: ScriptInfo, target: Target): string {
+    const identifier = script.source.type === 'external' ? script.source.url : script.source.id
+    return `Add a new entry to the inventory file for target ${target.url} authorising script "${identifier}" with SHA-256 hash ${script.hash.value}. Use a NameMatcher on the URL for identification and a HashMatcher for authorisation. Include authorisationInfo with a description and today's date.`
+  }
+
+  /**
+   * Suggested AI prompt for a known script whose content failed authorisation.
+   * Tells an AI assistant how to update the existing inventory entry.
+   */
+  private buildUnauthorizedScriptAiPrompt(result: KnownScriptWithUnauthorisedContentFound): string {
+    const scriptInfo = this.detectedScriptToScriptInfo(result.script)
+    const identifier = scriptInfo.source.type === 'external' ? scriptInfo.source.url : scriptInfo.source.id
+    return `In the inventory file for target ${result.target.url}, the existing entry that identifies "${identifier}" failed authorisation (${result.failureReason}). Either add the new SHA-256 hash ${result.script.hash.value} to its authoriseWith.hashes list with today's timestamp, or investigate the change before authorising.`
+  }
+
+  /**
+   * Suggested AI prompt for a previously-unknown header.
+   */
+  private buildHeaderAiPrompt(header: HeaderInfo, target: Target): string {
+    return `Add a new entry to the inventory file for target ${target.url} authorising response header "${header.name}" with value "${header.value}". Use a HeaderNameMatcher for identification and a ContentMatcher for authorisation. Include authorisationInfo with a description and today's date.`
+  }
+
+  /**
+   * Suggested AI prompt for a known header whose value failed authorisation.
+   */
+  private buildUnauthorizedHeaderAiPrompt(result: KnownHeaderWithUnauthorisedContentFound): string {
+    return `In the inventory file for target ${result.target.url}, the existing entry that identifies header "${result.header.name}" failed authorisation (${result.failureReason}). Update its authoriseWith matcher to allow the new value "${result.header.value}" with today's date, or investigate before authorising.`
   }
 
   /**

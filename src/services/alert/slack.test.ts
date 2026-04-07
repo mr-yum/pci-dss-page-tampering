@@ -34,7 +34,7 @@ describe('SlackAlertService - Typed Results Handling (Phase 4)', () => {
   let mockAlertDestinations: InventoryAlert
 
   beforeEach(() => {
-    service = new SlackAlertService('test-token', 'https://github.com/example/script-inventory')
+    service = new SlackAlertService('test-token', 'https://github.com/example/script-inventory', 'inventory-updates')
 
     mockTarget = {
       type: 'detection',
@@ -495,6 +495,410 @@ describe('SlackAlertService - Typed Results Handling (Phase 4)', () => {
       consoleErrorSpy.mockRestore()
     })
   })
+
+  /**
+   * "Review changes" button should only render in inventory mode, because that
+   * is the workflow that pushes a branch which can be opened as a PR. The URL
+   * must use the inventoryBranch passed to the constructor, not a hardcoded value.
+   */
+  describe('Review changes button rendering', () => {
+    type Block = { type: string; elements?: Array<{ type: string; url?: string }> }
+    const findActionsBlock = (payload: { blocks: Block[] }): Block | undefined => payload.blocks.find((b) => b.type === 'actions')
+
+    it('should include a Review changes button in unknown-script alerts when target.type is inventory', async () => {
+      const inventoryTarget: Target = { ...mockTarget, type: 'inventory' }
+      const script: DetectedScript = {
+        name: 'https://cdn.example.com/new-script.js',
+        content: 'console.log("hi")',
+        hash: { value: 'newhash' },
+      }
+      const result = new UnknownScriptFound(inventoryTarget, new Date(), script)
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertForTypedResults([result], inventoryTarget, mockAlertDestinations)
+
+      const payload = sendMessageSpy.mock.calls[0]?.[0] as { blocks: Block[] }
+      const actionsBlock = findActionsBlock(payload)
+      expect(actionsBlock).toBeDefined()
+      expect(actionsBlock?.elements?.[0]?.url).toBe('https://github.com/example/script-inventory/compare/inventory-updates?expand=1')
+    })
+
+    it('should NOT include a Review changes button in unknown-script alerts when target.type is detection', async () => {
+      const detectionTarget: Target = { ...mockTarget, type: 'detection' }
+      const script: DetectedScript = {
+        name: 'https://malicious.com/script.js',
+        content: 'alert("xss")',
+        hash: { value: 'hash123' },
+      }
+      const result = new UnknownScriptFound(detectionTarget, new Date(), script)
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertForTypedResults([result], detectionTarget, mockAlertDestinations)
+
+      const payload = sendMessageSpy.mock.calls[0]?.[0] as { blocks: Block[] }
+      expect(findActionsBlock(payload)).toBeUndefined()
+    })
+
+    it('should include a Review changes button in unknown-header alerts when target.type is inventory', async () => {
+      const inventoryTarget: Target = { ...mockTarget, type: 'inventory' }
+      const header: DetectedHeader = {
+        name: 'x-custom-header',
+        value: 'custom-value',
+        target: inventoryTarget,
+        workflow: inventoryTarget.workflow,
+      }
+      const result = new UnknownHeaderFound(inventoryTarget, new Date(), header)
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertForTypedResults([result], inventoryTarget, mockAlertDestinations)
+
+      const payload = sendMessageSpy.mock.calls[0]?.[0] as { blocks: Block[] }
+      const actionsBlock = findActionsBlock(payload)
+      expect(actionsBlock).toBeDefined()
+      expect(actionsBlock?.elements?.[0]?.url).toBe('https://github.com/example/script-inventory/compare/inventory-updates?expand=1')
+    })
+
+    it('should NOT include a Review changes button in unknown-header alerts when target.type is detection', async () => {
+      const detectionTarget: Target = { ...mockTarget, type: 'detection' }
+      const header: DetectedHeader = {
+        name: 'x-custom-header',
+        value: 'custom-value',
+        target: detectionTarget,
+        workflow: detectionTarget.workflow,
+      }
+      const result = new UnknownHeaderFound(detectionTarget, new Date(), header)
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertForTypedResults([result], detectionTarget, mockAlertDestinations)
+
+      const payload = sendMessageSpy.mock.calls[0]?.[0] as { blocks: Block[] }
+      expect(findActionsBlock(payload)).toBeUndefined()
+    })
+
+    it('should NOT include a Review changes button in unauthorized-script alerts when target.type is detection', async () => {
+      const script: DetectedScript = {
+        name: 'https://cdn.example.com/script.js',
+        content: 'modified',
+        hash: { value: 'newhash' },
+      }
+      const mockMatcher: Matcher = {
+        identify: () => true,
+        authorize: () => ({ authorized: false, reason: 'hash mismatch' }),
+        getType: () => 'hash',
+        getPattern: () => 'oldhash',
+        getDescription: () => 'hash:1 authorized hash',
+      }
+      const mockInventoryEntry = {
+        identifyWith: mockMatcher,
+        authoriseWith: {
+          matcher: mockMatcher,
+          authorisationInfo: { description: 'Test script', authorised: true, date: new Date() },
+        },
+      }
+      const result = new KnownScriptWithUnauthorisedContentFound(mockTarget, new Date(), script, mockInventoryEntry, mockMatcher, 'hash mismatch')
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertForTypedResults([result], mockTarget, mockAlertDestinations)
+
+      const payload = sendMessageSpy.mock.calls[0]?.[0] as { blocks: Block[] }
+      expect(findActionsBlock(payload)).toBeUndefined()
+    })
+
+    it('should include a Review changes button in unauthorized-script alerts when target.type is inventory', async () => {
+      const inventoryTarget: Target = { ...mockTarget, type: 'inventory' }
+      const script: DetectedScript = {
+        name: 'https://cdn.example.com/script.js',
+        content: 'modified',
+        hash: { value: 'newhash' },
+      }
+      const mockMatcher: Matcher = {
+        identify: () => true,
+        authorize: () => ({ authorized: false, reason: 'hash mismatch' }),
+        getType: () => 'hash',
+        getPattern: () => 'oldhash',
+        getDescription: () => 'hash:1 authorized hash',
+      }
+      const mockInventoryEntry = {
+        identifyWith: mockMatcher,
+        authoriseWith: {
+          matcher: mockMatcher,
+          authorisationInfo: { description: 'Test script', authorised: true, date: new Date() },
+        },
+      }
+      const result = new KnownScriptWithUnauthorisedContentFound(inventoryTarget, new Date(), script, mockInventoryEntry, mockMatcher, 'hash mismatch')
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertForTypedResults([result], inventoryTarget, mockAlertDestinations)
+
+      const payload = sendMessageSpy.mock.calls[0]?.[0] as { blocks: Block[] }
+      const actionsBlock = findActionsBlock(payload)
+      expect(actionsBlock).toBeDefined()
+      expect(actionsBlock?.elements?.[0]?.url).toBe('https://github.com/example/script-inventory/compare/inventory-updates?expand=1')
+    })
+
+    it('should NOT include a Review changes button in unauthorized-header alerts when target.type is detection', async () => {
+      const header: DetectedHeader = {
+        name: 'x-frame-options',
+        value: 'ALLOWALL',
+        target: mockTarget,
+        workflow: mockTarget.workflow,
+      }
+      const mockMatcher: Matcher = {
+        identify: () => true,
+        authorize: () => ({ authorized: false, reason: 'value does not match pattern' }),
+        getType: () => 'content',
+        getPattern: () => '^(DENY|SAMEORIGIN)$',
+        getDescription: () => 'content:/^(DENY|SAMEORIGIN)$/',
+      }
+      const mockInventoryEntry: InventoryHeaderInfo = {
+        identifyWith: {
+          identify: () => true,
+          authorize: () => ({ authorized: true }),
+          getType: () => 'header-name',
+          getPattern: () => '^x-frame-options$',
+          getDescription: () => 'header-name:/^x-frame-options$/',
+        },
+        authoriseWith: {
+          matcher: mockMatcher,
+          authorisationInfo: { description: 'Frame protection header', authorised: true, date: new Date() },
+        },
+      }
+      const result = new KnownHeaderWithUnauthorisedContentFound(mockTarget, new Date(), header, mockInventoryEntry, mockMatcher, 'value does not match pattern')
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertForTypedResults([result], mockTarget, mockAlertDestinations)
+
+      const payload = sendMessageSpy.mock.calls[0]?.[0] as { blocks: Block[] }
+      expect(findActionsBlock(payload)).toBeUndefined()
+    })
+
+    it('should include a Review changes button in unauthorized-header alerts when target.type is inventory', async () => {
+      const inventoryTarget: Target = { ...mockTarget, type: 'inventory' }
+      const header: DetectedHeader = {
+        name: 'x-frame-options',
+        value: 'ALLOWALL',
+        target: inventoryTarget,
+        workflow: inventoryTarget.workflow,
+      }
+      const mockMatcher: Matcher = {
+        identify: () => true,
+        authorize: () => ({ authorized: false, reason: 'value does not match pattern' }),
+        getType: () => 'content',
+        getPattern: () => '^(DENY|SAMEORIGIN)$',
+        getDescription: () => 'content:/^(DENY|SAMEORIGIN)$/',
+      }
+      const mockInventoryEntry: InventoryHeaderInfo = {
+        identifyWith: {
+          identify: () => true,
+          authorize: () => ({ authorized: true }),
+          getType: () => 'header-name',
+          getPattern: () => '^x-frame-options$',
+          getDescription: () => 'header-name:/^x-frame-options$/',
+        },
+        authoriseWith: {
+          matcher: mockMatcher,
+          authorisationInfo: { description: 'Frame protection header', authorised: true, date: new Date() },
+        },
+      }
+      const result = new KnownHeaderWithUnauthorisedContentFound(inventoryTarget, new Date(), header, mockInventoryEntry, mockMatcher, 'value does not match pattern')
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertForTypedResults([result], inventoryTarget, mockAlertDestinations)
+
+      const payload = sendMessageSpy.mock.calls[0]?.[0] as { blocks: Block[] }
+      const actionsBlock = findActionsBlock(payload)
+      expect(actionsBlock).toBeDefined()
+      expect(actionsBlock?.elements?.[0]?.url).toBe('https://github.com/example/script-inventory/compare/inventory-updates?expand=1')
+    })
+
+    it('should respect the configured inventoryBranch when building the Review changes URL', async () => {
+      const customService = new SlackAlertService('test-token', 'https://github.com/example/script-inventory.git', 'release/v2')
+      const inventoryTarget: Target = { ...mockTarget, type: 'inventory' }
+      const script: DetectedScript = {
+        name: 'https://cdn.example.com/new-script.js',
+        content: 'x',
+        hash: { value: 'h' },
+      }
+      const result = new UnknownScriptFound(inventoryTarget, new Date(), script)
+
+      const sendMessageSpy = jest.spyOn(customService as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await customService.alertForTypedResults([result], inventoryTarget, mockAlertDestinations)
+
+      const payload = sendMessageSpy.mock.calls[0]?.[0] as { blocks: Block[] }
+      const actionsBlock = findActionsBlock(payload)
+      expect(actionsBlock?.elements?.[0]?.url).toBe('https://github.com/example/script-inventory/compare/release/v2?expand=1')
+    })
+  })
+
+  /**
+   * Each detection-summary table should have a "Suggested AI Prompt" column
+   * containing a copy-pasteable prompt that an AI assistant can use to amend
+   * the inventory and resolve the finding.
+   */
+  describe('Suggested AI Prompt column', () => {
+    type TextElement = { text?: string; style?: { bold?: boolean } }
+    type RichTextSection = { type: string; elements: TextElement[] }
+    type Cell = { type: string; elements: RichTextSection[] }
+    type TableBlock = { type: string; rows: Cell[][] }
+
+    const getTableBlock = (payload: { blocks: Array<{ type: string }> }): TableBlock => {
+      const block = payload.blocks.find((b) => b.type === 'table')
+      if (!block) throw new Error('No table block found in payload')
+      return block as TableBlock
+    }
+
+    const getCellText = (cell: Cell): string => cell.elements.map((section) => section.elements.map((el) => el.text ?? '').join('')).join('')
+
+    it('should include a Suggested AI Prompt header in unknown-script alerts and a populated cell per row', async () => {
+      const inventoryTarget: Target = { ...mockTarget, type: 'inventory', url: 'https://shop.example.com/checkout' }
+      const script: DetectedScript = {
+        name: 'https://cdn.tracker.com/track.js',
+        content: 'track()',
+        hash: { value: 'abc123' },
+      }
+      const result = new UnknownScriptFound(inventoryTarget, new Date(), script)
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertForTypedResults([result], inventoryTarget, mockAlertDestinations)
+
+      const payload = sendMessageSpy.mock.calls[0]?.[0] as { blocks: Array<{ type: string }> }
+      const table = getTableBlock(payload)
+
+      // Header row contains the new bold "Suggested AI Prompt" cell
+      const headerRow = table.rows[0]!
+      const headerLabels = headerRow.map(getCellText)
+      expect(headerLabels).toContain('Suggested AI Prompt')
+
+      // Data row's last cell contains the prompt referencing the script and target
+      const dataRow = table.rows[1]!
+      const promptCell = getCellText(dataRow[dataRow.length - 1]!)
+      expect(promptCell).toContain('https://shop.example.com/checkout')
+      expect(promptCell).toContain('https://cdn.tracker.com/track.js')
+      expect(promptCell).toContain('abc123')
+    })
+
+    it('should include a Suggested AI Prompt cell in unauthorized-script (hash mismatch) alerts', async () => {
+      const script: DetectedScript = {
+        name: 'https://cdn.example.com/payments.js',
+        content: 'modified content',
+        hash: { value: 'newhash999' },
+      }
+      const mockMatcher: Matcher = {
+        identify: () => true,
+        authorize: () => ({ authorized: false, reason: 'hash mismatch' }),
+        getType: () => 'hash',
+        getPattern: () => 'oldhash',
+        getDescription: () => 'hash:1 authorized hash',
+      }
+      const mockInventoryEntry = {
+        identifyWith: mockMatcher,
+        authoriseWith: {
+          matcher: mockMatcher,
+          authorisationInfo: { description: 'Payments script', authorised: true, date: new Date() },
+        },
+      }
+      const result = new KnownScriptWithUnauthorisedContentFound(mockTarget, new Date(), script, mockInventoryEntry, mockMatcher, 'hash mismatch')
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertForTypedResults([result], mockTarget, mockAlertDestinations)
+
+      const payload = sendMessageSpy.mock.calls[0]?.[0] as { blocks: Array<{ type: string }> }
+      const table = getTableBlock(payload)
+
+      const headerLabels = table.rows[0]!.map(getCellText)
+      expect(headerLabels).toContain('Suggested AI Prompt')
+
+      const dataRow = table.rows[1]!
+      const promptCell = getCellText(dataRow[dataRow.length - 1]!)
+      expect(promptCell).toContain('https://cdn.example.com/payments.js')
+      expect(promptCell).toContain('newhash999')
+      expect(promptCell).toContain('failed authorisation')
+    })
+
+    it('should include a Suggested AI Prompt cell in unknown-header alerts', async () => {
+      const target: Target = { ...mockTarget, url: 'https://shop.example.com/checkout' }
+      const header: DetectedHeader = {
+        name: 'x-tracking-id',
+        value: 'tid-42',
+        target,
+        workflow: target.workflow,
+      }
+      const result = new UnknownHeaderFound(target, new Date(), header)
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertForTypedResults([result], target, mockAlertDestinations)
+
+      const payload = sendMessageSpy.mock.calls[0]?.[0] as { blocks: Array<{ type: string }> }
+      const table = getTableBlock(payload)
+
+      const headerLabels = table.rows[0]!.map(getCellText)
+      expect(headerLabels).toContain('Suggested AI Prompt')
+
+      const dataRow = table.rows[1]!
+      const promptCell = getCellText(dataRow[dataRow.length - 1]!)
+      expect(promptCell).toContain('x-tracking-id')
+      expect(promptCell).toContain('tid-42')
+      expect(promptCell).toContain('https://shop.example.com/checkout')
+    })
+
+    it('should include a Suggested AI Prompt cell in unauthorized-header alerts', async () => {
+      const header: DetectedHeader = {
+        name: 'content-security-policy',
+        value: 'default-src *',
+        target: mockTarget,
+        workflow: mockTarget.workflow,
+      }
+      const mockMatcher: Matcher = {
+        identify: () => true,
+        authorize: () => ({ authorized: false, reason: 'value does not match pattern' }),
+        getType: () => 'content',
+        getPattern: () => '^default-src .self.$',
+        getDescription: () => 'content:/^default-src .self.$/',
+      }
+      const mockInventoryEntry: InventoryHeaderInfo = {
+        identifyWith: {
+          identify: () => true,
+          authorize: () => ({ authorized: true }),
+          getType: () => 'header-name',
+          getPattern: () => '^content-security-policy$',
+          getDescription: () => 'header-name:/^content-security-policy$/',
+        },
+        authoriseWith: {
+          matcher: mockMatcher,
+          authorisationInfo: { description: 'CSP header', authorised: true, date: new Date() },
+        },
+      }
+      const result = new KnownHeaderWithUnauthorisedContentFound(mockTarget, new Date(), header, mockInventoryEntry, mockMatcher, 'value does not match pattern')
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertForTypedResults([result], mockTarget, mockAlertDestinations)
+
+      const payload = sendMessageSpy.mock.calls[0]?.[0] as { blocks: Array<{ type: string }> }
+      const table = getTableBlock(payload)
+
+      const headerLabels = table.rows[0]!.map(getCellText)
+      expect(headerLabels).toContain('Suggested AI Prompt')
+
+      const dataRow = table.rows[1]!
+      const promptCell = getCellText(dataRow[dataRow.length - 1]!)
+      expect(promptCell).toContain('content-security-policy')
+      expect(promptCell).toContain('default-src *')
+      expect(promptCell).toContain('failed authorisation')
+    })
+  })
 })
 
 /**
@@ -516,7 +920,7 @@ describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
   let mockAlertDestinations: InventoryAlert
 
   beforeEach(() => {
-    service = new SlackAlertService('test-token', 'https://github.com/example/script-inventory')
+    service = new SlackAlertService('test-token', 'https://github.com/example/script-inventory', 'inventory-updates')
 
     mockAlertDestinations = {
       inventory: {
