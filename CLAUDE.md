@@ -324,7 +324,7 @@ Workflows are defined as step-by-step instructions for Puppeteer in `src/workflo
 
 ## Environment Requirements
 
-- Node.js >= 22
+- Node.js >= 24
 - NPM >= 10 (Yarn/PNPM not supported)
 - Chrome dependencies for Puppeteer (see GitHub Actions workflow)
 

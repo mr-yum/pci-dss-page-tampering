@@ -105,7 +105,7 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
 
   // T042: Initialize alert service based on configuration
   // Use ConsoleAlertService for local development/testing when --slack-token is omitted
-  const alertService: IAlertService = config.alerting.slackToken ? new SlackAlertService(config.alerting.slackToken, config.repository.url) : new ConsoleAlertService()
+  const alertService: IAlertService = config.alerting.slackToken ? new SlackAlertService(config.alerting.slackToken, config.repository.url, config.branches.inventory) : new ConsoleAlertService()
 
   const log = (message: string): void => {
     console.log(`[Main]: ${message}`)
