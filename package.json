@@ -20,7 +20,7 @@
     "security"
   ],
   "engines": {
-    "node": ">=22",
+    "node": ">=24",
     "npm": ">=10",
     "pnpm": "please-use-npm",
     "yarn": "please-use-npm"

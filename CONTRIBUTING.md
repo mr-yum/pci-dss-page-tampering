@@ -4,7 +4,7 @@ Thank you for your interest in contributing to the PCI DSS Page Tampering Detect
 
 ## Prerequisites
 
-- Node.js >= 22
+- Node.js >= 24
 - npm >= 10
 
 ## Getting Started
