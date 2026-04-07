@@ -21,10 +21,12 @@
     "noUncheckedIndexedAccess": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
+    "types": ["jest", "node"],
     "baseUrl": ".",
     "paths": {
       "@modules/*": ["./src/modules/*"]
-    }
+    },
+    "ignoreDeprecations": "6.0"
   },
   "include": ["src", "test"],
   "exclude": ["node_modules"]

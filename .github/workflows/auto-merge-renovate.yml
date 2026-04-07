@@ -1,6 +1,14 @@
 name: Auto-merge Renovate PRs
 
-on: pull_request
+# Trigger after the CI workflow completes so we only auto-merge PRs
+# whose Continuous Integration run actually succeeded. The previous
+# configuration used `on: pull_request`, which merged PRs without
+# waiting for CI — allowing broken lockfiles and failing builds to
+# land on main.
+on:
+  workflow_run:
+    workflows: ['Continuous Integration']
+    types: [completed]
 
 permissions:
   contents: write
@@ -8,15 +16,42 @@ permissions:
 
 jobs:
   auto-merge:
-    if: github.actor == 'renovate[bot]'
+    # Only run when:
+    #   - The CI run we're reacting to was triggered by a pull_request
+    #   - That CI run succeeded
+    #   - The PR author is renovate[bot]
+    if: >
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.actor.login == 'renovate[bot]'
     runs-on: ubuntu-latest
     steps:
-      - run: gh pr review --approve "$PR_URL"
+      - name: Resolve PR number from head SHA
+        id: pr
         env:
-          PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          PR_NUMBER=$(gh api "repos/${REPO}/commits/${HEAD_SHA}/pulls" --jq '.[0].number')
+          if [ -z "$PR_NUMBER" ] || [ "$PR_NUMBER" = "null" ]; then
+            echo "No open PR found for SHA ${HEAD_SHA}; nothing to merge."
+            exit 0
+          fi
+          echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
 
-      - run: gh pr merge --auto --squash "$PR_URL"
+      - name: Approve PR
+        if: steps.pr.outputs.number != ''
         env:
-          PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        run: gh pr review --approve --repo "$REPO" "$PR_NUMBER"
+
+      - name: Squash-merge PR
+        if: steps.pr.outputs.number != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        run: gh pr merge --squash --repo "$REPO" "$PR_NUMBER"
