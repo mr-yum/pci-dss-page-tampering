@@ -5,8 +5,6 @@ const swcConfig = {
     parser: { syntax: 'typescript', decorators: true },
     transform: { legacyDecorator: true, decoratorMetadata: true },
     keepClassNames: true,
-    baseUrl: '.',
-    paths: { '@modules/*': ['./src/modules/*'] },
   },
   sourceMaps: 'inline',
   inlineSourcesContent: false,
