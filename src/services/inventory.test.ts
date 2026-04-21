@@ -7,12 +7,14 @@
  * @see src/services/inventory.ts - ScriptInventoryService
  */
 
+import { KnownHeaderWithUnauthorisedContentFound } from '../types/comparison/known-header-unauthorised-content-found'
 import { KnownScriptWithUnauthorisedContentFound } from '../types/comparison/known-script-unauthorised-content-found'
 import type { Inventory, InventoryScriptInfo } from '../types/inventory/model'
 import type { HashMatcher } from '../types/matcher/hash-matcher'
 import type { OrMatcher } from '../types/matcher/or-matcher'
 import type { Target, TargetDetection, TargetInventory } from '../types/target'
 import type { Workflow } from '../types/workflow'
+import { inventoryHeaderInfoToRawInventoryHeaderInfo, rawInventoryHeaderInfoToInventoryHeaderInfo } from '../utils/inventory'
 import { createLogger } from '../utils/logger'
 import { inventoryScriptInfoToRawInventoryScriptInfo, rawInventoryScriptInfoToInventoryScriptInfo } from '../utils/script'
 import { ScriptInventoryService } from './inventory'
@@ -541,6 +543,170 @@ describe('ScriptInventoryService', () => {
 
         // Verify the matcher is still a NameMatcher (not OrMatcher)
         expect(updatedScript.authoriseWith.matcher.getType()).toBe('name')
+      })
+    })
+
+    describe('Batched updates against a single inventory entry', () => {
+      it('appends every new content matcher when multiple KnownHeaderWithUnauthorisedContentFound target the same header entry', async () => {
+        // Regression: previously only the first result was applied because the
+        // update replaced the entry with a fresh object, and subsequent results
+        // (which still referenced the original entry) failed the reference check.
+        const existingHeader = rawInventoryHeaderInfoToInventoryHeaderInfo({
+          identifyWith: { headerNameMatcher: '^content-security-policy$' },
+          authoriseWith: [
+            {
+              contentMatcher: "^default-src 'self'$",
+              authorisationInfo: {
+                description: 'Baseline CSP',
+                authorised: true,
+                date: '2026-01-01T00:00:00.000Z',
+              },
+            },
+          ],
+        })
+
+        const inventory: Inventory = {
+          ...createMockInventory([]),
+          headers: [existingHeader],
+        }
+
+        const newValues = [
+          "style-src *.facebook.com *.fbcdn.net 'self'",
+          "font-src *.facebook.com *.fbcdn.net 'self'",
+          "img-src *.facebook.com *.fbcdn.net 'self'",
+          "media-src *.facebook.com *.fbcdn.net 'self'",
+          "child-src *.facebook.com *.fbcdn.net 'self'",
+          "frame-src *.facebook.com *.fbcdn.net 'self'",
+          "manifest-src *.facebook.com *.fbcdn.net 'self'",
+          "object-src *.facebook.com *.fbcdn.net 'self'",
+          "worker-src *.facebook.com *.fbcdn.net 'self'",
+        ]
+
+        const target = createMockTarget()
+        const timestamp = new Date('2026-04-21T22:48:00.000Z')
+        const results = newValues.map(
+          (value) =>
+            new KnownHeaderWithUnauthorisedContentFound(
+              target,
+              timestamp,
+              { name: 'content-security-policy', value, target, workflow: target.workflow },
+              existingHeader,
+              existingHeader.authoriseWith.matcher,
+              'No child matcher identified the resource',
+            ),
+        )
+
+        const diffResult = await service.diff(inventory, results)
+
+        const updatedHeader = diffResult.newInventory.headers[0]
+        expect(updatedHeader).toBeDefined()
+        if (!updatedHeader) return
+        const rawUpdated = inventoryHeaderInfoToRawInventoryHeaderInfo(updatedHeader)
+
+        expect(Array.isArray(rawUpdated.authoriseWith)).toBe(true)
+        if (!Array.isArray(rawUpdated.authoriseWith)) return
+
+        // 1 baseline + 9 new entries
+        expect(rawUpdated.authoriseWith.length).toBe(1 + newValues.length)
+
+        const contentPatterns = rawUpdated.authoriseWith.filter((m: any): m is { contentMatcher: string } => 'contentMatcher' in m).map((m) => m.contentMatcher)
+
+        for (const value of newValues) {
+          const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+          expect(contentPatterns).toContain(`^${escaped}$`)
+        }
+      })
+
+      it('deduplicates repeated header values across the batch', async () => {
+        const existingHeader = rawInventoryHeaderInfoToInventoryHeaderInfo({
+          identifyWith: { headerNameMatcher: '^content-security-policy$' },
+          authoriseWith: {
+            contentMatcher: "^default-src 'self'$",
+            authorisationInfo: {
+              description: 'Baseline CSP',
+              authorised: true,
+              date: '2026-01-01T00:00:00.000Z',
+            },
+          },
+        })
+
+        const inventory: Inventory = {
+          ...createMockInventory([]),
+          headers: [existingHeader],
+        }
+
+        const target = createMockTarget()
+        const timestamp = new Date('2026-04-21T22:48:00.000Z')
+        const duplicateValue = "style-src 'self'"
+        const results = [duplicateValue, duplicateValue, duplicateValue].map(
+          (value) =>
+            new KnownHeaderWithUnauthorisedContentFound(
+              target,
+              timestamp,
+              { name: 'content-security-policy', value, target, workflow: target.workflow },
+              existingHeader,
+              existingHeader.authoriseWith.matcher,
+              'No child matcher identified the resource',
+            ),
+        )
+
+        const diffResult = await service.diff(inventory, results)
+
+        const updatedHeader = diffResult.newInventory.headers[0]
+        expect(updatedHeader).toBeDefined()
+        if (!updatedHeader) return
+        const rawUpdated = inventoryHeaderInfoToRawInventoryHeaderInfo(updatedHeader)
+
+        expect(Array.isArray(rawUpdated.authoriseWith)).toBe(true)
+        if (!Array.isArray(rawUpdated.authoriseWith)) return
+
+        // Baseline matcher + exactly one matcher for the duplicated value
+        expect(rawUpdated.authoriseWith.length).toBe(2)
+      })
+
+      it('applies every new hash when multiple KnownScriptWithUnauthorisedContentFound target the same script entry', async () => {
+        const existingScript = rawInventoryScriptInfoToInventoryScriptInfo({
+          identifyWith: { nameMatcher: '^https://cdn\\.example\\.com/payment\\.js$' },
+          authoriseWith: {
+            hashes: [{ timestamp: '2026-01-01T00:00:00.000Z', hash: { value: 'baseline' } }],
+            authorisationInfo: {
+              description: 'Payment script',
+              authorised: true,
+              date: '2026-01-01T00:00:00.000Z',
+            },
+          },
+        })
+
+        const inventory = createMockInventory([existingScript])
+
+        const target = createMockTarget()
+        const timestamp = new Date('2026-04-21T22:48:00.000Z')
+        const newHashes = ['hash-a', 'hash-b', 'hash-c']
+        const results = newHashes.map(
+          (hash) =>
+            new KnownScriptWithUnauthorisedContentFound(
+              target,
+              timestamp,
+              { name: 'https://cdn.example.com/payment.js', content: 'new content', hash: { value: hash } },
+              existingScript,
+              existingScript.authoriseWith.matcher,
+              `hash ${hash} not in authorized list`,
+            ),
+        )
+
+        const diffResult = await service.diff(inventory, results)
+
+        const updatedScript = diffResult.newInventory.scripts[0]
+        expect(updatedScript).toBeDefined()
+        if (!updatedScript) return
+        const rawUpdated = inventoryScriptInfoToRawInventoryScriptInfo(updatedScript)
+
+        expect('hashes' in rawUpdated.authoriseWith).toBe(true)
+        if (!('hashes' in rawUpdated.authoriseWith)) return
+
+        // 1 baseline + 3 new hashes, all landed
+        const hashValues = rawUpdated.authoriseWith.hashes.map((h: any) => h.hash.value)
+        expect(hashValues).toEqual(['baseline', ...newHashes])
       })
     })
 
