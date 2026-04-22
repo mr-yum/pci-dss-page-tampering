@@ -126,10 +126,16 @@ describe('CLI --mode validate integration tests', () => {
     })
 
     it('accepts --mode validate with file:// repo and no --git-token', () => {
-      // Point at a path that is not a real git repo so clone fails with exit 2.
-      // A validation error (exit 1) would indicate the schema is still enforcing --git-token.
-      const result = executeCli(['--mode', 'validate', '--repo', 'file:///tmp/pci-validate-nonexistent'])
-      expect(result.status).not.toBe(1)
+      // Make a unique path then immediately remove it so the clone is guaranteed to fail
+      // with an execution error (exit 2). Exit 1 here would mean the schema is still
+      // enforcing --git-token.
+      const missingRepoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'pci-validate-missing-'))
+      fs.rmSync(missingRepoPath, { recursive: true, force: true })
+
+      const result = executeCli(['--mode', 'validate', '--repo', `file://${missingRepoPath}`])
+
+      expect(result.status).toBe(2)
+      expect(result.stderr).not.toContain('Git token is required')
     })
 
     it('still rejects non-validate modes that omit --git-token', () => {

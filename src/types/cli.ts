@@ -87,7 +87,7 @@ export const CliArgsSchema = z
     mode: z.enum(['inventory', 'detection', 'all', 'validate']).default('all'),
     target: z.string().optional(),
     repo: repoUrlSchema,
-    gitToken: z.string().default(''),
+    gitToken: z.string().trim().default(''),
     slackToken: z.string().optional(),
     inventoryBranch: z.string().default('inventory-updates'),
     detectionBranch: z.string().default('main'),
@@ -101,7 +101,7 @@ export const CliArgsSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['gitToken'],
-        message: 'Git token is required for HTTPS repositories',
+        message: 'Git token is required unless using --mode validate with a file:// repository',
       })
     }
   })

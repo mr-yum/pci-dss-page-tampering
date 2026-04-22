@@ -19,9 +19,10 @@ REQUIRED PARAMETERS:
                            Example: file:///local/path/test-inventory
 
   --git-token <TOKEN>       Git authentication token (Personal Access Token)
-                           Required for HTTPS repositories
-                           Not used for file:// repositories
-                           Optional when --mode validate is used with a file:// repo
+                           Required in all modes except --mode validate against a
+                           file:// repo. For HTTPS, use a real PAT. For non-validate
+                           file:// runs, any placeholder string is accepted (the
+                           token isn't used for auth but the argument must be set).
 
 OPTIONAL PARAMETERS:
   --mode <MODE>            Execution mode (default: all)

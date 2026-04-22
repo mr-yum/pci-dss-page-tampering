@@ -309,7 +309,7 @@ To validate every inventory file in a local checkout of the inventory repo, use 
 npm start -- --mode validate --repo file://$PWD
 ```
 
-Validate mode runs the full deserialization pipeline used at runtime — Zod schema parsing, `createMatcher()` construction for every `identifyWith`/`authoriseWith` tree, and workflow file resolution — so anything that parses here will also load at production execution time. See [CI Validation for the Inventory Repo](#ci-validation-for-the-inventory-repo) below for the GitHub Actions wiring.
+Validate mode runs the full deserialization pipeline used at runtime — Zod schema parsing, `createMatcher()` construction for every `identifyWith`/`authoriseWith` tree, and workflow file resolution — so anything that parses here will also load at production execution time. See [CI Validation for the Inventory Repo](#ci-validation-for-the-inventory-repo) above for the GitHub Actions wiring.
 
 ### Common Validation Errors
 
