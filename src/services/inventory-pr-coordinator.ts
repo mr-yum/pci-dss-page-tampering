@@ -36,7 +36,8 @@ export async function ensureInventoryPullRequest(args: EnsureInventoryPullReques
   }
 
   const [titleLine, ...bodyLines] = commitMessage.split('\n')
-  const title = titleLine ?? 'chore(inventory): auto-update'
+  const normalizedTitle = (titleLine ?? '').trim()
+  const title = normalizedTitle.length > 0 ? normalizedTitle : 'chore(inventory): auto-update'
   const body = [bodyLines.join('\n').trim(), `Auto-opened to trigger \`--mode validate\` CI validation of this inventory update.`].filter((segment) => segment.length > 0).join('\n\n')
 
   try {

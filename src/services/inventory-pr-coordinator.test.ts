@@ -97,6 +97,14 @@ describe('ensureInventoryPullRequest', () => {
     expect(log).toHaveBeenCalledWith("Skipping PR creation: --inventory-branch and --detection-branch are both 'main'.")
   })
 
+  it('falls back to a default title when the commit message first line is blank', async () => {
+    pullRequestService.ensurePullRequest.mockResolvedValueOnce({ url: 'https://github.com/org/inventory/pull/9', created: true })
+
+    await callWith({ commitMessage: '   \n\nbody after whitespace title' })
+
+    expect(pullRequestService.ensurePullRequest.mock.calls[0]![0]!.title).toBe('chore(inventory): auto-update')
+  })
+
   it('skips without calling the service when gitToken is empty', async () => {
     await callWith({ gitToken: '' })
 

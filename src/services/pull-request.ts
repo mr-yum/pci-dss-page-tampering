@@ -18,6 +18,7 @@ export type EnsurePullRequestResult = Readonly<{
 
 const GITHUB_API_BASE = 'https://api.github.com'
 const GITHUB_API_VERSION = '2022-11-28'
+const GITHUB_API_TIMEOUT_MS = 15_000
 
 export class PullRequestService {
   async ensurePullRequest(args: EnsurePullRequestArgs): Promise<EnsurePullRequestResult | null> {
@@ -50,7 +51,7 @@ export class PullRequestService {
     const baseQualifier = encodeURIComponent(baseBranch)
     const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/pulls?state=open&head=${headQualifier}&base=${baseQualifier}`
 
-    const response = await axios.get<Array<{ html_url?: string }>>(url, { headers })
+    const response = await axios.get<Array<{ html_url?: string }>>(url, { headers, timeout: GITHUB_API_TIMEOUT_MS })
     const first = response.data[0]
     return first?.html_url ?? null
   }
@@ -65,7 +66,7 @@ export class PullRequestService {
     }
 
     try {
-      const response = await axios.post<{ html_url: string }>(url, payload, { headers })
+      const response = await axios.post<{ html_url: string }>(url, payload, { headers, timeout: GITHUB_API_TIMEOUT_MS })
       return { url: response.data.html_url, created: true }
     } catch (error) {
       // Handle the race where a PR was opened between our GET and POST. GitHub

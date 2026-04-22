@@ -40,8 +40,10 @@ describe('PullRequestService.ensurePullRequest', () => {
           Accept: 'application/vnd.github+json',
           'X-GitHub-Api-Version': '2022-11-28',
         }),
+        timeout: 15_000,
       }),
     )
+    expect(mockedAxios.get).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ timeout: 15_000 }))
   })
 
   it('reuses an existing open PR instead of creating', async () => {

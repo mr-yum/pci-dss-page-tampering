@@ -30,6 +30,11 @@ describe('parseGitHubRepo', () => {
     expect(parseGitHubRepo('https://github.enterprise.example/org/inventory')).toBeNull()
   })
 
+  it('returns null for non-HTTPS schemes even on github.com', () => {
+    expect(parseGitHubRepo('http://github.com/org/inventory')).toBeNull()
+    expect(parseGitHubRepo('ssh://github.com/org/inventory')).toBeNull()
+  })
+
   it('returns null when owner or repo is missing', () => {
     expect(parseGitHubRepo('https://github.com/')).toBeNull()
     expect(parseGitHubRepo('https://github.com/org')).toBeNull()

@@ -14,7 +14,7 @@ export function parseGitHubRepo(url: string): { owner: string; repo: string } | 
     return null
   }
 
-  if (parsed.hostname.toLowerCase() !== 'github.com') {
+  if (parsed.protocol !== 'https:' || parsed.hostname.toLowerCase() !== 'github.com') {
     return null
   }
 
