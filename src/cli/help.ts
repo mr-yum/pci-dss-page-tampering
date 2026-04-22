@@ -19,15 +19,20 @@ REQUIRED PARAMETERS:
                            Example: file:///local/path/test-inventory
 
   --git-token <TOKEN>       Git authentication token (Personal Access Token)
-                           Required for HTTPS repositories
-                           Not used for file:// repositories
+                           Required in all modes except --mode validate against a
+                           file:// repo. For HTTPS, use a real PAT. For non-validate
+                           file:// runs, any placeholder string is accepted (the
+                           token isn't used for auth but the argument must be set).
 
 OPTIONAL PARAMETERS:
   --mode <MODE>            Execution mode (default: all)
-                           Values: inventory, detection, all
+                           Values: inventory, detection, all, validate
                            - inventory: Update baseline inventory (writes to Git)
                            - detection: Monitor against inventory (read-only)
                            - all: Run inventory first, then detection sequentially
+                           - validate: Fully deserialize inventory (schema + matchers
+                             + workflow resolution) and exit. No browser, no alerts,
+                             no push. Intended for CI checks in the inventory repo.
 
   --target <NAME>          Target configuration name to process
                            Default: process all targets in inventory
@@ -91,6 +96,12 @@ EXAMPLES:
        --repo https://github.com/org/inventory \\
        --git-token ghp_abc123xyz
 
+  6. CI Validation (validate mode against a local inventory checkout):
+     npm start -- \\
+       --mode validate \\
+       --repo file://$PWD \\
+       --inventory-branch $GITHUB_HEAD_REF
+
 WORKFLOW BEHAVIOR:
 
   Inventory Mode (--mode inventory):
@@ -110,6 +121,17 @@ WORKFLOW BEHAVIOR:
   - Runs inventory workflow first, then detection workflow
   - If inventory fails, detection is skipped (fail-fast)
   - Useful for scheduled monitoring jobs
+
+  Validate Mode (--mode validate):
+  - Clones the inventory repo, runs the full deserialization pipeline on every
+    target file (Zod schema check, matcher construction, workflow file resolution)
+  - Skips Puppeteer, alerting, and inventory push entirely
+  - Intended as a CI pre-merge check in the script-inventory repository
+  - Exit codes: 0 = all files valid; 1 = CLI argument error; 2 = inventory
+    validation or execution error (schema failure, invalid regex, missing
+    workflow, clone/branch failure). For inventory-file validation failures,
+    exit-2 messages name the offending file; pre-read failures (clone, branch
+    checkout) surface the underlying git error instead.
 
 ALERTING BEHAVIOR:
 

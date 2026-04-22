@@ -976,6 +976,7 @@ export class SlackAlertService implements IAlertService {
   private formatBranchDisplay(summary: ExecutionSummary): string {
     switch (summary.mode) {
       case ExecutionMode.Inventory:
+      case ExecutionMode.Validate:
         return `\`${summary.inventoryBranch ?? 'unknown'}\``
       case ExecutionMode.Detection:
         return `\`${summary.detectionBranch ?? 'unknown'}\``

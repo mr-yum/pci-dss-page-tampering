@@ -70,7 +70,6 @@
     "check:typing": "tsc --noEmit",
     "develop": "swc src -d dist --strip-leading-paths --watch",
     "build:js": "swc src -d dist --strip-leading-paths",
-    "validate-inventory": "node dist/utils/inventory/validate-migration.js",
     "test:unit": "jest --selectProjects unit",
     "test:integration": "jest --selectProjects integration"
   },

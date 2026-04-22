@@ -10,6 +10,7 @@ export enum ExecutionMode {
   Inventory = 'inventory',
   Detection = 'detection',
   All = 'all',
+  Validate = 'validate',
 }
 
 /**

@@ -76,19 +76,35 @@ const repoUrlSchema = z.string().superRefine((value, ctx) => {
 /**
  * Zod schema for CLI argument validation
  * Applies type checking, format validation, and default values
+ *
+ * Note: `gitToken` is optional at the field level but conditionally required by the
+ * object-level superRefine below. It is only skippable for `--mode validate` against
+ * a `file://` repo (the CI inventory-validation case). All other combinations still
+ * require a non-empty token to clone.
  */
-export const CliArgsSchema = z.object({
-  mode: z.enum(['inventory', 'detection', 'all']).default('all'),
-  target: z.string().optional(),
-  repo: repoUrlSchema,
-  gitToken: z.string().min(1, 'Git token is required for HTTPS repositories'),
-  slackToken: z.string().optional(),
-  inventoryBranch: z.string().default('inventory-updates'),
-  detectionBranch: z.string().default('main'),
-  gitUserName: z.string().default('PCI DSS Page Tampering Bot'),
-  gitUserEmail: z.string().default('noreply@example.com'),
-  help: z.boolean().default(false),
-})
+export const CliArgsSchema = z
+  .object({
+    mode: z.enum(['inventory', 'detection', 'all', 'validate']).default('all'),
+    target: z.string().optional(),
+    repo: repoUrlSchema,
+    gitToken: z.string().trim().default(''),
+    slackToken: z.string().optional(),
+    inventoryBranch: z.string().default('inventory-updates'),
+    detectionBranch: z.string().default('main'),
+    gitUserName: z.string().default('PCI DSS Page Tampering Bot'),
+    gitUserEmail: z.string().default('noreply@example.com'),
+    help: z.boolean().default(false),
+  })
+  .superRefine((args, ctx) => {
+    const isValidateModeWithFileRepo = args.mode === 'validate' && args.repo.trim().startsWith('file://')
+    if (!isValidateModeWithFileRepo && args.gitToken.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['gitToken'],
+        message: 'Git token is required unless using --mode validate with a file:// repository',
+      })
+    }
+  })
 
 /**
  * Validated CLI arguments type (inferred from Zod schema)
