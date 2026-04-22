@@ -81,10 +81,10 @@ npm start -- \
 
 ### Required Parameters
 
-| Parameter             | Description                                                            | Example                            |
-| --------------------- | ---------------------------------------------------------------------- | ---------------------------------- |
-| `--repo <url>`        | Inventory repository URL (HTTPS or file://)                            | `https://github.com/org/inventory` |
-| `--git-token <token>` | Git authentication token (required for HTTPS; optional for `validate`) | `${{ secrets.GITHUB_TOKEN }}`      |
+| Parameter             | Description                                                                                              | Example                            |
+| --------------------- | -------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| `--repo <url>`        | Inventory repository URL (HTTPS or file://)                                                              | `https://github.com/org/inventory` |
+| `--git-token <token>` | Git authentication token (required for HTTPS; optional only for `--mode validate` with a `file://` repo) | `${{ secrets.GITHUB_TOKEN }}`      |
 
 ### Optional Parameters
 
@@ -185,7 +185,7 @@ The `validate` mode is designed to run as a pre-merge CI check in the script-inv
 3. Parses each file with `RawInventorySchema` (catches bad regex patterns, missing fields, malformed hashes, unsupported matcher shapes).
 4. Runs `createMatcher()` on every `identifyWith` and `authoriseWith` tree (catches any matcher construction failures that slip past schema).
 5. Resolves every `workflow` reference via `WorkflowDefinitionSchema` (catches dangling workflow files and malformed workflow definitions).
-6. Exits 0 on success, or non-zero with a file-qualified error message on failure.
+6. Exits 0 on success, or non-zero with a contextual error message on failure.
 
 It does **not** launch Puppeteer, hit the monitored URLs, send alerts, or push any changes.
 
@@ -207,7 +207,7 @@ npm start -- --mode validate --repo file://$PWD
 | 1    | CLI argument validation error (malformed `--repo`, missing `--git-token` for HTTPS, etc.)                                                  |
 | 2    | Inventory or execution error (schema failure in an inventory file, invalid regex, malformed matcher, missing workflow file, clone failure) |
 
-Failure messages in exit-2 mode always name the offending inventory file — e.g. `Validation failed for inventory file '1.0.json': Invalid regex in nameMatcher at "scripts.0.identifyWith.nameMatcher"`.
+For inventory-file validation failures, exit-2 messages name the offending file — e.g. `Validation failed for inventory file '1.0.json': Invalid regex in nameMatcher at "scripts.0.identifyWith.nameMatcher"`. Pre-read failures (clone failures, branch checkout errors) surface the underlying git error without a file qualifier.
 
 ### GitHub Actions wiring (for the script-inventory repo)
 

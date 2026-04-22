@@ -127,9 +127,11 @@ WORKFLOW BEHAVIOR:
     target file (Zod schema check, matcher construction, workflow file resolution)
   - Skips Puppeteer, alerting, and inventory push entirely
   - Intended as a CI pre-merge check in the script-inventory repository
-  - Exit codes: 0 = all files valid; 1 = CLI argument error; 2 = inventory file
-    error (schema failure, invalid regex, missing workflow, clone/branch failure).
-    Exit-2 messages always name the offending inventory file.
+  - Exit codes: 0 = all files valid; 1 = CLI argument error; 2 = inventory
+    validation or execution error (schema failure, invalid regex, missing
+    workflow, clone/branch failure). For inventory-file validation failures,
+    exit-2 messages name the offending file; pre-read failures (clone, branch
+    checkout) surface the underlying git error instead.
 
 ALERTING BEHAVIOR:
 
