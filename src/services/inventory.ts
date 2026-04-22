@@ -7,6 +7,7 @@ import type { InventoryServiceProps } from '../types/inventory/props'
 import { HashMatcher } from '../types/matcher/hash-matcher'
 import { createMatcher } from '../types/matcher/matcher-factory'
 import type { PullTarget } from '../types/target'
+import { buildInventoryCommitMessage } from '../utils/commit-message'
 import { copyInventory, inventoryHeaderInfoToRawInventoryHeaderInfo, rawInventoryHeaderInfoToInventoryHeaderInfo } from '../utils/inventory'
 import { inventoryScriptInfoToRawInventoryScriptInfo, rawInventoryScriptInfoToInventoryScriptInfo } from '../utils/script'
 
@@ -102,13 +103,21 @@ export class ScriptInventoryService implements IInventoryService {
   }
 
   push(diffs: InventoryDifferenceResult[], branchName?: string): Promise<void> {
-    if (diffs.length !== 0) {
-      console.log('[Inventory → Service] Pushing script differences to inventory.')
-      const inventoriesToPush = diffs.map((diff) => diff.newInventory)
-      return this._repository.push(inventoriesToPush, branchName)
+    if (diffs.length === 0) {
+      return Promise.resolve()
     }
 
-    return Promise.resolve()
+    const commitMessage = buildInventoryCommitMessage(diffs)
+    if (commitMessage === null) {
+      // No material changes — skip the push entirely rather than letting git
+      // error on "nothing to commit".
+      console.log('[Inventory → Service] No inventory changes to push.')
+      return Promise.resolve()
+    }
+
+    console.log('[Inventory → Service] Pushing script differences to inventory.')
+    const inventoriesToPush = diffs.map((diff) => diff.newInventory)
+    return this._repository.push(inventoriesToPush, branchName, commitMessage)
   }
 
   /**

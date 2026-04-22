@@ -710,6 +710,45 @@ describe('ScriptInventoryService', () => {
       })
     })
 
+    describe('push() no-op suppression', () => {
+      it('does not call the repository when diffs contain no material changes', async () => {
+        const mockRepository = {
+          pull: jest.fn(),
+          push: jest.fn().mockResolvedValue(undefined),
+        }
+        const noOpService = new ScriptInventoryService({ inventoryRepository: mockRepository })
+
+        const unchanged = createMockInventory([])
+        await noOpService.push([{ oldInventory: unchanged, newInventory: unchanged }])
+
+        expect(mockRepository.push).not.toHaveBeenCalled()
+      })
+
+      it('does call the repository when diffs contain a material change', async () => {
+        const mockRepository = {
+          pull: jest.fn(),
+          push: jest.fn().mockResolvedValue(undefined),
+        }
+        const pushService = new ScriptInventoryService({ inventoryRepository: mockRepository })
+
+        const before = createMockInventory([])
+        const after = rawInventoryScriptInfoToInventoryScriptInfo({
+          identifyWith: { nameMatcher: '^https://new\\.example\\.com/new\\.js$' },
+          authoriseWith: {
+            hashes: [{ timestamp: '2026-04-22T00:00:00.000Z', hash: { value: 'h' } }],
+            authorisationInfo: { description: 'x', authorised: false, date: '2026-04-22T00:00:00.000Z' },
+          },
+        })
+        const newInventory = { ...before, scripts: [after] }
+
+        await pushService.push([{ oldInventory: before, newInventory }])
+
+        expect(mockRepository.push).toHaveBeenCalledTimes(1)
+        const callArgs = mockRepository.push.mock.calls[0]
+        expect(callArgs?.[2]).toMatch(/^inventory\(.+\): add 1 script$/)
+      })
+    })
+
     describe('Round-trip conversion', () => {
       it('should maintain array syntax through multiple round-trips', () => {
         // Arrange: Complex array syntax
