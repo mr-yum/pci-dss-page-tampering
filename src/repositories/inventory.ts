@@ -1,6 +1,6 @@
 import { rm, writeFile } from 'fs/promises'
 
-import type { IInventoryStore, IScriptInventoryRepository } from '../interfaces/inventory'
+import type { IInventoryStore, InventoryPushResult, IScriptInventoryRepository } from '../interfaces/inventory'
 import type { Inventory } from '../types/inventory/model'
 import type { InventoryRepositoryProps } from '../types/inventory/props'
 import type { PullTarget } from '../types/target'
@@ -80,7 +80,7 @@ export class ScriptInventoryRepository implements IScriptInventoryRepository {
     return Promise.resolve(processedPayloads)
   }
 
-  async push(inventories: Inventory[], branchName?: string, commitMessage?: string): Promise<void> {
+  async push(inventories: Inventory[], branchName?: string, commitMessage?: string): Promise<InventoryPushResult> {
     const rawInventories = inventories.map((inventory) => {
       return {
         fileName: inventory.fileName,
@@ -102,6 +102,10 @@ export class ScriptInventoryRepository implements IScriptInventoryRepository {
     )
 
     await this.inventoryStore.push(inventories, branchName, commitMessage)
+
+    // The service only calls us with a non-null commitMessage (no-op commits are
+    // filtered out upstream), so reaching here means a push did occur.
+    return commitMessage ? { pushed: true, commitMessage } : { pushed: false }
   }
 
   /* This will clean up any cloned repos if it exists to ensure that we always have a clean slate to work with */

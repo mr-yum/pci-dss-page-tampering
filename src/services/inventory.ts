@@ -1,4 +1,4 @@
-import type { IInventoryService, IScriptInventoryRepository } from '../interfaces/inventory'
+import type { IInventoryService, InventoryPushResult, IScriptInventoryRepository } from '../interfaces/inventory'
 import type { ComparisonResultType, KnownScriptWithUnauthorisedContentFound, UnknownScriptFound } from '../types/comparison'
 import type { KnownHeaderWithUnauthorisedContentFound } from '../types/comparison/known-header-unauthorised-content-found'
 import type { UnknownHeaderFound } from '../types/comparison/unknown-header-found'
@@ -102,9 +102,9 @@ export class ScriptInventoryService implements IInventoryService {
     })
   }
 
-  push(diffs: InventoryDifferenceResult[], branchName?: string): Promise<void> {
+  async push(diffs: InventoryDifferenceResult[], branchName?: string): Promise<InventoryPushResult> {
     if (diffs.length === 0) {
-      return Promise.resolve()
+      return { pushed: false }
     }
 
     const commitMessage = buildInventoryCommitMessage(diffs)
@@ -112,12 +112,12 @@ export class ScriptInventoryService implements IInventoryService {
       // No material changes — skip the push entirely rather than letting git
       // error on "nothing to commit".
       console.log('[Inventory → Service] No inventory changes to push.')
-      return Promise.resolve()
+      return { pushed: false }
     }
 
     console.log('[Inventory → Service] Pushing script differences to inventory.')
     const inventoriesToPush = diffs.map((diff) => diff.newInventory)
-    return this._repository.push(inventoriesToPush, branchName, commitMessage)
+    return await this._repository.push(inventoriesToPush, branchName, commitMessage)
   }
 
   /**

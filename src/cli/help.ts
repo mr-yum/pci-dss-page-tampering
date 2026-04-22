@@ -109,6 +109,9 @@ WORKFLOW BEHAVIOR:
   - Compares findings against existing inventory
   - Updates inventory files with newly discovered resources
   - Pushes changes to Git repository (--inventory-branch)
+  - For GitHub HTTPS repos, automatically opens a PR from --inventory-branch
+    into --detection-branch so CI (--mode validate) runs and humans review.
+    Requires the --git-token to have pull_requests: write permission.
   - Alerts on unidentified resources requiring authorization
 
   Detection Mode (--mode detection):

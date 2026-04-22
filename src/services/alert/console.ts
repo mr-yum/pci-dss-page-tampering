@@ -1,4 +1,4 @@
-import type { IAlertService } from '../../interfaces/alert'
+import type { IAlertService, PullRequestFailureContext } from '../../interfaces/alert'
 import { AlertType } from '../../types/alert'
 import type { ComparisonResultType } from '../../types/comparison'
 import type { KnownHeaderWithUnauthorisedContentFound } from '../../types/comparison/known-header-unauthorised-content-found'
@@ -201,6 +201,16 @@ export class ConsoleAlertService implements IAlertService {
       return '0 scripts and headers (This may warrant investigation)'
     }
     return `${count} scripts and headers`
+  }
+
+  async alertOnPullRequestFailure(context: PullRequestFailureContext, _alertDestinations: InventoryAlert): Promise<void> {
+    const errorMessage = context.error instanceof Error ? context.error.message : String(context.error)
+    console.error(`[Console Alert -> PR Failure]: Inventory push succeeded but PR creation failed`)
+    console.error(`  Repository: ${context.repoUrl}`)
+    console.error(`  Head Branch: ${context.headBranch}`)
+    console.error(`  Base Branch: ${context.baseBranch}`)
+    console.error(`  Error: ${errorMessage}`)
+    console.error(`  Action: Open the PR manually in GitHub so CI validation can run.`)
   }
 
   /**

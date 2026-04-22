@@ -162,6 +162,10 @@ act push --container-architecture linux/amd64 --secret-file .env.secrets
    - Updates baseline inventory with newly discovered scripts/headers
    - Alerts on unidentified resources (requires manual authorization)
    - Pushes changes to Git repository
+   - Opens a pull request from `--inventory-branch` into `--detection-branch`
+     (GitHub HTTPS repos only) so the inventory repo's `--mode validate` CI
+     check runs and humans can review. PR creation failure fails the run;
+     the `--git-token` must have `pull_requests: write` permission.
 
 2. **Detection Workflow**:
    - Executes against production/detection targets
