@@ -70,7 +70,7 @@ export class GitInventoryStore implements IInventoryStore {
     }
   }
 
-  async push(_inventory: Inventory[], branchName?: string): Promise<void> {
+  async push(_inventory: Inventory[], branchName?: string, commitMessage?: string): Promise<void> {
     console.log(`[Inventory → Store] Setting user.name and user.email for the local repo.`)
     await this.repositoryGitClient?.addConfig('user.name', this.gitUserName)
     await this.repositoryGitClient?.addConfig('user.email', this.gitUserEmail)
@@ -78,9 +78,9 @@ export class GitInventoryStore implements IInventoryStore {
     console.log(`[Inventory → Store] Adding all changed files found in '${GIT_CLONE_PATH}'.`)
     await this.repositoryGitClient?.add('.')
 
-    const commitMessage = 'Update scripts'
-    console.log(`[Inventory → Store] Committing changes with message '${commitMessage}'`)
-    await this.repositoryGitClient?.commit(commitMessage)
+    const resolvedMessage = commitMessage ?? 'inventory: update'
+    console.log(`[Inventory → Store] Committing changes with message '${resolvedMessage}'`)
+    await this.repositoryGitClient?.commit(resolvedMessage)
 
     const targetBranch = branchName ?? GIT_UPDATED_SCRIPTS_BRANCH_NAME
     console.log(`[Inventory → Store] Pushing changes to branch '${targetBranch}'`)

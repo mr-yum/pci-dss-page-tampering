@@ -4,7 +4,7 @@ import type { PullTarget } from '../types/target'
 
 export interface IInventoryStore {
   pull(target: PullTarget, branchName?: string): Promise<InventoryPullResult>
-  push(inventory: Inventory[], branchName?: string): Promise<void>
+  push(inventory: Inventory[], branchName?: string, commitMessage?: string): Promise<void>
 }
 
 export interface IInventoryService {
@@ -15,5 +15,5 @@ export interface IInventoryService {
 
 export interface IScriptInventoryRepository {
   pull(target: PullTarget, branchName?: string): Promise<Inventory[]>
-  push(inventories: Inventory[], branchName?: string): Promise<void>
+  push(inventories: Inventory[], branchName?: string, commitMessage?: string): Promise<void>
 }

@@ -7,6 +7,7 @@ import type { InventoryServiceProps } from '../types/inventory/props'
 import { HashMatcher } from '../types/matcher/hash-matcher'
 import { createMatcher } from '../types/matcher/matcher-factory'
 import type { PullTarget } from '../types/target'
+import { buildInventoryCommitMessage } from '../utils/commit-message'
 import { copyInventory, inventoryHeaderInfoToRawInventoryHeaderInfo, rawInventoryHeaderInfoToInventoryHeaderInfo } from '../utils/inventory'
 import { inventoryScriptInfoToRawInventoryScriptInfo, rawInventoryScriptInfoToInventoryScriptInfo } from '../utils/script'
 
@@ -105,7 +106,8 @@ export class ScriptInventoryService implements IInventoryService {
     if (diffs.length !== 0) {
       console.log('[Inventory → Service] Pushing script differences to inventory.')
       const inventoriesToPush = diffs.map((diff) => diff.newInventory)
-      return this._repository.push(inventoriesToPush, branchName)
+      const commitMessage = buildInventoryCommitMessage(diffs)
+      return this._repository.push(inventoriesToPush, branchName, commitMessage)
     }
 
     return Promise.resolve()

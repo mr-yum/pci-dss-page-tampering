@@ -358,3 +358,7 @@ The system runs on CRON schedules:
 - **Formatting**: Prettier (config in `package.json`)
 - **Testing**: Jest 30 with `@swc/jest` transform (`jest.config.js`)
 - **Type checking**: `tsc --noEmit` directly
+
+## Behaviours
+
+- **Commit messages**: Please use conventional commits and keep them concise. Tell us what value was created in the commit, not a catalog of changes.

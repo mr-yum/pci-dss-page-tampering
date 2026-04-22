@@ -80,7 +80,7 @@ export class ScriptInventoryRepository implements IScriptInventoryRepository {
     return Promise.resolve(processedPayloads)
   }
 
-  push(inventories: Inventory[], branchName?: string): Promise<void> {
+  push(inventories: Inventory[], branchName?: string, commitMessage?: string): Promise<void> {
     const rawInventories = inventories.map((inventory) => {
       return {
         fileName: inventory.fileName,
@@ -99,7 +99,7 @@ export class ScriptInventoryRepository implements IScriptInventoryRepository {
       await writeFile(filePath, jsonString)
     })
 
-    return this.inventoryStore.push(inventories, branchName)
+    return this.inventoryStore.push(inventories, branchName, commitMessage)
   }
 
   /* This will clean up any cloned repos if it exists to ensure that we always have a clean slate to work with */

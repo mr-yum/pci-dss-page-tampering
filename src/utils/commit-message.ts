@@ -1,0 +1,127 @@
+import type { InventoryDifferenceResult } from '../types/inventory/model'
+import type { RawInventoryHeaderInfo, RawInventoryScriptInfo } from '../types/inventory/raw'
+import { inventoryToRawInventory } from './inventory'
+
+type InventoryChangeCounts = {
+  newScripts: number
+  newScriptHashes: number
+  newHeaders: number
+  newHeaderMatchers: number
+}
+
+type PerFileChange = InventoryChangeCounts & { fileName: string }
+
+function countScriptHashes(script: RawInventoryScriptInfo): number {
+  const aw = script.authoriseWith
+  if (Array.isArray(aw)) {
+    return aw.reduce((total, element) => {
+      return total + ('hashes' in element && Array.isArray(element.hashes) ? element.hashes.length : 0)
+    }, 0)
+  }
+  if ('hashes' in aw && Array.isArray(aw.hashes)) {
+    return aw.hashes.length
+  }
+  return 0
+}
+
+function countHeaderContentMatchers(header: RawInventoryHeaderInfo): number {
+  const aw = header.authoriseWith
+  if (Array.isArray(aw)) {
+    return aw.reduce((total, element) => total + ('contentMatcher' in element ? 1 : 0), 0)
+  }
+  return 'contentMatcher' in aw ? 1 : 0
+}
+
+function computeCountsForDiff(diff: InventoryDifferenceResult): PerFileChange {
+  const oldRaw = inventoryToRawInventory(diff.oldInventory)
+  const newRaw = inventoryToRawInventory(diff.newInventory)
+
+  const oldScriptCount = oldRaw.scripts.length
+  const newScripts = Math.max(0, newRaw.scripts.length - oldScriptCount)
+
+  let newScriptHashes = 0
+  for (let i = 0; i < oldScriptCount; i++) {
+    const oldScript = oldRaw.scripts[i]
+    const newScript = newRaw.scripts[i]
+    if (!oldScript || !newScript) continue
+    newScriptHashes += Math.max(0, countScriptHashes(newScript) - countScriptHashes(oldScript))
+  }
+
+  const oldHeaderCount = oldRaw.headers.length
+  const newHeaders = Math.max(0, newRaw.headers.length - oldHeaderCount)
+
+  let newHeaderMatchers = 0
+  for (let i = 0; i < oldHeaderCount; i++) {
+    const oldHeader = oldRaw.headers[i]
+    const newHeader = newRaw.headers[i]
+    if (!oldHeader || !newHeader) continue
+    newHeaderMatchers += Math.max(0, countHeaderContentMatchers(newHeader) - countHeaderContentMatchers(oldHeader))
+  }
+
+  return {
+    fileName: diff.newInventory.fileName,
+    newScripts,
+    newScriptHashes,
+    newHeaders,
+    newHeaderMatchers,
+  }
+}
+
+function pluralize(count: number, singular: string, plural: string): string {
+  return `${count} ${count === 1 ? singular : plural}`
+}
+
+function formatParts(counts: InventoryChangeCounts): string[] {
+  const parts: string[] = []
+  if (counts.newScripts > 0) parts.push(pluralize(counts.newScripts, 'script', 'scripts'))
+  if (counts.newScriptHashes > 0) parts.push(pluralize(counts.newScriptHashes, 'script hash', 'script hashes'))
+  if (counts.newHeaders > 0) parts.push(pluralize(counts.newHeaders, 'header', 'headers'))
+  if (counts.newHeaderMatchers > 0) parts.push(pluralize(counts.newHeaderMatchers, 'header matcher', 'header matchers'))
+  return parts
+}
+
+function joinParts(parts: string[]): string {
+  if (parts.length === 0) return ''
+  if (parts.length === 1) return parts[0]!
+  if (parts.length === 2) return `${parts[0]} and ${parts[1]}`
+  return `${parts.slice(0, -1).join(', ')}, and ${parts[parts.length - 1]}`
+}
+
+function toScope(fileNames: string[]): string {
+  const stems = fileNames.map((name) => name.replace(/\.json$/, ''))
+  return stems.length === 0 ? '' : `(${stems.join(', ')})`
+}
+
+/**
+ * Build a Conventional Commits-style message summarising inventory changes.
+ *
+ * Examples:
+ *   inventory(2.0): add 9 header matchers
+ *   inventory(1.0, 2.0): add 1 script and 3 header matchers
+ *   inventory: no changes
+ *
+ * Only files whose counts changed are included in the scope. Buckets with a
+ * zero count are omitted from the summary.
+ */
+export function buildInventoryCommitMessage(diffs: InventoryDifferenceResult[]): string {
+  const perFile = diffs.map(computeCountsForDiff)
+  const changedFiles = perFile.filter((entry) => entry.newScripts > 0 || entry.newScriptHashes > 0 || entry.newHeaders > 0 || entry.newHeaderMatchers > 0)
+
+  if (changedFiles.length === 0) {
+    return 'inventory: no changes'
+  }
+
+  const totals: InventoryChangeCounts = changedFiles.reduce(
+    (acc, entry) => ({
+      newScripts: acc.newScripts + entry.newScripts,
+      newScriptHashes: acc.newScriptHashes + entry.newScriptHashes,
+      newHeaders: acc.newHeaders + entry.newHeaders,
+      newHeaderMatchers: acc.newHeaderMatchers + entry.newHeaderMatchers,
+    }),
+    { newScripts: 0, newScriptHashes: 0, newHeaders: 0, newHeaderMatchers: 0 },
+  )
+
+  const scope = toScope(changedFiles.map((entry) => entry.fileName))
+  const summary = joinParts(formatParts(totals))
+  return `inventory${scope}: add ${summary}`
+}
