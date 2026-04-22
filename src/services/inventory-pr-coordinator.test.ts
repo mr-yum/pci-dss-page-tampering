@@ -118,6 +118,7 @@ describe('ensureInventoryPullRequest', () => {
 
     await expect(callWith()).rejects.toBe(error)
 
+    expect(console.error).toHaveBeenCalledWith('[InventoryPRCoordinator]: Failed to create pull request after inventory push:', error)
     expect(alertService.alertOnPullRequestFailure).toHaveBeenCalledWith({ error, repoUrl: 'https://github.com/org/inventory', headBranch: 'inventory-updates', baseBranch: 'main' }, alertDestinations)
   })
 
