@@ -13,6 +13,8 @@ import { HeaderComparisonService } from './services/comparison/header'
 import { ScriptComparisonService } from './services/comparison/script'
 import { DetectionService } from './services/detection'
 import { ScriptInventoryService } from './services/inventory'
+import { ensureInventoryPullRequest } from './services/inventory-pr-coordinator'
+import { PullRequestService } from './services/pull-request'
 import { GitInventoryStore } from './stores/inventory/git'
 import { CliArgsSchema, ExitCode } from './types/cli.js'
 import type { ComparisonResultType } from './types/comparison'
@@ -106,6 +108,8 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
   // T042: Initialize alert service based on configuration
   // Use ConsoleAlertService for local development/testing when --slack-token is omitted
   const alertService: IAlertService = config.alerting.slackToken ? new SlackAlertService(config.alerting.slackToken, config.repository.url, config.branches.inventory) : new ConsoleAlertService()
+
+  const pullRequestService = new PullRequestService()
 
   const log = (message: string): void => {
     console.log(`[Main]: ${message}`)
@@ -217,9 +221,25 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
       // Push inventory
       log('Preparing to push inventory.')
       const inventoriesToPush = inventoryDiffResults.map((result) => result.inventoryResult!)
-      await scriptInventoryService.push(inventoriesToPush, config.branches.inventory)
+      const pushResult = await scriptInventoryService.push(inventoriesToPush, config.branches.inventory)
 
       log('Inventory workflow completed successfully.')
+
+      // Open a PR so the inventory repo's CI (`--mode validate`) runs and humans
+      // can review the change. Skip conditions are handled inside the service
+      // (file://, non-github host) or in the coordinator (same branch, gitToken).
+      if (pushResult.pushed) {
+        await ensureInventoryPullRequest({
+          pullRequestService,
+          alertService,
+          repository: config.repository,
+          branches: config.branches,
+          gitToken: config.authentication.gitToken,
+          commitMessage: pushResult.commitMessage,
+          alertDestinations,
+          log,
+        })
+      }
 
       // T022: If mode is 'inventory', send success notification and stop here
       if (config.executionMode === ExecutionMode.Inventory) {

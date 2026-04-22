@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-import type { IAlertService } from '../../interfaces/alert'
+import type { IAlertService, PullRequestFailureContext } from '../../interfaces/alert'
 import { AlertType } from '../../types/alert'
 import type { ComparisonResultType } from '../../types/comparison'
 import type { KnownHeaderWithUnauthorisedContentFound } from '../../types/comparison/known-header-unauthorised-content-found'
@@ -993,6 +993,52 @@ export class SlackAlertService implements IAlertService {
       return '0 scripts and headers :warning: This may warrant investigation'
     }
     return `${count} scripts and headers`
+  }
+
+  async alertOnPullRequestFailure(context: PullRequestFailureContext, alertDestinations: InventoryAlert): Promise<void> {
+    try {
+      const destination = alertDestinations.inventory.newScriptIdentified
+      const errorMessage = context.error instanceof Error ? context.error.message : String(context.error)
+      const messagePayload = {
+        channel: destination.destination,
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: ':rotating_light: *Inventory push succeeded but PR creation failed* :rotating_light:',
+            },
+          },
+          { type: 'divider' },
+          {
+            type: 'section',
+            text: { type: 'mrkdwn', text: `*Repository*: \`${context.repoUrl}\`` },
+          },
+          {
+            type: 'section',
+            text: { type: 'mrkdwn', text: `*Head Branch*: \`${context.headBranch}\`` },
+          },
+          {
+            type: 'section',
+            text: { type: 'mrkdwn', text: `*Base Branch*: \`${context.baseBranch}\`` },
+          },
+          {
+            type: 'section',
+            text: { type: 'mrkdwn', text: `*Error*: \`${this.truncateText(errorMessage)}\`` },
+          },
+          {
+            type: 'section',
+            text: { type: 'mrkdwn', text: 'Open the PR manually so CI validation can run.' },
+          },
+        ],
+      }
+      console.log('[Alert → PRFailure]: Sending PR-failure notification')
+      await this.sendMessage(messagePayload)
+    } catch (error) {
+      // Swallow: the caller is already exiting non-zero with the original PR
+      // error; a broken alert call should not replace the useful error.
+      console.error('[Alert Error] Failed to send PR-failure notification:', error)
+    }
   }
 
   /**
