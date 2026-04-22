@@ -142,16 +142,16 @@ describe('buildInventoryCommitMessage', () => {
     expect(message).toBe('inventory(2.0): add 2 scripts, 1 script hash, 1 header, and 1 header matcher')
   })
 
-  it('reports no-op when no diffs changed anything', () => {
+  it('returns null when no diffs changed anything', () => {
     const before = makeInventory('1.0.json', [], [headerWithContentMatchers(['a'])])
     const after = makeInventory('1.0.json', [], [headerWithContentMatchers(['a'])])
 
     const message = buildInventoryCommitMessage([diffOf('1.0.json', before, after)])
 
-    expect(message).toBe('inventory: no changes')
+    expect(message).toBeNull()
   })
 
-  it('reports no-op when no diffs are supplied', () => {
-    expect(buildInventoryCommitMessage([])).toBe('inventory: no changes')
+  it('returns null when no diffs are supplied', () => {
+    expect(buildInventoryCommitMessage([])).toBeNull()
   })
 })

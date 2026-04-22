@@ -80,7 +80,7 @@ export class ScriptInventoryRepository implements IScriptInventoryRepository {
     return Promise.resolve(processedPayloads)
   }
 
-  push(inventories: Inventory[], branchName?: string, commitMessage?: string): Promise<void> {
+  async push(inventories: Inventory[], branchName?: string, commitMessage?: string): Promise<void> {
     const rawInventories = inventories.map((inventory) => {
       return {
         fileName: inventory.fileName,
@@ -88,18 +88,20 @@ export class ScriptInventoryRepository implements IScriptInventoryRepository {
       }
     })
 
-    rawInventories.forEach(async (inventory) => {
-      const filePath = `${TARGET_PATH}/${inventory.fileName}`
-      const jsonString = JSON.stringify(inventory.rawInventory, null, 2)
+    await Promise.all(
+      rawInventories.map(async (inventory) => {
+        const filePath = `${TARGET_PATH}/${inventory.fileName}`
+        const jsonString = JSON.stringify(inventory.rawInventory, null, 2)
 
-      console.log(`[Inventory → Repository] Cleaning up old inventory payload '${inventory.fileName}'.`)
-      await rm(filePath)
+        console.log(`[Inventory → Repository] Cleaning up old inventory payload '${inventory.fileName}'.`)
+        await rm(filePath)
 
-      console.log(`[Inventory → Repository] Writing new inventory payload '${inventory.fileName}'.`)
-      await writeFile(filePath, jsonString)
-    })
+        console.log(`[Inventory → Repository] Writing new inventory payload '${inventory.fileName}'.`)
+        await writeFile(filePath, jsonString)
+      }),
+    )
 
-    return this.inventoryStore.push(inventories, branchName, commitMessage)
+    await this.inventoryStore.push(inventories, branchName, commitMessage)
   }
 
   /* This will clean up any cloned repos if it exists to ensure that we always have a clean slate to work with */

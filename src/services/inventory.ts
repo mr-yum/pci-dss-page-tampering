@@ -103,14 +103,21 @@ export class ScriptInventoryService implements IInventoryService {
   }
 
   push(diffs: InventoryDifferenceResult[], branchName?: string): Promise<void> {
-    if (diffs.length !== 0) {
-      console.log('[Inventory → Service] Pushing script differences to inventory.')
-      const inventoriesToPush = diffs.map((diff) => diff.newInventory)
-      const commitMessage = buildInventoryCommitMessage(diffs)
-      return this._repository.push(inventoriesToPush, branchName, commitMessage)
+    if (diffs.length === 0) {
+      return Promise.resolve()
     }
 
-    return Promise.resolve()
+    const commitMessage = buildInventoryCommitMessage(diffs)
+    if (commitMessage === null) {
+      // No material changes — skip the push entirely rather than letting git
+      // error on "nothing to commit".
+      console.log('[Inventory → Service] No inventory changes to push.')
+      return Promise.resolve()
+    }
+
+    console.log('[Inventory → Service] Pushing script differences to inventory.')
+    const inventoriesToPush = diffs.map((diff) => diff.newInventory)
+    return this._repository.push(inventoriesToPush, branchName, commitMessage)
   }
 
   /**

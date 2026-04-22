@@ -95,20 +95,22 @@ function toScope(fileNames: string[]): string {
 /**
  * Build a Conventional Commits-style message summarising inventory changes.
  *
+ * Returns `null` when no diff contains any material change — callers should
+ * treat that as "nothing to commit" and skip the push entirely.
+ *
  * Examples:
  *   inventory(2.0): add 9 header matchers
  *   inventory(1.0, 2.0): add 1 script and 3 header matchers
- *   inventory: no changes
  *
  * Only files whose counts changed are included in the scope. Buckets with a
  * zero count are omitted from the summary.
  */
-export function buildInventoryCommitMessage(diffs: InventoryDifferenceResult[]): string {
+export function buildInventoryCommitMessage(diffs: InventoryDifferenceResult[]): string | null {
   const perFile = diffs.map(computeCountsForDiff)
   const changedFiles = perFile.filter((entry) => entry.newScripts > 0 || entry.newScriptHashes > 0 || entry.newHeaders > 0 || entry.newHeaderMatchers > 0)
 
   if (changedFiles.length === 0) {
-    return 'inventory: no changes'
+    return null
   }
 
   const totals: InventoryChangeCounts = changedFiles.reduce(
