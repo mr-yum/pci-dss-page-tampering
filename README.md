@@ -81,23 +81,23 @@ npm start -- \
 
 ### Required Parameters
 
-| Parameter             | Description                                   | Example                            |
-| --------------------- | --------------------------------------------- | ---------------------------------- |
-| `--repo <url>`        | Inventory repository URL (HTTPS or file://)   | `https://github.com/org/inventory` |
-| `--git-token <token>` | Git authentication token (required for HTTPS) | `${{ secrets.GITHUB_TOKEN }}`      |
+| Parameter             | Description                                                            | Example                            |
+| --------------------- | ---------------------------------------------------------------------- | ---------------------------------- |
+| `--repo <url>`        | Inventory repository URL (HTTPS or file://)                            | `https://github.com/org/inventory` |
+| `--git-token <token>` | Git authentication token (required for HTTPS; optional for `validate`) | `${{ secrets.GITHUB_TOKEN }}`      |
 
 ### Optional Parameters
 
-| Parameter                   | Description                                         | Default                      |
-| --------------------------- | --------------------------------------------------- | ---------------------------- |
-| `--mode <mode>`             | Execution mode: `inventory`, `detection`, or `all`  | `all`                        |
-| `--target <name>`           | Process specific target (e.g., "1.0")               | all targets                  |
-| `--slack-token <token>`     | Slack token for alerts (logs to console if omitted) | -                            |
-| `--inventory-branch <name>` | Branch for inventory operations                     | `inventory-updates`          |
-| `--detection-branch <name>` | Branch for detection operations                     | `main`                       |
-| `--git-user-name <name>`    | Git committer name for inventory updates            | `PCI DSS Page Tampering Bot` |
-| `--git-user-email <email>`  | Git committer email for inventory updates           | `noreply@example.com`        |
-| `--help`                    | Display help message and exit                       | -                            |
+| Parameter                   | Description                                                    | Default                      |
+| --------------------------- | -------------------------------------------------------------- | ---------------------------- |
+| `--mode <mode>`             | Execution mode: `inventory`, `detection`, `all`, or `validate` | `all`                        |
+| `--target <name>`           | Process specific target (e.g., "1.0")                          | all targets                  |
+| `--slack-token <token>`     | Slack token for alerts (logs to console if omitted)            | -                            |
+| `--inventory-branch <name>` | Branch for inventory operations                                | `inventory-updates`          |
+| `--detection-branch <name>` | Branch for detection operations                                | `main`                       |
+| `--git-user-name <name>`    | Git committer name for inventory updates                       | `PCI DSS Page Tampering Bot` |
+| `--git-user-email <email>`  | Git committer email for inventory updates                      | `noreply@example.com`        |
+| `--help`                    | Display help message and exit                                  | -                            |
 
 ## Branch Usage
 
@@ -174,6 +174,83 @@ For GitHub Actions, pass secrets via CLI parameters:
       --git-user-email 'pci-bot@example.com'
 ```
 
+## CI Validation for the Inventory Repo
+
+The `validate` mode is designed to run as a pre-merge CI check in the script-inventory repository. It exercises the same code paths the runtime tool uses to load inventory files, so anything that passes CI will also load in production.
+
+### What validate mode does
+
+1. Clones the inventory repo (supports `file://` for the CI's local checkout) and switches to the requested branch.
+2. Reads every `targets/*.json` file.
+3. Parses each file with `RawInventorySchema` (catches bad regex patterns, missing fields, malformed hashes, unsupported matcher shapes).
+4. Runs `createMatcher()` on every `identifyWith` and `authoriseWith` tree (catches any matcher construction failures that slip past schema).
+5. Resolves every `workflow` reference via `WorkflowDefinitionSchema` (catches dangling workflow files and malformed workflow definitions).
+6. Exits 0 on success, or non-zero with a file-qualified error message on failure.
+
+It does **not** launch Puppeteer, hit the monitored URLs, send alerts, or push any changes.
+
+### Local invocation
+
+Against a local checkout of the inventory repo:
+
+```bash
+npm start -- --mode validate --repo file://$PWD
+```
+
+`--git-token` is not required when `--repo` is a `file://` URL in validate mode.
+
+### Exit codes
+
+| Code | Meaning                                                                                                                                    |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| 0    | All inventory files fully deserialize                                                                                                      |
+| 1    | CLI argument validation error (malformed `--repo`, missing `--git-token` for HTTPS, etc.)                                                  |
+| 2    | Inventory or execution error (schema failure in an inventory file, invalid regex, malformed matcher, missing workflow file, clone failure) |
+
+Failure messages in exit-2 mode always name the offending inventory file — e.g. `Validation failed for inventory file '1.0.json': Invalid regex in nameMatcher at "scripts.0.identifyWith.nameMatcher"`.
+
+### GitHub Actions wiring (for the script-inventory repo)
+
+Check out this tool alongside the inventory repo and run validate mode against the inventory's working tree. Pass `GITHUB_HEAD_REF` as `--inventory-branch` so the validation runs against the PR branch rather than the default branch.
+
+```yaml
+jobs:
+  validate-inventory:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout inventory repo
+        uses: actions/checkout@v4
+        with:
+          path: inventory
+          fetch-depth: 0
+
+      - name: Checkout validation tool
+        uses: actions/checkout@v4
+        with:
+          repository: mr-yum/pci-dss-page-tampering
+          path: tool
+
+      - name: Install tool dependencies
+        working-directory: ./tool
+        run: npm ci
+
+      - name: Validate inventory
+        working-directory: ./tool
+        env:
+          INVENTORY_BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          npm start -- \
+            --mode validate \
+            --repo file://$GITHUB_WORKSPACE/inventory \
+            --inventory-branch "$INVENTORY_BRANCH"
+```
+
+Notes:
+
+- `fetch-depth: 0` on the inventory checkout ensures all branches are available so simple-git can clone from `file://` and switch to the PR branch.
+- `github.head_ref` is only set on `pull_request` events; `github.ref_name` covers direct pushes. The example falls back between the two.
+- If the inventory repo's CI needs to validate `main` rather than the PR branch, omit `--inventory-branch` (defaults to `inventory-updates`) or pass `main` explicitly.
+
 ## Local Testing with GitHub Actions
 
 Requires `.env.secrets` file:
@@ -226,18 +303,13 @@ See the complete migration guide with examples:
 
 ### Validate Inventory
 
-To validate an inventory file against the new schema:
+To validate every inventory file in a local checkout of the inventory repo, use `--mode validate`:
 
 ```bash
-npm run validate-inventory path/to/inventory.json
+npm start -- --mode validate --repo file://$PWD
 ```
 
-**Example**:
-
-```bash
-npm run validate-inventory specs/001-refactor-script-identification/examples/new-schema-valid.json
-# Output: ✅ Inventory is valid!
-```
+Validate mode runs the full deserialization pipeline used at runtime — Zod schema parsing, `createMatcher()` construction for every `identifyWith`/`authoriseWith` tree, and workflow file resolution — so anything that parses here will also load at production execution time. See [CI Validation for the Inventory Repo](#ci-validation-for-the-inventory-repo) below for the GitHub Actions wiring.
 
 ### Common Validation Errors
 

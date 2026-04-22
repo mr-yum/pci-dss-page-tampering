@@ -167,6 +167,16 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
     }
   }
 
+  // Validate mode: fully deserialize inventory via the existing pipeline and exit.
+  // No browser launch, no workflow execution, no alerting, no push.
+  if (config.executionMode === ExecutionMode.Validate) {
+    log('Preparing to validate inventory.')
+    const inventory = await scriptInventoryService.pull(PullTarget.Inventory, config.branches.inventory)
+    const fileList = inventory.map((i) => i.fileName).join(', ')
+    log(`Successfully validated ${inventory.length} inventory file(s): ${fileList}`)
+    return
+  }
+
   // Launch browser for executing Puppeteer workflows
   const browser = await puppeteer.launch({
     headless: true,

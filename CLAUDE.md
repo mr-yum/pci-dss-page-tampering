@@ -37,21 +37,21 @@ npm start -- [OPTIONS]
 
 ### Required Parameters
 
-| Parameter             | Description                                   | Example                            |
-| --------------------- | --------------------------------------------- | ---------------------------------- |
-| `--repo <url>`        | Inventory repository URL (HTTPS or file://)   | `https://github.com/org/inventory` |
-| `--git-token <token>` | Git authentication token (required for HTTPS) | `${{ secrets.GITHUB_TOKEN }}`      |
+| Parameter             | Description                                                            | Example                            |
+| --------------------- | ---------------------------------------------------------------------- | ---------------------------------- |
+| `--repo <url>`        | Inventory repository URL (HTTPS or file://)                            | `https://github.com/org/inventory` |
+| `--git-token <token>` | Git authentication token (required for HTTPS; optional for `validate`) | `${{ secrets.GITHUB_TOKEN }}`      |
 
 ### Optional Parameters
 
-| Parameter                   | Description                                         | Default             |
-| --------------------------- | --------------------------------------------------- | ------------------- |
-| `--mode <mode>`             | Execution mode: `inventory`, `detection`, or `all`  | `all`               |
-| `--target <name>`           | Process specific target (e.g., "1.0")               | all targets         |
-| `--slack-token <token>`     | Slack token for alerts (logs to console if omitted) | -                   |
-| `--inventory-branch <name>` | Branch for inventory operations                     | `inventory-updates` |
-| `--detection-branch <name>` | Branch for detection operations                     | `main`              |
-| `--help`                    | Display help message and exit                       | -                   |
+| Parameter                   | Description                                                    | Default             |
+| --------------------------- | -------------------------------------------------------------- | ------------------- |
+| `--mode <mode>`             | Execution mode: `inventory`, `detection`, `all`, or `validate` | `all`               |
+| `--target <name>`           | Process specific target (e.g., "1.0")                          | all targets         |
+| `--slack-token <token>`     | Slack token for alerts (logs to console if omitted)            | -                   |
+| `--inventory-branch <name>` | Branch for inventory operations                                | `inventory-updates` |
+| `--detection-branch <name>` | Branch for detection operations                                | `main`              |
+| `--help`                    | Display help message and exit                                  | -                   |
 
 ### Usage Examples
 
@@ -70,6 +70,9 @@ npm start -- --mode detection --detection-branch release/v2.0 --repo https://git
 
 # Local testing with file protocol (no authentication needed)
 npm start -- --repo file:///path/to/local/inventory --git-token dummy
+
+# CI validation of the inventory repo (no token needed for file://)
+npm start -- --mode validate --repo file://$PWD --inventory-branch $GITHUB_HEAD_REF
 ```
 
 ### Exit Codes
@@ -85,6 +88,7 @@ npm start -- --repo file:///path/to/local/inventory --git-token dummy
 - **`inventory`**: Updates baseline inventory, pushes changes to Git
 - **`detection`**: Read-only comparison against inventory, sends alerts
 - **`all`**: Runs inventory first, then detection (default)
+- **`validate`**: Runs full deserialization (Zod schema + `createMatcher()` + workflow file resolution) against the inventory repo and exits. No Puppeteer, no alerting, no push. Use as a CI pre-merge check in the script-inventory repository.
 
 For detailed implementation documentation, see `specs/008-refactor-the-code/quickstart.md`.
 
