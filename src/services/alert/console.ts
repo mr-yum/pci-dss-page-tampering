@@ -203,6 +203,10 @@ export class ConsoleAlertService implements IAlertService {
     return `${count} scripts and headers`
   }
 
+  setReviewUrl(_url: string | null): void {
+    // Console alerts don't include a review URL/button — no-op.
+  }
+
   async alertOnPullRequestFailure(context: PullRequestFailureContext, _alertDestinations: InventoryAlert): Promise<void> {
     const errorMessage = context.error instanceof Error ? context.error.message : String(context.error)
     console.error(`[Console Alert -> PR Failure]: Inventory push succeeded but PR creation failed`)

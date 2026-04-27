@@ -57,11 +57,12 @@ describe('ensureInventoryPullRequest', () => {
       ...overrides,
     })
 
-  it('opens a PR with commit message as title/body, logs the URL', async () => {
+  it('opens a PR with commit message as title/body, logs the URL, and returns the URL', async () => {
     pullRequestService.ensurePullRequest.mockResolvedValueOnce({ url: 'https://github.com/org/inventory/pull/5', created: true })
 
-    await callWith()
+    const url = await callWith()
 
+    expect(url).toBe('https://github.com/org/inventory/pull/5')
     expect(pullRequestService.ensurePullRequest).toHaveBeenCalledWith({
       repoUrl: 'https://github.com/org/inventory',
       gitToken: 'ghp_test',
@@ -74,25 +75,28 @@ describe('ensureInventoryPullRequest', () => {
     expect(log).toHaveBeenCalledWith('Opened pull request: https://github.com/org/inventory/pull/5')
   })
 
-  it('logs a reuse message when an existing PR is returned', async () => {
+  it('returns the existing PR URL when one is already open', async () => {
     pullRequestService.ensurePullRequest.mockResolvedValueOnce({ url: 'https://github.com/org/inventory/pull/7', created: false })
 
-    await callWith()
+    const url = await callWith()
 
+    expect(url).toBe('https://github.com/org/inventory/pull/7')
     expect(log).toHaveBeenCalledWith('Pull request already open, reusing: https://github.com/org/inventory/pull/7')
   })
 
-  it('logs a skip message when the service returns null (non-github repo)', async () => {
+  it('returns null and logs a skip message when the service returns null (non-github repo)', async () => {
     pullRequestService.ensurePullRequest.mockResolvedValueOnce(null)
 
-    await callWith({ repository: { url: 'file:///tmp/inventory', clonePath: './pulled_repo' } })
+    const url = await callWith({ repository: { url: 'file:///tmp/inventory', clonePath: './pulled_repo' } })
 
+    expect(url).toBeNull()
     expect(log).toHaveBeenCalledWith("Skipping PR creation: 'file:///tmp/inventory' is not a GitHub HTTPS repository.")
   })
 
-  it('skips without calling the service when branches are identical', async () => {
-    await callWith({ branches: { inventory: 'main', detection: 'main' } })
+  it('returns null and skips without calling the service when branches are identical', async () => {
+    const url = await callWith({ branches: { inventory: 'main', detection: 'main' } })
 
+    expect(url).toBeNull()
     expect(pullRequestService.ensurePullRequest).not.toHaveBeenCalled()
     expect(log).toHaveBeenCalledWith("Skipping PR creation: --inventory-branch and --detection-branch are both 'main'.")
   })
@@ -105,9 +109,10 @@ describe('ensureInventoryPullRequest', () => {
     expect(pullRequestService.ensurePullRequest.mock.calls[0]![0]!.title).toBe('chore(inventory): auto-update')
   })
 
-  it('skips without calling the service when gitToken is empty', async () => {
-    await callWith({ gitToken: '' })
+  it('returns null and skips without calling the service when gitToken is empty', async () => {
+    const url = await callWith({ gitToken: '' })
 
+    expect(url).toBeNull()
     expect(pullRequestService.ensurePullRequest).not.toHaveBeenCalled()
     expect(log).toHaveBeenCalledWith('Skipping PR creation: no --git-token provided.')
   })

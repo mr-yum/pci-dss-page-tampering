@@ -120,9 +120,15 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
   const processedTargets: string[] = []
   let alertDestinations: InventoryAlert | null = null
 
-  // Helper function to run workflow for a single target
-  // T009: Returns resource count in addition to inventory diff result
-  const runForTargetAsync = async (browser: Browser, payload: Inventory, target: Target): Promise<{ diffResult: InventoryDifferenceResult | null; resourceCount: number }> => {
+  type PendingAlerts = { scriptComparisonResults: ComparisonResultType[]; headerComparisonResults: ComparisonResultType[]; target: Target; alertDestinations: InventoryAlert }
+  type TargetRunResult = { diffResult: InventoryDifferenceResult | null; resourceCount: number; pendingAlerts: PendingAlerts | null }
+
+  // Helper function to run workflow for a single target.
+  // For detection targets, alerts are sent immediately (no PR exists). For
+  // inventory targets, alerts are deferred so the caller can flush them after
+  // the auto-PR is opened — letting the "Review changes" Slack button point at
+  // the actual PR rather than the GitHub "create PR" page.
+  const runForTargetAsync = async (browser: Browser, payload: Inventory, target: Target): Promise<TargetRunResult> => {
     try {
       console.log(`[Main]: Starting processing for target: ${target.url}`)
 
@@ -141,22 +147,23 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
       // Run header comparison with inventory (returns typed results)
       const headerComparisonResults = await headerComparisonService.compare(detectionSummaryForTarget.target, payload, detectionSummaryForTarget.headerSummary)
 
-      // Alert for inventory and target using typed results
-      await alertService.alertForTypedResults(scriptComparisonResults, target, payload.alerts)
-      await alertService.alertForTypedResults(headerComparisonResults, target, payload.alerts)
-
       // T009: Calculate resource count for this target (scripts + headers)
       const resourceCount = scriptComparisonResults.length + headerComparisonResults.length
 
-      // Run inventory sanity check and return to push to inventory (only for inventory mode)
       if (target.type === 'inventory') {
-        // Combine script and header comparison results for single-pass processing
+        // Defer alerting; main flow will flush after PR creation.
         const allComparisonResults: ComparisonResultType[] = [...scriptComparisonResults, ...headerComparisonResults]
-
         const diffResult = await scriptInventoryService.diff(payload, allComparisonResults)
-        return { diffResult, resourceCount }
+        return {
+          diffResult,
+          resourceCount,
+          pendingAlerts: { scriptComparisonResults, headerComparisonResults, target, alertDestinations: payload.alerts },
+        }
       } else {
-        return { diffResult: null, resourceCount }
+        // Detection mode: no PR is ever created here, alert immediately.
+        await alertService.alertForTypedResults(scriptComparisonResults, target, payload.alerts)
+        await alertService.alertForTypedResults(headerComparisonResults, target, payload.alerts)
+        return { diffResult: null, resourceCount, pendingAlerts: null }
       }
     } catch (error) {
       console.error(`[Main]: Error processing target: ${target.url}`)
@@ -169,6 +176,11 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
       }
       throw error // Re-throw to maintain error propagation
     }
+  }
+
+  const flushPendingAlerts = async (pending: PendingAlerts): Promise<void> => {
+    await alertService.alertForTypedResults(pending.scriptComparisonResults, pending.target, pending.alertDestinations)
+    await alertService.alertForTypedResults(pending.headerComparisonResults, pending.target, pending.alertDestinations)
   }
 
   // Validate mode: fully deserialize inventory via the existing pipeline and exit.
@@ -203,7 +215,7 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
       }
 
       log('Preparing to run inventory workflow.')
-      const inventoryDiffResults = await Promise.all(
+      const targetRunResults = await Promise.all(
         filteredInventory.map(async (inventory) => {
           const result = await runForTargetAsync(browser, inventory, inventory.target.inventory)
           // T009: Track resource count and target name
@@ -212,15 +224,18 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
           if (!processedTargets.includes(targetName)) {
             processedTargets.push(targetName)
           }
-          return {
-            inventoryResult: result.diffResult ?? (await Promise.reject('Expected inventory diff result to exist, but received null!')),
-          }
+          return result
         }),
       )
 
       // Push inventory
       log('Preparing to push inventory.')
-      const inventoriesToPush = inventoryDiffResults.map((result) => result.inventoryResult!)
+      const inventoriesToPush = targetRunResults.map((result) => {
+        if (result.diffResult === null) {
+          throw new Error('Expected inventory diff result to exist, but received null!')
+        }
+        return result.diffResult
+      })
       const pushResult = await scriptInventoryService.push(inventoriesToPush, config.branches.inventory)
 
       log('Inventory workflow completed successfully.')
@@ -228,17 +243,41 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
       // Open a PR so the inventory repo's CI (`--mode validate`) runs and humans
       // can review the change. Skip conditions are handled inside the service
       // (file://, non-github host) or in the coordinator (same branch, gitToken).
+      // We capture any error and re-throw after flushing alerts, so operators
+      // still get notified about new scripts/headers even when PR creation fails.
+      let prError: unknown = null
       if (pushResult.pushed) {
-        await ensureInventoryPullRequest({
-          pullRequestService,
-          alertService,
-          repository: config.repository,
-          branches: config.branches,
-          gitToken: config.authentication.gitToken,
-          commitMessage: pushResult.commitMessage,
-          alertDestinations,
-          log,
-        })
+        try {
+          const prUrl = await ensureInventoryPullRequest({
+            pullRequestService,
+            alertService,
+            repository: config.repository,
+            branches: config.branches,
+            gitToken: config.authentication.gitToken,
+            commitMessage: pushResult.commitMessage,
+            alertDestinations,
+            log,
+          })
+          if (prUrl !== null) {
+            // Point the "Review changes" Slack button at the actual PR.
+            alertService.setReviewUrl(prUrl)
+          }
+        } catch (error) {
+          prError = error
+        }
+      }
+
+      // Flush deferred inventory alerts now — review URL has been set when the
+      // PR is in place, otherwise the alert service falls back to its default
+      // branch-compare URL.
+      for (const result of targetRunResults) {
+        if (result.pendingAlerts) {
+          await flushPendingAlerts(result.pendingAlerts)
+        }
+      }
+
+      if (prError !== null) {
+        throw prError
       }
 
       // T022: If mode is 'inventory', send success notification and stop here

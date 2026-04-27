@@ -737,6 +737,45 @@ describe('SlackAlertService - Typed Results Handling (Phase 4)', () => {
       const actionsBlock = findActionsBlock(payload)
       expect(actionsBlock?.elements?.[0]?.url).toBe('https://github.com/example/script-inventory/compare/release/v2?expand=1')
     })
+
+    it('uses the override URL set via setReviewUrl in place of the branch-compare URL', async () => {
+      service.setReviewUrl('https://github.com/example/script-inventory/pull/42')
+      const inventoryTarget: Target = { ...mockTarget, type: 'inventory' }
+      const script: DetectedScript = {
+        name: 'https://cdn.example.com/new-script.js',
+        content: 'x',
+        hash: { value: 'h' },
+      }
+      const result = new UnknownScriptFound(inventoryTarget, new Date(), script)
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertForTypedResults([result], inventoryTarget, mockAlertDestinations)
+
+      const payload = sendMessageSpy.mock.calls[0]?.[0] as { blocks: Block[] }
+      const actionsBlock = findActionsBlock(payload)
+      expect(actionsBlock?.elements?.[0]?.url).toBe('https://github.com/example/script-inventory/pull/42')
+    })
+
+    it('falls back to the branch-compare URL after setReviewUrl(null) clears the override', async () => {
+      service.setReviewUrl('https://github.com/example/script-inventory/pull/42')
+      service.setReviewUrl(null)
+      const inventoryTarget: Target = { ...mockTarget, type: 'inventory' }
+      const script: DetectedScript = {
+        name: 'https://cdn.example.com/new-script.js',
+        content: 'x',
+        hash: { value: 'h' },
+      }
+      const result = new UnknownScriptFound(inventoryTarget, new Date(), script)
+
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertForTypedResults([result], inventoryTarget, mockAlertDestinations)
+
+      const payload = sendMessageSpy.mock.calls[0]?.[0] as { blocks: Block[] }
+      const actionsBlock = findActionsBlock(payload)
+      expect(actionsBlock?.elements?.[0]?.url).toBe('https://github.com/example/script-inventory/compare/inventory-updates?expand=1')
+    })
   })
 
   /**
