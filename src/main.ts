@@ -276,6 +276,9 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
             await flushPendingAlerts(result.pendingAlerts)
           }
         }
+        // Clear the override so the detection phase (under --mode all) doesn't
+        // inherit the inventory PR URL on its own review-link fallbacks.
+        alertService.setReviewUrl(null)
       }
 
       if (prError !== null) {
