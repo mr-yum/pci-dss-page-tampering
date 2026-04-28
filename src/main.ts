@@ -228,51 +228,53 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
         }),
       )
 
-      // Push inventory
-      log('Preparing to push inventory.')
-      const inventoriesToPush = targetRunResults.map((result) => {
-        if (result.diffResult === null) {
-          throw new Error('Expected inventory diff result to exist, but received null!')
-        }
-        return result.diffResult
-      })
-      const pushResult = await scriptInventoryService.push(inventoriesToPush, config.branches.inventory)
-
-      log('Inventory workflow completed successfully.')
-
-      // Open a PR so the inventory repo's CI (`--mode validate`) runs and humans
-      // can review the change. Skip conditions are handled inside the service
-      // (file://, non-github host) or in the coordinator (same branch, gitToken).
-      // We capture any error and re-throw after flushing alerts, so operators
-      // still get notified about new scripts/headers even when PR creation fails.
+      // Push inventory + open PR. Wrap in try/finally so that buffered
+      // inventory alerts always get flushed — even if push() throws — so
+      // operators don't lose findings on a failed inventory push.
       let prError: unknown = null
-      if (pushResult.pushed) {
-        try {
-          const prUrl = await ensureInventoryPullRequest({
-            pullRequestService,
-            alertService,
-            repository: config.repository,
-            branches: config.branches,
-            gitToken: config.authentication.gitToken,
-            commitMessage: pushResult.commitMessage,
-            alertDestinations,
-            log,
-          })
-          if (prUrl !== null) {
-            // Point the "Review changes" Slack button at the actual PR.
-            alertService.setReviewUrl(prUrl)
+      try {
+        log('Preparing to push inventory.')
+        const inventoriesToPush = targetRunResults.map((result) => {
+          if (result.diffResult === null) {
+            throw new Error('Expected inventory diff result to exist, but received null!')
           }
-        } catch (error) {
-          prError = error
-        }
-      }
+          return result.diffResult
+        })
+        const pushResult = await scriptInventoryService.push(inventoriesToPush, config.branches.inventory)
 
-      // Flush deferred inventory alerts now — review URL has been set when the
-      // PR is in place, otherwise the alert service falls back to its default
-      // branch-compare URL.
-      for (const result of targetRunResults) {
-        if (result.pendingAlerts) {
-          await flushPendingAlerts(result.pendingAlerts)
+        log('Inventory workflow completed successfully.')
+
+        // Open a PR so the inventory repo's CI (`--mode validate`) runs and humans
+        // can review the change. Skip conditions are handled inside the service
+        // (file://, non-github host) or in the coordinator (same branch, gitToken).
+        if (pushResult.pushed) {
+          try {
+            const prUrl = await ensureInventoryPullRequest({
+              pullRequestService,
+              alertService,
+              repository: config.repository,
+              branches: config.branches,
+              gitToken: config.authentication.gitToken,
+              commitMessage: pushResult.commitMessage,
+              alertDestinations,
+              log,
+            })
+            if (prUrl !== null) {
+              // Point the "Review changes" Slack button at the actual PR.
+              alertService.setReviewUrl(prUrl)
+            }
+          } catch (error) {
+            prError = error
+          }
+        }
+      } finally {
+        // Flush deferred inventory alerts. When push+PR succeed, the override
+        // URL is set so the "Review changes" button points to the PR; on a
+        // failed push we fall back to the default branch-compare URL.
+        for (const result of targetRunResults) {
+          if (result.pendingAlerts) {
+            await flushPendingAlerts(result.pendingAlerts)
+          }
         }
       }
 
