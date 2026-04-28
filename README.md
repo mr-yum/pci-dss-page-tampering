@@ -77,6 +77,23 @@ npm start -- \
   --git-token dummy
 ```
 
+## Workflows
+
+The system runs one of four modes via `--mode`:
+
+- **`inventory`** — visits staging/inventory URLs, discovers scripts and headers, pushes updates to the `inventory-updates` branch of the inventory repo, and opens a PR for review. Alerts on resources that need manual authorization.
+- **`detection`** — visits production/detection URLs, compares what's loaded against the approved inventory on `main`, and alerts on anything unauthorized. Read-only against the inventory repo.
+- **`all`** (default) — runs `inventory`, then `detection`.
+- **`validate`** — runs as a CI check inside the inventory repo. Fully deserializes every `targets/*.json` (Zod schema, `createMatcher()`, workflow resolution) so malformed inventory cannot merge. No browser, no alerts, no push.
+
+The intended day-to-day cycle:
+
+1. Inventory mode (against staging) discovers new scripts/headers, pushes them to `inventory-updates`, and opens a PR.
+2. A human reviews the PR, adds authorization metadata for legitimate resources, and merges to `main`.
+3. Detection mode (against production) reads from `main` and alerts on anything unauthorized.
+
+See [Branch Usage](#branch-usage) for the branch model and [CI Validation for the Inventory Repo](#ci-validation-for-the-inventory-repo) for the CI wiring.
+
 ## CLI Parameters
 
 ### Required Parameters
@@ -266,80 +283,36 @@ Run locally:
 act push --container-architecture linux/amd64 --secret-file .env.secrets
 ```
 
-## Inventory Schema Migration
+## Inventory Schema
 
-As of the refactoring in branch `001-refactor-script-identification`, the inventory schema has changed to support flexible script matching with separate identification and authorization strategies.
+Each inventory file (`targets/<name>.json`) lists the scripts and headers approved for a target. Each entry uses two matchers:
 
-### What Changed
+- `identifyWith` — picks out the script or header (e.g. by URL or header name)
+- `authoriseWith` — describes what content/hash is acceptable, with `authorisationInfo` metadata
 
-**Old Schema** (no longer supported):
-
-```json
-{
-  "matcher": { "nameMatcher": "..." },
-  "hashes": [...]
-}
-```
-
-**New Schema** (required):
+### Simple Matcher
 
 ```json
 {
-  "identifyWith": { "nameMatcher": "..." },
-  "authoriseWith": { "hashes": [...] }
+  "identifyWith": { "nameMatcher": "^https://cdn\\.example\\.com/analytics\\.js$" },
+  "authoriseWith": {
+    "hashes": [{ "timestamp": "2025-10-21T12:00:00.000Z", "hash": { "value": "abc..." } }],
+    "authorisationInfo": {
+      "description": "Analytics script for conversion tracking",
+      "authorised": true,
+      "date": "2025-10-21T12:00:00.000Z"
+    }
+  }
 }
 ```
 
-### Migration Required
+### Composite Matchers
 
-⚠️ **Important**: Existing inventory files must be manually migrated before deployment. The system will reject the old schema format.
+For complex authorization policies, `authoriseWith` supports composite matchers:
 
-### Migration Guide
-
-See the complete migration guide with examples:
-
-- **Step-by-step instructions**: [specs/001-refactor-script-identification/quickstart.md](specs/001-refactor-script-identification/quickstart.md)
-- **Example inventory files**: [specs/001-refactor-script-identification/examples/](specs/001-refactor-script-identification/examples/)
-
-### Validate Inventory
-
-To validate every inventory file in a local checkout of the inventory repo, use `--mode validate`:
-
-```bash
-npm start -- --mode validate --repo file://$PWD
-```
-
-Validate mode runs the full deserialization pipeline used at runtime — Zod schema parsing, `createMatcher()` construction for every `identifyWith`/`authoriseWith` tree, and workflow file resolution — so anything that parses here will also load at production execution time. See [CI Validation for the Inventory Repo](#ci-validation-for-the-inventory-repo) above for the GitHub Actions wiring.
-
-### Common Validation Errors
-
-| Error                  | Solution                                         |
-| ---------------------- | ------------------------------------------------ |
-| Old schema detected    | Migrate to `identifyWith`/`authoriseWith` format |
-| Invalid regex pattern  | Test regex: `new RegExp("your-pattern")`         |
-| Missing required field | Add both `identifyWith` and `authoriseWith`      |
-| Invalid SHA256 hash    | Ensure 64 lowercase hex characters               |
-
-### Benefits of New Schema
-
-- **Flexibility**: Different matchers for identification vs authorization
-- **Modularity**: Independent, testable matcher implementations
-- **Clarity**: Explicit separation of concerns
-- **Extensibility**: Easy to add new matcher types without changing core logic
-
-For technical details, see [specs/001-refactor-script-identification/plan.md](specs/001-refactor-script-identification/plan.md)
-
-## Composite Matchers (2025-10-24)
-
-As of branch `005-enhance-the-schema`, the system supports **composite matchers** for expressing complex authorization policies.
-
-### Composite Matcher Types
-
-- **AND Matcher**: Authorize only if ALL children succeed (e.g., CSP with multiple required directives)
-- **OR Matcher**: Authorize if ANY child succeeds (e.g., accept production OR staging policy)
-- **Array Syntax**: Syntactic sugar for OR matcher (multiple acceptable versions)
-
-### Examples
+- **AND Matcher**: authorize only if ALL children succeed (e.g. CSP with multiple required directives)
+- **OR Matcher**: authorize if ANY child succeeds (e.g. accept production OR staging policy)
+- **Array syntax**: syntactic sugar for OR matcher (multiple acceptable versions)
 
 **AND Matcher** (CSP with multiple required directives):
 
@@ -370,7 +343,7 @@ As of branch `005-enhance-the-schema`, the system supports **composite matchers*
 }
 ```
 
-**Array Syntax** (multiple script versions):
+**Array syntax** (multiple script versions):
 
 ```json
 {
@@ -388,13 +361,20 @@ As of branch `005-enhance-the-schema`, the system supports **composite matchers*
 }
 ```
 
-### Composite Matcher Migration
+### Validating Inventory
 
-See the complete migration guide:
+To validate every inventory file in a local checkout of the inventory repo, use `--mode validate`:
 
-- **Migration Guide**: [specs/005-enhance-the-schema/MIGRATION.md](specs/005-enhance-the-schema/MIGRATION.md)
-- **Examples**: [specs/005-enhance-the-schema/examples/](specs/005-enhance-the-schema/examples/)
+```bash
+npm start -- --mode validate --repo file://$PWD
+```
 
-### Backward Compatibility
+Validate mode runs the full deserialization pipeline used at runtime — Zod schema parsing, `createMatcher()` construction for every `identifyWith`/`authoriseWith` tree, and workflow file resolution — so anything that parses here will also load at production execution time. See [CI Validation for the Inventory Repo](#ci-validation-for-the-inventory-repo) above for the GitHub Actions wiring.
 
-✅ **100% backward compatible** - all existing simple matchers (nameMatcher, contentMatcher, hashes) continue to work without modification.
+### Common Validation Errors
+
+| Error                  | Solution                                    |
+| ---------------------- | ------------------------------------------- |
+| Invalid regex pattern  | Test regex: `new RegExp("your-pattern")`    |
+| Missing required field | Add both `identifyWith` and `authoriseWith` |
+| Invalid SHA256 hash    | Ensure 64 lowercase hex characters          |
