@@ -191,6 +191,30 @@ For GitHub Actions, pass secrets via CLI parameters:
       --git-user-email 'pci-bot@example.com'
 ```
 
+### Bundled Workflows
+
+Three GitHub Actions workflows ship with this repo under [.github/workflows/](.github/workflows/):
+
+#### [ci.yml](.github/workflows/ci.yml) — Continuous Integration
+
+Runs on every push to `main`, every pull request, and on manual dispatch. Installs dependencies, audits them at `--audit-level=high`, then runs linting, type checking, unit tests, and integration tests on Node 24. This is the gate that protects `main`.
+
+#### [inventory-and-detection.yml](.github/workflows/inventory-and-detection.yml) — Scheduled monitoring
+
+The production runner. Triggers:
+
+- **Scheduled**: daily at 12:00 UTC (overnight in AU). Runs `--mode all` against every target.
+- **`workflow_dispatch`**: manual run with optional `mode` (`all` / `inventory` / `detection`) and `target` inputs — useful for ad-hoc inventory sweeps or re-running detection after a fix.
+- **Push to `main`**: runs after merges so newly-approved inventory takes effect immediately.
+
+Requires repo secrets `INVENTORY_REPO_PAT` and `SLACK_OAUTH_TOKEN`, and repo variables `INVENTORY_REPO_URL`, `GIT_USER_NAME`, `GIT_USER_EMAIL`. Installs Chrome system dependencies for Puppeteer before invoking `npm start`.
+
+#### [auto-merge-renovate.yml](.github/workflows/auto-merge-renovate.yml) — Renovate auto-merge
+
+Listens for completed CI runs (via `workflow_run`) and, when the run was triggered by a `renovate[bot]` PR and succeeded, approves and squash-merges the PR. Gating on `workflow_run` (rather than `pull_request`) ensures CI has actually passed before merging — the previous `pull_request` setup let broken lockfiles land on `main`.
+
+For wiring `--mode validate` into the **inventory repo's** CI (a separate repo), see [CI Validation for the Inventory Repo](#ci-validation-for-the-inventory-repo) below.
+
 ## CI Validation for the Inventory Repo
 
 The `validate` mode is designed to run as a pre-merge CI check in the script-inventory repository. It exercises the same code paths the runtime tool uses to load inventory files, so anything that passes CI will also load in production.
