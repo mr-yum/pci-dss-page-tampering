@@ -19,6 +19,7 @@ export class SlackAlertService implements IAlertService {
   private readonly repositoryUrl: string
   private readonly inventoryBranch: string
   private readonly maxStringLength = 100
+  private reviewUrlOverride: string | null = null
 
   constructor(slackToken: string, repositoryUrl: string, inventoryBranch: string) {
     this.oAuthToken = slackToken
@@ -26,7 +27,14 @@ export class SlackAlertService implements IAlertService {
     this.inventoryBranch = inventoryBranch
   }
 
+  setReviewUrl(url: string | null): void {
+    this.reviewUrlOverride = url
+  }
+
   private getReviewChangesUrl(): string {
+    if (this.reviewUrlOverride !== null) {
+      return this.reviewUrlOverride
+    }
     const baseUrl = this.repositoryUrl.replace(/\.git$/, '')
     return `${baseUrl}/compare/${this.inventoryBranch}?expand=1`
   }

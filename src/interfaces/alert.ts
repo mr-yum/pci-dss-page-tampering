@@ -32,6 +32,17 @@ export interface IAlertService {
    * and a broken Slack call should not replace the more useful error.
    */
   alertOnPullRequestFailure(context: PullRequestFailureContext, alertDestinations: InventoryAlert): Promise<void>
+
+  /**
+   * Override the URL used for the "Review changes" button in inventory-mode
+   * alerts. Set this to the auto-opened PR URL so reviewers land on the PR
+   * (with diff + validate CI gate) instead of GitHub's "create PR" page.
+   *
+   * Pass `null` to clear the override (alerts fall back to a branch-compare
+   * URL). Implementations that don't render review buttons (console) may
+   * implement this as a no-op.
+   */
+  setReviewUrl(url: string | null): void
 }
 
 export type PullRequestFailureContext = Readonly<{

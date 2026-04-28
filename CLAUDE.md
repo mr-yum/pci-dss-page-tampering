@@ -118,6 +118,7 @@ For detailed implementation documentation, see `specs/008-refactor-the-code/quic
 ### Before commit
 
 - `npm run precommit` - All of the above testing and quality checks (run this to validate work is complete)
+- `/coderabbit:review --base main` - Use CodeRabbit to review the change code vs main branch
 
 ### Setup
 

@@ -16,23 +16,26 @@ export type EnsureInventoryPullRequestArgs = Readonly<{
 
 /**
  * Open (or reuse) a pull request so the inventory repo's CI `--mode validate`
- * check runs against the update. Failures here throw — the inventory commit is
- * already on the remote, so a missed PR is a compliance gap that the operator
- * must resolve manually. The caller lets the error bubble to the process exit.
+ * check runs against the update. Returns the PR URL on success (or when an
+ * existing PR is reused), `null` when skipped (file://, same branch, no token).
+ *
+ * Failures here throw — the inventory commit is already on the remote, so a
+ * missed PR is a compliance gap that the operator must resolve manually. The
+ * caller lets the error bubble to the process exit.
  */
-export async function ensureInventoryPullRequest(args: EnsureInventoryPullRequestArgs): Promise<void> {
+export async function ensureInventoryPullRequest(args: EnsureInventoryPullRequestArgs): Promise<string | null> {
   const { pullRequestService, alertService, repository, branches, gitToken, commitMessage, alertDestinations, log } = args
   const headBranch = branches.inventory
   const baseBranch = branches.detection
 
   if (headBranch === baseBranch) {
     log(`Skipping PR creation: --inventory-branch and --detection-branch are both '${headBranch}'.`)
-    return
+    return null
   }
 
   if (gitToken.length === 0) {
     log('Skipping PR creation: no --git-token provided.')
-    return
+    return null
   }
 
   const [titleLine, ...bodyLines] = commitMessage.split('\n')
@@ -52,10 +55,11 @@ export async function ensureInventoryPullRequest(args: EnsureInventoryPullReques
 
     if (result === null) {
       log(`Skipping PR creation: '${repository.url}' is not a GitHub HTTPS repository.`)
-      return
+      return null
     }
 
     log(result.created ? `Opened pull request: ${result.url}` : `Pull request already open, reusing: ${result.url}`)
+    return result.url
   } catch (error) {
     console.error('[InventoryPRCoordinator]: Failed to create pull request after inventory push:', error)
     if (alertDestinations !== null) {
