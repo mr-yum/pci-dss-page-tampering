@@ -9,6 +9,8 @@
 
 import { KnownHeaderWithUnauthorisedContentFound } from '../types/comparison/known-header-unauthorised-content-found'
 import { KnownScriptWithUnauthorisedContentFound } from '../types/comparison/known-script-unauthorised-content-found'
+import { UnknownHeaderFound } from '../types/comparison/unknown-header-found'
+import { UnknownScriptFound } from '../types/comparison/unknown-script-found'
 import type { Inventory, InventoryScriptInfo } from '../types/inventory/model'
 import type { HashMatcher } from '../types/matcher/hash-matcher'
 import type { OrMatcher } from '../types/matcher/or-matcher'
@@ -812,6 +814,160 @@ describe('ScriptInventoryService', () => {
             expect(Array.isArray(element)).toBe(false)
           })
         }
+      })
+    })
+
+    describe('Composite matcher handling (top-level matcher gating)', () => {
+      it('appends a new hash when the top-level authoriser is an OrMatcher (array syntax)', async () => {
+        // Mirrors the realistic comparison-service contract: `authorizationMatcher`
+        // is the TOP-LEVEL OrMatcher, not an inner child. Earlier code gated on
+        // `instanceof HashMatcher` and silently dropped this case while still
+        // alerting "Inventory updated" — which is the bug being fixed.
+        const existingScript = rawInventoryScriptInfoToInventoryScriptInfo({
+          identifyWith: { nameMatcher: '^https://cdn\\.example\\.com/script\\.js$' },
+          authoriseWith: [
+            {
+              hashes: [{ timestamp: '2026-01-01T00:00:00.000Z', hash: { value: 'v1' } }],
+              authorisationInfo: { description: 'v1', authorised: true, date: '2026-01-01T00:00:00.000Z' },
+            },
+            {
+              hashes: [{ timestamp: '2026-02-01T00:00:00.000Z', hash: { value: 'v2' } }],
+              authorisationInfo: { description: 'v2', authorised: true, date: '2026-02-01T00:00:00.000Z' },
+            },
+          ],
+        })
+
+        const inventory = createMockInventory([existingScript])
+
+        const result = new KnownScriptWithUnauthorisedContentFound(
+          createMockTarget(),
+          new Date('2026-04-22T00:00:00.000Z'),
+          { name: 'https://cdn.example.com/script.js', content: 'new content', hash: { value: 'v3' } },
+          existingScript,
+          existingScript.authoriseWith.matcher,
+          'hash v3 not in authorized list',
+        )
+
+        const diff = await service.diff(inventory, [result])
+
+        const updatedScript = diff.newInventory.scripts[0]
+        expect(updatedScript).toBeDefined()
+        if (!updatedScript) return
+        const raw = inventoryScriptInfoToRawInventoryScriptInfo(updatedScript)
+
+        expect(Array.isArray(raw.authoriseWith)).toBe(true)
+        if (!Array.isArray(raw.authoriseWith)) return
+        expect(raw.authoriseWith).toHaveLength(3)
+        expect((raw.authoriseWith[2] as any).hashes[0].hash.value).toBe('v3')
+
+        expect(diff.appliedResults).toEqual([result])
+      })
+
+      it('skips known_script_unauthorised_content when the top-level authoriser is an AndMatcher', async () => {
+        // AndMatcher means "must satisfy ALL children" — adding an OR'd hash
+        // alternative would silently weaken the operator's policy. The diff
+        // must leave the entry alone; the alert layer surfaces it as
+        // requiring manual review.
+        const existingScript = rawInventoryScriptInfoToInventoryScriptInfo({
+          identifyWith: { nameMatcher: '^https://cdn\\.example\\.com/strict\\.js$' },
+          authoriseWith: {
+            andMatcher: [
+              { contentMatcher: 'must-have-this' },
+              {
+                hashes: [{ timestamp: '2026-01-01T00:00:00.000Z', hash: { value: 'allowed' } }],
+              },
+            ],
+            authorisationInfo: { description: 'Strict policy', authorised: true, date: '2026-01-01T00:00:00.000Z' },
+          },
+        })
+
+        const inventory = createMockInventory([existingScript])
+
+        const result = new KnownScriptWithUnauthorisedContentFound(
+          createMockTarget(),
+          new Date('2026-04-22T00:00:00.000Z'),
+          { name: 'https://cdn.example.com/strict.js', content: 'tampered', hash: { value: 'rogue' } },
+          existingScript,
+          existingScript.authoriseWith.matcher,
+          'AndMatcher failed',
+        )
+
+        const diff = await service.diff(inventory, [result])
+
+        // Entry unchanged and the result not reported as applied.
+        expect(diff.newInventory.scripts[0]).toBe(existingScript)
+        expect(diff.appliedResults).toEqual([])
+      })
+
+      it('skips known_header_unauthorised_content when the top-level header authoriser is an AndMatcher', async () => {
+        const existingHeader = rawInventoryHeaderInfoToInventoryHeaderInfo({
+          identifyWith: { headerNameMatcher: '^content-security-policy$' },
+          authoriseWith: {
+            andMatcher: [{ contentMatcher: 'default-src' }, { contentMatcher: "object-src 'none'" }],
+            authorisationInfo: { description: 'Strict CSP — every directive required', authorised: true, date: '2026-01-01T00:00:00.000Z' },
+          },
+        })
+
+        const inventory: Inventory = {
+          ...createMockInventory([]),
+          headers: [existingHeader],
+        }
+
+        const target = createMockTarget()
+        const result = new KnownHeaderWithUnauthorisedContentFound(
+          target,
+          new Date('2026-04-22T00:00:00.000Z'),
+          { name: 'content-security-policy', value: "default-src 'self'", target, workflow: target.workflow },
+          existingHeader,
+          existingHeader.authoriseWith.matcher,
+          'AndMatcher failed',
+        )
+
+        const diff = await service.diff(inventory, [result])
+
+        expect(diff.newInventory.headers[0]).toBe(existingHeader)
+        expect(diff.appliedResults).toEqual([])
+      })
+
+      it('reports duplicate hashes as not-applied even when the gate would normally accept them', async () => {
+        // The duplicate guard is defensive (production comparison never returns
+        // unauthorised for an already-known hash) but if it does fire, the
+        // entry is unchanged and the result must not be reported as applied.
+        const existingScript = rawInventoryScriptInfoToInventoryScriptInfo({
+          identifyWith: { nameMatcher: '^https://cdn\\.example\\.com/payment\\.js$' },
+          authoriseWith: {
+            hashes: [{ timestamp: '2026-01-01T00:00:00.000Z', hash: { value: 'h1' } }],
+            authorisationInfo: { description: 'baseline', authorised: true, date: '2026-01-01T00:00:00.000Z' },
+          },
+        })
+
+        const inventory = createMockInventory([existingScript])
+        const result = new KnownScriptWithUnauthorisedContentFound(
+          createMockTarget(),
+          new Date('2026-04-22T00:00:00.000Z'),
+          { name: 'https://cdn.example.com/payment.js', content: 'x', hash: { value: 'h1' } },
+          existingScript,
+          existingScript.authoriseWith.matcher,
+          'defensive duplicate',
+        )
+
+        const diff = await service.diff(inventory, [result])
+        expect(diff.appliedResults).toEqual([])
+      })
+
+      it('marks UnknownScriptFound and UnknownHeaderFound as applied unconditionally', async () => {
+        const inventory = createMockInventory([])
+        const target = createMockTarget()
+        const unknownScript = new UnknownScriptFound(target, new Date('2026-04-22T00:00:00.000Z'), {
+          name: 'https://new.example.com/x.js',
+          content: 'console.log("hi")',
+          hash: { value: 'h-new' },
+        })
+        const unknownHeader = new UnknownHeaderFound(target, new Date('2026-04-22T00:00:00.000Z'), { name: 'x-custom', value: 'v', target, workflow: target.workflow })
+
+        const diff = await service.diff(inventory, [unknownScript, unknownHeader])
+        expect(diff.appliedResults).toEqual(expect.arrayContaining([unknownScript, unknownHeader]))
+        expect(diff.appliedResults).toHaveLength(2)
       })
     })
   })

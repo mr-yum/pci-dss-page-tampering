@@ -938,6 +938,118 @@ describe('SlackAlertService - Typed Results Handling (Phase 4)', () => {
       expect(promptCell).toContain('failed authorisation')
     })
   })
+
+  describe('Inventory-mode messaging splits by actual diff outcome', () => {
+    // Regression: the inventory-mode "Inventory updated" alert fired for any
+    // known_*_unauthorised_content result, even when the diff intentionally
+    // did NOT auto-update the entry (e.g. AndMatcher entries, non-hash/content
+    // authorisers, duplicates). The alert layer now consumes the diff's
+    // applied-results set and routes accordingly.
+    const buildScriptResult = (matcherType: 'hash' | 'and' = 'hash'): KnownScriptWithUnauthorisedContentFound => {
+      const matcher: Matcher = {
+        identify: () => true,
+        authorize: () => ({ authorized: false, reason: 'fail' }),
+        getType: () => matcherType,
+        getPattern: () => 'pattern',
+        getDescription: () => `${matcherType}:pattern`,
+      }
+      return new KnownScriptWithUnauthorisedContentFound(
+        { ...mockTarget, type: 'inventory' },
+        new Date(),
+        { name: 'https://cdn.example.com/x.js', content: 'x', hash: { value: 'h' } },
+        { identifyWith: matcher, authoriseWith: { matcher, authorisationInfo: { description: 'd', authorised: true, date: new Date() } } },
+        matcher,
+        'failure',
+      )
+    }
+
+    const buildHeaderResult = (): KnownHeaderWithUnauthorisedContentFound => {
+      const matcher: Matcher = {
+        identify: () => true,
+        authorize: () => ({ authorized: false, reason: 'fail' }),
+        getType: () => 'and',
+        getPattern: () => 'pattern',
+        getDescription: () => 'and:pattern',
+      }
+      const target: Target = { ...mockTarget, type: 'inventory' }
+      const entry: InventoryHeaderInfo = {
+        identifyWith: matcher,
+        authoriseWith: { matcher, authorisationInfo: { description: 'd', authorised: true, date: new Date() } },
+      }
+      return new KnownHeaderWithUnauthorisedContentFound(target, new Date(), { name: 'x', value: 'y', target, workflow: target.workflow }, entry, matcher, 'failure')
+    }
+
+    const getTitleText = (payload: any): string => {
+      const section = payload.blocks.find((b: any) => b.type === 'section' && typeof b.text?.text === 'string' && b.text.text.includes(':warning:'))
+      return section?.text?.text ?? ''
+    }
+
+    it('uses "Inventory updated" for scripts in the applied set', async () => {
+      const inventoryTarget: Target = { ...mockTarget, type: 'inventory' }
+      const result = buildScriptResult('hash')
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertForTypedResults([result], inventoryTarget, mockAlertDestinations, new Set<ComparisonResultType>([result]))
+
+      expect(sendMessageSpy).toHaveBeenCalledTimes(1)
+      const payload = sendMessageSpy.mock.calls[0]?.[0]
+      expect(getTitleText(payload)).toContain('Inventory updated')
+    })
+
+    it('uses "Manual review required" for scripts that the diff did NOT apply', async () => {
+      const inventoryTarget: Target = { ...mockTarget, type: 'inventory' }
+      const result = buildScriptResult('and')
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      // Empty applied set ⇒ the result was skipped by the diff.
+      await service.alertForTypedResults([result], inventoryTarget, mockAlertDestinations, new Set<ComparisonResultType>())
+
+      expect(sendMessageSpy).toHaveBeenCalledTimes(1)
+      const payload = sendMessageSpy.mock.calls[0]?.[0]
+      expect(getTitleText(payload)).toContain('Manual review required')
+      expect(getTitleText(payload)).not.toContain('Inventory updated')
+    })
+
+    it('splits a single batch with both applied and skipped scripts into two messages', async () => {
+      const inventoryTarget: Target = { ...mockTarget, type: 'inventory' }
+      const applied = buildScriptResult('hash')
+      const skipped = buildScriptResult('and')
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertForTypedResults([applied, skipped], inventoryTarget, mockAlertDestinations, new Set<ComparisonResultType>([applied]))
+
+      expect(sendMessageSpy).toHaveBeenCalledTimes(2)
+      const titles = sendMessageSpy.mock.calls.map((args: unknown[]) => getTitleText(args[0]))
+      expect(titles.some((t: string) => t.includes('Inventory updated'))).toBe(true)
+      expect(titles.some((t: string) => t.includes('Manual review required'))).toBe(true)
+    })
+
+    it('uses "Manual review required" for headers the diff did NOT apply', async () => {
+      const inventoryTarget: Target = { ...mockTarget, type: 'inventory' }
+      const result = buildHeaderResult()
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertForTypedResults([result], inventoryTarget, mockAlertDestinations, new Set<ComparisonResultType>())
+
+      expect(sendMessageSpy).toHaveBeenCalledTimes(1)
+      const payload = sendMessageSpy.mock.calls[0]?.[0]
+      expect(getTitleText(payload)).toContain('Manual review required')
+    })
+
+    it('falls back to "Inventory updated" wording when no applied set is supplied (backwards-compatible)', async () => {
+      // Callers that haven't been updated to thread the applied set through
+      // (e.g. older tests, tests focused on other behaviours) should keep
+      // observing the historical inventory message.
+      const inventoryTarget: Target = { ...mockTarget, type: 'inventory' }
+      const result = buildScriptResult('hash')
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertForTypedResults([result], inventoryTarget, mockAlertDestinations)
+
+      const payload = sendMessageSpy.mock.calls[0]?.[0]
+      expect(getTitleText(payload)).toContain('Inventory updated')
+    })
+  })
 })
 
 /**
