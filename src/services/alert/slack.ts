@@ -49,18 +49,38 @@ export class SlackAlertService implements IAlertService {
    * - Error handling per T033 (log and continue)
    * - Workflow-based alert routing per FR-011
    */
-  async alertForTypedResults(comparisonResults: ComparisonResultType[], target: Target, alertDestinations: InventoryAlert): Promise<void> {
+  async alertForTypedResults(comparisonResults: ComparisonResultType[], target: Target, alertDestinations: InventoryAlert, inventoryUpdatedResults?: ReadonlySet<ComparisonResultType>): Promise<void> {
     // Group results by type for batch processing
     const unknownScripts = comparisonResults.filter((r): r is UnknownScriptFound => r.type === 'unknown_script_found')
     const unauthorizedScripts = comparisonResults.filter((r): r is KnownScriptWithUnauthorisedContentFound => r.type === 'known_script_unauthorised_content')
     const unknownHeaders = comparisonResults.filter((r): r is UnknownHeaderFound => r.type === 'unknown_header_found')
     const unauthorizedHeaders = comparisonResults.filter((r): r is KnownHeaderWithUnauthorisedContentFound => r.type === 'known_header_unauthorised_content')
 
+    // For inventory-mode unauthorised results, split into "diff applied an
+    // inventory mutation for this result" vs "diff did not auto-update".
+    // Detection mode passes no set and routes everything as before.
+    const isInventoryMode = target.type === 'inventory'
+    const splitByApplied = <T extends KnownScriptWithUnauthorisedContentFound | KnownHeaderWithUnauthorisedContentFound>(items: T[]): { applied: T[]; skipped: T[] } => {
+      if (!isInventoryMode || !inventoryUpdatedResults) {
+        return { applied: items, skipped: [] }
+      }
+      const applied: T[] = []
+      const skipped: T[] = []
+      for (const item of items) {
+        if (inventoryUpdatedResults.has(item)) {
+          applied.push(item)
+        } else {
+          skipped.push(item)
+        }
+      }
+      return { applied, skipped }
+    }
+
     // T033: Try-catch for each alert type to prevent blocking
     try {
       // Handle unknown scripts
       if (unknownScripts.length > 0) {
-        const destination = target.type === 'inventory' ? alertDestinations.inventory.newScriptIdentified : alertDestinations.detection.newScriptDetected
+        const destination = isInventoryMode ? alertDestinations.inventory.newScriptIdentified : alertDestinations.detection.newScriptDetected
         await this.alertOnUnknownScripts(unknownScripts, target, destination)
       }
     } catch (error) {
@@ -68,13 +88,21 @@ export class SlackAlertService implements IAlertService {
     }
 
     try {
-      // Handle scripts that were identified but had unauthorised content. In inventory mode the
-      // inventory service auto-adds the new hash to the existing entry (when authorisation uses a
-      // HashMatcher), which results in a commit — so the operator must be notified. In detection
-      // mode this is a potential tampering event.
+      // Handle scripts that were identified but had unauthorised content. In
+      // inventory mode the inventory service may have auto-added the new hash
+      // — and may not (e.g. AndMatcher entries, non-hash authorisers). Use the
+      // applied/skipped split to keep the message truthful: "Inventory updated"
+      // only for the applied subset, "manual review required" for the rest.
+      // In detection mode this is always a potential tampering event.
       if (unauthorizedScripts.length > 0) {
-        const destination = target.type === 'inventory' ? alertDestinations.inventory.newScriptIdentified : alertDestinations.detection.scriptMismatchDetected
-        await this.alertOnUnauthorizedScripts(unauthorizedScripts, target, destination)
+        const destination = isInventoryMode ? alertDestinations.inventory.newScriptIdentified : alertDestinations.detection.scriptMismatchDetected
+        const { applied, skipped } = splitByApplied(unauthorizedScripts)
+        if (applied.length > 0) {
+          await this.alertOnUnauthorizedScripts(applied, target, destination, 'updated')
+        }
+        if (skipped.length > 0) {
+          await this.alertOnUnauthorizedScripts(skipped, target, destination, 'manual-review')
+        }
       }
     } catch (error) {
       console.error('[Alert Error] Failed to send unauthorized script alerts:', error)
@@ -83,7 +111,7 @@ export class SlackAlertService implements IAlertService {
     try {
       // T031: Handle unknown headers with workflow-based routing
       if (unknownHeaders.length > 0) {
-        const destination = target.type === 'inventory' ? alertDestinations.inventory.newHeaderIdentified : alertDestinations.detection.newHeaderDetected
+        const destination = isInventoryMode ? alertDestinations.inventory.newHeaderIdentified : alertDestinations.detection.newHeaderDetected
         await this.alertOnUnknownHeaders(unknownHeaders, target, destination)
       }
     } catch (error) {
@@ -91,13 +119,19 @@ export class SlackAlertService implements IAlertService {
     }
 
     try {
-      // Handle headers that were identified but had unauthorised content. In inventory mode the
-      // inventory service auto-adds the new content matcher to the existing entry, which results in
-      // a commit — so the operator must be notified. In detection mode this is a potential tampering
-      // event.
+      // Headers identified but with unauthorised content — same split as
+      // scripts. "Inventory updated" only fires for results the diff actually
+      // appended a new content matcher for; the rest get a manual-review
+      // message so operators aren't told the inventory changed when it didn't.
       if (unauthorizedHeaders.length > 0) {
-        const destination = target.type === 'inventory' ? alertDestinations.inventory.newHeaderIdentified : alertDestinations.detection.scriptMismatchDetected
-        await this.alertOnUnauthorizedHeaders(unauthorizedHeaders, target, destination)
+        const destination = isInventoryMode ? alertDestinations.inventory.newHeaderIdentified : alertDestinations.detection.scriptMismatchDetected
+        const { applied, skipped } = splitByApplied(unauthorizedHeaders)
+        if (applied.length > 0) {
+          await this.alertOnUnauthorizedHeaders(applied, target, destination, 'updated')
+        }
+        if (skipped.length > 0) {
+          await this.alertOnUnauthorizedHeaders(skipped, target, destination, 'manual-review')
+        }
       }
     } catch (error) {
       console.error('[Alert Error] Failed to send unauthorized header alerts:', error)
@@ -122,9 +156,21 @@ export class SlackAlertService implements IAlertService {
   /**
    * T062, T063: Alert on unauthorized scripts with matcher failure details.
    * Includes which matcher failed and why for debugging.
+   *
+   * `inventoryMessageVariant` selects between two inventory-mode messages:
+   *  - 'updated': the diff appended a new hash for this result.
+   *  - 'manual-review': the diff intentionally did not auto-update (e.g.
+   *    AndMatcher entry, non-hash authoriser, duplicate hash) — the operator
+   *    must investigate manually.
+   * The argument is ignored when `target.type !== 'inventory'`.
    */
-  private async alertOnUnauthorizedScripts(unauthorizedScripts: KnownScriptWithUnauthorisedContentFound[], target: Target, destination: AlertDestination): Promise<void> {
-    const message = target.type === 'inventory' ? `Inventory updated: existing script entry has new content` : `Script hash mismatch detected for target!`
+  private async alertOnUnauthorizedScripts(unauthorizedScripts: KnownScriptWithUnauthorisedContentFound[], target: Target, destination: AlertDestination, inventoryMessageVariant: 'updated' | 'manual-review' = 'updated'): Promise<void> {
+    const message =
+      target.type === 'inventory'
+        ? inventoryMessageVariant === 'updated'
+          ? `Inventory updated: existing script entry has new content`
+          : `Manual review required: script identified but authorisation failed (inventory not auto-updated)`
+        : `Script hash mismatch detected for target!`
 
     // T063: Enhanced message payload with matcher details
     const messagePayload = this.createUnauthorizedScriptMessagePayload(message, unauthorizedScripts, target, destination)
@@ -155,9 +201,17 @@ export class SlackAlertService implements IAlertService {
   /**
    * T032: Alert on unauthorized headers with matcher details and failure reason.
    * Includes matcher type, pattern, and why authorization failed.
+   *
+   * `inventoryMessageVariant` selects between two inventory-mode messages
+   * (see scripts equivalent for full rationale).
    */
-  private async alertOnUnauthorizedHeaders(unauthorizedHeaders: KnownHeaderWithUnauthorisedContentFound[], target: Target, destination: AlertDestination): Promise<void> {
-    const message = target.type === 'inventory' ? `Inventory updated: existing header entry has new value` : `Header content mismatch detected for target!`
+  private async alertOnUnauthorizedHeaders(unauthorizedHeaders: KnownHeaderWithUnauthorisedContentFound[], target: Target, destination: AlertDestination, inventoryMessageVariant: 'updated' | 'manual-review' = 'updated'): Promise<void> {
+    const message =
+      target.type === 'inventory'
+        ? inventoryMessageVariant === 'updated'
+          ? `Inventory updated: existing header entry has new value`
+          : `Manual review required: header identified but authorisation failed (inventory not auto-updated)`
+        : `Header content mismatch detected for target!`
 
     const messagePayload = this.createUnauthorizedHeaderMessagePayload(message, unauthorizedHeaders, target, destination)
 

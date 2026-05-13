@@ -4,7 +4,19 @@ import type { InventoryAlert } from '../types/inventory/model'
 import type { Target } from '../types/target'
 
 export interface IAlertService {
-  alertForTypedResults(comparisonResults: ComparisonResultType[], target: Target, alertDestinations: InventoryAlert): Promise<void>
+  /**
+   * Send violation alerts for a batch of typed comparison results.
+   *
+   * @param inventoryUpdatedResults - Optional set of results that translated
+   *   into an actual inventory mutation during diff. When provided (inventory
+   *   mode), `known_*_unauthorised_content` results in this set are reported
+   *   as "Inventory updated"; those not in the set are reported as needing
+   *   manual review because the diff intentionally did not auto-update (e.g.
+   *   AndMatcher entries, non-hash/content authorisers). When omitted
+   *   (detection mode), all results are surfaced via their detection-mode
+   *   message regardless.
+   */
+  alertForTypedResults(comparisonResults: ComparisonResultType[], target: Target, alertDestinations: InventoryAlert, inventoryUpdatedResults?: ReadonlySet<ComparisonResultType>): Promise<void>
 
   /**
    * Alert for successful workflow execution.

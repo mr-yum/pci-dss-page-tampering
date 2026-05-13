@@ -120,7 +120,20 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
   const processedTargets: string[] = []
   let alertDestinations: InventoryAlert | null = null
 
-  type PendingAlerts = { scriptComparisonResults: ComparisonResultType[]; headerComparisonResults: ComparisonResultType[]; target: Target; alertDestinations: InventoryAlert }
+  type PendingAlerts = {
+    scriptComparisonResults: ComparisonResultType[]
+    headerComparisonResults: ComparisonResultType[]
+    target: Target
+    alertDestinations: InventoryAlert
+    /**
+     * Comparison results that actually translated into an inventory mutation.
+     * Surfaced to the alert layer so "Inventory updated" alerts only fire for
+     * results the diff genuinely applied; results the diff intentionally
+     * skipped (AndMatcher entries, non-hash/content authorisers, duplicates)
+     * get a "manual review required" alert instead.
+     */
+    inventoryUpdatedResults: ReadonlySet<ComparisonResultType>
+  }
   type TargetRunResult = { diffResult: InventoryDifferenceResult | null; resourceCount: number; pendingAlerts: PendingAlerts | null }
 
   // Helper function to run workflow for a single target.
@@ -154,10 +167,11 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
         // Defer alerting; main flow will flush after PR creation.
         const allComparisonResults: ComparisonResultType[] = [...scriptComparisonResults, ...headerComparisonResults]
         const diffResult = await scriptInventoryService.diff(payload, allComparisonResults)
+        const inventoryUpdatedResults: ReadonlySet<ComparisonResultType> = new Set(diffResult.appliedResults ?? [])
         return {
           diffResult,
           resourceCount,
-          pendingAlerts: { scriptComparisonResults, headerComparisonResults, target, alertDestinations: payload.alerts },
+          pendingAlerts: { scriptComparisonResults, headerComparisonResults, target, alertDestinations: payload.alerts, inventoryUpdatedResults },
         }
       } else {
         // Detection mode: no PR is ever created here, alert immediately.
@@ -179,8 +193,8 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
   }
 
   const flushPendingAlerts = async (pending: PendingAlerts): Promise<void> => {
-    await alertService.alertForTypedResults(pending.scriptComparisonResults, pending.target, pending.alertDestinations)
-    await alertService.alertForTypedResults(pending.headerComparisonResults, pending.target, pending.alertDestinations)
+    await alertService.alertForTypedResults(pending.scriptComparisonResults, pending.target, pending.alertDestinations, pending.inventoryUpdatedResults)
+    await alertService.alertForTypedResults(pending.headerComparisonResults, pending.target, pending.alertDestinations, pending.inventoryUpdatedResults)
   }
 
   // Validate mode: fully deserialize inventory via the existing pipeline and exit.

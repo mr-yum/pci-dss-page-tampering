@@ -27,7 +27,7 @@ export class ConsoleAlertService implements IAlertService {
    * Process typed comparison results and log alerts to console.
    * Implements the same grouping logic as SlackAlertService for consistency.
    */
-  async alertForTypedResults(comparisonResults: ComparisonResultType[], target: Target, _alertDestinations: InventoryAlert): Promise<void> {
+  async alertForTypedResults(comparisonResults: ComparisonResultType[], target: Target, _alertDestinations: InventoryAlert, inventoryUpdatedResults?: ReadonlySet<ComparisonResultType>): Promise<void> {
     // Group results by type for batch processing
     const unknownScripts = comparisonResults.filter((r): r is UnknownScriptFound => r.type === 'unknown_script_found')
     const unauthorizedScripts = comparisonResults.filter((r): r is KnownScriptWithUnauthorisedContentFound => r.type === 'known_script_unauthorised_content')
@@ -39,9 +39,10 @@ export class ConsoleAlertService implements IAlertService {
       this.logUnknownScripts(unknownScripts, target)
     }
 
-    // Log unauthorized scripts (detection mode only in typical usage)
+    // Log unauthorized scripts — split by whether the inventory diff actually
+    // applied the change so the user-visible label matches reality.
     if (unauthorizedScripts.length > 0) {
-      this.logUnauthorizedScripts(unauthorizedScripts, target)
+      this.logUnauthorizedScripts(unauthorizedScripts, target, inventoryUpdatedResults)
     }
 
     // Log unknown headers
@@ -49,9 +50,9 @@ export class ConsoleAlertService implements IAlertService {
       this.logUnknownHeaders(unknownHeaders, target)
     }
 
-    // Log unauthorized headers (detection mode only in typical usage)
+    // Log unauthorized headers — same applied/skipped split as scripts.
     if (unauthorizedHeaders.length > 0) {
-      this.logUnauthorizedHeaders(unauthorizedHeaders, target)
+      this.logUnauthorizedHeaders(unauthorizedHeaders, target, inventoryUpdatedResults)
     }
 
     // AuthorizedScriptFound and AuthorizedHeaderFound are no-ops (no alert needed)
@@ -72,7 +73,7 @@ export class ConsoleAlertService implements IAlertService {
     console.log()
   }
 
-  private logUnauthorizedScripts(scripts: KnownScriptWithUnauthorisedContentFound[], target: Target): void {
+  private logUnauthorizedScripts(scripts: KnownScriptWithUnauthorisedContentFound[], target: Target, inventoryUpdatedResults?: ReadonlySet<ComparisonResultType>): void {
     this.log(AlertType.Script, `Script authorization failed for target: ${target.url}`)
     console.log(`  Target Type: ${target.type}`)
     console.log(`  Count: ${scripts.length}`)
@@ -83,10 +84,14 @@ export class ConsoleAlertService implements IAlertService {
       const hash = result.script.hash.value
       const matcherType = result.authorizationMatcher.getType()
       const reason = result.failureReason
+      const outcome = target.type === 'inventory' && inventoryUpdatedResults ? (inventoryUpdatedResults.has(result) ? 'inventory auto-updated' : 'manual review required (inventory unchanged)') : null
       console.log(`    ${index + 1}. ${this.truncate(identifier)}`)
       console.log(`       Hash: ${this.truncate(hash)}`)
       console.log(`       Failed Matcher: ${matcherType}`)
       console.log(`       Reason: ${reason}`)
+      if (outcome !== null) {
+        console.log(`       Outcome: ${outcome}`)
+      }
     })
     console.log()
   }
@@ -104,7 +109,7 @@ export class ConsoleAlertService implements IAlertService {
     console.log()
   }
 
-  private logUnauthorizedHeaders(headers: KnownHeaderWithUnauthorisedContentFound[], target: Target): void {
+  private logUnauthorizedHeaders(headers: KnownHeaderWithUnauthorisedContentFound[], target: Target, inventoryUpdatedResults?: ReadonlySet<ComparisonResultType>): void {
     this.log(AlertType.Header, `Header authorization failed for target: ${target.url}`)
     console.log(`  Target Type: ${target.type}`)
     console.log(`  Count: ${headers.length}`)
@@ -113,10 +118,14 @@ export class ConsoleAlertService implements IAlertService {
     headers.forEach((result, index) => {
       const matcherType = result.authorizationMatcher.getType()
       const reason = result.failureReason
+      const outcome = target.type === 'inventory' && inventoryUpdatedResults ? (inventoryUpdatedResults.has(result) ? 'inventory auto-updated' : 'manual review required (inventory unchanged)') : null
       console.log(`    ${index + 1}. ${result.header.name}`)
       console.log(`       Value: ${this.truncate(result.header.value)}`)
       console.log(`       Failed Matcher: ${matcherType}`)
       console.log(`       Reason: ${reason}`)
+      if (outcome !== null) {
+        console.log(`       Outcome: ${outcome}`)
+      }
     })
     console.log()
   }

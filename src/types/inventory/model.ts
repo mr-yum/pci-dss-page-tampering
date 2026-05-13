@@ -1,3 +1,4 @@
+import type { ComparisonResultType } from '../comparison'
 import type { SHA256Hash } from '../hash'
 import type { Matcher } from '../matcher/matcher.interface'
 import type { TargetDetection, TargetInventory } from '../target'
@@ -84,6 +85,15 @@ export type Inventory = {
 export type InventoryDifferenceResult = {
   oldInventory: Inventory
   newInventory: Inventory
+  /**
+   * Comparison results that actually translated into an inventory mutation
+   * (new script/header added, or new hash/content matcher appended to an
+   * existing entry). Used downstream to keep "Inventory updated" alerts
+   * truthful — results that did NOT cause a change (e.g. unauthorised content
+   * authorised by a non-hash matcher, AndMatcher entries, duplicate hashes)
+   * are absent here and trigger a "manual review required" alert instead.
+   */
+  appliedResults?: ComparisonResultType[]
 }
 
 export type InventoryPullPayload = {
