@@ -83,20 +83,20 @@ export class HeaderComparisonService implements IHeaderComparisonService {
     // T020: Find matching inventory entry (first-match-wins per BR-2)
     const matchedEntry = this.findMatchingInventoryEntry(header, inventoryHeaders)
 
-    // Host suffix — surfaced on every log line so operators can correlate
-    // unauthorised entries to the response that emitted them (without
-    // diffing the Slack table against the run log).
-    const hostSuffix = ` [from host: ${header.host || '(unknown)'}]`
+    // Lead every log line with `Header '<host>':'<name>'` so operators can
+    // correlate each line back to the response that emitted the header
+    // without diffing the Slack table against the run log.
+    const headerLabel = `Header '${header.host || '(unknown)'}':'${header.name}'`
 
     // No match → unknown header
     if (!matchedEntry) {
-      target.logger.log(`Header '${header.name}' not identified in inventory.${hostSuffix}`)
+      target.logger.log(`${headerLabel} not identified in inventory.`)
       return new UnknownHeaderFound(target, timestamp, header)
     }
 
     // Log identification (T065: use matcher.getDescription() for human-readable output)
     const identifyDescription = matchedEntry.identifyWith.getDescription()
-    target.logger.log(`Header '${header.name}' identified using ${identifyDescription}.${hostSuffix}`)
+    target.logger.log(`${headerLabel} identified using ${identifyDescription}.`)
 
     // T064: Authorize value using authoriseWith matcher (BR-4: case-sensitive value matching)
     // T031: Use Matchable interface (hash is optional, no type cast workaround needed)
@@ -115,7 +115,7 @@ export class HeaderComparisonService implements IHeaderComparisonService {
     // T065: Log authorization result with matcher details
     const authorizeDescription = matchedEntry.authoriseWith.matcher.getDescription()
     const authStatus = isAuthorized ? 'AUTHORIZED' : `UNAUTHORIZED (${authorizationResult.reason || 'authorization failed'})`
-    target.logger.log(`Header '${header.name}'='${header.value}' authorization via ${authorizeDescription}: ${authStatus}.${hostSuffix}`)
+    target.logger.log(`${headerLabel}='${header.value}' authorization via ${authorizeDescription}: ${authStatus}.`)
 
     // Return appropriate result
     // T030: Pass metadataPath from AuthorizationResult for composite matcher support
