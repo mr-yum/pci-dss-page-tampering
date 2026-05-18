@@ -114,7 +114,14 @@ export function inventoryScriptInfoToRawInventoryScriptInfo(inventoryScriptInfo:
         return config
       }
       case 'hash': {
-        const config: any = { hashes: pattern as import('../types/inventory/model').InventoryScriptHashInfo[] }
+        // Shallow-clone the hashes array. HashMatcher.getPattern() returns its
+        // internal `authorizedHashes` by reference; without the clone, callers
+        // that mutate `config.hashes` (e.g. inventory diff appending a new hash)
+        // silently corrupt the matcher's internal state and therefore the
+        // *old* inventory entry too — leaving `buildInventoryCommitMessage`
+        // unable to see any difference between old and new while alerts had
+        // already buffered the result as "applied".
+        const config: any = { hashes: [...(pattern as import('../types/inventory/model').InventoryScriptHashInfo[])] }
         const authInfo = (matcher as any).getAuthorisationInfo?.()
         if (authInfo) {
           config.authorisationInfo = serializeAuthorisationInfo(authInfo)
