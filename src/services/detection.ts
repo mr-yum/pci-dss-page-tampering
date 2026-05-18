@@ -4,7 +4,7 @@ import { headerResponseHandler } from '../handlers/header'
 import { scriptResponseHandler } from '../handlers/script'
 import type { IDetectionService } from '../interfaces/detection'
 import type { DetectionSummary } from '../types/detection'
-import type { HeaderName, HeaderValues } from '../types/header'
+import type { HeaderHost, HeaderName } from '../types/header'
 import type { ScriptMatcher } from '../types/matcher'
 import type { PuppeteerClickAction, PuppeteerClickPopupAction, PuppeteerInputAction, PuppeteerLocatorAction, PuppeteerNavigateAction } from '../types/puppeteer'
 import type { ScriptInfo } from '../types/script'
@@ -16,7 +16,7 @@ export class DetectionService implements IDetectionService {
   async detect(browser: Browser, target: Target, scriptContentMatchers: ScriptMatcher[]): Promise<DetectionSummary> {
     const externalScripts: ScriptInfo[] = []
     const internalScripts: ScriptInfo[] = []
-    const headers = new Map<HeaderName, HeaderValues>()
+    const headers = new Map<HeaderName, Map<string, Set<HeaderHost>>>()
 
     const page = await browser.newPage()
     let puppeteerWorkflow: any = null

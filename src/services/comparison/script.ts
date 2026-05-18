@@ -49,15 +49,30 @@ export class ScriptComparisonService implements IScriptComparisonService {
    * was tested against getScriptSource(script) which returns the URL for external scripts.
    *
    * For inline scripts, name is the ID and content is the actual script content.
+   *
+   * `host` is populated for external scripts (extracted from the URL) so a
+   * HostMatcher in identifyWith/authoriseWith can discriminate by origin.
+   * Inline scripts leave host undefined — HostMatcher fails-secure on those.
    */
   private scriptInfoToDetectedScript(scriptInfo: ScriptInfo): DetectedScript {
     const name = getScriptSource(scriptInfo)
     const content = scriptInfo.source.type === 'inline' ? scriptInfo.source.content : name
+    const host = scriptInfo.source.type === 'external' ? this.extractHost(scriptInfo.source.url) : undefined
 
     return {
       name,
       content,
       hash: scriptInfo.hash,
+      ...(host !== undefined ? { host } : {}),
+    }
+  }
+
+  private extractHost(rawUrl: string): string | undefined {
+    try {
+      const host = new URL(rawUrl).host
+      return host.length > 0 ? host : undefined
+    } catch {
+      return undefined
     }
   }
 

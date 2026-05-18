@@ -105,6 +105,7 @@ export class ConsoleAlertService implements IAlertService {
     headers.forEach((result, index) => {
       console.log(`    ${index + 1}. ${result.header.name}`)
       console.log(`       Value: ${this.truncate(result.header.value)}`)
+      console.log(`       From host: ${result.header.host || '(unknown)'}`)
     })
     console.log()
   }
@@ -121,6 +122,7 @@ export class ConsoleAlertService implements IAlertService {
       const outcome = target.type === 'inventory' && inventoryUpdatedResults ? (inventoryUpdatedResults.has(result) ? 'inventory auto-updated' : 'manual review required (inventory unchanged)') : null
       console.log(`    ${index + 1}. ${result.header.name}`)
       console.log(`       Value: ${this.truncate(result.header.value)}`)
+      console.log(`       From host: ${result.header.host || '(unknown)'}`)
       console.log(`       Failed Matcher: ${matcherType}`)
       console.log(`       Reason: ${reason}`)
       if (outcome !== null) {

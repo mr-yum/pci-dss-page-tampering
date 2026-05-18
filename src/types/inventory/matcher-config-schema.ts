@@ -60,6 +60,11 @@ const ContentMatcherConfigSchema = z.object({
   authorisationInfo: InventoryAuthorisationInfoRawSchema.optional(),
 })
 
+const HostMatcherConfigSchema = z.object({
+  hostMatcher: z.string().min(1, 'hostMatcher must not be empty'),
+  authorisationInfo: InventoryAuthorisationInfoRawSchema.optional(),
+})
+
 const HashMatcherConfigSchema = z.object({
   hashes: z.array(InventoryScriptHashInfoSchema).min(1, 'hashes array must contain at least 1 hash'),
   authorisationInfo: InventoryAuthorisationInfoRawSchema.optional(),
@@ -104,7 +109,7 @@ const AndMatcherConfigSchema = z.object({
  * IMPORTANT: Explicit type annotation required for z.lazy() circular reference resolution.
  */
 export const MatcherConfigSchema: z.ZodType<any> = z
-  .union([NameMatcherConfigSchema, HeaderNameMatcherConfigSchema, ContentMatcherConfigSchema, HashMatcherConfigSchema, OrMatcherConfigSchema, AndMatcherConfigSchema])
+  .union([NameMatcherConfigSchema, HeaderNameMatcherConfigSchema, ContentMatcherConfigSchema, HostMatcherConfigSchema, HashMatcherConfigSchema, OrMatcherConfigSchema, AndMatcherConfigSchema])
   .superRefine((val, ctx) => {
     // Validate regex syntax for nameMatcher
     if ('nameMatcher' in val) {
@@ -144,6 +149,20 @@ export const MatcherConfigSchema: z.ZodType<any> = z
           code: 'custom',
           message: `Invalid regex in contentMatcher: "${val.contentMatcher}". Error: ${errorMessage}. Ensure all brackets are closed and escape sequences are valid.`,
           path: ['contentMatcher'],
+        })
+      }
+    }
+
+    // Validate regex syntax for hostMatcher
+    if ('hostMatcher' in val) {
+      try {
+        new RegExp(val.hostMatcher)
+      } catch (e: unknown) {
+        const errorMessage = e instanceof Error ? e.message : 'Unknown regex error'
+        ctx.addIssue({
+          code: 'custom',
+          message: `Invalid regex in hostMatcher: "${val.hostMatcher}". Error: ${errorMessage}. Ensure all brackets are closed and escape sequences are valid.`,
+          path: ['hostMatcher'],
         })
       }
     }

@@ -57,6 +57,18 @@ export interface Matchable {
    * Scripts will always have a hash; headers will have undefined.
    */
   hash?: SHA256Hash
+
+  /**
+   * Optional originating host. Populated for response-derived resources
+   * (HTTP headers, external scripts) so matchers can discriminate by
+   * provenance — e.g. an inventory entry can require a CSP `default-src`
+   * directive to come from `*.meandu.app`, not from a third-party domain.
+   *
+   * Undefined when host doesn't apply (e.g. inline scripts) or wasn't
+   * captured. HostMatcher fails-secure (returns false / unauthorized) when
+   * this is missing.
+   */
+  host?: string
 }
 
 /**
@@ -97,7 +109,7 @@ export interface Matcher<T extends Matchable = Matchable> {
    * Returns the matcher type discriminator.
    * Used for logging, debugging, and type narrowing.
    */
-  getType(): 'name' | 'header-name' | 'content' | 'hash' | 'or' | 'and'
+  getType(): 'name' | 'header-name' | 'content' | 'hash' | 'host' | 'or' | 'and'
 
   /**
    * Returns the pattern, hashes, or child matchers used by this matcher.

@@ -14,6 +14,12 @@ import type { AlertDestination, InventoryAlert } from '../../types/inventory/mod
 import type { ScriptInfo } from '../../types/script'
 import type { Target } from '../../types/target'
 
+/**
+ * Row passed to the unknown-header alert table. Carries host so the
+ * notification can show which response emitted each unauthorised value.
+ */
+type HeaderAlertRow = HeaderInfo & { host?: string; detectedTarget: Target }
+
 export class SlackAlertService implements IAlertService {
   private readonly oAuthToken: string
   private readonly repositoryUrl: string
@@ -186,10 +192,13 @@ export class SlackAlertService implements IAlertService {
   private async alertOnUnknownHeaders(unknownHeaders: UnknownHeaderFound[], target: Target, destination: AlertDestination): Promise<void> {
     const message = `Unauthorised headers detected for target!`
 
-    // Convert typed results to HeaderInfo for alert payload
-    const headers: HeaderInfo[] = unknownHeaders.map((result) => ({
+    // Carry host through to the table so operators can see which response set
+    // the header (e.g. distinguish first-party CSP from a third-party CSP).
+    const headers: HeaderAlertRow[] = unknownHeaders.map((result) => ({
       name: result.header.name,
       value: result.header.value,
+      ...(result.header.host !== undefined ? { host: result.header.host } : {}),
+      detectedTarget: result.target,
     }))
 
     const messagePayload = this.createHeaderMessagePayload(message, headers, target, destination)
@@ -542,9 +551,9 @@ export class SlackAlertService implements IAlertService {
         },
         {
           type: 'table',
-          column_settings: [{ is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }],
+          column_settings: [{ is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }],
           rows: [
-            [this.buildBoldHeaderCell('Header Name'), this.buildBoldHeaderCell('Value'), this.buildBoldHeaderCell('Failure Reason'), this.buildBoldHeaderCell('Suggested AI Prompt')],
+            [this.buildBoldHeaderCell('Header Name'), this.buildBoldHeaderCell('Value'), this.buildBoldHeaderCell('Host'), this.buildBoldHeaderCell('Failure Reason'), this.buildBoldHeaderCell('Suggested AI Prompt')],
             ...unauthorizedHeaders.slice(0, 19).map((result) => [...this.unauthorizedHeaderToTableItem(result), this.buildRichTextCell(this.buildUnauthorizedHeaderAiPrompt(result))]),
           ],
         },
@@ -583,6 +592,7 @@ export class SlackAlertService implements IAlertService {
     const matcherType = result.authorizationMatcher.getType()
     const pattern = JSON.stringify(result.authorizationMatcher.getPattern())
     const failureReason = `${matcherType}Matcher failed: ${result.failureReason} (expected: ${pattern})`
+    const hostCell = this.buildRichTextCell(result.header.host || '(unknown)')
 
     return [
       {
@@ -613,6 +623,7 @@ export class SlackAlertService implements IAlertService {
           },
         ],
       },
+      hostCell,
       {
         type: 'rich_text',
         elements: [
@@ -630,7 +641,7 @@ export class SlackAlertService implements IAlertService {
     ]
   }
 
-  private createHeaderMessagePayload(title: string, headers: HeaderInfo[], target: Target, destination: AlertDestination): object {
+  private createHeaderMessagePayload(title: string, headers: HeaderAlertRow[], target: Target, destination: AlertDestination): object {
     return {
       channel: destination.destination,
       blocks: [
@@ -674,10 +685,10 @@ export class SlackAlertService implements IAlertService {
         },
         {
           type: 'table',
-          column_settings: [{ is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }],
+          column_settings: [{ is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }],
           rows: [
-            [this.buildBoldHeaderCell('Header Name'), this.buildBoldHeaderCell('Value'), this.buildBoldHeaderCell('Suggested AI Prompt')],
-            ...headers.slice(0, 19).map((headerInfo) => [...this.headerInfoToTableItem(headerInfo), this.buildRichTextCell(this.buildHeaderAiPrompt(headerInfo, target))]),
+            [this.buildBoldHeaderCell('Header Name'), this.buildBoldHeaderCell('Value'), this.buildBoldHeaderCell('Host'), this.buildBoldHeaderCell('Suggested AI Prompt')],
+            ...headers.slice(0, 19).map((row) => [...this.headerInfoToTableItem({ name: row.name, value: row.value }), this.buildRichTextCell(row.host || '(unknown)'), this.buildRichTextCell(this.buildHeaderAiPrompt(row, target))]),
           ],
         },
         ...(target.type === 'inventory'
@@ -875,15 +886,17 @@ export class SlackAlertService implements IAlertService {
   /**
    * Suggested AI prompt for a previously-unknown header.
    */
-  private buildHeaderAiPrompt(header: HeaderInfo, target: Target): string {
-    return `Add a new entry to the inventory file for target ${target.url} authorising response header "${header.name}" with value "${header.value}". Use a HeaderNameMatcher for identification and a ContentMatcher for authorisation. Include authorisationInfo with a description and today's date.`
+  private buildHeaderAiPrompt(header: HeaderAlertRow, target: Target): string {
+    const hostHint = header.host ? ` This header was emitted by host "${header.host}" — if it should only be authorised from that host, combine the HeaderNameMatcher with a HostMatcher under an AndMatcher in identifyWith.` : ''
+    return `Add a new entry to the inventory file for target ${target.url} authorising response header "${header.name}" with value "${header.value}".${hostHint} Use a HeaderNameMatcher for identification and a ContentMatcher for authorisation. Include authorisationInfo with a description and today's date.`
   }
 
   /**
    * Suggested AI prompt for a known header whose value failed authorisation.
    */
   private buildUnauthorizedHeaderAiPrompt(result: KnownHeaderWithUnauthorisedContentFound): string {
-    return `In the inventory file for target ${result.target.url}, the existing entry that identifies header "${result.header.name}" failed authorisation (${result.failureReason}). Update its authoriseWith matcher to allow the new value "${result.header.value}" with today's date, or investigate before authorising.`
+    const hostHint = result.header.host ? ` Note: this value was emitted by host "${result.header.host}".` : ''
+    return `In the inventory file for target ${result.target.url}, the existing entry that identifies header "${result.header.name}" failed authorisation (${result.failureReason}). Update its authoriseWith matcher to allow the new value "${result.header.value}" with today's date, or investigate before authorising.${hostHint}`
   }
 
   /**
