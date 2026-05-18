@@ -955,6 +955,54 @@ describe('ScriptInventoryService', () => {
         expect(diff.appliedResults).toEqual([])
       })
 
+      it('does not mutate the old inventory entry when appending a hash to a single HashMatcher (regression: prod 2026-05-18)', async () => {
+        // Production scenario that escaped the unit suite: an inventory entry
+        // with a single HashMatcher (e.g. b.stripecdn.com vendors~ bundle with
+        // 8 authorised hashes) gets a 9th hash detected. The diff appended the
+        // hash, but `inventoryScriptInfoToRawInventoryScriptInfo` previously
+        // returned the matcher's internal hashes array by reference. The
+        // append() therefore mutated the OLD inventory entry's matcher too,
+        // leaving `buildInventoryCommitMessage` to see oldCount == newCount
+        // == 9 — so push() logged "No inventory changes to push." while the
+        // buffered alert still claimed "Inventory updated".
+        const existingScript = rawInventoryScriptInfoToInventoryScriptInfo({
+          identifyWith: { nameMatcher: '^https://b\\.stripecdn\\.com/.+\\.js$' },
+          authoriseWith: {
+            hashes: [
+              { timestamp: '2026-01-01T00:00:00.000Z', hash: { value: 'h1' } },
+              { timestamp: '2026-01-02T00:00:00.000Z', hash: { value: 'h2' } },
+            ],
+            authorisationInfo: { description: 'Stripe vendors bundle', authorised: true, date: '2026-01-01T00:00:00.000Z' },
+          },
+        })
+
+        const inventory = createMockInventory([existingScript])
+        const result = new KnownScriptWithUnauthorisedContentFound(
+          createMockTarget(),
+          new Date('2026-05-18T00:00:00.000Z'),
+          { name: 'https://b.stripecdn.com/bundle.js', content: 'new', hash: { value: 'h-new' } },
+          existingScript,
+          existingScript.authoriseWith.matcher,
+          'hash h-new not in authorized list',
+        )
+
+        const diff = await service.diff(inventory, [result])
+
+        // Old inventory entry must still report 2 hashes when serialised —
+        // otherwise the downstream commit-message builder sees a no-op diff.
+        const oldRawAfter = inventoryScriptInfoToRawInventoryScriptInfo(diff.oldInventory.scripts[0]!)
+        const newRawAfter = inventoryScriptInfoToRawInventoryScriptInfo(diff.newInventory.scripts[0]!)
+        expect('hashes' in oldRawAfter.authoriseWith ? oldRawAfter.authoriseWith.hashes.length : -1).toBe(2)
+        expect('hashes' in newRawAfter.authoriseWith ? newRawAfter.authoriseWith.hashes.length : -1).toBe(3)
+
+        // The matcher's internal array must also be untouched — otherwise any
+        // later toRaw of the old entry would re-show the mutated count.
+        const oldMatcher = diff.oldInventory.scripts[0]!.authoriseWith.matcher
+        expect((oldMatcher.getPattern() as Array<unknown>).length).toBe(2)
+
+        expect(diff.appliedResults).toEqual([result])
+      })
+
       it('marks UnknownScriptFound and UnknownHeaderFound as applied unconditionally', async () => {
         const inventory = createMockInventory([])
         const target = createMockTarget()
