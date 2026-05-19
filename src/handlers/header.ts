@@ -1,15 +1,18 @@
 import type { HTTPResponse } from 'puppeteer'
 
-import type { HeaderName, HeaderValues } from '../types/header'
+import type { HeaderDetectionSummary, HeaderUrl } from '../types/header'
 
-export async function headerResponseHandler(response: HTTPResponse, detectedHeaders: Map<HeaderName, HeaderValues>): Promise<void> {
+export async function headerResponseHandler(response: HTTPResponse, detectedHeaders: HeaderDetectionSummary['headers']): Promise<void> {
   if (response.ok()) {
     try {
       const headers = response.headers()
       const cspHeaderName = 'content-security-policy'
 
       if (headers[cspHeaderName]) {
-        const headerValues = detectedHeaders.get(cspHeaderName) || new Set<string>()
+        // Store the full response URL — HostMatcher derives host from it,
+        // UrlMatcher matches the full URL. Both fail-secure on empty.
+        const url = response.url()
+        const valuesByDirective = detectedHeaders.get(cspHeaderName) ?? new Map<string, Set<HeaderUrl>>()
         const headerValue = headers[cspHeaderName]
         const splitHeaderValues = headerValue
           .split(';')
@@ -17,9 +20,11 @@ export async function headerResponseHandler(response: HTTPResponse, detectedHead
           .filter((value) => value.length !== 0)
 
         for (const value of splitHeaderValues) {
-          headerValues.add(value)
+          const urls = valuesByDirective.get(value) ?? new Set<HeaderUrl>()
+          urls.add(url)
+          valuesByDirective.set(value, urls)
         }
-        detectedHeaders.set(cspHeaderName, headerValues)
+        detectedHeaders.set(cspHeaderName, valuesByDirective)
       }
     } catch (error) {
       console.error(`Errored while attempting to read header response: ${error}`)

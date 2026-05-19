@@ -203,9 +203,9 @@ act push --container-architecture linux/amd64 --secret-file .env.secrets
 
 Each inventory entry (scripts and headers) uses a nested authorization structure:
 
-- `identifyWith`: Matcher for identifying the resource (NameMatcher/HeaderNameMatcher/ContentMatcher/HashMatcher/OrMatcher/AndMatcher)
+- `identifyWith`: Matcher for identifying the resource (NameMatcher/HeaderNameMatcher/ContentMatcher/HashMatcher/HostMatcher/UrlMatcher/OrMatcher/AndMatcher)
 - `authoriseWith`: Matcher configuration with authorization metadata:
-  - Can be a single matcher (NameMatcher, ContentMatcher, HashMatcher, OrMatcher, AndMatcher)
+  - Can be a single matcher (NameMatcher, ContentMatcher, HashMatcher, HostMatcher, UrlMatcher, OrMatcher, AndMatcher)
   - Can be an array of matchers (syntactic sugar for OrMatcher)
   - Must include `authorisationInfo` with description, authorization status, and date
   - Composite matchers (OrMatcher, AndMatcher) can have nested `authorisationInfo` at each level
@@ -264,11 +264,13 @@ This structure ensures authorization logic (matcher) and metadata are cohesively
 
 #### Matcher System (Refactored 2025-10)
 
-- **Matcher Interface** (`src/types/matcher/matcher.interface.ts`) - Strategy pattern for script and header matching with `identify()` and `authorize()` methods
+- **Matcher Interface** (`src/types/matcher/matcher.interface.ts`) - Strategy pattern for script and header matching with `identify()` and `authorize()` methods. The `Matchable` contract exposes `name`, `content`, optional `hash`, and optional `url` — the latter is the single source of truth for provenance, populated for response headers (URL of the emitting response), external scripts (the script's own URL), and inline scripts (initiator URL captured at insertion time by the page-attribution shim, falling back to `location.href` for parser-inserted scripts).
 - **NameMatcher** (`src/types/matcher/name-matcher.ts`) - Matches scripts by URL using regex patterns (case-sensitive, for external scripts with dynamic parameters)
 - **HeaderNameMatcher** (`src/types/matcher/header-name-matcher.ts`) - Matches headers by name using regex patterns (case-insensitive per RFC 7230, for HTTP header identification)
 - **ContentMatcher** (`src/types/matcher/content-matcher.ts`) - Matches by content using regex patterns (case-sensitive, for inline scripts or header values)
 - **HashMatcher** (`src/types/matcher/hash-matcher.ts`) - Matches scripts by SHA-256 hash (scripts only, for strict integrity verification)
+- **HostMatcher** (`src/types/matcher/host-matcher.ts`) - Derives the host portion of `Matchable.url` on the fly and regex-matches against it. Use when the inventory cares about origin but not path (e.g. _"any CSP from `_.meandu.app`"*). Fails-secure when `url` is missing or unparseable.
+- **UrlMatcher** (`src/types/matcher/url-matcher.ts`) - Regex-matches the full `Matchable.url` (host + path + query). Use when path precision matters (e.g. _"only `https://m.stripe.network/out-_.js`, not arbitrary paths"*). Fails-secure when `url` is missing.
 - **OrMatcher** (`src/types/matcher/or-matcher.ts`) - Composite matcher implementing OR logic (authorizes if ANY child succeeds, first-match-wins)
 - **AndMatcher** (`src/types/matcher/and-matcher.ts`) - Composite matcher implementing AND logic (authorizes only if ALL children succeed)
 
@@ -372,3 +374,5 @@ The system runs on CRON schedules:
 
 - **Commit messages**: Please use conventional commits and keep them concise. Tell us what value was created in the commit, not a catalog of changes.
 - **Code review on commit**: Before creating a commit, run `/coderabbit:review --base main` and address its findings (or explain why a finding is intentional) as part of the same change. Treat CodeRabbit as a required review step alongside `npm run precommit` — precommit verifies correctness, CodeRabbit catches design/quality issues a static check won't.
+- **2nd code review on commit**: Before creating a commit, run `/review` and address its findings (or explain why a finding is intentional) as part of the same change. Treat this as a required review step alongside `npm run precommit` — precommit verifies correctness, Review catches design/quality issues a static check won't.
+- **Update README.md**: Ensure that you consider any updates to user facing documentation as part of any changes.

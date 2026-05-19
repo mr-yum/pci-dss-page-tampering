@@ -16,6 +16,7 @@ import { UnknownHeaderFound } from '../../types/comparison/unknown-header-found'
 import type { DetectedHeader, HeaderDetectionSummary } from '../../types/header'
 import type { Inventory, InventoryHeaderInfo } from '../../types/inventory/model'
 import type { Target } from '../../types/target'
+import { extractHost } from '../../utils/url'
 
 export class HeaderComparisonService implements IHeaderComparisonService {
   /**
@@ -39,22 +40,27 @@ export class HeaderComparisonService implements IHeaderComparisonService {
     const results: ComparisonResultType[] = []
     const timestamp = new Date()
 
-    // Iterate detected headers (Map of name → Set<values>)
-    for (const [headerName, valuesSet] of detectedHeaders.entries()) {
+    // Iterate detected headers — nested Map of name → value → Set<url>.
+    // Fan out one DetectedHeader per (name, value, url) triple so a CSP
+    // directive emitted by multiple responses produces an alert per URL
+    // (each is its own provenance question for compliance purposes —
+    // HostMatcher / UrlMatcher use this URL to discriminate).
+    for (const [headerName, valuesByUrl] of detectedHeaders.entries()) {
       const normalizedName = headerName.toLowerCase() // BR-3: Case-insensitive name matching
 
-      // Iterate each value separately (one result per value per BR-1)
-      for (const value of valuesSet) {
-        // T022: Handle empty string values - do NOT skip, pass to ContentMatcher
-        const detectedHeader: DetectedHeader = {
-          name: normalizedName,
-          value, // May be empty string per FR-013a
-          target,
-          workflow: target.workflow,
-        }
+      for (const [value, urls] of valuesByUrl.entries()) {
+        for (const url of urls) {
+          const detectedHeader: DetectedHeader = {
+            name: normalizedName,
+            value, // May be empty string per FR-013a
+            target,
+            workflow: target.workflow,
+            url,
+          }
 
-        const result = this.compareSingleHeader(detectedHeader, inventoryHeaders, target, timestamp)
-        results.push(result)
+          const result = this.compareSingleHeader(detectedHeader, inventoryHeaders, target, timestamp)
+          results.push(result)
+        }
       }
     }
 
@@ -77,17 +83,23 @@ export class HeaderComparisonService implements IHeaderComparisonService {
    */
   private compareSingleHeader(header: DetectedHeader, inventoryHeaders: InventoryHeaderInfo[], target: Target, timestamp: Date): ComparisonResultType {
     // T020: Find matching inventory entry (first-match-wins per BR-2)
-    const matchedEntry = this.findMatchingInventoryEntry(header.name, inventoryHeaders)
+    const matchedEntry = this.findMatchingInventoryEntry(header, inventoryHeaders)
+
+    // Lead every log line with `Header '<host>':'<name>'` so operators can
+    // correlate each line back to the response that emitted the header
+    // without diffing the Slack table against the run log. The display host
+    // is derived from the full URL stored in `header.url`.
+    const headerLabel = `Header '${extractHost(header.url)}':'${header.name}'`
 
     // No match → unknown header
     if (!matchedEntry) {
-      target.logger.log(`Header '${header.name}' not identified in inventory.`)
+      target.logger.log(`${headerLabel} not identified in inventory.`)
       return new UnknownHeaderFound(target, timestamp, header)
     }
 
     // Log identification (T065: use matcher.getDescription() for human-readable output)
     const identifyDescription = matchedEntry.identifyWith.getDescription()
-    target.logger.log(`Header '${header.name}' identified using ${identifyDescription}.`)
+    target.logger.log(`${headerLabel} identified using ${identifyDescription}.`)
 
     // T064: Authorize value using authoriseWith matcher (BR-4: case-sensitive value matching)
     // T031: Use Matchable interface (hash is optional, no type cast workaround needed)
@@ -98,6 +110,7 @@ export class HeaderComparisonService implements IHeaderComparisonService {
     const authorizationResult = matchedEntry.authoriseWith.matcher.authorize({
       name: header.name,
       content: header.value,
+      ...(header.url !== undefined ? { url: header.url } : {}),
       // hash is omitted for headers (optional field in Matchable interface)
     })
     const isAuthorized = matchedEntry.authoriseWith.authorisationInfo.authorised && authorizationResult.authorized
@@ -105,7 +118,7 @@ export class HeaderComparisonService implements IHeaderComparisonService {
     // T065: Log authorization result with matcher details
     const authorizeDescription = matchedEntry.authoriseWith.matcher.getDescription()
     const authStatus = isAuthorized ? 'AUTHORIZED' : `UNAUTHORIZED (${authorizationResult.reason || 'authorization failed'})`
-    target.logger.log(`Header '${header.name}'='${header.value}' authorization via ${authorizeDescription}: ${authStatus}.`)
+    target.logger.log(`${headerLabel}='${header.value}' authorization via ${authorizeDescription}: ${authStatus}.`)
 
     // Return appropriate result
     // T030: Pass metadataPath from AuthorizationResult for composite matcher support
@@ -139,15 +152,15 @@ export class HeaderComparisonService implements IHeaderComparisonService {
    * @param inventoryHeaders - Array of authorized headers
    * @returns First matching entry or undefined
    */
-  private findMatchingInventoryEntry(headerName: string, inventoryHeaders: InventoryHeaderInfo[]): InventoryHeaderInfo | undefined {
+  private findMatchingInventoryEntry(header: DetectedHeader, inventoryHeaders: InventoryHeaderInfo[]): InventoryHeaderInfo | undefined {
     for (const entry of inventoryHeaders) {
       // Skip non-authorized entries (legacy compatibility)
       if (!entry.authoriseWith.authorisationInfo.authorised) continue
 
-      // T063: Use matcher's identify method instead of inline regex test
-      // T031: Use Matchable interface (hash is optional, no type cast workaround needed)
-      // Note: Matcher interface uses Matchable shape, so pass name in name field
-      if (entry.identifyWith.identify({ name: headerName, content: '' })) {
+      // Pass host so identifyWith can include a HostMatcher (typically combined
+      // with HeaderNameMatcher under an AndMatcher) — e.g. "match CSP from
+      // *.meandu.app only". Empty content is fine for header identification.
+      if (entry.identifyWith.identify({ name: header.name, content: '', ...(header.url !== undefined ? { url: header.url } : {}) })) {
         return entry // First match wins (BR-2)
       }
     }

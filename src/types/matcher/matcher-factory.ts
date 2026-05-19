@@ -12,9 +12,11 @@ import { AndMatcher } from './and-matcher'
 import { ContentMatcher } from './content-matcher'
 import { HashMatcher } from './hash-matcher'
 import { HeaderNameMatcher } from './header-name-matcher'
+import { HostMatcher } from './host-matcher'
 import type { AuthorisationInfo, Matcher } from './matcher.interface'
 import { NameMatcher } from './name-matcher'
 import { OrMatcher } from './or-matcher'
+import { UrlMatcher } from './url-matcher'
 
 /**
  * Raw authorization info as it appears in JSON (with string date).
@@ -58,6 +60,8 @@ export type MatcherConfig =
   | { nameMatcher: string; authorisationInfo?: RawAuthorisationInfo }
   | { headerNameMatcher: string }
   | { contentMatcher: string; authorisationInfo?: RawAuthorisationInfo }
+  | { hostMatcher: string; authorisationInfo?: RawAuthorisationInfo }
+  | { urlMatcher: string; authorisationInfo?: RawAuthorisationInfo }
   | { hashes: InventoryScriptHashInfo[]; authorisationInfo?: RawAuthorisationInfo }
   | { orMatcher: MatcherConfig[]; authorisationInfo?: RawAuthorisationInfo }
   | { andMatcher: MatcherConfig[]; authorisationInfo?: RawAuthorisationInfo }
@@ -109,6 +113,14 @@ export function createMatcher(config: MatcherConfig): Matcher {
 
   if ('contentMatcher' in config) {
     return new ContentMatcher(config.contentMatcher, convertAuthorisationInfo(config.authorisationInfo))
+  }
+
+  if ('hostMatcher' in config) {
+    return new HostMatcher(config.hostMatcher, convertAuthorisationInfo(config.authorisationInfo))
+  }
+
+  if ('urlMatcher' in config) {
+    return new UrlMatcher(config.urlMatcher, convertAuthorisationInfo(config.authorisationInfo))
   }
 
   if ('hashes' in config) {

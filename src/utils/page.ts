@@ -12,9 +12,16 @@ export async function getInlineScriptsFromPage(page: Page, scriptContentMatchers
   const inlineScripts = await page.evaluate(() => {
     const scriptElements = Array.from(document.querySelectorAll('script:not([src])'))
     return scriptElements.map<PageScriptElement>((elem) => {
+      // Read the initiator URL tagged by the page-attribution shim. Falls
+      // back to the page URL so parser-inserted inline scripts still have a
+      // sensible attribution (configured behaviour: parser inserts attribute
+      // to the page itself).
+      const tagged = (elem as unknown as { __pciInitiatorUrl?: string }).__pciInitiatorUrl
+      const initiatorUrl = tagged ?? (typeof location !== 'undefined' ? location.href : undefined)
       return {
         id: elem.id,
         content: elem.innerHTML,
+        ...(initiatorUrl !== undefined ? { initiatorUrl } : {}),
       }
     })
   })
@@ -30,6 +37,7 @@ export async function getInlineScriptsFromPage(page: Page, scriptContentMatchers
           type: 'inline',
           id: idToUse,
           content: pageScriptElement.content,
+          ...(pageScriptElement.initiatorUrl !== undefined ? { url: pageScriptElement.initiatorUrl } : {}),
         },
         hash: scriptHash,
       })

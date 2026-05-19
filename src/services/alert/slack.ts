@@ -13,6 +13,15 @@ import type { HeaderInfo } from '../../types/header'
 import type { AlertDestination, InventoryAlert } from '../../types/inventory/model'
 import type { ScriptInfo } from '../../types/script'
 import type { Target } from '../../types/target'
+import { extractHost } from '../../utils/url'
+
+/**
+ * Row passed to the unknown-header alert table. Carries the originating
+ * response URL so the notification can show host (via extractHost) and so
+ * AI prompts can quote the full URL when suggesting `hostMatcher` /
+ * `urlMatcher` regexes.
+ */
+type HeaderAlertRow = HeaderInfo & { url?: string; detectedTarget: Target }
 
 export class SlackAlertService implements IAlertService {
   private readonly oAuthToken: string
@@ -186,10 +195,13 @@ export class SlackAlertService implements IAlertService {
   private async alertOnUnknownHeaders(unknownHeaders: UnknownHeaderFound[], target: Target, destination: AlertDestination): Promise<void> {
     const message = `Unauthorised headers detected for target!`
 
-    // Convert typed results to HeaderInfo for alert payload
-    const headers: HeaderInfo[] = unknownHeaders.map((result) => ({
+    // Carry host through to the table so operators can see which response set
+    // the header (e.g. distinguish first-party CSP from a third-party CSP).
+    const headers: HeaderAlertRow[] = unknownHeaders.map((result) => ({
       name: result.header.name,
       value: result.header.value,
+      ...(result.header.url !== undefined ? { url: result.header.url } : {}),
+      detectedTarget: result.target,
     }))
 
     const messagePayload = this.createHeaderMessagePayload(message, headers, target, destination)
@@ -220,7 +232,11 @@ export class SlackAlertService implements IAlertService {
   }
 
   /**
-   * Converts DetectedScript from comparison result to ScriptInfo for legacy alert compatibility.
+   * Converts DetectedScript from comparison result to ScriptInfo for legacy
+   * alert compatibility. `detectedScript.url` (the initiator URL for inline
+   * scripts, the script's own URL for external) is propagated into the
+   * resulting source so the alert table can render a Host column derived
+   * from it via extractHost.
    */
   private detectedScriptToScriptInfo(detectedScript: any): ScriptInfo {
     // Parse script name to determine type (URL vs inline ID)
@@ -240,10 +256,20 @@ export class SlackAlertService implements IAlertService {
           type: 'inline',
           id: detectedScript.name,
           content: detectedScript.content ?? '',
+          ...(detectedScript.url !== undefined ? { url: detectedScript.url } : {}),
         },
         hash: detectedScript.hash,
       }
     }
+  }
+
+  /**
+   * Returns the originating URL for a ScriptInfo: external scripts use the
+   * script's own URL, inline scripts use the initiator URL captured by the
+   * page-attribution shim. Returned as `undefined` when neither applies.
+   */
+  private getScriptUrl(scriptInfo: ScriptInfo): string | undefined {
+    return scriptInfo.source.type === 'external' ? scriptInfo.source.url : scriptInfo.source.url
   }
 
   private async sendMessage(messagePayload: object): Promise<void> {
@@ -295,10 +321,10 @@ export class SlackAlertService implements IAlertService {
         },
         {
           type: 'table',
-          column_settings: [{ is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }],
+          column_settings: [{ is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }],
           rows: [
-            [this.buildBoldHeaderCell('Identifier'), this.buildBoldHeaderCell('Hash'), this.buildBoldHeaderCell('Content Snippet'), this.buildBoldHeaderCell('Suggested AI Prompt')],
-            ...scripts.slice(0, 19).map((scriptInfo) => [...this.scriptInfoToTableItem(scriptInfo), this.buildRichTextCell(this.buildScriptAiPrompt(scriptInfo, target))]),
+            [this.buildBoldHeaderCell('Identifier'), this.buildBoldHeaderCell('Hash'), this.buildBoldHeaderCell('Content Snippet'), this.buildBoldHeaderCell('Host'), this.buildBoldHeaderCell('Suggested AI Prompt')],
+            ...scripts.slice(0, 19).map((scriptInfo) => [...this.scriptInfoToTableItem(scriptInfo), this.buildRichTextCell(extractHost(this.getScriptUrl(scriptInfo))), this.buildRichTextCell(this.buildScriptAiPrompt(scriptInfo, target))]),
           ],
         },
         ...(target.type === 'inventory'
@@ -379,10 +405,21 @@ export class SlackAlertService implements IAlertService {
         },
         {
           type: 'table',
-          column_settings: [{ is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }],
+          column_settings: [{ is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }],
           rows: [
-            [this.buildBoldHeaderCell('Identifier'), this.buildBoldHeaderCell('Hash'), this.buildBoldHeaderCell('Content'), this.buildBoldHeaderCell('Failure Reason'), this.buildBoldHeaderCell('Suggested AI Prompt')],
-            ...unauthorizedScripts.slice(0, 19).map((result) => [...this.unauthorizedScriptToTableItem(result), this.buildRichTextCell(this.buildUnauthorizedScriptAiPrompt(result))]),
+            [
+              this.buildBoldHeaderCell('Identifier'),
+              this.buildBoldHeaderCell('Hash'),
+              this.buildBoldHeaderCell('Content'),
+              this.buildBoldHeaderCell('Host'),
+              this.buildBoldHeaderCell('Failure Reason'),
+              this.buildBoldHeaderCell('Suggested AI Prompt'),
+            ],
+            ...unauthorizedScripts.slice(0, 19).map((result) => {
+              const row = this.unauthorizedScriptToTableItem(result)
+              // Splice the host cell in between Content and Failure Reason so column order matches the header row.
+              return [...row.slice(0, 3), this.buildRichTextCell(extractHost(result.script.url)), ...row.slice(3), this.buildRichTextCell(this.buildUnauthorizedScriptAiPrompt(result))]
+            }),
           ],
         },
         ...(target.type === 'inventory'
@@ -542,9 +579,9 @@ export class SlackAlertService implements IAlertService {
         },
         {
           type: 'table',
-          column_settings: [{ is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }],
+          column_settings: [{ is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }],
           rows: [
-            [this.buildBoldHeaderCell('Header Name'), this.buildBoldHeaderCell('Value'), this.buildBoldHeaderCell('Failure Reason'), this.buildBoldHeaderCell('Suggested AI Prompt')],
+            [this.buildBoldHeaderCell('Header Name'), this.buildBoldHeaderCell('Value'), this.buildBoldHeaderCell('Host'), this.buildBoldHeaderCell('Failure Reason'), this.buildBoldHeaderCell('Suggested AI Prompt')],
             ...unauthorizedHeaders.slice(0, 19).map((result) => [...this.unauthorizedHeaderToTableItem(result), this.buildRichTextCell(this.buildUnauthorizedHeaderAiPrompt(result))]),
           ],
         },
@@ -583,6 +620,7 @@ export class SlackAlertService implements IAlertService {
     const matcherType = result.authorizationMatcher.getType()
     const pattern = JSON.stringify(result.authorizationMatcher.getPattern())
     const failureReason = `${matcherType}Matcher failed: ${result.failureReason} (expected: ${pattern})`
+    const hostCell = this.buildRichTextCell(extractHost(result.header.url))
 
     return [
       {
@@ -613,6 +651,7 @@ export class SlackAlertService implements IAlertService {
           },
         ],
       },
+      hostCell,
       {
         type: 'rich_text',
         elements: [
@@ -630,7 +669,7 @@ export class SlackAlertService implements IAlertService {
     ]
   }
 
-  private createHeaderMessagePayload(title: string, headers: HeaderInfo[], target: Target, destination: AlertDestination): object {
+  private createHeaderMessagePayload(title: string, headers: HeaderAlertRow[], target: Target, destination: AlertDestination): object {
     return {
       channel: destination.destination,
       blocks: [
@@ -674,10 +713,10 @@ export class SlackAlertService implements IAlertService {
         },
         {
           type: 'table',
-          column_settings: [{ is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }],
+          column_settings: [{ is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }],
           rows: [
-            [this.buildBoldHeaderCell('Header Name'), this.buildBoldHeaderCell('Value'), this.buildBoldHeaderCell('Suggested AI Prompt')],
-            ...headers.slice(0, 19).map((headerInfo) => [...this.headerInfoToTableItem(headerInfo), this.buildRichTextCell(this.buildHeaderAiPrompt(headerInfo, target))]),
+            [this.buildBoldHeaderCell('Header Name'), this.buildBoldHeaderCell('Value'), this.buildBoldHeaderCell('Host'), this.buildBoldHeaderCell('Suggested AI Prompt')],
+            ...headers.slice(0, 19).map((row) => [...this.headerInfoToTableItem({ name: row.name, value: row.value }), this.buildRichTextCell(extractHost(row.url)), this.buildRichTextCell(this.buildHeaderAiPrompt(row, target))]),
           ],
         },
         ...(target.type === 'inventory'
@@ -859,7 +898,12 @@ export class SlackAlertService implements IAlertService {
    */
   private buildScriptAiPrompt(script: ScriptInfo, target: Target): string {
     const identifier = script.source.type === 'external' ? script.source.url : script.source.id
-    return `Add a new entry to the inventory file for target ${target.url} authorising script "${identifier}" with SHA-256 hash ${script.hash.value}. Use a NameMatcher on the URL for identification and a HashMatcher for authorisation. Include authorisationInfo with a description and today's date.`
+    const originUrl = this.getScriptUrl(script)
+    const provenanceHint =
+      script.source.type === 'inline' && originUrl
+        ? ` This inline script was injected by "${originUrl}" (host: ${extractHost(originUrl)}); if it should only be authorised when initiated by that origin, combine the ContentMatcher with a HostMatcher (host-only) or UrlMatcher (full-URL precision) under an AndMatcher in identifyWith.`
+        : ''
+    return `Add a new entry to the inventory file for target ${target.url} authorising script "${identifier}" with SHA-256 hash ${script.hash.value}.${provenanceHint} Use a NameMatcher on the URL for identification and a HashMatcher for authorisation. Include authorisationInfo with a description and today's date.`
   }
 
   /**
@@ -869,21 +913,26 @@ export class SlackAlertService implements IAlertService {
   private buildUnauthorizedScriptAiPrompt(result: KnownScriptWithUnauthorisedContentFound): string {
     const scriptInfo = this.detectedScriptToScriptInfo(result.script)
     const identifier = scriptInfo.source.type === 'external' ? scriptInfo.source.url : scriptInfo.source.id
-    return `In the inventory file for target ${result.target.url}, the existing entry that identifies "${identifier}" failed authorisation (${result.failureReason}). Either add the new SHA-256 hash ${result.script.hash.value} to its authoriseWith.hashes list with today's timestamp, or investigate the change before authorising.`
+    const provenanceHint = result.script.url ? ` Note: this script's originating URL was "${result.script.url}" (host: ${extractHost(result.script.url)}).` : ''
+    return `In the inventory file for target ${result.target.url}, the existing entry that identifies "${identifier}" failed authorisation (${result.failureReason}). Either add the new SHA-256 hash ${result.script.hash.value} to its authoriseWith.hashes list with today's timestamp, or investigate the change before authorising.${provenanceHint}`
   }
 
   /**
    * Suggested AI prompt for a previously-unknown header.
    */
-  private buildHeaderAiPrompt(header: HeaderInfo, target: Target): string {
-    return `Add a new entry to the inventory file for target ${target.url} authorising response header "${header.name}" with value "${header.value}". Use a HeaderNameMatcher for identification and a ContentMatcher for authorisation. Include authorisationInfo with a description and today's date.`
+  private buildHeaderAiPrompt(header: HeaderAlertRow, target: Target): string {
+    const provenanceHint = header.url
+      ? ` This header was emitted by "${header.url}" (host: ${extractHost(header.url)}) — if it should only be authorised from that origin, combine the HeaderNameMatcher with a HostMatcher (host-only) or UrlMatcher (full-URL precision) under an AndMatcher in identifyWith.`
+      : ''
+    return `Add a new entry to the inventory file for target ${target.url} authorising response header "${header.name}" with value "${header.value}".${provenanceHint} Use a HeaderNameMatcher for identification and a ContentMatcher for authorisation. Include authorisationInfo with a description and today's date.`
   }
 
   /**
    * Suggested AI prompt for a known header whose value failed authorisation.
    */
   private buildUnauthorizedHeaderAiPrompt(result: KnownHeaderWithUnauthorisedContentFound): string {
-    return `In the inventory file for target ${result.target.url}, the existing entry that identifies header "${result.header.name}" failed authorisation (${result.failureReason}). Update its authoriseWith matcher to allow the new value "${result.header.value}" with today's date, or investigate before authorising.`
+    const provenanceHint = result.header.url ? ` Note: this value was emitted by "${result.header.url}" (host: ${extractHost(result.header.url)}).` : ''
+    return `In the inventory file for target ${result.target.url}, the existing entry that identifies header "${result.header.name}" failed authorisation (${result.failureReason}). Update its authoriseWith matcher to allow the new value "${result.header.value}" with today's date, or investigate before authorising.${provenanceHint}`
   }
 
   /**
