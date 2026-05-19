@@ -1003,6 +1003,84 @@ describe('ScriptInventoryService', () => {
         expect(diff.appliedResults).toEqual([result])
       })
 
+      it('appends a new content matcher to the right entry when identifyWith is an andMatcher of [headerNameMatcher, hostMatcher] (regression: script-inventory#92 shape)', async () => {
+        // The 2026-05-19 script-inventory migration replaced single name-only
+        // CSP entries with N per-host entries, each using a composite
+        // `andMatcher: [headerNameMatcher, hostMatcher]` in `identifyWith`.
+        // The diff gate looks at `authoriseWith.matcher` (an OrMatcher from
+        // array syntax), not `identifyWith`, so this should work — but no
+        // existing test pinned it down. This one does.
+
+        // Two per-host CSP entries with composite identifyWith, mirroring
+        // the script-inventory shape. Each only authorises one directive
+        // today; the new value below should land in the m.stripe.network
+        // bucket, not the meandu one.
+        const meanduEntry = rawInventoryHeaderInfoToInventoryHeaderInfo({
+          identifyWith: {
+            andMatcher: [{ headerNameMatcher: '^content-security-policy$' }, { hostMatcher: '^app-dev\\.meandu\\.com$' }],
+          },
+          authoriseWith: [
+            {
+              contentMatcher: '^frame-ancestors https:\\/\\/\\*\\.meandu\\.com$',
+              authorisationInfo: { description: 'Me&u (first-party)', authorised: true, date: '2026-05-19T00:00:00.000Z' },
+            },
+          ],
+        })
+        const stripeEntry = rawInventoryHeaderInfoToInventoryHeaderInfo({
+          identifyWith: {
+            andMatcher: [{ headerNameMatcher: '^content-security-policy$' }, { hostMatcher: '^m\\.stripe\\.network$' }],
+          },
+          authoriseWith: [
+            {
+              contentMatcher: "^default-src 'self'$",
+              authorisationInfo: { description: 'Stripe', authorised: true, date: '2026-05-19T00:00:00.000Z' },
+            },
+          ],
+        })
+
+        const inventory: Inventory = { ...createMockInventory([]), headers: [meanduEntry, stripeEntry] }
+
+        // A new CSP value arrives from m.stripe.network that doesn't match
+        // any existing content matcher in the Stripe bucket. The comparison
+        // service would have already identified the Stripe entry via
+        // andMatcher, so the result references that entry.
+        const target = createMockTarget()
+        const newValue = "object-src 'none'"
+        const result = new KnownHeaderWithUnauthorisedContentFound(
+          target,
+          new Date('2026-05-19T00:00:00.000Z'),
+          { name: 'content-security-policy', value: newValue, target, workflow: target.workflow, url: 'https://m.stripe.network/something.js' },
+          stripeEntry,
+          stripeEntry.authoriseWith.matcher,
+          'no child matched',
+        )
+
+        const diff = await service.diff(inventory, [result])
+
+        // 1. The new content matcher landed in the Stripe entry only.
+        const updatedStripe = inventoryHeaderInfoToRawInventoryHeaderInfo(diff.newInventory.headers[1]!)
+        expect(Array.isArray(updatedStripe.authoriseWith)).toBe(true)
+        if (!Array.isArray(updatedStripe.authoriseWith)) return
+        expect(updatedStripe.authoriseWith).toHaveLength(2)
+        const newPatterns = updatedStripe.authoriseWith.filter((m: any): m is { contentMatcher: string } => 'contentMatcher' in m).map((m) => m.contentMatcher)
+        expect(newPatterns).toContain("^object-src 'none'$")
+
+        // 2. The meandu entry is untouched (no result targeted it).
+        const updatedMeandu = inventoryHeaderInfoToRawInventoryHeaderInfo(diff.newInventory.headers[0]!)
+        expect(Array.isArray(updatedMeandu.authoriseWith)).toBe(true)
+        if (!Array.isArray(updatedMeandu.authoriseWith)) return
+        expect(updatedMeandu.authoriseWith).toHaveLength(1)
+
+        // 3. The Stripe entry's composite identifyWith is preserved structurally
+        //    — the matcher type and child shape are the same after round-trip.
+        expect(updatedStripe.identifyWith).toEqual({
+          andMatcher: [{ headerNameMatcher: '^content-security-policy$' }, { hostMatcher: '^m\\.stripe\\.network$' }],
+        })
+
+        // 4. The result is reported as applied.
+        expect(diff.appliedResults).toEqual([result])
+      })
+
       it('marks UnknownScriptFound and UnknownHeaderFound as applied unconditionally', async () => {
         const inventory = createMockInventory([])
         const target = createMockTarget()
