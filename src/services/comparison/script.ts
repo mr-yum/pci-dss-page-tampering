@@ -58,7 +58,10 @@ export class ScriptComparisonService implements IScriptComparisonService {
   private scriptInfoToDetectedScript(scriptInfo: ScriptInfo): DetectedScript {
     const name = getScriptSource(scriptInfo)
     const content = scriptInfo.source.type === 'inline' ? scriptInfo.source.content : name
-    const url = scriptInfo.source.type === 'external' ? scriptInfo.source.url : scriptInfo.source.url
+    // Both source variants carry `url` directly — external (its own URL,
+    // always populated) and inline (initiator URL, optional). The discriminated
+    // union narrows the type for us; no ternary needed.
+    const url = scriptInfo.source.url
 
     return {
       name,

@@ -46,7 +46,9 @@ export const INLINE_SCRIPT_ATTRIBUTION_SCRIPT = `
       }
       return location.href
     } catch (e) {
-      return null
+      // Fail soft to the page URL rather than dropping attribution entirely —
+      // matches the documented fallback for parser-inserted scripts.
+      try { return location.href } catch (e2) { return null }
     }
   }
 
