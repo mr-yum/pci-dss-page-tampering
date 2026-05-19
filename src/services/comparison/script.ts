@@ -6,6 +6,7 @@ import type { DetectedScript } from '../../types/matcher/matcher.interface'
 import type { ScriptDetectionSummary, ScriptInfo } from '../../types/script'
 import type { Target } from '../../types/target'
 import { getScriptSource } from '../../utils/script'
+import { extractHost } from '../../utils/url'
 
 export class ScriptComparisonService implements IScriptComparisonService {
   /**
@@ -44,35 +45,26 @@ export class ScriptComparisonService implements IScriptComparisonService {
   /**
    * Converts ScriptInfo to DetectedScript format for matcher operations.
    *
-   * Note: For external scripts, we use the URL as both name AND content.
-   * This maintains backward compatibility with the old behavior where contentMatcher
-   * was tested against getScriptSource(script) which returns the URL for external scripts.
+   * For external scripts: name and content are the URL (matching the
+   * pre-refactor behaviour of ContentMatcher against `getScriptSource`).
+   * For inline scripts: name is the ID, content is the actual source.
    *
-   * For inline scripts, name is the ID and content is the actual script content.
-   *
-   * `host` is populated for external scripts (extracted from the URL) so a
-   * HostMatcher in identifyWith/authoriseWith can discriminate by origin.
-   * Inline scripts leave host undefined — HostMatcher fails-secure on those.
+   * `url` is populated for both — external scripts use `source.url`
+   * directly, inline scripts use the initiator URL captured by the
+   * page-attribution shim (`InlineScriptSource.url`). `HostMatcher` /
+   * `UrlMatcher` consume this single field; both fail-secure when it's
+   * missing.
    */
   private scriptInfoToDetectedScript(scriptInfo: ScriptInfo): DetectedScript {
     const name = getScriptSource(scriptInfo)
     const content = scriptInfo.source.type === 'inline' ? scriptInfo.source.content : name
-    const host = scriptInfo.source.type === 'external' ? this.extractHost(scriptInfo.source.url) : undefined
+    const url = scriptInfo.source.type === 'external' ? scriptInfo.source.url : scriptInfo.source.url
 
     return {
       name,
       content,
       hash: scriptInfo.hash,
-      ...(host !== undefined ? { host } : {}),
-    }
-  }
-
-  private extractHost(rawUrl: string): string | undefined {
-    try {
-      const host = new URL(rawUrl).host
-      return host.length > 0 ? host : undefined
-    } catch {
-      return undefined
+      ...(url !== undefined ? { url } : {}),
     }
   }
 
@@ -94,9 +86,15 @@ export class ScriptComparisonService implements IScriptComparisonService {
     const detectedScript = this.scriptInfoToDetectedScript(script)
     const timestamp = new Date()
 
+    // Mirror the header format — lead log lines with `Script '<host>':'<identifier>'`
+    // so operators can scan provenance at a glance. Host derived from the
+    // attribution URL (external → script URL; inline → initiator URL captured
+    // by the page-attribution shim).
+    const scriptLabel = `Script '${extractHost(detectedScript.url)}':'${scriptSourceValue}'`
+
     // T055: Null/empty content handling - fail-secure (per clarification Q3)
     if (!detectedScript.content || detectedScript.content.trim() === '') {
-      target.logger.log(`Script '${scriptSourceValue}' has null/empty content, treating as new script.`)
+      target.logger.log(`${scriptLabel} has null/empty content, treating as new script.`)
       return new UnknownScriptFound(target, timestamp, detectedScript)
     }
 
@@ -105,13 +103,13 @@ export class ScriptComparisonService implements IScriptComparisonService {
 
     // T055: Script not identified in inventory
     if (!matchedEntry) {
-      target.logger.log(`Script '${scriptSourceValue}' not identified in inventory (no identifyWith matcher matched).`)
+      target.logger.log(`${scriptLabel} not identified in inventory (no identifyWith matcher matched).`)
       return new UnknownScriptFound(target, timestamp, detectedScript)
     }
 
     // Log successful identification with matcher details
     const identifyDescription = matchedEntry.identifyWith.getDescription()
-    target.logger.log(`Script '${scriptSourceValue}' identified using ${identifyDescription}.`)
+    target.logger.log(`${scriptLabel} identified using ${identifyDescription}.`)
 
     // Authorization using authoriseWith matcher
     const authorizationResult = matchedEntry.authoriseWith.matcher.authorize(detectedScript)
@@ -124,7 +122,7 @@ export class ScriptComparisonService implements IScriptComparisonService {
     const fullPath = [matchedEntry.authoriseWith.authorisationInfo, ...(authorizationResult.metadataPath ?? [])]
     const metadataPathDesc = fullPath.length > 0 ? ` Auth: ${fullPath.map((m) => m.description).join(' > ')}` : ''
 
-    target.logger.log(`Script '${scriptSourceValue}' authorization via ${authorizeDescription}: ${authStatus}.${metadataPathDesc}`)
+    target.logger.log(`${scriptLabel} authorization via ${authorizeDescription}: ${authStatus}.${metadataPathDesc}`)
 
     // T056: Known script but unauthorized content
     // T029: Pass metadataPath from AuthorizationResult for composite matcher support

@@ -9,6 +9,7 @@ import { ExecutionMode } from '../../types/config'
 import type { ExecutionSummary } from '../../types/execution-summary'
 import type { InventoryAlert } from '../../types/inventory/model'
 import type { Target } from '../../types/target'
+import { extractHost } from '../../utils/url'
 
 /**
  * T042: Console-based alert service for local development and testing.
@@ -69,6 +70,7 @@ export class ConsoleAlertService implements IAlertService {
       const hash = result.script.hash.value
       console.log(`    ${index + 1}. ${this.truncate(identifier)}`)
       console.log(`       Hash: ${this.truncate(hash)}`)
+      console.log(`       From host: ${extractHost(result.script.url)} (url: ${result.script.url || '(unknown)'})`)
     })
     console.log()
   }
@@ -87,6 +89,7 @@ export class ConsoleAlertService implements IAlertService {
       const outcome = target.type === 'inventory' && inventoryUpdatedResults ? (inventoryUpdatedResults.has(result) ? 'inventory auto-updated' : 'manual review required (inventory unchanged)') : null
       console.log(`    ${index + 1}. ${this.truncate(identifier)}`)
       console.log(`       Hash: ${this.truncate(hash)}`)
+      console.log(`       From host: ${extractHost(result.script.url)} (url: ${result.script.url || '(unknown)'})`)
       console.log(`       Failed Matcher: ${matcherType}`)
       console.log(`       Reason: ${reason}`)
       if (outcome !== null) {
@@ -105,7 +108,7 @@ export class ConsoleAlertService implements IAlertService {
     headers.forEach((result, index) => {
       console.log(`    ${index + 1}. ${result.header.name}`)
       console.log(`       Value: ${this.truncate(result.header.value)}`)
-      console.log(`       From host: ${result.header.host || '(unknown)'}`)
+      console.log(`       From host: ${extractHost(result.header.url)} (url: ${result.header.url || '(unknown)'})`)
     })
     console.log()
   }
@@ -122,7 +125,7 @@ export class ConsoleAlertService implements IAlertService {
       const outcome = target.type === 'inventory' && inventoryUpdatedResults ? (inventoryUpdatedResults.has(result) ? 'inventory auto-updated' : 'manual review required (inventory unchanged)') : null
       console.log(`    ${index + 1}. ${result.header.name}`)
       console.log(`       Value: ${this.truncate(result.header.value)}`)
-      console.log(`       From host: ${result.header.host || '(unknown)'}`)
+      console.log(`       From host: ${extractHost(result.header.url)} (url: ${result.header.url || '(unknown)'})`)
       console.log(`       Failed Matcher: ${matcherType}`)
       console.log(`       Reason: ${reason}`)
       if (outcome !== null) {

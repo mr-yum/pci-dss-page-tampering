@@ -113,6 +113,14 @@ export function inventoryHeaderInfoToRawInventoryHeaderInfo(headerInfo: Inventor
         }
         return config
       }
+      case 'url': {
+        const config: any = { urlMatcher: pattern as string }
+        const authInfo = (matcher as any).getAuthorisationInfo?.()
+        if (authInfo) {
+          config.authorisationInfo = serializeAuthorisationInfo(authInfo)
+        }
+        return config
+      }
       case 'hash': {
         const config: any = { hashes: pattern as import('../types/inventory/model').InventoryScriptHashInfo[] }
         const authInfo = (matcher as any).getAuthorisationInfo?.()

@@ -59,16 +59,23 @@ export interface Matchable {
   hash?: SHA256Hash
 
   /**
-   * Optional originating host. Populated for response-derived resources
-   * (HTTP headers, external scripts) so matchers can discriminate by
-   * provenance — e.g. an inventory entry can require a CSP `default-src`
-   * directive to come from `*.meandu.app`, not from a third-party domain.
+   * Optional originating URL. The single source of truth for provenance —
+   * `HostMatcher` derives the host portion from this on the fly,
+   * `UrlMatcher` matches the full URL directly.
    *
-   * Undefined when host doesn't apply (e.g. inline scripts) or wasn't
-   * captured. HostMatcher fails-secure (returns false / unauthorized) when
-   * this is missing.
+   * Populated for:
+   *   - Response headers: the URL of the response that emitted the header.
+   *   - External scripts: the script's own URL.
+   *   - Inline scripts: the initiator URL captured at insertion time (the
+   *     URL of the script that called `appendChild` etc.), falling back to
+   *     `location.href` for parser-inserted inline scripts in the original
+   *     page HTML.
+   *
+   * Undefined when no URL applies or capture failed. `HostMatcher` /
+   * `UrlMatcher` both fail-secure (return false / unauthorized) when this
+   * is missing.
    */
-  host?: string
+  url?: string
 }
 
 /**
@@ -109,7 +116,7 @@ export interface Matcher<T extends Matchable = Matchable> {
    * Returns the matcher type discriminator.
    * Used for logging, debugging, and type narrowing.
    */
-  getType(): 'name' | 'header-name' | 'content' | 'hash' | 'host' | 'or' | 'and'
+  getType(): 'name' | 'header-name' | 'content' | 'hash' | 'host' | 'url' | 'or' | 'and'
 
   /**
    * Returns the pattern, hashes, or child matchers used by this matcher.

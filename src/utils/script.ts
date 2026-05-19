@@ -121,6 +121,14 @@ export function inventoryScriptInfoToRawInventoryScriptInfo(inventoryScriptInfo:
         }
         return config
       }
+      case 'url': {
+        const config: any = { urlMatcher: pattern as string }
+        const authInfo = (matcher as any).getAuthorisationInfo?.()
+        if (authInfo) {
+          config.authorisationInfo = serializeAuthorisationInfo(authInfo)
+        }
+        return config
+      }
       case 'hash': {
         // Shallow-clone the hashes array. HashMatcher.getPattern() returns its
         // internal `authorizedHashes` by reference; without the clone, callers

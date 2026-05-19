@@ -1,20 +1,21 @@
 /**
  * HostMatcher Unit Tests
  *
- * Covers identify/authorize semantics, fail-secure behaviour when `host` is
- * missing/empty, regex flexibility (wildcards, subdomains), and the metadata
- * path emitted when `authorisationInfo` is supplied.
+ * Verifies that `HostMatcher` derives the host from `Matchable.url`,
+ * matches it against the regex pattern, and fails-secure when the URL is
+ * missing or unparseable. Each test populates the `url` field — never `host`
+ * — because `host` is no longer part of the Matchable contract.
  */
 
 import type { SHA256Hash } from '../hash'
 import { HostMatcher } from './host-matcher'
 import type { Matchable } from './matcher.interface'
 
-const make = (host: string | undefined, name = 'res', content: string | null = 'c'): Matchable => ({
+const make = (url: string | undefined, name = 'res', content: string | null = 'c'): Matchable => ({
   name,
   content,
   hash: { value: 'h' } as SHA256Hash,
-  ...(host !== undefined ? { host } : {}),
+  ...(url !== undefined ? { url } : {}),
 })
 
 describe('HostMatcher', () => {
@@ -40,58 +41,76 @@ describe('HostMatcher', () => {
   })
 
   describe('identify', () => {
-    it('matches an exact host', () => {
-      expect(new HostMatcher('^cdn\\.example\\.com$').identify(make('cdn.example.com'))).toBe(true)
+    it('matches the host of a full URL', () => {
+      expect(new HostMatcher('^cdn\\.example\\.com$').identify(make('https://cdn.example.com/script.js'))).toBe(true)
+    })
+
+    it('ignores the URL path when matching', () => {
+      const m = new HostMatcher('^cdn\\.example\\.com$')
+      expect(m.identify(make('https://cdn.example.com/v1/foo.js?x=1'))).toBe(true)
+      expect(m.identify(make('https://cdn.example.com/'))).toBe(true)
     })
 
     it('matches a subdomain wildcard', () => {
-      const m = new HostMatcher('^[^.]+\\.meandu\\.app$')
-      expect(m.identify(make('staging.meandu.app'))).toBe(true)
-      expect(m.identify(make('app.meandu.app'))).toBe(true)
+      const m = new HostMatcher('^([^.]+\\.)*meandu\\.app$')
+      expect(m.identify(make('https://staging.meandu.app/x'))).toBe(true)
+      expect(m.identify(make('https://app.meandu.app/'))).toBe(true)
+      expect(m.identify(make('https://meandu.app/'))).toBe(true)
     })
 
     it('does not match a different host', () => {
-      expect(new HostMatcher('^cdn\\.example\\.com$').identify(make('attacker.example.com'))).toBe(false)
+      expect(new HostMatcher('^cdn\\.example\\.com$').identify(make('https://attacker.example.com/a.js'))).toBe(false)
     })
 
-    it('returns false when host is undefined (fail-secure for inline scripts)', () => {
+    it('returns false when url is undefined (fail-secure for hand-crafted fixtures)', () => {
       expect(new HostMatcher('^.*$').identify(make(undefined))).toBe(false)
     })
 
-    it('returns false when host is empty / whitespace only', () => {
+    it('returns false when url is empty / whitespace only', () => {
       expect(new HostMatcher('^.*$').identify(make(''))).toBe(false)
       expect(new HostMatcher('^.*$').identify(make('   '))).toBe(false)
+    })
+
+    it('returns false when url is unparseable', () => {
+      expect(new HostMatcher('^.*$').identify(make('not a url'))).toBe(false)
     })
   })
 
   describe('authorize', () => {
     it('authorises a matching host', () => {
-      const result = new HostMatcher('^cdn\\.example\\.com$').authorize(make('cdn.example.com'))
+      const result = new HostMatcher('^cdn\\.example\\.com$').authorize(make('https://cdn.example.com/script.js'))
       expect(result.authorized).toBe(true)
     })
 
     it('returns an unauthorised result with a useful reason for a mismatched host', () => {
-      const result = new HostMatcher('^cdn\\.example\\.com$').authorize(make('attacker.example.com'))
+      const result = new HostMatcher('^cdn\\.example\\.com$').authorize(make('https://attacker.example.com/a.js'))
       expect(result.authorized).toBe(false)
-      expect(result.reason).toContain('host does not match pattern')
+      expect(result.reason).toContain('host')
+      expect(result.reason).toContain('attacker.example.com')
       expect(result.reason).toContain('cdn\\.example\\.com')
     })
 
-    it('returns unauthorised when host is missing (fail-secure)', () => {
+    it('returns unauthorised when url is missing (fail-secure)', () => {
       const result = new HostMatcher('^.*$').authorize(make(undefined))
       expect(result.authorized).toBe(false)
-      expect(result.reason).toBe('host is null or empty')
+      expect(result.reason).toBe('url is missing or unparseable')
+    })
+
+    it('returns unauthorised when url is unparseable (fail-secure)', () => {
+      const result = new HostMatcher('^.*$').authorize(make('not a url'))
+      expect(result.authorized).toBe(false)
+      expect(result.reason).toBe('url is missing or unparseable')
     })
 
     it('includes authorisationInfo in metadataPath when supplied', () => {
       const matcher = new HostMatcher('^cdn\\.example\\.com$', {
         description: 'First-party CDN',
         authorised: true,
-        date: new Date('2026-05-13'),
+        date: new Date('2026-05-19'),
       })
-      const result = matcher.authorize(make('cdn.example.com'))
+      const result = matcher.authorize(make('https://cdn.example.com/x.js'))
       expect(result.authorized).toBe(true)
-      expect(result.metadataPath).toEqual([{ description: 'First-party CDN', authorised: true, date: new Date('2026-05-13') }])
+      expect(result.metadataPath).toEqual([{ description: 'First-party CDN', authorised: true, date: new Date('2026-05-19') }])
     })
   })
 })

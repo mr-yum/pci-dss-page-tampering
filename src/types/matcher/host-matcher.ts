@@ -1,25 +1,23 @@
 /**
  * HostMatcher Implementation
  *
- * Matches resources (scripts or response headers) by the host portion of the
- * originating URL using a regex pattern. The host is the value `Matchable.host`
- * carries — populated by the detection layer from `response.url()` (headers)
- * or the script URL (external scripts). Inline scripts and any resource where
- * the host couldn't be extracted leave `host` undefined; HostMatcher
- * fails-secure on those (returns false / unauthorized).
+ * Matches a resource (script or response header) by the host portion of its
+ * originating URL. `Matchable.url` is the single source of truth — this
+ * matcher derives the host from it on the fly so an inventory entry like
+ * `hostMatcher: "^([^.]+\\.)*meandu\\.app$"` matches every CSP directive
+ * emitted by any `*.meandu.app` response, regardless of path. Use
+ * `UrlMatcher` instead when you need to discriminate by path or query.
  *
- * Use cases:
- * - Restrict CSP directive authorisation to a known first-party host:
- *     identifyWith: andMatcher: [{ headerNameMatcher: "^content-security-policy$" },
- *                                 { hostMatcher: "^.*\\.meandu\\.app$" }]
- * - Authorise scripts only when served from a specific CDN:
- *     authoriseWith: { hostMatcher: "^cdn\\.example\\.com$", ... }
+ * `Matchable.url` is populated for:
+ *   - Response headers (URL of the emitting response).
+ *   - External scripts (the script's own URL).
+ *   - Inline scripts (initiator URL captured by the page-attribution shim).
  *
- * HostMatcher purposefully does NOT consume `content` — it only inspects the
- * origin, which means it can be combined with other matchers under
- * AndMatcher/OrMatcher to express "from this host AND with this content".
+ * HostMatcher fails-secure (returns false / unauthorized) when `url` is
+ * missing or unparseable.
  *
- * @see matcher.interface.ts for the Matchable contract (host? field)
+ * @see matcher.interface.ts — Matchable.url contract
+ * @see url-matcher.ts — sibling matcher for full-URL precision
  */
 
 import type { AuthorizationResult } from './authorization-result'
@@ -53,32 +51,40 @@ export class HostMatcher implements AuthorisationMatcher {
   }
 
   /**
-   * Fail-secure when `host` is missing. Inline scripts, blob URLs, or any
-   * resource the detection layer couldn't extract a host for will never
-   * identify under a HostMatcher — operators must use a different matcher
-   * (NameMatcher / ContentMatcher) for those.
+   * Extract host from `resource.url`. Returns `null` when url is missing or
+   * unparseable so callers can fail-secure uniformly across identify/authorize.
    */
-  identify(resource: Matchable): boolean {
-    if (!resource.host || resource.host.trim() === '') {
-      return false
+  private deriveHost(resource: Matchable): string | null {
+    if (!resource.url || resource.url.trim() === '') return null
+    try {
+      const host = new URL(resource.url).host
+      return host.length > 0 ? host : null
+    } catch {
+      return null
     }
-    return this.pattern.test(resource.host)
+  }
+
+  identify(resource: Matchable): boolean {
+    const host = this.deriveHost(resource)
+    if (host === null) return false
+    return this.pattern.test(host)
   }
 
   authorize(resource: Matchable): AuthorizationResult {
-    if (!resource.host || resource.host.trim() === '') {
+    const host = this.deriveHost(resource)
+    if (host === null) {
       return {
         authorized: false,
-        reason: 'host is null or empty',
+        reason: 'url is missing or unparseable',
       }
     }
 
-    const matches = this.pattern.test(resource.host)
+    const matches = this.pattern.test(host)
     const result: AuthorizationResult = matches
       ? { authorized: true }
       : {
           authorized: false,
-          reason: `host does not match pattern: ${this.pattern.source}`,
+          reason: `host '${host}' does not match pattern: ${this.pattern.source}`,
         }
 
     if (this.authorisationInfo) {

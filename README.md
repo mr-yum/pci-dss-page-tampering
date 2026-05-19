@@ -385,6 +385,60 @@ For complex authorization policies, `authoriseWith` supports composite matchers:
 }
 ```
 
+### HostMatcher / UrlMatcher (provenance)
+
+Every detected resource carries a single `url` field that captures where it
+came from — for response headers it's the URL of the response that emitted
+the header, for external scripts it's the script's own URL, and for inline
+scripts it's the URL of the script that initiated the insertion (captured
+at insertion time via a `MutationObserver`-style shim, falling back to the
+page's own URL for parser-inserted inline scripts).
+
+`hostMatcher` derives the host portion of that URL and matches a regex
+against it — use when the inventory only cares about origin. `urlMatcher`
+matches the full URL — use when path precision matters.
+
+**HostMatcher under AndMatcher** — restrict a CSP entry to a single origin:
+
+```json
+{
+  "identifyWith": {
+    "andMatcher": [{ "headerNameMatcher": "^content-security-policy$" }, { "hostMatcher": "^([^.]+\\.)*meandu\\.app$" }]
+  },
+  "authoriseWith": [
+    {
+      "contentMatcher": "^default-src 'self'$",
+      "authorisationInfo": { "description": "First-party CSP baseline", "authorised": true, "date": "2026-05-19T00:00:00.000Z" }
+    }
+  ]
+}
+```
+
+This entry matches a `content-security-policy` header **only** when its
+response came from a `*.meandu.app` host. The same `default-src 'self'`
+emitted by a third-party domain (e.g. Stripe) will not match this entry —
+operators can decide whether to add a separate entry for it or treat it
+as a violation.
+
+**UrlMatcher** — restrict an external (or inline-via-initiator) script to
+a specific URL pattern:
+
+```json
+{
+  "identifyWith": { "urlMatcher": "^https://m\\.stripe\\.network/out-[0-9.]+\\.js$" },
+  "authoriseWith": {
+    "hashes": [{ "timestamp": "2026-05-19T00:00:00.000Z", "hash": { "value": "abc..." } }],
+    "authorisationInfo": { "description": "Stripe outer-window utility", "authorised": true, "date": "2026-05-19T00:00:00.000Z" }
+  }
+}
+```
+
+Because inline scripts are also tagged with their initiator's URL, the
+same `hostMatcher` / `urlMatcher` semantics apply to inline entries —
+useful when a third-party loader injects inline `<script>` elements and
+you want the inventory to refuse anything that's _not_ initiated by an
+approved origin.
+
 ### Validating Inventory
 
 To validate every inventory file in a local checkout of the inventory repo, use `--mode validate`:

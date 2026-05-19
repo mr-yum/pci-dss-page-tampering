@@ -4,19 +4,20 @@ import { headerResponseHandler } from '../handlers/header'
 import { scriptResponseHandler } from '../handlers/script'
 import type { IDetectionService } from '../interfaces/detection'
 import type { DetectionSummary } from '../types/detection'
-import type { HeaderHost, HeaderName } from '../types/header'
+import type { HeaderName, HeaderUrl } from '../types/header'
 import type { ScriptMatcher } from '../types/matcher'
 import type { PuppeteerClickAction, PuppeteerClickPopupAction, PuppeteerInputAction, PuppeteerLocatorAction, PuppeteerNavigateAction } from '../types/puppeteer'
 import type { ScriptInfo } from '../types/script'
 import type { Target } from '../types/target'
 import { getInlineScriptsFromPage } from '../utils/page'
+import { INLINE_SCRIPT_ATTRIBUTION_SCRIPT } from '../utils/page-attribution'
 import { getPuppeteerWorkflowFromTarget, stepsToPuppeteerLocatorAction } from '../utils/workflow'
 
 export class DetectionService implements IDetectionService {
   async detect(browser: Browser, target: Target, scriptContentMatchers: ScriptMatcher[]): Promise<DetectionSummary> {
     const externalScripts: ScriptInfo[] = []
     const internalScripts: ScriptInfo[] = []
-    const headers = new Map<HeaderName, Map<string, Set<HeaderHost>>>()
+    const headers = new Map<HeaderName, Map<string, Set<HeaderUrl>>>()
 
     const page = await browser.newPage()
     let puppeteerWorkflow: any = null
@@ -25,6 +26,11 @@ export class DetectionService implements IDetectionService {
       // Set timeouts to 120 seconds
       page.setDefaultTimeout(120000) // 120 seconds for all operations
       page.setDefaultNavigationTimeout(120000) // 120 seconds for navigation
+
+      // Install the inline-script attribution shim before any page script
+      // runs so we can tag each inserted <script> element with the URL of
+      // the script that initiated the insertion (see src/utils/page-attribution.ts).
+      await page.evaluateOnNewDocument(INLINE_SCRIPT_ATTRIBUTION_SCRIPT)
 
       // Bootstrap page
       page.on('response', (response) => scriptResponseHandler(response, externalScripts)).on('response', (response) => headerResponseHandler(response, headers))

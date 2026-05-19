@@ -1,20 +1,6 @@
 import type { HTTPResponse } from 'puppeteer'
 
-import type { HeaderDetectionSummary, HeaderHost } from '../types/header'
-
-/**
- * Extract the host portion of `response.url()` so the detection summary can
- * record which host emitted each header directive. Returns the empty string
- * for non-URL responses (e.g. blobs) — comparison still runs but HostMatcher
- * cannot meaningfully match.
- */
-function extractHost(rawUrl: string): string {
-  try {
-    return new URL(rawUrl).host
-  } catch {
-    return ''
-  }
-}
+import type { HeaderDetectionSummary, HeaderUrl } from '../types/header'
 
 export async function headerResponseHandler(response: HTTPResponse, detectedHeaders: HeaderDetectionSummary['headers']): Promise<void> {
   if (response.ok()) {
@@ -23,8 +9,10 @@ export async function headerResponseHandler(response: HTTPResponse, detectedHead
       const cspHeaderName = 'content-security-policy'
 
       if (headers[cspHeaderName]) {
-        const host = extractHost(response.url())
-        const valuesByDirective = detectedHeaders.get(cspHeaderName) ?? new Map<string, Set<HeaderHost>>()
+        // Store the full response URL — HostMatcher derives host from it,
+        // UrlMatcher matches the full URL. Both fail-secure on empty.
+        const url = response.url()
+        const valuesByDirective = detectedHeaders.get(cspHeaderName) ?? new Map<string, Set<HeaderUrl>>()
         const headerValue = headers[cspHeaderName]
         const splitHeaderValues = headerValue
           .split(';')
@@ -32,9 +20,9 @@ export async function headerResponseHandler(response: HTTPResponse, detectedHead
           .filter((value) => value.length !== 0)
 
         for (const value of splitHeaderValues) {
-          const hosts = valuesByDirective.get(value) ?? new Set<HeaderHost>()
-          hosts.add(host)
-          valuesByDirective.set(value, hosts)
+          const urls = valuesByDirective.get(value) ?? new Set<HeaderUrl>()
+          urls.add(url)
+          valuesByDirective.set(value, urls)
         }
         detectedHeaders.set(cspHeaderName, valuesByDirective)
       }

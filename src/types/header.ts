@@ -3,16 +3,17 @@ import type { Workflow } from './workflow'
 
 export type HeaderName = string
 export type HeaderValues = Set<string>
-export type HeaderHost = string
+export type HeaderUrl = string
 
 /**
  * Headers are keyed by name, then by individual directive/value, then by the
- * set of originating hosts that emitted that value. Hosts are tracked so
- * inventories can authorise CSP directives per-host (e.g. `default-src 'self'`
- * is fine from `*.meandu.app` but must be flagged from a third-party domain).
+ * set of originating response URLs that emitted that value. URLs are tracked
+ * (rather than just hosts) so inventories can authorise CSP directives at
+ * either host or path precision — `HostMatcher` derives the host from these
+ * URLs on the fly; `UrlMatcher` matches the full URL.
  */
 export type HeaderDetectionSummary = {
-  headers: Map<HeaderName, Map<string, Set<HeaderHost>>>
+  headers: Map<HeaderName, Map<string, Set<HeaderUrl>>>
 }
 
 export type HeaderInfo = {
@@ -26,12 +27,12 @@ export interface DetectedHeader {
   readonly target: Target
   readonly workflow: Workflow
   /**
-   * Host portion of the response URL that emitted this header (e.g.
-   * `m.stripe.network`). Populated by `headerResponseHandler` for all
-   * production-path responses. Optional because hand-crafted test fixtures
-   * and any future synthetic header source may omit it; downstream alert /
-   * matcher code falls back gracefully (HostMatcher fails-secure; alert UI
-   * shows "(unknown)").
+   * Full URL of the response that emitted this header (e.g.
+   * `https://m.stripe.network/out-4.5.45.js`). Populated by
+   * `headerResponseHandler` for all production-path responses. Optional
+   * because hand-crafted test fixtures may omit it; downstream alert / matcher
+   * code falls back gracefully (`HostMatcher` / `UrlMatcher` fail-secure;
+   * alert UI shows "(unknown)").
    */
-  readonly host?: string
+  readonly url?: string
 }
