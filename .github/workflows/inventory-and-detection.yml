@@ -26,18 +26,23 @@ jobs:
   run-inventory-and-detection:
     runs-on: ubuntu-latest
 
-    # Install and launch Chrome from a pristine workspace cache dir. The hosted
-    # runner image pre-seeds ~/.cache/puppeteer with a Chrome version folder that
-    # lacks the executable, which makes Puppeteer's installer skip the download
-    # and then fail to launch. A workspace path the image does not pre-seed
-    # avoids that, and is used by both the install step and the detection run.
-    env:
-      PUPPETEER_CACHE_DIR: ${{ github.workspace }}/.puppeteer-cache
+    # Run inside Puppeteer's official image, which ships Node 24, the Chrome
+    # build pinned by this Puppeteer version, and all of Chrome's system
+    # libraries. This removes the need to install Node, download Chrome, or
+    # apt-install Chrome's dependencies in the workflow itself.
+    #
+    # The image tag MUST track the `puppeteer` version in package.json so the
+    # bundled Chrome matches the build the app launches (Renovate keeps both in
+    # sync). Run as root so checkout, npm, and git can write the workspace; the
+    # app launches Chrome with --no-sandbox so root is safe.
+    container:
+      image: ghcr.io/puppeteer/puppeteer:24.43.0
+      options: --user root
 
-    strategy:
-      fail-fast: true
-      matrix:
-        node-version: [24.x]
+    # The image installs Chrome under pptruser's home; point Puppeteer at it so
+    # it is found when steps run as root (HOME=/root).
+    env:
+      PUPPETEER_CACHE_DIR: /home/pptruser/.cache/puppeteer
 
     steps:
       - name: Checkout code
@@ -49,88 +54,15 @@ jobs:
           [ -n "${{ secrets.SLACK_OAUTH_TOKEN }}" ] || { echo "SLACK_OAUTH_TOKEN secret is missing"; exit 1; }
           [ -n "${{ vars.INVENTORY_REPO_URL }}" ] || { echo "INVENTORY_REPO_URL variable is missing"; exit 1; }
 
-      - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v6
-        with:
-          node-version: ${{ matrix.node-version }}
-          cache: 'npm'
-
-      # Puppeteer downloads Chrome into ~/.cache/puppeteer, which is not part of
-      # the npm cache. Cache it separately, keyed on the lockfile so the cache is
-      # invalidated whenever the pinned Puppeteer (and therefore Chrome) changes.
-      - name: Cache Puppeteer browsers
-        uses: actions/cache@v5
-        with:
-          path: ${{ github.workspace }}/.puppeteer-cache
-          key: ${{ runner.os }}-puppeteer-${{ hashFiles('package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-puppeteer-
-
       - name: Install dependencies
-        # Skip Puppeteer's automatic browser download here: it runs unattended
-        # during npm ci and, on failure, leaves behind an empty version folder
-        # that blocks the later explicit install. The dedicated step below owns
-        # the browser download instead.
+        # Chrome is already baked into the image; skip Puppeteer's browser
+        # download during npm ci.
         env:
           PUPPETEER_SKIP_DOWNLOAD: 'true'
         run: |
           echo "📦 Installing dependencies..."
           npm ci
           echo "✅ Dependencies installed successfully"
-
-      - name: Install Puppeteer's Chrome browser
-        # Run the installed Puppeteer's own install script rather than
-        # `npx puppeteer browsers install chrome`: npx may fetch a different
-        # Puppeteer version, and a bare `chrome` installs the latest stable
-        # build instead of the exact version this Puppeteer launches. install.mjs
-        # downloads the pinned build (matching puppeteer-core) into ~/.cache/puppeteer.
-        run: |
-          echo "🌐 Installing the Chrome build pinned by Puppeteer..."
-          node node_modules/puppeteer/install.mjs
-          echo "Installed browser tree:"
-          ls -R "$PUPPETEER_CACHE_DIR"/chrome 2>/dev/null || echo "(no chrome dir)"
-          echo "✅ Chrome installed successfully"
-
-      - name: Install Chrome dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            ca-certificates \
-            fonts-liberation \
-            libappindicator3-1 \
-            libatk-bridge2.0-0 \
-            libatk1.0-0 \
-            libc6 \
-            libcairo2 \
-            libcups2 \
-            libdbus-1-3 \
-            libexpat1 \
-            libfontconfig1 \
-            libgbm1 \
-            libgcc1 \
-            libglib2.0-0 \
-            libgtk-3-0 \
-            libnspr4 \
-            libnss3 \
-            libpango-1.0-0 \
-            libpangocairo-1.0-0 \
-            libstdc++6 \
-            libx11-6 \
-            libx11-xcb1 \
-            libxcb1 \
-            libxcomposite1 \
-            libxcursor1 \
-            libxdamage1 \
-            libxext6 \
-            libxfixes3 \
-            libxi6 \
-            libxrandr2 \
-            libxrender1 \
-            libxss1 \
-            libxtst6 \
-            lsb-release \
-            wget \
-            xdg-utils
 
       - name: Run PCI DSS detection
         timeout-minutes: 30
