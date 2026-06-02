@@ -71,9 +71,14 @@ jobs:
           echo "✅ Dependencies installed successfully"
 
       - name: Install Puppeteer's Chrome browser
+        # Run the installed Puppeteer's own install script rather than
+        # `npx puppeteer browsers install chrome`: npx may fetch a different
+        # Puppeteer version, and a bare `chrome` installs the latest stable
+        # build instead of the exact version this Puppeteer launches. install.mjs
+        # downloads the pinned build (matching puppeteer-core) into ~/.cache/puppeteer.
         run: |
           echo "🌐 Installing the Chrome build pinned by Puppeteer..."
-          npx puppeteer browsers install chrome
+          node node_modules/puppeteer/install.mjs
           echo "✅ Chrome installed successfully"
 
       - name: Install Chrome dependencies
