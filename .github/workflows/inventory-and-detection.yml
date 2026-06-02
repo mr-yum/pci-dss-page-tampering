@@ -47,11 +47,28 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: 'npm'
 
+      # Puppeteer downloads Chrome into ~/.cache/puppeteer, which is not part of
+      # the npm cache. Cache it separately, keyed on the lockfile so the cache is
+      # invalidated whenever the pinned Puppeteer (and therefore Chrome) changes.
+      - name: Cache Puppeteer browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/puppeteer
+          key: ${{ runner.os }}-puppeteer-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-puppeteer-
+
       - name: Install dependencies
         run: |
           echo "📦 Installing dependencies..."
           npm ci
           echo "✅ Dependencies installed successfully"
+
+      - name: Install Puppeteer's Chrome browser
+        run: |
+          echo "🌐 Installing the Chrome build pinned by Puppeteer..."
+          npx puppeteer browsers install chrome
+          echo "✅ Chrome installed successfully"
 
       - name: Install Chrome dependencies
         run: |
