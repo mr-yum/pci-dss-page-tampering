@@ -26,6 +26,14 @@ jobs:
   run-inventory-and-detection:
     runs-on: ubuntu-latest
 
+    # Install and launch Chrome from a pristine workspace cache dir. The hosted
+    # runner image pre-seeds ~/.cache/puppeteer with a Chrome version folder that
+    # lacks the executable, which makes Puppeteer's installer skip the download
+    # and then fail to launch. A workspace path the image does not pre-seed
+    # avoids that, and is used by both the install step and the detection run.
+    env:
+      PUPPETEER_CACHE_DIR: ${{ github.workspace }}/.puppeteer-cache
+
     strategy:
       fail-fast: true
       matrix:
@@ -53,7 +61,7 @@ jobs:
       - name: Cache Puppeteer browsers
         uses: actions/cache@v5
         with:
-          path: ~/.cache/puppeteer
+          path: ${{ github.workspace }}/.puppeteer-cache
           key: ${{ runner.os }}-puppeteer-${{ hashFiles('package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-puppeteer-
@@ -79,6 +87,8 @@ jobs:
         run: |
           echo "🌐 Installing the Chrome build pinned by Puppeteer..."
           node node_modules/puppeteer/install.mjs
+          echo "Installed browser tree:"
+          ls -R "$PUPPETEER_CACHE_DIR"/chrome 2>/dev/null || echo "(no chrome dir)"
           echo "✅ Chrome installed successfully"
 
       - name: Install Chrome dependencies
