@@ -1,4 +1,12 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended"]
+  "extends": ["config:recommended"],
+  "packageRules": [
+    {
+      "description": "Keep the Puppeteer container image in lockstep with the puppeteer npm package. The CI workflow runs in ghcr.io/puppeteer/puppeteer, whose bundled Chrome must match the build the app launches. Cap the image below the next major so Renovate cannot bump it ahead of the (currently held) npm v25 upgrade; raise this when puppeteer itself moves to v25.",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["ghcr.io/puppeteer/puppeteer"],
+      "allowedVersions": "<25"
+    }
+  ]
 }
