@@ -9,19 +9,19 @@
  * - T027: Exhaustive type checking via TypeScript never
  */
 
-import type { ComparisonResultType } from '../../types/comparison'
-import { AuthorizedHeaderFound } from '../../types/comparison/authorized-header-found'
-import { AuthorizedScriptFound } from '../../types/comparison/authorized-script-found'
-import { KnownHeaderWithUnauthorisedContentFound } from '../../types/comparison/known-header-unauthorised-content-found'
-import { KnownScriptWithUnauthorisedContentFound } from '../../types/comparison/known-script-unauthorised-content-found'
-import { UnknownHeaderFound } from '../../types/comparison/unknown-header-found'
-import { UnknownScriptFound } from '../../types/comparison/unknown-script-found'
-import type { DetectedHeader } from '../../types/header'
-import type { InventoryAlert, InventoryHeaderInfo } from '../../types/inventory/model'
-import type { DetectedScript, Matcher } from '../../types/matcher/matcher.interface'
-import type { Target } from '../../types/target'
-import { createLogger } from '../../utils/logger'
-import { SlackAlertService } from './slack'
+import type { ComparisonResultType } from '../../types/comparison.js'
+import { AuthorizedHeaderFound } from '../../types/comparison/authorized-header-found.js'
+import { AuthorizedScriptFound } from '../../types/comparison/authorized-script-found.js'
+import { KnownHeaderWithUnauthorisedContentFound } from '../../types/comparison/known-header-unauthorised-content-found.js'
+import { KnownScriptWithUnauthorisedContentFound } from '../../types/comparison/known-script-unauthorised-content-found.js'
+import { UnknownHeaderFound } from '../../types/comparison/unknown-header-found.js'
+import { UnknownScriptFound } from '../../types/comparison/unknown-script-found.js'
+import type { DetectedHeader } from '../../types/header.js'
+import type { InventoryAlert, InventoryHeaderInfo } from '../../types/inventory/model.js'
+import type { DetectedScript, Matcher } from '../../types/matcher/matcher.interface.js'
+import type { Target } from '../../types/target.js'
+import { createLogger } from '../../utils/logger.js'
+import { SlackAlertService } from './slack.js'
 
 // Mock axios to prevent actual HTTP calls
 jest.mock('axios', () => ({
@@ -1063,8 +1063,8 @@ describe('SlackAlertService - Typed Results Handling (Phase 4)', () => {
  *   - Handles optional executionDuration
  *   - Error handling (logs and continues)
  */
-import { ExecutionMode } from '../../types/config'
-import type { ExecutionSummary } from '../../types/execution-summary'
+import { ExecutionMode } from '../../types/config.js'
+import type { ExecutionSummary } from '../../types/execution-summary.js'
 
 describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
   let service: SlackAlertService

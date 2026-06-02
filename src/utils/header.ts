@@ -1,7 +1,7 @@
-import type { HeaderName, HeaderValues } from '../types/header'
-import type { InventoryHeaderInfo } from '../types/inventory/model'
-import { createMatcher } from '../types/matcher/matcher-factory'
-import { escapeRegex } from './string'
+import type { HeaderName, HeaderValues } from '../types/header.js'
+import type { InventoryHeaderInfo } from '../types/inventory/model.js'
+import { createMatcher } from '../types/matcher/matcher-factory.js'
+import { escapeRegex } from './string.js'
 
 /**
  * Converts unauthorized headers to InventoryHeaderInfo entries for new header discovery.

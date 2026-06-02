@@ -8,9 +8,9 @@
  * @see ../../../specs/001-refactor-script-identification/data-model.md for design rationale
  */
 
-import type { SHA256Hash } from '../hash'
-import type { InventoryScriptHashInfo } from '../inventory/model'
-import type { AuthorizationResult } from './authorization-result'
+import type { SHA256Hash } from '../hash.js'
+import type { InventoryScriptHashInfo } from '../inventory/model.js'
+import type { AuthorizationResult } from './authorization-result.js'
 
 /**
  * Authorization metadata for matchers.

@@ -7,16 +7,16 @@
  * @see ../../../specs/001-refactor-script-identification/data-model.md for MatcherConfig schema
  */
 
-import type { InventoryScriptHashInfo } from '../inventory/model'
-import { AndMatcher } from './and-matcher'
-import { ContentMatcher } from './content-matcher'
-import { HashMatcher } from './hash-matcher'
-import { HeaderNameMatcher } from './header-name-matcher'
-import { HostMatcher } from './host-matcher'
-import type { AuthorisationInfo, Matcher } from './matcher.interface'
-import { NameMatcher } from './name-matcher'
-import { OrMatcher } from './or-matcher'
-import { UrlMatcher } from './url-matcher'
+import type { InventoryScriptHashInfo } from '../inventory/model.js'
+import { AndMatcher } from './and-matcher.js'
+import { ContentMatcher } from './content-matcher.js'
+import { HashMatcher } from './hash-matcher.js'
+import { HeaderNameMatcher } from './header-name-matcher.js'
+import { HostMatcher } from './host-matcher.js'
+import type { AuthorisationInfo, Matcher } from './matcher.interface.js'
+import { NameMatcher } from './name-matcher.js'
+import { OrMatcher } from './or-matcher.js'
+import { UrlMatcher } from './url-matcher.js'
 
 /**
  * Raw authorization info as it appears in JSON (with string date).

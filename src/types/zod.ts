@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import type { SHA256Hash } from './hash'
+import type { SHA256Hash } from './hash.js'
 
 /**
  * Schema for a SHA256 hash object.

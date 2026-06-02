@@ -1,5 +1,5 @@
-import type { Logger } from '../utils/logger'
-import type { Workflow } from './workflow'
+import type { Logger } from '../utils/logger.js'
+import type { Workflow } from './workflow.js'
 
 export type TargetInventory = Target & {
   type: 'inventory'
