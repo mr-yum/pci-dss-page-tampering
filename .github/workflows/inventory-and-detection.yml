@@ -32,11 +32,13 @@ jobs:
     # apt-install Chrome's dependencies in the workflow itself.
     #
     # The image tag MUST track the `puppeteer` version in package.json so the
-    # bundled Chrome matches the build the app launches (Renovate keeps both in
-    # sync). Run as root so checkout, npm, and git can write the workspace; the
-    # app launches Chrome with --no-sandbox so root is safe.
+    # bundled Chrome matches the build the app launches. A Renovate rule
+    # (renovate.json) caps this image below the next major so it cannot jump
+    # ahead of the npm package; bump both together when upgrading Puppeteer. Run
+    # as root so checkout, npm, and git can write the workspace; the app launches
+    # Chrome with --no-sandbox so root is safe.
     container:
-      image: ghcr.io/puppeteer/puppeteer:25.1.0
+      image: ghcr.io/puppeteer/puppeteer:24.43.1
       options: --user root
 
     # The image installs Chrome under pptruser's home; point Puppeteer at it so
