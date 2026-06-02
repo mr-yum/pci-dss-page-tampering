@@ -59,6 +59,12 @@ jobs:
             ${{ runner.os }}-puppeteer-
 
       - name: Install dependencies
+        # Skip Puppeteer's automatic browser download here: it runs unattended
+        # during npm ci and, on failure, leaves behind an empty version folder
+        # that blocks the later explicit install. The dedicated step below owns
+        # the browser download instead.
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: 'true'
         run: |
           echo "📦 Installing dependencies..."
           npm ci
