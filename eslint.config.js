@@ -1,6 +1,6 @@
 const js = require('@eslint/js')
 const tseslint = require('typescript-eslint')
-const importPlugin = require('eslint-plugin-import')
+const importPlugin = require('eslint-plugin-import-x')
 const simpleImportSort = require('eslint-plugin-simple-import-sort')
 const jestPlugin = require('eslint-plugin-jest')
 const prettierConfig = require('eslint-config-prettier')
@@ -19,12 +19,12 @@ module.exports = tseslint.config(
       },
     },
     plugins: {
-      import: importPlugin,
+      'import-x': importPlugin,
       'simple-import-sort': simpleImportSort,
     },
     rules: {
       'simple-import-sort/imports': 'error',
-      'import/no-duplicates': 'error',
+      'import-x/no-duplicates': 'error',
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-require-imports': 'off',
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],

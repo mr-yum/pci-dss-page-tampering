@@ -60,7 +60,7 @@ export class GitInventoryStore implements IInventoryStore {
         } catch (error) {
           // Enhanced error message with file context for Zod validation failures
           const errorMessage = error instanceof Error ? error.message : String(error)
-          throw new Error(`[Inventory → Store] Validation failed for inventory file '${fileName}': ${errorMessage}`)
+          throw new Error(`[Inventory → Store] Validation failed for inventory file '${fileName}': ${errorMessage}`, { cause: error })
         }
       }),
     )

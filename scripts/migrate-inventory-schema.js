@@ -107,7 +107,7 @@ function migrateInventory(inventory) {
       try {
         return migrateEntry(script)
       } catch (error) {
-        throw new Error(`Failed to migrate script at index ${index}: ${error.message}`)
+        throw new Error(`Failed to migrate script at index ${index}: ${error.message}`, { cause: error })
       }
     })
   }
@@ -119,7 +119,7 @@ function migrateInventory(inventory) {
       try {
         return migrateEntry(header)
       } catch (error) {
-        throw new Error(`Failed to migrate header at index ${index}: ${error.message}`)
+        throw new Error(`Failed to migrate header at index ${index}: ${error.message}`, { cause: error })
       }
     })
   } else if (typeof inventory.headers === 'object' && inventory.headers !== null) {
@@ -129,7 +129,7 @@ function migrateInventory(inventory) {
       try {
         migrated.headers[headerName] = migrateEntry(headerEntry)
       } catch (error) {
-        throw new Error(`Failed to migrate header "${headerName}": ${error.message}`)
+        throw new Error(`Failed to migrate header "${headerName}": ${error.message}`, { cause: error })
       }
     }
   }
@@ -304,7 +304,7 @@ async function findJsonFiles(dir) {
       }
     }
   } catch (error) {
-    throw new Error(`Failed to read directory ${dir}: ${error.message}`)
+    throw new Error(`Failed to read directory ${dir}: ${error.message}`, { cause: error })
   }
 
   return files
