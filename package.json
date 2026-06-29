@@ -76,6 +76,6 @@
   "license": "MIT",
   "overrides": {
     "form-data": "^4.0.6",
-    "piscina": "^4.9.3"
+    "piscina": "^5.0.0"
   }
 }
