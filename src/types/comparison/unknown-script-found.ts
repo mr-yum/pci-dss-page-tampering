@@ -6,9 +6,9 @@
  * @see specs/001-refactor-script-identification/data-model.md for entity definitions
  */
 
-import type { DetectedScript } from '../matcher/matcher.interface'
-import type { Target } from '../target'
-import { ComparisonResult } from './comparison-result'
+import type { DetectedScript } from '../matcher/matcher.interface.js'
+import type { Target } from '../target.js'
+import { ComparisonResult } from './comparison-result.js'
 
 /**
  * Result indicating a detected script with no matching inventory entry.

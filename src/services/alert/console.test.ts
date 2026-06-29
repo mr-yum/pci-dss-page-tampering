@@ -12,10 +12,10 @@
  *   - Logs optional executionDuration when provided
  */
 
-import { ExecutionMode } from '../../types/config'
-import type { ExecutionSummary } from '../../types/execution-summary'
-import type { InventoryAlert } from '../../types/inventory/model'
-import { ConsoleAlertService } from './console'
+import { ExecutionMode } from '../../types/config.js'
+import type { ExecutionSummary } from '../../types/execution-summary.js'
+import type { InventoryAlert } from '../../types/inventory/model.js'
+import { ConsoleAlertService } from './console.js'
 
 describe('ConsoleAlertService - alertOnSuccess (Phase 3)', () => {
   let service: ConsoleAlertService

@@ -1,8 +1,8 @@
-import type { Inventory, InventoryAuthorisationInfo, InventoryHeaderInfo, InventoryScriptInfo } from '../types/inventory/model'
-import type { RawInventory, RawInventoryHeaderInfo } from '../types/inventory/raw'
-import { processAuthorizeWith } from '../types/inventory/zod'
-import { createMatcher } from '../types/matcher/matcher-factory'
-import { inventoryScriptInfoToRawInventoryScriptInfo } from './script'
+import type { Inventory, InventoryAuthorisationInfo, InventoryHeaderInfo, InventoryScriptInfo } from '../types/inventory/model.js'
+import type { RawInventory, RawInventoryHeaderInfo } from '../types/inventory/raw.js'
+import { processAuthorizeWith } from '../types/inventory/zod.js'
+import { createMatcher } from '../types/matcher/matcher-factory.js'
+import { inventoryScriptInfoToRawInventoryScriptInfo } from './script.js'
 
 /**
  * Serializes authorization metadata to JSON-compatible format.
@@ -122,7 +122,7 @@ export function inventoryHeaderInfoToRawInventoryHeaderInfo(headerInfo: Inventor
         return config
       }
       case 'hash': {
-        const config: any = { hashes: pattern as import('../types/inventory/model').InventoryScriptHashInfo[] }
+        const config: any = { hashes: pattern as import('../types/inventory/model.js').InventoryScriptHashInfo[] }
         const authInfo = (matcher as any).getAuthorisationInfo?.()
         if (authInfo) {
           config.authorisationInfo = serializeAuthorisationInfo(authInfo)
@@ -130,7 +130,7 @@ export function inventoryHeaderInfoToRawInventoryHeaderInfo(headerInfo: Inventor
         return config
       }
       case 'or': {
-        const children = pattern as import('../types/matcher/matcher.interface').Matcher[]
+        const children = pattern as import('../types/matcher/matcher.interface.js').Matcher[]
         const authInfo = (matcher as any).getAuthorisationInfo?.()
 
         // Top-level OrMatcher in authoriseWith: use array syntax (more concise)
@@ -149,7 +149,7 @@ export function inventoryHeaderInfoToRawInventoryHeaderInfo(headerInfo: Inventor
         return config
       }
       case 'and': {
-        const children = pattern as import('../types/matcher/matcher.interface').Matcher[]
+        const children = pattern as import('../types/matcher/matcher.interface.js').Matcher[]
         const config: any = {
           andMatcher: children.map((c) => matcherToConfig(c, false)),
         }

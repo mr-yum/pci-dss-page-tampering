@@ -1,4 +1,4 @@
-import { parseGitHubRepo } from './github-url'
+import { parseGitHubRepo } from './github-url.js'
 
 describe('parseGitHubRepo', () => {
   it('parses standard github.com HTTPS URL', () => {

@@ -1,10 +1,10 @@
 import type { Page } from 'puppeteer'
 
-import type { ScriptMatcher } from '../types/matcher'
-import type { PageScriptElement } from '../types/page'
-import type { ScriptInfo } from '../types/script'
-import { createSha256Hash } from './hash'
-import { tryGetIdFromInLineScriptCode } from './script/inline'
+import type { ScriptMatcher } from '../types/matcher.js'
+import type { PageScriptElement } from '../types/page.js'
+import type { ScriptInfo } from '../types/script.js'
+import { createSha256Hash } from './hash.js'
+import { tryGetIdFromInLineScriptCode } from './script/inline.js'
 
 export async function getInlineScriptsFromPage(page: Page, scriptContentMatchers: ScriptMatcher[]): Promise<ScriptInfo[]> {
   const detectedScripts: ScriptInfo[] = []

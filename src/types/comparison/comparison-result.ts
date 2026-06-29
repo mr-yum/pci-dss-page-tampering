@@ -8,7 +8,7 @@
  * @see specs/001-refactor-script-identification/research.md (R3) for design rationale
  */
 
-import type { Target } from '../target'
+import type { Target } from '../target.js'
 
 /**
  * Base class for all comparison results.
