@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-import { PullRequestService } from './pull-request'
+import { PullRequestService } from './pull-request.js'
 
 jest.mock('axios')
 

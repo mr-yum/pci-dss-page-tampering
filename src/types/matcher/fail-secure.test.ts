@@ -7,12 +7,12 @@
  * @see specs/005-enhance-the-schema/spec.md - Edge cases and fail-secure requirements
  */
 
-import type { SHA256Hash } from '../hash'
-import type { InventoryAuthorisationInfo } from '../inventory/model'
-import { AndMatcher } from './and-matcher'
-import { ContentMatcher } from './content-matcher'
-import type { DetectedScript } from './matcher.interface'
-import { OrMatcher } from './or-matcher'
+import type { SHA256Hash } from '../hash.js'
+import type { InventoryAuthorisationInfo } from '../inventory/model.js'
+import { AndMatcher } from './and-matcher.js'
+import { ContentMatcher } from './content-matcher.js'
+import type { DetectedScript } from './matcher.interface.js'
+import { OrMatcher } from './or-matcher.js'
 
 describe('Fail-Secure Edge Cases (T065-T070)', () => {
   const mockScript = (name: string, content: string | null): DetectedScript => ({

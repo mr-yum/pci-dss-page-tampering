@@ -1,5 +1,5 @@
-import type { PageScriptElement } from '../../types/page'
-import type { InLineScriptMatcher } from '../../types/script/inline'
+import type { PageScriptElement } from '../../types/page.js'
+import type { InLineScriptMatcher } from '../../types/script/inline.js'
 
 /*
   Returns `inline_script/id_not_found` if we cannot match on known in-line script code.

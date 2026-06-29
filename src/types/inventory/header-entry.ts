@@ -10,9 +10,9 @@
 
 import { z } from 'zod'
 
-import type { Matcher } from '../matcher/matcher.interface'
-import { createMatcher } from '../matcher/matcher-factory'
-import { MatcherConfigSchema } from './matcher-config-schema'
+import type { Matcher } from '../matcher/matcher.interface.js'
+import { createMatcher } from '../matcher/matcher-factory.js'
+import { MatcherConfigSchema } from './matcher-config-schema.js'
 
 /**
  * Zod schema for authorization metadata (shared with script entries)

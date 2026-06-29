@@ -1,6 +1,6 @@
-import type { CliArguments } from '../types/cli'
-import { ExecutionMode } from '../types/config'
-import { buildConfiguration, formatRepositoryUrl } from './config'
+import type { CliArguments } from '../types/cli.js'
+import { ExecutionMode } from '../types/config.js'
+import { buildConfiguration, formatRepositoryUrl } from './config.js'
 
 describe('Configuration Builder', () => {
   describe('buildConfiguration', () => {

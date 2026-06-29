@@ -1,8 +1,8 @@
-import type { ComparisonResultType } from '../types/comparison'
-import type { HeaderDetectionSummary } from '../types/header'
-import type { Inventory } from '../types/inventory/model'
-import type { ScriptDetectionSummary } from '../types/script'
-import type { Target } from '../types/target'
+import type { ComparisonResultType } from '../types/comparison.js'
+import type { HeaderDetectionSummary } from '../types/header.js'
+import type { Inventory } from '../types/inventory/model.js'
+import type { ScriptDetectionSummary } from '../types/script.js'
+import type { Target } from '../types/target.js'
 
 /**
  * Script Comparison Service Interface

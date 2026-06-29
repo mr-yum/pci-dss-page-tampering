@@ -15,10 +15,10 @@
  * @see specs/005-enhance-the-schema/tasks.md - Phase 3, User Story 1
  */
 
-import type { InventoryAuthorisationInfo } from '../inventory/model'
-import { AndMatcher } from './and-matcher'
-import { ContentMatcher } from './content-matcher'
-import type { Matchable, Matcher } from './matcher.interface'
+import type { InventoryAuthorisationInfo } from '../inventory/model.js'
+import { AndMatcher } from './and-matcher.js'
+import { ContentMatcher } from './content-matcher.js'
+import type { Matchable, Matcher } from './matcher.interface.js'
 
 // Helper to create test authorization info
 function createAuthInfo(description: string, authorised: boolean): InventoryAuthorisationInfo {

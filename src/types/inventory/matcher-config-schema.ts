@@ -17,7 +17,7 @@
 
 import { z } from 'zod'
 
-import { SHA256HashSchema } from '../zod'
+import { SHA256HashSchema } from '../zod.js'
 
 /**
  * Schema for a script hash and its timestamp.

@@ -1,6 +1,6 @@
 import type { SimpleGit } from 'simple-git'
 
-import type { IInventoryStore, IScriptInventoryRepository } from '../../interfaces/inventory'
+import type { IInventoryStore, IScriptInventoryRepository } from '../../interfaces/inventory.js'
 
 export type InventoryServiceProps = {
   inventoryRepository: IScriptInventoryRepository

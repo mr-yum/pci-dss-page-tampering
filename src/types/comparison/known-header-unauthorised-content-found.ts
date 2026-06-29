@@ -12,11 +12,11 @@
  * @see specs/005-enhance-the-schema/data-model.md for metadataPath enhancement
  */
 
-import type { DetectedHeader } from '../header'
-import type { InventoryAuthorisationInfo, InventoryHeaderInfo } from '../inventory/model'
-import type { Matcher } from '../matcher/matcher.interface'
-import type { Target } from '../target'
-import { ComparisonResult } from './comparison-result'
+import type { DetectedHeader } from '../header.js'
+import type { InventoryAuthorisationInfo, InventoryHeaderInfo } from '../inventory/model.js'
+import type { Matcher } from '../matcher/matcher.interface.js'
+import type { Target } from '../target.js'
+import { ComparisonResult } from './comparison-result.js'
 
 /**
  * Result indicating a header identified by inventory but authorization failed.

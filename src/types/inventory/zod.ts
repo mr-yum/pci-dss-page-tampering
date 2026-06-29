@@ -1,12 +1,12 @@
 import { z } from 'zod'
 
-import { createMatcher } from '../matcher/matcher-factory'
-import { OrMatcher } from '../matcher/or-matcher'
-import type { RawTargetDetection, RawTargetInventory } from '../target/raw'
-import { SHA256HashSchema } from '../zod'
-import { MatcherConfigSchema } from './matcher-config-schema'
-import type { AlertDestination, AlertDetection, AlertInventory, AuthorizeWithConfig, InventoryAlert, InventoryAuthorisationInfo, InventoryScriptHashInfo } from './model'
-import type { RawAuthorizeWithConfig, RawInventory, RawInventoryHeaderInfo, RawInventoryScriptInfo, RawInventoryTarget } from './raw'
+import { createMatcher } from '../matcher/matcher-factory.js'
+import { OrMatcher } from '../matcher/or-matcher.js'
+import type { RawTargetDetection, RawTargetInventory } from '../target/raw.js'
+import { SHA256HashSchema } from '../zod.js'
+import { MatcherConfigSchema } from './matcher-config-schema.js'
+import type { AlertDestination, AlertDetection, AlertInventory, AuthorizeWithConfig, InventoryAlert, InventoryAuthorisationInfo, InventoryScriptHashInfo } from './model.js'
+import type { RawAuthorizeWithConfig, RawInventory, RawInventoryHeaderInfo, RawInventoryScriptInfo, RawInventoryTarget } from './raw.js'
 
 export const AlertDestinationSchema: z.ZodType<AlertDestination> = z.object({
   destination: z.string().min(1, 'Alert destination cannot be empty'),

@@ -15,7 +15,7 @@
   "sourceMaps": true,
   "inlineSourcesContent": false,
   "module": {
-    "type": "commonjs",
+    "type": "es6",
     "ignoreDynamic": true
   },
   "env": {
