@@ -13,8 +13,8 @@
  * @see host-matcher.ts — sibling matcher for host-only matching
  */
 
-import type { AuthorizationResult } from './authorization-result'
-import type { AuthorisationInfo, AuthorisationMatcher, Matchable } from './matcher.interface'
+import type { AuthorizationResult } from './authorization-result.js'
+import type { AuthorisationInfo, AuthorisationMatcher, Matchable } from './matcher.interface.js'
 
 export class UrlMatcher implements AuthorisationMatcher {
   private readonly pattern: RegExp

@@ -12,10 +12,10 @@
  * @see specs/005-enhance-the-schema/data-model.md for metadataPath enhancement
  */
 
-import type { DetectedHeader } from '../header'
-import type { InventoryAuthorisationInfo, InventoryHeaderInfo } from '../inventory/model'
-import type { Target } from '../target'
-import { ComparisonResult } from './comparison-result'
+import type { DetectedHeader } from '../header.js'
+import type { InventoryAuthorisationInfo, InventoryHeaderInfo } from '../inventory/model.js'
+import type { Target } from '../target.js'
+import { ComparisonResult } from './comparison-result.js'
 
 /**
  * Result indicating a header that is both identified and authorized.

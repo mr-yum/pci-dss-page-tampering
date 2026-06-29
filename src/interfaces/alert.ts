@@ -1,7 +1,7 @@
-import type { ComparisonResultType } from '../types/comparison'
-import type { ExecutionSummary } from '../types/execution-summary'
-import type { InventoryAlert } from '../types/inventory/model'
-import type { Target } from '../types/target'
+import type { ComparisonResultType } from '../types/comparison.js'
+import type { ExecutionSummary } from '../types/execution-summary.js'
+import type { InventoryAlert } from '../types/inventory/model.js'
+import type { Target } from '../types/target.js'
 
 export interface IAlertService {
   /**

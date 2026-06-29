@@ -1,6 +1,6 @@
-import type { HeaderDetectionSummary } from './header'
-import type { ScriptDetectionSummary } from './script'
-import type { Target } from './target'
+import type { HeaderDetectionSummary } from './header.js'
+import type { ScriptDetectionSummary } from './script.js'
+import type { Target } from './target.js'
 
 export type DetectionSummary = {
   target: Target
