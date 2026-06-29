@@ -10,8 +10,8 @@
  *   - Duration consistency validation (optional)
  */
 
-import { ExecutionMode } from './config'
-import { type ExecutionSummary, validateExecutionSummary } from './execution-summary'
+import { ExecutionMode } from './config.js'
+import { type ExecutionSummary, validateExecutionSummary } from './execution-summary.js'
 
 describe('validateExecutionSummary', () => {
   // Use a past date to avoid "future timestamp" validation errors

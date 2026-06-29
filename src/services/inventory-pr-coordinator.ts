@@ -1,7 +1,7 @@
-import type { IAlertService } from '../interfaces/alert'
-import type { BranchConfiguration, RepositoryConfiguration } from '../types/config'
-import type { InventoryAlert } from '../types/inventory/model'
-import type { PullRequestService } from './pull-request'
+import type { IAlertService } from '../interfaces/alert.js'
+import type { BranchConfiguration, RepositoryConfiguration } from '../types/config.js'
+import type { InventoryAlert } from '../types/inventory/model.js'
+import type { PullRequestService } from './pull-request.js'
 
 export type EnsureInventoryPullRequestArgs = Readonly<{
   pullRequestService: PullRequestService

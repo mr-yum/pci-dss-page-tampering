@@ -12,11 +12,11 @@
  * @see specs/005-enhance-the-schema/spec.md - US2, FR-001, FR-004, FR-008, FR-009, FR-011, FR-012, FR-013
  */
 
-import type { SHA256Hash } from '../hash'
-import type { InventoryAuthorisationInfo } from '../inventory/model'
-import { ContentMatcher } from './content-matcher'
-import type { Matchable } from './matcher.interface'
-import { OrMatcher } from './or-matcher'
+import type { SHA256Hash } from '../hash.js'
+import type { InventoryAuthorisationInfo } from '../inventory/model.js'
+import { ContentMatcher } from './content-matcher.js'
+import type { Matchable } from './matcher.interface.js'
+import { OrMatcher } from './or-matcher.js'
 
 describe('OrMatcher', () => {
   // Helper to create test matchable resources

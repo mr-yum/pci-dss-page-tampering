@@ -1,4 +1,4 @@
-import type { WorkflowDefinition } from '../types/workflow'
+import type { WorkflowDefinition } from '../types/workflow.js'
 
 export const uatWorkflow: WorkflowDefinition = {
   steps: [

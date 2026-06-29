@@ -1,5 +1,5 @@
-import type { RawCliArgs } from '../types/cli'
-import { parseArguments } from './parser'
+import type { RawCliArgs } from '../types/cli.js'
+import { parseArguments } from './parser.js'
 
 describe('CLI Parser', () => {
   describe('parseArguments', () => {
