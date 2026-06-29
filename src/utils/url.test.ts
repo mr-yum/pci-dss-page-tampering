@@ -1,4 +1,4 @@
-import { extractHost } from './url'
+import { extractHost } from './url.js'
 
 describe('extractHost', () => {
   it('returns the host for a typical URL', () => {

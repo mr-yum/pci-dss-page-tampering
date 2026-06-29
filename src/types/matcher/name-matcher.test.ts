@@ -7,9 +7,9 @@
  * @see ../../../specs/001-refactor-script-identification/research.md (R7) for test strategy
  */
 
-import type { SHA256Hash } from '../hash'
-import type { DetectedScript } from './matcher.interface'
-import { NameMatcher } from './name-matcher'
+import type { SHA256Hash } from '../hash.js'
+import type { DetectedScript } from './matcher.interface.js'
+import { NameMatcher } from './name-matcher.js'
 
 describe('NameMatcher', () => {
   const createDetectedScript = (name: string, content: string | null, hashValue: string = 'hash123'): DetectedScript => ({

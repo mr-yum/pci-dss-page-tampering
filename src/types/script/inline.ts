@@ -1,4 +1,4 @@
-import type { PageScriptElement } from '../page'
+import type { PageScriptElement } from '../page.js'
 
 export type InLineScriptMatcher = {
   resultingIdentifier: string

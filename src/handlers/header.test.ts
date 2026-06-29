@@ -9,8 +9,8 @@
 
 import type { HTTPResponse } from 'puppeteer'
 
-import type { HeaderDetectionSummary } from '../types/header'
-import { headerResponseHandler } from './header'
+import type { HeaderDetectionSummary } from '../types/header.js'
+import { headerResponseHandler } from './header.js'
 
 const mockResponse = (url: string, headers: Record<string, string>, ok = true): HTTPResponse =>
   ({

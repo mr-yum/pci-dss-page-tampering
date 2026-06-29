@@ -1,14 +1,14 @@
 import { rm, writeFile } from 'fs/promises'
 
-import type { IInventoryStore, InventoryPushResult, IScriptInventoryRepository } from '../interfaces/inventory'
-import type { Inventory } from '../types/inventory/model'
-import type { InventoryRepositoryProps } from '../types/inventory/props'
-import type { PullTarget } from '../types/target'
-import { GIT_CLONE_PATH, TARGET_PATH } from '../utils/constants'
-import { inventoryToRawInventory, rawInventoryHeaderInfoToInventoryHeaderInfo } from '../utils/inventory'
-import { createTargetLogger } from '../utils/logger'
-import { rawInventoryScriptInfoToInventoryScriptInfo } from '../utils/script'
-import { getWorkflowFromFile } from '../utils/workflow'
+import type { IInventoryStore, InventoryPushResult, IScriptInventoryRepository } from '../interfaces/inventory.js'
+import type { Inventory } from '../types/inventory/model.js'
+import type { InventoryRepositoryProps } from '../types/inventory/props.js'
+import type { PullTarget } from '../types/target.js'
+import { GIT_CLONE_PATH, TARGET_PATH } from '../utils/constants.js'
+import { inventoryToRawInventory, rawInventoryHeaderInfoToInventoryHeaderInfo } from '../utils/inventory.js'
+import { createTargetLogger } from '../utils/logger.js'
+import { rawInventoryScriptInfoToInventoryScriptInfo } from '../utils/script.js'
+import { getWorkflowFromFile } from '../utils/workflow.js'
 
 export class ScriptInventoryRepository implements IScriptInventoryRepository {
   private readonly inventoryStore: IInventoryStore

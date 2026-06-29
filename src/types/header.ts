@@ -1,5 +1,5 @@
-import type { Target } from './target'
-import type { Workflow } from './workflow'
+import type { Target } from './target.js'
+import type { Workflow } from './workflow.js'
 
 export type HeaderName = string
 export type HeaderValues = Set<string>
