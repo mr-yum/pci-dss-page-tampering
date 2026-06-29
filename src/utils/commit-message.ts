@@ -1,6 +1,6 @@
-import type { InventoryDifferenceResult } from '../types/inventory/model'
-import type { RawInventoryHeaderInfo, RawInventoryScriptInfo } from '../types/inventory/raw'
-import { inventoryToRawInventory } from './inventory'
+import type { InventoryDifferenceResult } from '../types/inventory/model.js'
+import type { RawInventoryHeaderInfo, RawInventoryScriptInfo } from '../types/inventory/raw.js'
+import { inventoryToRawInventory } from './inventory.js'
 
 type InventoryChangeCounts = {
   newScripts: number

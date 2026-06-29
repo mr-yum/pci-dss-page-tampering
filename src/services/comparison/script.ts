@@ -1,12 +1,12 @@
-import type { IScriptComparisonService } from '../../interfaces/comparison'
-import type { ComparisonResultType } from '../../types/comparison'
-import { AuthorizedScriptFound, KnownScriptWithUnauthorisedContentFound, UnknownScriptFound } from '../../types/comparison'
-import type { Inventory, InventoryScriptInfo } from '../../types/inventory/model'
-import type { DetectedScript } from '../../types/matcher/matcher.interface'
-import type { ScriptDetectionSummary, ScriptInfo } from '../../types/script'
-import type { Target } from '../../types/target'
-import { getScriptSource } from '../../utils/script'
-import { extractHost } from '../../utils/url'
+import type { IScriptComparisonService } from '../../interfaces/comparison.js'
+import type { ComparisonResultType } from '../../types/comparison.js'
+import { AuthorizedScriptFound, KnownScriptWithUnauthorisedContentFound, UnknownScriptFound } from '../../types/comparison.js'
+import type { Inventory, InventoryScriptInfo } from '../../types/inventory/model.js'
+import type { DetectedScript } from '../../types/matcher/matcher.interface.js'
+import type { ScriptDetectionSummary, ScriptInfo } from '../../types/script.js'
+import type { Target } from '../../types/target.js'
+import { getScriptSource } from '../../utils/script.js'
+import { extractHost } from '../../utils/url.js'
 
 export class ScriptComparisonService implements IScriptComparisonService {
   /**

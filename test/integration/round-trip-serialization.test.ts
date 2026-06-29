@@ -18,11 +18,11 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 
-import type { Inventory } from '../../src/types/inventory/model'
-import type { RawInventory } from '../../src/types/inventory/raw'
-import { RawInventorySchema } from '../../src/types/inventory/zod'
-import { inventoryToRawInventory, rawInventoryHeaderInfoToInventoryHeaderInfo } from '../../src/utils/inventory'
-import { rawInventoryScriptInfoToInventoryScriptInfo } from '../../src/utils/script'
+import type { Inventory } from '../../src/types/inventory/model.js'
+import type { RawInventory } from '../../src/types/inventory/raw.js'
+import { RawInventorySchema } from '../../src/types/inventory/zod.js'
+import { inventoryToRawInventory, rawInventoryHeaderInfoToInventoryHeaderInfo } from '../../src/utils/inventory.js'
+import { rawInventoryScriptInfoToInventoryScriptInfo } from '../../src/utils/script.js'
 
 describe('Round-Trip Serialization Integration Tests', () => {
   const complexExamplePath = path.join(__dirname, 'complex-example.json')

@@ -1,7 +1,7 @@
 import type { Locator } from 'puppeteer'
 
-import type { Target } from './target'
-import type { WorkflowStep } from './workflow'
+import type { Target } from './target.js'
+import type { WorkflowStep } from './workflow.js'
 
 export type PuppeteerWorkflow = {
   target: Target

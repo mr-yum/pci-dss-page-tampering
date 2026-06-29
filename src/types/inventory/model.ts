@@ -1,8 +1,8 @@
-import type { ComparisonResultType } from '../comparison'
-import type { SHA256Hash } from '../hash'
-import type { Matcher } from '../matcher/matcher.interface'
-import type { TargetDetection, TargetInventory } from '../target'
-import type { RawInventory } from './raw'
+import type { ComparisonResultType } from '../comparison.js'
+import type { SHA256Hash } from '../hash.js'
+import type { Matcher } from '../matcher/matcher.interface.js'
+import type { TargetDetection, TargetInventory } from '../target.js'
+import type { RawInventory } from './raw.js'
 
 export type InventoryAuthorisationInfo = {
   description: string

@@ -11,10 +11,10 @@
  * @see specs/005-enhance-the-schema/data-model.md for metadataPath enhancement
  */
 
-import type { InventoryAuthorisationInfo, InventoryScriptInfo } from '../inventory/model'
-import type { DetectedScript } from '../matcher/matcher.interface'
-import type { Target } from '../target'
-import { ComparisonResult } from './comparison-result'
+import type { InventoryAuthorisationInfo, InventoryScriptInfo } from '../inventory/model.js'
+import type { DetectedScript } from '../matcher/matcher.interface.js'
+import type { Target } from '../target.js'
+import { ComparisonResult } from './comparison-result.js'
 
 /**
  * Result indicating a script that is both identified and authorized.

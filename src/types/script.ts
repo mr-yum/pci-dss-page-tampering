@@ -1,4 +1,4 @@
-import type { SHA256Hash } from './hash'
+import type { SHA256Hash } from './hash.js'
 
 export type ExternalScriptSource = {
   type: 'external'
