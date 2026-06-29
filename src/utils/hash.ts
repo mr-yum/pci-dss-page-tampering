@@ -1,8 +1,8 @@
 import { createHash } from 'crypto'
 
-import type { SHA256Hash } from '../types/hash'
-import type { InventoryScriptHashInfo } from '../types/inventory/model'
-import type { ScriptInfo } from '../types/script'
+import type { SHA256Hash } from '../types/hash.js'
+import type { InventoryScriptHashInfo } from '../types/inventory/model.js'
+import type { ScriptInfo } from '../types/script.js'
 
 /**
  * Calculates the SHA-256 hash of a given string.

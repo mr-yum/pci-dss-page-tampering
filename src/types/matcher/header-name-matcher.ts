@@ -13,8 +13,8 @@
  * @see ../../../specs/002-continuing-our-refactor/spec.md for FR-010a, FR-010b
  */
 
-import type { AuthorizationResult } from './authorization-result'
-import type { DetectedScript, Matcher } from './matcher.interface'
+import type { AuthorizationResult } from './authorization-result.js'
+import type { DetectedScript, Matcher } from './matcher.interface.js'
 
 /**
  * Matches HTTP headers by name using case-insensitive regex patterns.
