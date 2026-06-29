@@ -42,8 +42,7 @@ jobs:
         timeout-minutes: 30
         run: |
           echo "▶️ Running formatting and linting commands..."
-          # npm list prettier # disabled because it is inconsitent even on same versions
-          # npm run check:formatting
+          npm run check:formatting
           npm run check:linting
           npm run check:typing
           echo "✅ Formatting and linting commands completed"

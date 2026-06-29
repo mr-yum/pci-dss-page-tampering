@@ -80,16 +80,17 @@ export type CliArguments = z.infer<typeof CliArgsSchema>
 ```
 
 **Fields**:
-| Field | Type | Required | Default | Validation |
-| ----------------- | ----------------------------------- | -------- | ------------------ | ------------------------------- |
-| mode | 'inventory' \| 'detection' \| 'all' | No | 'all' | Enum validation |
-| target | string \| undefined | No | undefined (all targets) | None (validated against inventory later) |
-| repo | string | Yes | - | Must be valid URL |
-| gitToken | string | Yes | - | Non-empty string |
-| slackToken | string \| undefined | No | undefined | None |
-| inventoryBranch | string | No | 'updates/scripts' | None (Git validates on checkout) |
-| detectionBranch | string | No | 'main' | None (Git validates on checkout) |
-| help | boolean | No | false | Flag presence |
+
+| Field           | Type                                | Required | Default                 | Validation                               |
+| --------------- | ----------------------------------- | -------- | ----------------------- | ---------------------------------------- |
+| mode            | 'inventory' \| 'detection' \| 'all' | No       | 'all'                   | Enum validation                          |
+| target          | string \| undefined                 | No       | undefined (all targets) | None (validated against inventory later) |
+| repo            | string                              | Yes      | -                       | Must be valid URL                        |
+| gitToken        | string                              | Yes      | -                       | Non-empty string                         |
+| slackToken      | string \| undefined                 | No       | undefined               | None                                     |
+| inventoryBranch | string                              | No       | 'updates/scripts'       | None (Git validates on checkout)         |
+| detectionBranch | string                              | No       | 'main'                  | None (Git validates on checkout)         |
+| help            | boolean                             | No       | false                   | Flag presence                            |
 
 **Validation Rules**:
 
