@@ -1,6 +1,6 @@
 import type { HTTPResponse } from 'puppeteer'
 
-import type { HeaderDetectionSummary, HeaderUrl } from '../types/header'
+import type { HeaderDetectionSummary, HeaderUrl } from '../types/header.js'
 
 export async function headerResponseHandler(response: HTTPResponse, detectedHeaders: HeaderDetectionSummary['headers']): Promise<void> {
   if (response.ok()) {

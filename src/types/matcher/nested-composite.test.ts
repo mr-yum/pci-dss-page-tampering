@@ -1,9 +1,9 @@
-import type { SHA256Hash } from '../hash'
-import type { InventoryAuthorisationInfo } from '../inventory/model'
-import { AndMatcher } from './and-matcher'
-import { ContentMatcher } from './content-matcher'
-import type { DetectedScript } from './matcher.interface'
-import { OrMatcher } from './or-matcher'
+import type { SHA256Hash } from '../hash.js'
+import type { InventoryAuthorisationInfo } from '../inventory/model.js'
+import { AndMatcher } from './and-matcher.js'
+import { ContentMatcher } from './content-matcher.js'
+import type { DetectedScript } from './matcher.interface.js'
+import { OrMatcher } from './or-matcher.js'
 
 describe('Nested Composite Matchers', () => {
   const mockScript = (name: string, content: string): DetectedScript => ({

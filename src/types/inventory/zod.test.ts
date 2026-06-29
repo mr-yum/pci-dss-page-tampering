@@ -13,8 +13,8 @@
  * @see ../../../specs/001-refactor-script-identification/research.md R6 for error message requirements
  */
 
-import { MatcherConfigSchema } from './matcher-config-schema'
-import { AlertDestinationSchema, InventoryAlertSchema, RawInventoryScriptInfoSchema } from './zod'
+import { MatcherConfigSchema } from './matcher-config-schema.js'
+import { AlertDestinationSchema, InventoryAlertSchema, RawInventoryScriptInfoSchema } from './zod.js'
 
 describe('MatcherConfigSchema', () => {
   describe('Invalid regex patterns (T027)', () => {

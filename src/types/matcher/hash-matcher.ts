@@ -7,9 +7,9 @@
  * @see ../../../specs/001-refactor-script-identification/data-model.md for design
  */
 
-import type { InventoryScriptHashInfo } from '../inventory/model'
-import type { AuthorizationResult } from './authorization-result'
-import type { AuthorisationInfo, AuthorisationMatcher, DetectedScript } from './matcher.interface'
+import type { InventoryScriptHashInfo } from '../inventory/model.js'
+import type { AuthorizationResult } from './authorization-result.js'
+import type { AuthorisationInfo, AuthorisationMatcher, DetectedScript } from './matcher.interface.js'
 
 /**
  * Matches scripts by cryptographic hash (SHA-256).

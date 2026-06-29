@@ -6,9 +6,9 @@
  * @see specs/002-continuing-our-refactor/data-model.md for entity definitions
  */
 
-import type { DetectedHeader } from '../header'
-import type { Target } from '../target'
-import { ComparisonResult } from './comparison-result'
+import type { DetectedHeader } from '../header.js'
+import type { Target } from '../target.js'
+import { ComparisonResult } from './comparison-result.js'
 
 /**
  * Result indicating a detected header with no matching inventory entry.

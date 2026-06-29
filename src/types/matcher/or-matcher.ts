@@ -22,8 +22,8 @@
  * @see ../../../specs/005-enhance-the-schema/data-model.md for entity definitions
  */
 
-import type { AuthorizationResult } from './authorization-result'
-import type { AuthorisationInfo, AuthorisationMatcher, Matchable, Matcher } from './matcher.interface'
+import type { AuthorizationResult } from './authorization-result.js'
+import type { AuthorisationInfo, AuthorisationMatcher, Matchable, Matcher } from './matcher.interface.js'
 
 /**
  * OrMatcher - Composite matcher with OR logic (any child matches).

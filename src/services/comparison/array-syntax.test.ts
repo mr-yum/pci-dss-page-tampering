@@ -8,9 +8,9 @@
  * @see specs/005-enhance-the-schema/spec.md - FR-006, US3
  */
 
-import type { RawAuthorizeWithConfig } from '../../types/inventory/raw'
-import { processAuthorizeWith } from '../../types/inventory/zod'
-import type { Matchable } from '../../types/matcher/matcher.interface'
+import type { RawAuthorizeWithConfig } from '../../types/inventory/raw.js'
+import { processAuthorizeWith } from '../../types/inventory/zod.js'
+import type { Matchable } from '../../types/matcher/matcher.interface.js'
 
 describe('Array Syntax for authoriseWith (T047-T050)', () => {
   describe('T047: Array syntax with two content matchers (first matches)', () => {

@@ -2,6 +2,7 @@
   "private": true,
   "name": "pci-dss-page-tampering",
   "version": "0.0.1",
+  "type": "module",
   "description": "PCI DSS compliance system implementing requirements 6.4.3 and 11.6.1 for payment page tampering detection",
   "author": "me&u AU Trading Pty Ltd",
   "repository": {
@@ -27,7 +28,7 @@
   },
   "dependencies": {
     "axios": "^1.11.0",
-    "puppeteer": "^24.16.0",
+    "puppeteer": "^25.0.0",
     "simple-git": "^3.28.0",
     "zod": "^4.0.17"
   },
@@ -72,5 +73,9 @@
     "test:unit": "jest --selectProjects unit",
     "test:integration": "jest --selectProjects integration"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "overrides": {
+    "form-data": "^4.0.6",
+    "piscina": "^5.0.0"
+  }
 }
