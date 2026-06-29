@@ -7,8 +7,8 @@
  * @see ../../../specs/001-refactor-script-identification/data-model.md for design
  */
 
-import type { AuthorizationResult } from './authorization-result'
-import type { AuthorisationInfo, AuthorisationMatcher, DetectedScript } from './matcher.interface'
+import type { AuthorizationResult } from './authorization-result.js'
+import type { AuthorisationInfo, AuthorisationMatcher, DetectedScript } from './matcher.interface.js'
 
 /**
  * Matches scripts by content using regex patterns.

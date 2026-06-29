@@ -6,9 +6,9 @@
  * itself from `HostMatcher` by being sensitive to path / query.
  */
 
-import type { SHA256Hash } from '../hash'
-import type { Matchable } from './matcher.interface'
-import { UrlMatcher } from './url-matcher'
+import type { SHA256Hash } from '../hash.js'
+import type { Matchable } from './matcher.interface.js'
+import { UrlMatcher } from './url-matcher.js'
 
 const make = (url: string | undefined, name = 'res', content: string | null = 'c'): Matchable => ({
   name,

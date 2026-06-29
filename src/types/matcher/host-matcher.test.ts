@@ -7,9 +7,9 @@
  * — because `host` is no longer part of the Matchable contract.
  */
 
-import type { SHA256Hash } from '../hash'
-import { HostMatcher } from './host-matcher'
-import type { Matchable } from './matcher.interface'
+import type { SHA256Hash } from '../hash.js'
+import { HostMatcher } from './host-matcher.js'
+import type { Matchable } from './matcher.interface.js'
 
 const make = (url: string | undefined, name = 'res', content: string | null = 'c'): Matchable => ({
   name,

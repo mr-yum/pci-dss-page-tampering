@@ -8,23 +8,23 @@
  */
 
 // Script comparison results
-export { ComparisonResult } from './comparison-result'
-export { UnknownScriptFound } from './unknown-script-found'
-export { KnownScriptWithUnauthorisedContentFound } from './known-script-unauthorised-content-found'
-export { AuthorizedScriptFound } from './authorized-script-found'
+export { ComparisonResult } from './comparison-result.js'
+export { UnknownScriptFound } from './unknown-script-found.js'
+export { KnownScriptWithUnauthorisedContentFound } from './known-script-unauthorised-content-found.js'
+export { AuthorizedScriptFound } from './authorized-script-found.js'
 
 // Header comparison results
-export { UnknownHeaderFound } from './unknown-header-found'
-export { KnownHeaderWithUnauthorisedContentFound as KnownHeaderWithUnauthorisedContentFound_Header } from './known-header-unauthorised-content-found'
-export { AuthorizedHeaderFound } from './authorized-header-found'
+export { UnknownHeaderFound } from './unknown-header-found.js'
+export { KnownHeaderWithUnauthorisedContentFound as KnownHeaderWithUnauthorisedContentFound_Header } from './known-header-unauthorised-content-found.js'
+export { AuthorizedHeaderFound } from './authorized-header-found.js'
 
 // Type imports for union
-import type { AuthorizedHeaderFound } from './authorized-header-found'
-import type { AuthorizedScriptFound } from './authorized-script-found'
-import type { KnownHeaderWithUnauthorisedContentFound as KnownHeaderWithUnauthorisedContentFound_Header } from './known-header-unauthorised-content-found'
-import type { KnownScriptWithUnauthorisedContentFound } from './known-script-unauthorised-content-found'
-import type { UnknownHeaderFound } from './unknown-header-found'
-import type { UnknownScriptFound } from './unknown-script-found'
+import type { AuthorizedHeaderFound } from './authorized-header-found.js'
+import type { AuthorizedScriptFound } from './authorized-script-found.js'
+import type { KnownHeaderWithUnauthorisedContentFound as KnownHeaderWithUnauthorisedContentFound_Header } from './known-header-unauthorised-content-found.js'
+import type { KnownScriptWithUnauthorisedContentFound } from './known-script-unauthorised-content-found.js'
+import type { UnknownHeaderFound } from './unknown-header-found.js'
+import type { UnknownScriptFound } from './unknown-script-found.js'
 
 /**
  * Union type for all possible comparison results.

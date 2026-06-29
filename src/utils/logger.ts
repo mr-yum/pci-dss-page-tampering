@@ -1,4 +1,4 @@
-import type { Target } from '../types/target'
+import type { Target } from '../types/target.js'
 
 export interface Logger {
   log: (message: string, ...args: any[]) => void

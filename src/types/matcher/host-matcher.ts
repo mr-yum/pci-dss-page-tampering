@@ -20,8 +20,8 @@
  * @see url-matcher.ts — sibling matcher for full-URL precision
  */
 
-import type { AuthorizationResult } from './authorization-result'
-import type { AuthorisationInfo, AuthorisationMatcher, Matchable } from './matcher.interface'
+import type { AuthorizationResult } from './authorization-result.js'
+import type { AuthorisationInfo, AuthorisationMatcher, Matchable } from './matcher.interface.js'
 
 export class HostMatcher implements AuthorisationMatcher {
   private readonly pattern: RegExp
