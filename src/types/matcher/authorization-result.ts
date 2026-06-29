@@ -9,7 +9,7 @@
  * - Composite matchers: Array from root to leaf showing full authorization chain
  */
 
-import type { InventoryAuthorisationInfo } from '../inventory/model'
+import type { InventoryAuthorisationInfo } from '../inventory/model.js'
 
 /**
  * Result of an authorization check.

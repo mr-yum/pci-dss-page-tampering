@@ -364,10 +364,16 @@ The system runs on CRON schedules:
 
 ## Build System
 
+- **Module system**: native ESM (`"type": "module"`). Relative imports must
+  carry explicit `.js` extensions (`./foo.js`, `./bar/index.js`); SWC emits ESM
+  to `dist/` and the app runs via `tsx`. Config/utility files that stay
+  CommonJS use the `.cjs` extension (`eslint.config.cjs`, `jest.config.cjs`,
+  `scripts/migrate-inventory-schema.cjs`).
 - **TypeScript compilation**: SWC via `@swc/cli` (config in `.swcrc`)
-- **Linting**: ESLint 9 flat config (`eslint.config.js`)
+- **Linting**: ESLint flat config (`eslint.config.cjs`)
 - **Formatting**: Prettier (config in `package.json`)
-- **Testing**: Jest 30 with `@swc/jest` transform (`jest.config.js`)
+- **Testing**: Jest 30 with `@swc/jest` transform (`jest.config.cjs`); a
+  `moduleNameMapper` strips the `.js` extension so tests resolve `.ts` sources
 - **Type checking**: `tsc --noEmit` directly
 
 ## Behaviours

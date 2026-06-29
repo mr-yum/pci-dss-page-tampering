@@ -1,6 +1,6 @@
-import type { RawTargetDetection, RawTargetInventory } from '../target/raw'
-import type { RawMatcherConfig } from './matcher-config-schema'
-import type { Inventory, InventoryTarget } from './model'
+import type { RawTargetDetection, RawTargetInventory } from '../target/raw.js'
+import type { RawMatcherConfig } from './matcher-config-schema.js'
+import type { Inventory, InventoryTarget } from './model.js'
 
 export type RawAuthorizeWithConfig = RawMatcherConfig & {
   authorisationInfo: {

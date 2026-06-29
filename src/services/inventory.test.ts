@@ -7,19 +7,19 @@
  * @see src/services/inventory.ts - ScriptInventoryService
  */
 
-import { KnownHeaderWithUnauthorisedContentFound } from '../types/comparison/known-header-unauthorised-content-found'
-import { KnownScriptWithUnauthorisedContentFound } from '../types/comparison/known-script-unauthorised-content-found'
-import { UnknownHeaderFound } from '../types/comparison/unknown-header-found'
-import { UnknownScriptFound } from '../types/comparison/unknown-script-found'
-import type { Inventory, InventoryScriptInfo } from '../types/inventory/model'
-import type { HashMatcher } from '../types/matcher/hash-matcher'
-import type { OrMatcher } from '../types/matcher/or-matcher'
-import type { Target, TargetDetection, TargetInventory } from '../types/target'
-import type { Workflow } from '../types/workflow'
-import { inventoryHeaderInfoToRawInventoryHeaderInfo, rawInventoryHeaderInfoToInventoryHeaderInfo } from '../utils/inventory'
-import { createLogger } from '../utils/logger'
-import { inventoryScriptInfoToRawInventoryScriptInfo, rawInventoryScriptInfoToInventoryScriptInfo } from '../utils/script'
-import { ScriptInventoryService } from './inventory'
+import { KnownHeaderWithUnauthorisedContentFound } from '../types/comparison/known-header-unauthorised-content-found.js'
+import { KnownScriptWithUnauthorisedContentFound } from '../types/comparison/known-script-unauthorised-content-found.js'
+import { UnknownHeaderFound } from '../types/comparison/unknown-header-found.js'
+import { UnknownScriptFound } from '../types/comparison/unknown-script-found.js'
+import type { Inventory, InventoryScriptInfo } from '../types/inventory/model.js'
+import type { HashMatcher } from '../types/matcher/hash-matcher.js'
+import type { OrMatcher } from '../types/matcher/or-matcher.js'
+import type { Target, TargetDetection, TargetInventory } from '../types/target.js'
+import type { Workflow } from '../types/workflow.js'
+import { inventoryHeaderInfoToRawInventoryHeaderInfo, rawInventoryHeaderInfoToInventoryHeaderInfo } from '../utils/inventory.js'
+import { createLogger } from '../utils/logger.js'
+import { inventoryScriptInfoToRawInventoryScriptInfo, rawInventoryScriptInfoToInventoryScriptInfo } from '../utils/script.js'
+import { ScriptInventoryService } from './inventory.js'
 
 describe('ScriptInventoryService', () => {
   const mockWorkflow: Workflow = {

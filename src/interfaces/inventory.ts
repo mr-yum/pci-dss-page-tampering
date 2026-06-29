@@ -1,6 +1,6 @@
-import type { ComparisonResultType } from '../types/comparison'
-import type { Inventory, InventoryDifferenceResult, InventoryPullResult } from '../types/inventory/model'
-import type { PullTarget } from '../types/target'
+import type { ComparisonResultType } from '../types/comparison.js'
+import type { Inventory, InventoryDifferenceResult, InventoryPullResult } from '../types/inventory/model.js'
+import type { PullTarget } from '../types/target.js'
 
 /**
  * Discriminated result describing whether a push actually produced a commit.

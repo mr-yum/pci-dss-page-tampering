@@ -1,4 +1,4 @@
-import { ExecutionMode } from './config'
+import { ExecutionMode } from './config.js'
 
 /**
  * Summary of completed workflow execution for success notifications.

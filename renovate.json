@@ -3,10 +3,10 @@
   "extends": ["config:recommended"],
   "packageRules": [
     {
-      "description": "Keep the Puppeteer container image in lockstep with the puppeteer npm package. The CI workflow runs in ghcr.io/puppeteer/puppeteer, whose bundled Chrome must match the build the app launches. Cap the image below the next major so Renovate cannot bump it ahead of the (currently held) npm v25 upgrade; raise this when puppeteer itself moves to v25.",
+      "description": "Keep the Puppeteer container image in lockstep with the puppeteer npm package. The CI workflow runs in ghcr.io/puppeteer/puppeteer, whose bundled Chrome must match the build the app launches. Cap the image below the next major so Renovate cannot bump it ahead of the npm package; raise this cap (and the workflow image tag) together with the next puppeteer major.",
       "matchDatasources": ["docker"],
       "matchPackageNames": ["ghcr.io/puppeteer/puppeteer"],
-      "allowedVersions": "<25"
+      "allowedVersions": "<26"
     }
   ]
 }

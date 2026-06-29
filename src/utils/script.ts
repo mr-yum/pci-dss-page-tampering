@@ -1,10 +1,10 @@
-import type { InventoryAuthorisationInfo, InventoryScriptInfo } from '../types/inventory/model'
-import type { RawInventoryScriptInfo } from '../types/inventory/raw'
-import { processAuthorizeWith } from '../types/inventory/zod'
-import { createMatcher } from '../types/matcher/matcher-factory'
-import type { ScriptInfo } from '../types/script'
-import { scriptHashToInventoryHashInfo } from '../utils/hash'
-import { escapeRegex } from './string'
+import type { InventoryAuthorisationInfo, InventoryScriptInfo } from '../types/inventory/model.js'
+import type { RawInventoryScriptInfo } from '../types/inventory/raw.js'
+import { processAuthorizeWith } from '../types/inventory/zod.js'
+import { createMatcher } from '../types/matcher/matcher-factory.js'
+import type { ScriptInfo } from '../types/script.js'
+import { scriptHashToInventoryHashInfo } from '../utils/hash.js'
+import { escapeRegex } from './string.js'
 
 /**
  * Serializes authorization metadata to JSON-compatible format.
@@ -137,7 +137,7 @@ export function inventoryScriptInfoToRawInventoryScriptInfo(inventoryScriptInfo:
         // *old* inventory entry too — leaving `buildInventoryCommitMessage`
         // unable to see any difference between old and new while alerts had
         // already buffered the result as "applied".
-        const config: any = { hashes: [...(pattern as import('../types/inventory/model').InventoryScriptHashInfo[])] }
+        const config: any = { hashes: [...(pattern as import('../types/inventory/model.js').InventoryScriptHashInfo[])] }
         const authInfo = (matcher as any).getAuthorisationInfo?.()
         if (authInfo) {
           config.authorisationInfo = serializeAuthorisationInfo(authInfo)
@@ -145,7 +145,7 @@ export function inventoryScriptInfoToRawInventoryScriptInfo(inventoryScriptInfo:
         return config
       }
       case 'or': {
-        const children = pattern as import('../types/matcher/matcher.interface').Matcher[]
+        const children = pattern as import('../types/matcher/matcher.interface.js').Matcher[]
         const authInfo = (matcher as any).getAuthorisationInfo?.()
 
         // Top-level OrMatcher in authoriseWith: use array syntax (more concise)
@@ -164,7 +164,7 @@ export function inventoryScriptInfoToRawInventoryScriptInfo(inventoryScriptInfo:
         return config
       }
       case 'and': {
-        const children = pattern as import('../types/matcher/matcher.interface').Matcher[]
+        const children = pattern as import('../types/matcher/matcher.interface.js').Matcher[]
         const config: any = {
           andMatcher: children.map((c) => matcherToConfig(c, false)),
         }
