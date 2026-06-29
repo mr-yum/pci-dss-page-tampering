@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-import { parseGitHubRepo } from '../utils/github-url'
+import { parseGitHubRepo } from '../utils/github-url.js'
 
 export type EnsurePullRequestArgs = Readonly<{
   repoUrl: string

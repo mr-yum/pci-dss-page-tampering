@@ -1,10 +1,10 @@
-import type { Inventory, InventoryDifferenceResult, InventoryHeaderInfo, InventoryScriptInfo } from '../types/inventory/model'
-import type { TargetDetection, TargetInventory } from '../types/target'
-import type { Workflow } from '../types/workflow'
-import { buildInventoryCommitMessage } from './commit-message'
-import { rawInventoryHeaderInfoToInventoryHeaderInfo } from './inventory'
-import { createLogger } from './logger'
-import { rawInventoryScriptInfoToInventoryScriptInfo } from './script'
+import type { Inventory, InventoryDifferenceResult, InventoryHeaderInfo, InventoryScriptInfo } from '../types/inventory/model.js'
+import type { TargetDetection, TargetInventory } from '../types/target.js'
+import type { Workflow } from '../types/workflow.js'
+import { buildInventoryCommitMessage } from './commit-message.js'
+import { rawInventoryHeaderInfoToInventoryHeaderInfo } from './inventory.js'
+import { createLogger } from './logger.js'
+import { rawInventoryScriptInfoToInventoryScriptInfo } from './script.js'
 
 const mockWorkflow: Workflow = { fileName: 'default.json', definition: { steps: [] } }
 const mockLogger = createLogger('test')

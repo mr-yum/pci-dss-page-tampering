@@ -1,10 +1,10 @@
-import type { SHA256Hash } from '../../types/hash'
-import type { Inventory, InventoryScriptInfo } from '../../types/inventory/model'
-import { createMatcher } from '../../types/matcher/matcher-factory'
-import type { ScriptDetectionSummary, ScriptInfo } from '../../types/script'
-import type { Target } from '../../types/target'
-import { createLogger } from '../../utils/logger'
-import { ScriptComparisonService } from './script'
+import type { SHA256Hash } from '../../types/hash.js'
+import type { Inventory, InventoryScriptInfo } from '../../types/inventory/model.js'
+import { createMatcher } from '../../types/matcher/matcher-factory.js'
+import type { ScriptDetectionSummary, ScriptInfo } from '../../types/script.js'
+import type { Target } from '../../types/target.js'
+import { createLogger } from '../../utils/logger.js'
+import { ScriptComparisonService } from './script.js'
 
 describe('ScriptComparisonService', () => {
   let service: ScriptComparisonService

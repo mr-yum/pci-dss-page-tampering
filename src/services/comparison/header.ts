@@ -8,15 +8,15 @@
  * @see specs/002-continuing-our-refactor/research.md (R2, R3, R4) for design decisions
  */
 
-import type { IHeaderComparisonService } from '../../interfaces/comparison'
-import type { ComparisonResultType } from '../../types/comparison'
-import { AuthorizedHeaderFound } from '../../types/comparison/authorized-header-found'
-import { KnownHeaderWithUnauthorisedContentFound as KnownHeaderWithUnauthorisedContentFound_Header } from '../../types/comparison/known-header-unauthorised-content-found'
-import { UnknownHeaderFound } from '../../types/comparison/unknown-header-found'
-import type { DetectedHeader, HeaderDetectionSummary } from '../../types/header'
-import type { Inventory, InventoryHeaderInfo } from '../../types/inventory/model'
-import type { Target } from '../../types/target'
-import { extractHost } from '../../utils/url'
+import type { IHeaderComparisonService } from '../../interfaces/comparison.js'
+import type { ComparisonResultType } from '../../types/comparison.js'
+import { AuthorizedHeaderFound } from '../../types/comparison/authorized-header-found.js'
+import { KnownHeaderWithUnauthorisedContentFound as KnownHeaderWithUnauthorisedContentFound_Header } from '../../types/comparison/known-header-unauthorised-content-found.js'
+import { UnknownHeaderFound } from '../../types/comparison/unknown-header-found.js'
+import type { DetectedHeader, HeaderDetectionSummary } from '../../types/header.js'
+import type { Inventory, InventoryHeaderInfo } from '../../types/inventory/model.js'
+import type { Target } from '../../types/target.js'
+import { extractHost } from '../../utils/url.js'
 
 export class HeaderComparisonService implements IHeaderComparisonService {
   /**

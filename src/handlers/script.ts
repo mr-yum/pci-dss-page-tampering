@@ -1,7 +1,7 @@
 import type { HTTPResponse } from 'puppeteer'
 
-import type { ScriptInfo } from '../types/script'
-import { createSha256Hash } from '../utils/hash'
+import type { ScriptInfo } from '../types/script.js'
+import { createSha256Hash } from '../utils/hash.js'
 
 export async function scriptResponseHandler(response: HTTPResponse, detectedScripts: ScriptInfo[]): Promise<void> {
   if (response.request().resourceType() === 'script' && response.ok()) {

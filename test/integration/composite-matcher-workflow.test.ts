@@ -10,14 +10,14 @@
  * @see specs/005-enhance-the-schema/spec.md - US2, FR-001, FR-013
  */
 
-import type { InventoryAuthorisationInfo } from '../../src/types/inventory/model'
-import { AndMatcher } from '../../src/types/matcher/and-matcher'
-import { ContentMatcher } from '../../src/types/matcher/content-matcher'
-import { HashMatcher } from '../../src/types/matcher/hash-matcher'
-import type { Matchable } from '../../src/types/matcher/matcher.interface'
-import { createMatcher } from '../../src/types/matcher/matcher-factory'
-import { OrMatcher } from '../../src/types/matcher/or-matcher'
-import { inventoryScriptInfoToRawInventoryScriptInfo, rawInventoryScriptInfoToInventoryScriptInfo } from '../../src/utils/script'
+import type { InventoryAuthorisationInfo } from '../../src/types/inventory/model.js'
+import { AndMatcher } from '../../src/types/matcher/and-matcher.js'
+import { ContentMatcher } from '../../src/types/matcher/content-matcher.js'
+import { HashMatcher } from '../../src/types/matcher/hash-matcher.js'
+import type { Matchable } from '../../src/types/matcher/matcher.interface.js'
+import { createMatcher } from '../../src/types/matcher/matcher-factory.js'
+import { OrMatcher } from '../../src/types/matcher/or-matcher.js'
+import { inventoryScriptInfoToRawInventoryScriptInfo, rawInventoryScriptInfoToInventoryScriptInfo } from '../../src/utils/script.js'
 
 describe('Composite Matcher Integration Tests (T041-T043)', () => {
   // Helper to create authorization info
