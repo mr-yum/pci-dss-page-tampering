@@ -196,9 +196,7 @@ test('OrMatcher with ContentMatchers survives round-trip', () => {
         authorised: true,
         date: new Date('2025-10-24T12:00:00.000Z'),
       }),
-      authorisationInfo: {
-        /* ... */
-      },
+      authorisationInfo: {/* ... */},
     },
   }
 
@@ -210,9 +208,7 @@ test('OrMatcher with ContentMatchers survives round-trip', () => {
   expect(deserialized.authoriseWith.matcher.getPattern()).toHaveLength(2)
 
   // Verify behavior (identify + authorize produce same results)
-  const testScript = {
-    /* mock script */
-  }
+  const testScript = {/* mock script */}
   expect(deserialized.authoriseWith.matcher.identify(testScript)).toBe(original.authoriseWith.matcher.identify(testScript))
   expect(deserialized.authoriseWith.matcher.authorize(testScript)).toEqual(original.authoriseWith.matcher.authorize(testScript))
 })

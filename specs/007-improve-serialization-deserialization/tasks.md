@@ -448,12 +448,8 @@ test('full inventory workflow with composite matchers', async () => {
   // Create inventory with composite matcher
   const inventory: Inventory = {
     fileName: 'test-inventory.json',
-    target: {
-      /* ... */
-    },
-    alerts: {
-      /* ... */
-    },
+    target: {/* ... */},
+    alerts: {/* ... */},
     scripts: [
       {
         identifyWith: new NameMatcher('^https://example\\.com/.*$'),

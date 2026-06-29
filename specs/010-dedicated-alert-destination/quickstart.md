@@ -133,12 +133,8 @@ alertOnSuccess(summary: ExecutionSummary, alertDestinations: InventoryAlert): Pr
 describe('alertOnSuccess', () => {
   it('should use successNotification destination', async () => {
     const alertDestinations: InventoryAlert = {
-      inventory: {
-        /* ... */
-      },
-      detection: {
-        /* ... */
-      },
+      inventory: {/* ... */},
+      detection: {/* ... */},
       successNotification: { destination: '#success-channel' },
     }
 
@@ -157,12 +153,8 @@ describe('alertOnSuccess', () => {
 describe('InventoryAlertSchema', () => {
   it('should require successNotification field', () => {
     const invalid = {
-      inventory: {
-        /* valid */
-      },
-      detection: {
-        /* valid */
-      },
+      inventory: {/* valid */},
+      detection: {/* valid */},
       // Missing successNotification
     }
 
@@ -171,12 +163,8 @@ describe('InventoryAlertSchema', () => {
 
   it('should reject empty destination string', () => {
     const invalid = {
-      inventory: {
-        /* valid */
-      },
-      detection: {
-        /* valid */
-      },
+      inventory: {/* valid */},
+      detection: {/* valid */},
       successNotification: { destination: '' },
     }
 
