@@ -378,6 +378,7 @@ The system runs on CRON schedules:
 
 ## Behaviours
 
+- **Never merge PRs without human review**: Do not merge any pull request that has not been reviewed and approved by a human. `main` branch protection requires a code-owner approval — do not bypass it. Specifically, never use admin/override merges (e.g. `gh pr merge --admin`) or otherwise circumvent required reviews and status checks. You may prepare a PR so it is ready to merge (fix CI, resolve conflicts, push), but a human must perform or explicitly authorize the final merge.
 - **Commit messages**: Please use conventional commits and keep them concise. Tell us what value was created in the commit, not a catalog of changes.
 - **Code review on commit**: Before creating a commit, run `/coderabbit:review --base main` and address its findings (or explain why a finding is intentional) as part of the same change. Treat CodeRabbit as a required review step alongside `npm run precommit` — precommit verifies correctness, CodeRabbit catches design/quality issues a static check won't.
 - **2nd code review on commit**: Before creating a commit, run `/review` and address its findings (or explain why a finding is intentional) as part of the same change. Treat this as a required review step alongside `npm run precommit` — precommit verifies correctness, Review catches design/quality issues a static check won't.
