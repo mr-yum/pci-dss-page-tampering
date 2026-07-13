@@ -3,6 +3,13 @@ import type { SHA256Hash } from './hash.js'
 export type ExternalScriptSource = {
   type: 'external'
   url: string
+  /**
+   * The script's response body, captured at detection time. Guaranteed
+   * non-empty by `scriptResponseHandler` (empty responses are dropped).
+   * This is what `ContentMatcher` and content snippets in alerts operate
+   * on — the URL is never used as a stand-in for content.
+   */
+  content: string
 }
 
 export type InlineScriptSource = {

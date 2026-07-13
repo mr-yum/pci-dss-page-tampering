@@ -14,6 +14,7 @@ export async function scriptResponseHandler(response: HTTPResponse, detectedScri
           source: {
             type: 'external',
             url: scriptUrl,
+            content: scriptContent,
           },
           hash: createSha256Hash(scriptContent),
         })
