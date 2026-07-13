@@ -947,14 +947,13 @@ export class SlackAlertService implements IAlertService {
    * of the script content, with "..." in between for easier identification.
    */
   private createContentSnippet(content: string): string {
-    if (!content || content.length === 0) {
-      return '(empty)'
-    }
-
     // External script bodies can be hundreds of KB; cut generously oversized
     // head/tail slices first so whitespace normalization never scans the
     // whole body just to render ~200 characters.
-    const trimmed = content.trim()
+    const trimmed = content ? content.trim() : ''
+    if (trimmed.length === 0) {
+      return '(empty)'
+    }
     const raw = trimmed.length <= 1000 ? trimmed : `${trimmed.slice(0, 500)} ${trimmed.slice(-500)}`
 
     // Remove leading/trailing whitespace and normalize line breaks for cleaner display
