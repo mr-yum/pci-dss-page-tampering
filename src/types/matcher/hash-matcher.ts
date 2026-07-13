@@ -20,8 +20,9 @@ import type { AuthorisationInfo, AuthorisationMatcher, DetectedScript } from './
  *
  * Behavior:
  * - identify(): Always returns false (hashes cannot identify, only authorize)
- * - authorize(): Computes SHA-256 hash of script.content, checks if in authorizedHashes array
- * - Returns false for null/empty content (cannot compute hash)
+ * - authorize(): Compares the script's pre-computed SHA-256 hash (computed from
+ *   the response body at detection time) against the authorizedHashes array
+ * - Returns false for null/empty content (fail-secure: no content, no trust)
  *
  * Validation:
  * - authorizedHashes array must contain at least 1 hash (with timestamp)

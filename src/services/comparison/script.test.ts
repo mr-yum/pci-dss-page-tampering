@@ -57,8 +57,8 @@ describe('ScriptComparisonService', () => {
     }
   })
 
-  const createScriptInfo = (url: string, hashValue: string): ScriptInfo => ({
-    source: { type: 'external', url },
+  const createScriptInfo = (url: string, hashValue: string, content: string = 'console.log("external script body")'): ScriptInfo => ({
+    source: { type: 'external', url, content },
     hash: { value: hashValue } as SHA256Hash,
   })
 
@@ -111,9 +111,9 @@ describe('ScriptComparisonService', () => {
   describe('compareSingleScriptWithInventory', () => {
     describe('script exists in inventory with content matcher and empty hashes', () => {
       it('should return AuthorizedScriptFound when content matcher matches', () => {
-        const detectedScript = createScriptInfo('https://cdn.example.com/payment.js', 'hash123')
+        const detectedScript = createScriptInfo('https://cdn.example.com/payment.js', 'hash123', 'initPayment({ amount: total })')
 
-        const inventoryScripts = [createInventoryScriptInfo('https://cdn\\.example\\.com/payment\\.js', [], true, 'payment')]
+        const inventoryScripts = [createInventoryScriptInfo('https://cdn\\.example\\.com/payment\\.js', [], true, 'initPayment')]
 
         const result = (service as any).compareSingleScriptWithInventory(detectedScript, inventoryScripts, mockTarget)
 
@@ -215,23 +215,41 @@ describe('ScriptComparisonService', () => {
 
     // T044: Null content handling
     describe('null/empty content handling', () => {
-      it('should treat external script correctly (URL as content)', () => {
-        // Create a script info with null content (simulating external script fetch failure)
+      it('should pass the fetched body as content for external scripts (not the URL)', () => {
         const scriptInfo: ScriptInfo = {
-          source: { type: 'external', url: 'https://cdn.example.com/script.js' },
+          source: { type: 'external', url: 'https://cdn.example.com/script.js', content: 'window.checkout = () => {}' },
           hash: { value: 'hash123' } as SHA256Hash,
         }
 
-        const inventoryScripts = [createInventoryScriptInfo('https://cdn\\.example\\.com/script\\.js', ['hash123'])]
+        // Content matcher targets the script body; the URL must NOT satisfy it
+        const inventoryScripts = [createInventoryScriptInfo('https://cdn\\.example\\.com/script\\.js', [], true, 'window\\.checkout')]
 
-        // Since we're testing private method, we need to simulate the flow
-        // The scriptInfoToDetectedScript method sets content to URL for external scripts
-        // So external scripts always have content (the URL itself)
         const result = (service as any).compareSingleScriptWithInventory(scriptInfo, inventoryScripts, mockTarget)
 
-        // With our implementation, external scripts use URL as content
-        // So this test actually verifies the URL-as-content behavior
         expect(result.type).toBe('authorized_script')
+      })
+
+      it('should NOT authorize an external script whose URL matches a content pattern its body does not', () => {
+        const scriptInfo: ScriptInfo = {
+          source: { type: 'external', url: 'https://cdn.example.com/window.checkout/script.js', content: 'stealCardData()' },
+          hash: { value: 'hash123' } as SHA256Hash,
+        }
+
+        const inventoryScripts = [createInventoryScriptInfo('https://cdn\\.example\\.com/.*', [], true, 'window\\.checkout')]
+
+        const result = (service as any).compareSingleScriptWithInventory(scriptInfo, inventoryScripts, mockTarget)
+
+        expect(result.type).toBe('known_script_unauthorised_content')
+      })
+
+      it('should treat external script with empty content as UnknownScriptFound (fail-secure)', () => {
+        const scriptInfo = createScriptInfo('https://cdn.example.com/script.js', 'hash123', '')
+
+        const inventoryScripts = [createInventoryScriptInfo('https://cdn\\.example\\.com/script\\.js', ['hash123'])]
+
+        const result = (service as any).compareSingleScriptWithInventory(scriptInfo, inventoryScripts, mockTarget)
+
+        expect(result.type).toBe('unknown_script_found')
       })
 
       it('should treat inline script with empty content as UnknownScriptFound (fail-secure)', () => {
@@ -248,7 +266,7 @@ describe('ScriptComparisonService', () => {
 
     describe('content matcher edge cases', () => {
       it('should prioritize content matcher over hash when both match', () => {
-        const detectedScript = createScriptInfo('https://cdn.example.com/analytics.js', 'differentHash')
+        const detectedScript = createScriptInfo('https://cdn.example.com/analytics.js', 'differentHash', 'analytics.track("pageview")')
 
         const inventoryScripts = [createInventoryScriptInfo('https://cdn\\.example\\.com/analytics\\.js', ['originalHash'], true, 'analytics')]
 
@@ -268,7 +286,7 @@ describe('ScriptComparisonService', () => {
       })
 
       it('should return AuthorizedScriptFound when content matcher matches', () => {
-        const detectedScript = createScriptInfo('https://cdn.example.com/tracking.js', 'hash123')
+        const detectedScript = createScriptInfo('https://cdn.example.com/tracking.js', 'hash123', 'tracking.start()')
 
         const inventoryScripts = [createInventoryScriptInfo('https://cdn\\.example\\.com/tracking\\.js', [], true, 'tracking')]
 
@@ -320,7 +338,7 @@ describe('ScriptComparisonService', () => {
       })
 
       it('should stop checking after first match even if later entries have better hash match', () => {
-        const detectedScript = createScriptInfo('https://cdn.example.com/analytics.js', 'exactHash')
+        const detectedScript = createScriptInfo('https://cdn.example.com/analytics.js', 'exactHash', 'analytics.track("pageview")')
 
         const inventoryScripts = [
           createInventoryScriptInfo('.*example.*', ['wrongHash'], true, 'analytics'), // First match - has content matcher
@@ -329,7 +347,7 @@ describe('ScriptComparisonService', () => {
 
         const result = (service as any).compareSingleScriptWithInventory(detectedScript, inventoryScripts, mockTarget)
 
-        // First entry matches and has content matcher that matches 'analytics' in URL
+        // First entry matches and has content matcher that matches 'analytics' in the script body
         expect(result.type).toBe('authorized_script')
       })
     })

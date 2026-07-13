@@ -314,6 +314,8 @@ Each inventory file (`targets/<name>.json`) lists the scripts and headers approv
 - `identifyWith` — picks out the script or header (e.g. by URL or header name)
 - `authoriseWith` — describes what content/hash is acceptable, with `authorisationInfo` metadata
 
+Matcher fields always operate on what their name says: `nameMatcher` on the script URL / inline id (`headerNameMatcher` on the header name), `contentMatcher` on the actual content (external script response body, inline script source, or header value — never the URL), `hashes` on the SHA-256 of that content, and `hostMatcher`/`urlMatcher` on the resource's provenance URL. To authorize a script by where it comes from, use `urlMatcher` or `hostMatcher`, not a URL-shaped `contentMatcher`.
+
 ### Simple Matcher
 
 ```json

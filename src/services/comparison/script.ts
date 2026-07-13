@@ -45,19 +45,17 @@ export class ScriptComparisonService implements IScriptComparisonService {
   /**
    * Converts ScriptInfo to DetectedScript format for matcher operations.
    *
-   * For external scripts: name and content are the URL (matching the
-   * pre-refactor behaviour of ContentMatcher against `getScriptSource`).
-   * For inline scripts: name is the ID, content is the actual source.
-   *
-   * `url` is populated for both — external scripts use `source.url`
-   * directly, inline scripts use the initiator URL captured by the
-   * page-attribution shim (`InlineScriptSource.url`). `HostMatcher` /
-   * `UrlMatcher` consume this single field; both fail-secure when it's
-   * missing.
+   * Each Matchable field carries what its name says, for every script type:
+   * - `name`: the script URL (external) or inline id (inline) — NameMatcher.
+   * - `content`: the actual script source — ContentMatcher.
+   * - `url`: provenance — HostMatcher / UrlMatcher. External scripts use
+   *   `source.url` directly, inline scripts use the initiator URL captured
+   *   by the page-attribution shim (`InlineScriptSource.url`); both matchers
+   *   fail-secure when it's missing.
    */
   private scriptInfoToDetectedScript(scriptInfo: ScriptInfo): DetectedScript {
     const name = getScriptSource(scriptInfo)
-    const content = scriptInfo.source.type === 'inline' ? scriptInfo.source.content : name
+    const content = scriptInfo.source.content
     // Both source variants carry `url` directly — external (its own URL,
     // always populated) and inline (initiator URL, optional). The discriminated
     // union narrows the type for us; no ternary needed.

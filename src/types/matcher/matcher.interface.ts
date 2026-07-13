@@ -168,10 +168,10 @@ export interface Matcher<T extends Matchable = Matchable> {
    * @returns AuthorizationResult with authorized flag, optional reason, and metadata path
    *
    * Behavior by matcher type:
-   * - NameMatcher: Tests resource.content against regex pattern
-   * - HeaderNameMatcher: Tests resource.content against regex pattern
+   * - NameMatcher: Tests resource.name against regex pattern
+   * - HeaderNameMatcher: Tests resource.content against regex pattern (name identifies, value authorizes)
    * - ContentMatcher: Tests resource.content against regex pattern
-   * - HashMatcher: Computes SHA-256 hash of resource.content, checks against authorized hashes
+   * - HashMatcher: Compares the resource's pre-computed SHA-256 hash against authorized hashes
    * - OrMatcher: Returns authorized if ANY child authorizes (first-match-wins)
    * - AndMatcher: Returns authorized if ALL children authorize (short-circuit on failure)
    *
