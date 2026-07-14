@@ -150,7 +150,7 @@ act push --container-architecture linux/amd64 --secret-file .env.secrets
    - Generic update handler for both scripts and headers using discriminated union switch
    - Single-pass processing eliminating legacy type conversions
    - Idempotent updates prevent duplicate hashes/matchers; pending entries (`authorised: false`) already covering a script are never re-appended on later runs
-   - New scripts are identified by exact name (URL / inline id) — except inline scripts carrying the shared `inline_script/id_not_found` fallback, which get a provenance-based matcher instead: `andMatcher` of the initiator host (`hostMatcher`) and an anchored 64-char content snippet (`contentMatcher`)
+   - New scripts are identified by exact name (URL / inline id) — except inline scripts carrying the shared `inline_script/id_not_found` fallback, which get a provenance-based matcher instead: `andMatcher` of the initiator host (`hostMatcher`) and an anchored 64-char content snippet (`contentMatcher`, both ends anchored when the whole body fits the window). Two exceptions: content-only matching when the initiator URL is missing/unparseable, and the exact-name matcher (degenerate) for whitespace-only content — never a universal matcher
    - Array syntax conversion preserves original authorization metadata
 
 4. **AlertService** (`src/services/alert/slack.ts`) - Sends Slack notifications for detected changes
