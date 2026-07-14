@@ -3,8 +3,6 @@ import type { RawInventoryScriptInfo } from '../types/inventory/raw.js'
 import { processAuthorizeWith } from '../types/inventory/zod.js'
 import { createMatcher } from '../types/matcher/matcher-factory.js'
 import type { ScriptInfo } from '../types/script.js'
-import { scriptHashToInventoryHashInfo } from '../utils/hash.js'
-import { escapeRegex } from './string.js'
 
 /**
  * Serializes authorization metadata to JSON-compatible format.
@@ -18,31 +16,6 @@ function serializeAuthorisationInfo(info: InventoryAuthorisationInfo): { descrip
     description: info.description,
     authorised: info.authorised,
     date: info.date.toISOString(),
-  }
-}
-
-/**
- * Converts a ScriptInfo to InventoryScriptInfo for new script discovery.
- *
- * Updated for Phase 3:
- * - identifyWith: NameMatcher with escaped exact URL/ID match
- * - authoriseWith: AuthorizeWithConfig composite structure (matcher + authorization metadata)
- * - This is used during inventory workflow when discovering new scripts
- */
-export function scriptInfoToInventoryScriptInfo(scriptInfo: ScriptInfo, date: Date): InventoryScriptInfo {
-  const scriptSource = getScriptSource(scriptInfo)
-  const escapedPattern = `^${escapeRegex(scriptSource)}$`
-
-  return {
-    identifyWith: createMatcher({ nameMatcher: escapedPattern }),
-    authoriseWith: {
-      matcher: createMatcher({ hashes: [scriptHashToInventoryHashInfo(scriptInfo, date)] }),
-      authorisationInfo: {
-        description: 'NO_DESCRIPTION',
-        authorised: false,
-        date: date,
-      },
-    },
   }
 }
 

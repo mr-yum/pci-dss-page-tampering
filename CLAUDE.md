@@ -149,7 +149,8 @@ act push --container-architecture linux/amd64 --secret-file .env.secrets
    - Processes typed comparison results (ComparisonResultType[]) directly for inventory updates
    - Generic update handler for both scripts and headers using discriminated union switch
    - Single-pass processing eliminating legacy type conversions
-   - Idempotent updates prevent duplicate hashes/matchers
+   - Idempotent updates prevent duplicate hashes/matchers; pending entries (`authorised: false`) already covering a script are never re-appended on later runs
+   - New scripts are identified by exact name (URL / inline id) — except inline scripts carrying the shared `inline_script/id_not_found` fallback, which get a provenance-based matcher instead: `andMatcher` of the initiator host (`hostMatcher`) and an anchored 64-char content snippet (`contentMatcher`, both ends anchored when the whole body fits the window). Two exceptions: content-only matching when the initiator URL is missing/unparseable, and the exact-name matcher (degenerate) for whitespace-only content — never a universal matcher
    - Array syntax conversion preserves original authorization metadata
 
 4. **AlertService** (`src/services/alert/slack.ts`) - Sends Slack notifications for detected changes
@@ -381,5 +382,6 @@ The system runs on CRON schedules:
 - **Never merge PRs without human review**: Do not merge any pull request that has not been reviewed and approved by a human. `main` branch protection requires a code-owner approval — do not bypass it. Specifically, never use admin/override merges (e.g. `gh pr merge --admin`) or otherwise circumvent required reviews and status checks. You may prepare a PR so it is ready to merge (fix CI, resolve conflicts, push), but a human must perform or explicitly authorize the final merge.
 - **Commit messages**: Please use conventional commits and keep them concise. Tell us what value was created in the commit, not a catalog of changes.
 - **Code review on commit**: Before creating a commit, run `/coderabbit:review --base main` and address its findings (or explain why a finding is intentional) as part of the same change. Treat CodeRabbit as a required review step alongside `npm run precommit` — precommit verifies correctness, CodeRabbit catches design/quality issues a static check won't.
+- **CodeRabbit PR reviews are asynchronous**: passing the pre-commit CLI review is not the end of the CodeRabbit step. After opening a PR or pushing new commits to one, CodeRabbit posts inline review comments on the PR several minutes later — check for them before considering the work done (`gh api repos/<org>/<repo>/pulls/<n>/comments`, filtering `in_reply_to_id == null` for top-level findings; comments created after your last push are new). Address or rebut every finding and reply on its thread with the fix commit. New pushes trigger fresh reviews, so re-check after each push until a review round comes back clean.
 - **2nd code review on commit**: Before creating a commit, run `/review` and address its findings (or explain why a finding is intentional) as part of the same change. Treat this as a required review step alongside `npm run precommit` — precommit verifies correctness, Review catches design/quality issues a static check won't.
 - **Update README.md**: Ensure that you consider any updates to user facing documentation as part of any changes.
