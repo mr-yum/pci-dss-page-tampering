@@ -1081,7 +1081,7 @@ describe('ScriptInventoryService', () => {
         expect(diff.appliedResults).toEqual([result])
       })
 
-      it('marks UnknownScriptFound and UnknownHeaderFound as applied unconditionally', async () => {
+      it('marks UnknownScriptFound and UnknownHeaderFound as applied when no existing entry covers them', async () => {
         const inventory = createMockInventory([])
         const target = createMockTarget()
         const unknownScript = new UnknownScriptFound(target, new Date('2026-04-22T00:00:00.000Z'), {
@@ -1094,6 +1094,111 @@ describe('ScriptInventoryService', () => {
         const diff = await service.diff(inventory, [unknownScript, unknownHeader])
         expect(diff.appliedResults).toEqual(expect.arrayContaining([unknownScript, unknownHeader]))
         expect(diff.appliedResults).toHaveLength(2)
+      })
+    })
+
+    describe('New unidentifiable inline scripts (inline_script/id_not_found)', () => {
+      const timestamp = new Date('2026-07-14T00:00:00.000Z')
+
+      it('identifies by initiator host AND content snippet instead of the shared fallback name', async () => {
+        const inventory = createMockInventory([])
+        const target = createMockTarget()
+        const unknown = new UnknownScriptFound(target, timestamp, {
+          name: 'inline_script/id_not_found',
+          content: '$RB=[];$RV=function(a){doSomething(a)};//'.repeat(3),
+          hash: { value: 'h-rsc' },
+          url: 'https://staging.example.com/some/page',
+        })
+
+        const diff = await service.diff(inventory, [unknown])
+
+        expect(diff.newInventory.scripts).toHaveLength(1)
+        const raw = inventoryScriptInfoToRawInventoryScriptInfo(diff.newInventory.scripts[0]!) as any
+        expect(raw.identifyWith.andMatcher).toHaveLength(2)
+        expect(raw.identifyWith.andMatcher[0]).toEqual({ hostMatcher: '^staging\\.example\\.com$' })
+        expect(raw.identifyWith.andMatcher[1].contentMatcher).toMatch(/^\^/)
+        expect(raw.identifyWith).not.toHaveProperty('nameMatcher')
+        // A different script that happens to carry the same fallback name must
+        // NOT be identified by the generated entry.
+        expect(diff.newInventory.scripts[0]!.identifyWith.identify({ name: 'inline_script/id_not_found', content: 'evil()', hash: { value: 'h-evil' }, url: 'https://staging.example.com/x' })).toBe(false)
+        // The same script IS identified on the next run.
+        expect(diff.newInventory.scripts[0]!.identifyWith.identify(unknown.script)).toBe(true)
+      })
+
+      it('falls back to content-only identification when the initiator URL is missing or unparseable', async () => {
+        const inventory = createMockInventory([])
+        const target = createMockTarget()
+        const unknown = new UnknownScriptFound(target, timestamp, {
+          name: 'inline_script/id_not_found',
+          content: 'requestAnimationFrame(function(){$RT=performance.now()});',
+          hash: { value: 'h-timing' },
+        })
+
+        const diff = await service.diff(inventory, [unknown])
+
+        const raw = inventoryScriptInfoToRawInventoryScriptInfo(diff.newInventory.scripts[0]!)
+        expect(raw.identifyWith).toHaveProperty('contentMatcher')
+        expect(raw.identifyWith).not.toHaveProperty('andMatcher')
+        expect(diff.newInventory.scripts[0]!.identifyWith.identify(unknown.script)).toBe(true)
+      })
+
+      it('anchors both ends when the whole body fits the snippet window, so longer scripts sharing the prefix are not identified', async () => {
+        const target = createMockTarget()
+        const short = new UnknownScriptFound(target, timestamp, {
+          name: 'inline_script/id_not_found',
+          content: 'shortBootstrap()',
+          hash: { value: 'h-short' },
+          url: 'https://staging.example.com/menu',
+        })
+
+        const diff = await service.diff(createMockInventory([]), [short])
+        const entry = diff.newInventory.scripts[0]!
+
+        expect(entry.identifyWith.identify(short.script)).toBe(true)
+        expect(entry.identifyWith.identify({ name: 'inline_script/id_not_found', content: 'shortBootstrap(); stealCards()', hash: { value: 'h-evil' }, url: 'https://staging.example.com/menu' })).toBe(false)
+      })
+
+      it('does not append a duplicate entry when a pending (authorised: false) entry already covers the script', async () => {
+        const target = createMockTarget()
+        const unknown = new UnknownScriptFound(target, timestamp, {
+          name: 'inline_script/id_not_found',
+          content: '(self.__next_f=self.__next_f||[]).push([0])',
+          hash: { value: 'h-next' },
+          url: 'https://staging.example.com/menu',
+        })
+
+        // First run appends the pending entry.
+        const firstDiff = await service.diff(createMockInventory([]), [unknown])
+        expect(firstDiff.newInventory.scripts).toHaveLength(1)
+        expect(firstDiff.appliedResults).toEqual([unknown])
+
+        // Second run sees the same script (comparison reports it unknown again
+        // because the pending entry is authorised: false) — no new entry.
+        const secondDiff = await service.diff(createMockInventory(firstDiff.newInventory.scripts), [unknown])
+        expect(secondDiff.newInventory.scripts).toHaveLength(1)
+        expect(secondDiff.appliedResults).toEqual([])
+      })
+
+      it('still appends a new entry when an existing pending entry identifies the script but its hash differs (content changed)', async () => {
+        const target = createMockTarget()
+        const original = new UnknownScriptFound(target, timestamp, {
+          name: 'inline_script/id_not_found',
+          content: 'stablePrefix(); dynamicTail("v1")',
+          hash: { value: 'h-v1' },
+          url: 'https://staging.example.com/menu',
+        })
+        const firstDiff = await service.diff(createMockInventory([]), [original])
+
+        const changed = new UnknownScriptFound(target, timestamp, {
+          name: 'inline_script/id_not_found',
+          content: 'stablePrefix(); dynamicTail("v2")',
+          hash: { value: 'h-v2' },
+          url: 'https://staging.example.com/menu',
+        })
+        const secondDiff = await service.diff(createMockInventory(firstDiff.newInventory.scripts), [changed])
+
+        expect(secondDiff.newInventory.scripts).toHaveLength(2)
+        expect(secondDiff.appliedResults).toEqual([changed])
       })
     })
   })

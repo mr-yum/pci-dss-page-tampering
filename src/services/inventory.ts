@@ -12,6 +12,7 @@ import type { PullTarget } from '../types/target.js'
 import { buildInventoryCommitMessage } from '../utils/commit-message.js'
 import { copyInventory, inventoryHeaderInfoToRawInventoryHeaderInfo, rawInventoryHeaderInfoToInventoryHeaderInfo } from '../utils/inventory.js'
 import { inventoryScriptInfoToRawInventoryScriptInfo, rawInventoryScriptInfoToInventoryScriptInfo } from '../utils/script.js'
+import { UNIDENTIFIED_INLINE_SCRIPT_ID } from '../utils/script/inline.js'
 
 export class ScriptInventoryService implements IInventoryService {
   private _repository: IScriptInventoryRepository
@@ -124,9 +125,15 @@ export class ScriptInventoryService implements IInventoryService {
 
     let updatedInventory = copyInventory(inventory, { newScripts: updatedScripts, newHeaders: updatedHeaders })
 
-    // Append new scripts/headers from unknown_* results. These always cause a
-    // mutation, so they're unconditionally added to appliedResults.
+    // Append new scripts/headers from unknown_* results. Pending entries
+    // (authorised: false) are invisible to identification in the comparison
+    // service, so a script awaiting review comes back as unknown on every
+    // run — skip the append when an existing entry already covers it, or the
+    // inventory grows a duplicate entry per run until a human authorises.
     for (const result of unknownScripts) {
+      if (this.isCoveredByExistingEntry(result, updatedInventory)) {
+        continue
+      }
       updatedInventory = this.addNewScript(result, updatedInventory, updateDate)
       appliedResults.push(result)
     }
@@ -164,12 +171,68 @@ export class ScriptInventoryService implements IInventoryService {
    * Add a new script to inventory (FR-001).
    * Creates a new inventory entry from UnknownScriptFound result.
    */
-  private addNewScript(result: UnknownScriptFound, inventory: Inventory, updateDate: Date): Inventory {
-    const scriptSource = result.script.name
-    const escapedPattern = `^${this.escapeRegex(scriptSource)}$`
+  /**
+   * True when an existing inventory entry already identifies this script AND
+   * its matcher accepts the script's content/hash. Comparison only reports a
+   * script as unknown when every entry that identifies it has
+   * `authorised: false`, so a hit here is a pending entry from an earlier
+   * run that a human has not reviewed yet — appending again would duplicate it.
+   */
+  private isCoveredByExistingEntry(result: UnknownScriptFound, inventory: Inventory): boolean {
+    return inventory.scripts.some((entry) => entry.identifyWith.identify(result.script) && entry.authoriseWith.matcher.authorize(result.script).authorized)
+  }
 
+  /**
+   * Builds the identification matcher for a newly discovered script.
+   *
+   * Scripts with a meaningful name (external URLs, inline ids) are identified
+   * by exact name. Inline scripts that fell through to the shared
+   * `inline_script/id_not_found` fallback cannot be — the name is identical
+   * for every such script — so they are identified by provenance + content:
+   * initiator host (from the page-attribution shim) AND an anchored snippet
+   * of the script body.
+   */
+  private buildIdentifyMatcher(result: UnknownScriptFound): InventoryScriptInfo['identifyWith'] {
+    const script = result.script
+
+    if (script.name !== UNIDENTIFIED_INLINE_SCRIPT_ID) {
+      return createMatcher({ nameMatcher: `^${this.escapeRegex(script.name)}$` })
+    }
+
+    const contentSnippet = (script.content ?? '').slice(0, 64)
+    if (contentSnippet.trim() === '') {
+      // Whitespace-only content would produce a bare `^` matcher that
+      // identifies every script. Fall back to the (degenerate) exact-name
+      // matcher rather than minting a universal one.
+      return createMatcher({ nameMatcher: `^${this.escapeRegex(script.name)}$` })
+    }
+    // When the whole body fits in the snippet window, anchor both ends —
+    // a prefix-only match would also identify any longer script that merely
+    // starts with this content. Truncated snippets stay prefix-anchored.
+    const endAnchor = contentSnippet.length < 64 ? '$' : ''
+    const contentConfig = { contentMatcher: `^${this.escapeRegex(contentSnippet)}${endAnchor}` }
+
+    let host = ''
+    if (script.url) {
+      try {
+        host = new URL(script.url).host
+      } catch {
+        // Unparseable initiator URL — fall through to content-only identification.
+      }
+    }
+
+    if (!host) {
+      return createMatcher(contentConfig)
+    }
+
+    return createMatcher({
+      andMatcher: [{ hostMatcher: `^${this.escapeRegex(host)}$` }, contentConfig],
+    })
+  }
+
+  private addNewScript(result: UnknownScriptFound, inventory: Inventory, updateDate: Date): Inventory {
     const newScript: InventoryScriptInfo = {
-      identifyWith: createMatcher({ nameMatcher: escapedPattern }),
+      identifyWith: this.buildIdentifyMatcher(result),
       authoriseWith: {
         matcher: createMatcher({ hashes: [{ timestamp: result.timestamp, hash: result.script.hash }] }),
         authorisationInfo: {
