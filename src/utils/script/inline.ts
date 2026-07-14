@@ -46,7 +46,7 @@ const cloudFlareScriptMatcher: InLineScriptMatcher = {
 const nextJsServerSideRenderingScriptMatcher: InLineScriptMatcher = {
   resultingIdentifier: 'inline_script/nextjs-ssr',
   predicate: (script: PageScriptElement) => {
-    const regex = RegExp('^\\(?self\\.__next_f')
+    const regex = RegExp('^\\(?self\\.__next_f[.=]')
     return regex.test(script.content)
   },
 }

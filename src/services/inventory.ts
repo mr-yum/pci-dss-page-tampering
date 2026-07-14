@@ -199,7 +199,8 @@ export class ScriptInventoryService implements IInventoryService {
       return createMatcher({ nameMatcher: `^${this.escapeRegex(script.name)}$` })
     }
 
-    const contentSnippet = (script.content ?? '').slice(0, 64)
+    const content = script.content ?? ''
+    const contentSnippet = content.slice(0, 64)
     if (contentSnippet.trim() === '') {
       // Whitespace-only content would produce a bare `^` matcher that
       // identifies every script. Fall back to the (degenerate) exact-name
@@ -209,7 +210,9 @@ export class ScriptInventoryService implements IInventoryService {
     // When the whole body fits in the snippet window, anchor both ends —
     // a prefix-only match would also identify any longer script that merely
     // starts with this content. Truncated snippets stay prefix-anchored.
-    const endAnchor = contentSnippet.length < 64 ? '$' : ''
+    // Compare the original length, not the snippet's: content of exactly 64
+    // chars is untruncated and must still get the end anchor.
+    const endAnchor = content.length <= 64 ? '$' : ''
     const contentConfig = { contentMatcher: `^${this.escapeRegex(contentSnippet)}${endAnchor}` }
 
     let host = ''

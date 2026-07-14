@@ -24,6 +24,10 @@ describe('tryGetIdFromInLineScriptCode', () => {
     it('does not classify scripts that merely mention the marker mid-body', () => {
       expect(classify('stealCards(); // self.__next_f.push looks legit')).toBe(UNIDENTIFIED_INLINE_SCRIPT_ID)
     })
+
+    it('does not classify unrelated identifiers sharing the prefix', () => {
+      expect(classify('self.__next_fabricatedPayload()')).toBe(UNIDENTIFIED_INLINE_SCRIPT_ID)
+    })
   })
 
   describe('React Server Components runtime', () => {

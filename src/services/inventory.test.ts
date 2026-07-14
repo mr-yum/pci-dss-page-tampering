@@ -1158,6 +1158,25 @@ describe('ScriptInventoryService', () => {
         expect(entry.identifyWith.identify({ name: 'inline_script/id_not_found', content: 'shortBootstrap(); stealCards()', hash: { value: 'h-evil' }, url: 'https://staging.example.com/menu' })).toBe(false)
       })
 
+      it('anchors both ends for content of exactly 64 chars (untruncated boundary)', async () => {
+        const target = createMockTarget()
+        const exactly64 = 'a'.repeat(64)
+        expect(exactly64).toHaveLength(64)
+        const script = new UnknownScriptFound(target, timestamp, {
+          name: 'inline_script/id_not_found',
+          content: exactly64,
+          hash: { value: 'h-64' },
+          url: 'https://staging.example.com/menu',
+        })
+
+        const diff = await service.diff(createMockInventory([]), [script])
+        const entry = diff.newInventory.scripts[0]!
+
+        expect(entry.identifyWith.identify(script.script)).toBe(true)
+        // A longer script sharing the 64-char prefix must not be identified.
+        expect(entry.identifyWith.identify({ name: 'inline_script/id_not_found', content: exactly64 + ';stealCards()', hash: { value: 'h-evil' }, url: 'https://staging.example.com/menu' })).toBe(false)
+      })
+
       it('does not append a duplicate entry when a pending (authorised: false) entry already covers the script', async () => {
         const target = createMockTarget()
         const unknown = new UnknownScriptFound(target, timestamp, {
