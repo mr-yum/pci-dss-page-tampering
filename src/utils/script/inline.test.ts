@@ -39,8 +39,16 @@ describe('tryGetIdFromInLineScriptCode', () => {
       expect(classify('$RB=[];$RV=function(a){$RT=performance.now();for(var b=0;b<a.length;b+=2){}}')).toBe('inline_script/react-server-component')
     })
 
+    it('classifies the bare completion-call form ($RC("B:0","S:0"))', () => {
+      expect(classify('$RC("B:0","S:0")')).toBe('inline_script/react-server-component')
+    })
+
     it('does not classify scripts containing $R tokens mid-body', () => {
       expect(classify('skim(); var x = "$RC";')).toBe(UNIDENTIFIED_INLINE_SCRIPT_ID)
+    })
+
+    it('does not classify unrelated identifiers sharing the $R prefix', () => {
+      expect(classify('$RANDOM=steal(); $RCSomething()')).toBe(UNIDENTIFIED_INLINE_SCRIPT_ID)
     })
   })
 

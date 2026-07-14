@@ -55,12 +55,14 @@ const nextJsServerSideRenderingScriptMatcher: InLineScriptMatcher = {
  In-line script code for React [Server Components](https://tonyalicea.dev/blog/understanding-react-server-components/).
  The RSC runtime emits several `$R<letter>` globals at the start of its
  bootstrap scripts ($RC/$RS completion handlers, but also $RB/$RV/$RT
- runtime helpers), so accept any leading `$R<uppercase>` token.
+ runtime helpers), so accept any leading `$R<uppercase>` token — but only
+ as a complete identifier (assignment `$RC=` or call `$RC(`), so unrelated
+ identifiers like `$RANDOM` don't inherit the RSC identity.
  */
 const reactServerComponentScriptMatcher: InLineScriptMatcher = {
   resultingIdentifier: 'inline_script/react-server-component',
   predicate: (script: PageScriptElement) => {
-    const regex = RegExp('^\\$R[A-Z]')
+    const regex = RegExp('^\\$R[A-Z](?![A-Za-z0-9_$])')
     return regex.test(script.content)
   },
 }
