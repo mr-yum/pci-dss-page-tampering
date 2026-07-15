@@ -324,6 +324,7 @@ These typed results provide complete context to alert handlers without additiona
 Workflows are defined as step-by-step instructions for Puppeteer in `src/workflows/`:
 
 - Each step includes element selectors and actions (click, input, navigate, totp)
+- `waitFor` selector types: `div` (class), `button`/`h2`/`h3`/`span` (visible text, substring match), `input` (name attribute), `href` (link suffix), `testid` (`data-testid` attribute — preferred when the target app exposes test ids), `aria` (`aria-label` attribute — for icon buttons with no visible text)
 - Steps are converted to PuppeteerLocatorActions for execution
 - Support for popup handling and complex user flows
 - `totp` actions type an RFC 6238 one-time code (6 digits / 30s, `src/utils/totp.ts`) generated at step-execution time. The step carries only a `seedRef` name; the base32 seed is supplied at runtime via the repeatable `--totp-seed <name>=<seed>` parameter and must never be committed to the inventory repo, logged, or included in alerts. If fewer than 5 seconds remain in the current window, execution waits for the next window before generating the code.

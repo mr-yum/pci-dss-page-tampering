@@ -26,4 +26,22 @@ describe('WorkflowStepSchema', () => {
     const result = WorkflowStepSchema.safeParse(step({ type: 'input', value: 'guest@example.com' }))
     expect(result.success).toBe(true)
   })
+
+  it('accepts a testid waitFor definition', () => {
+    const result = WorkflowStepSchema.safeParse({
+      description: 'Enter one-time code',
+      waitFor: [{ type: 'testid', identifier: 'otp-input' }],
+      action: { type: 'totp', seedRef: 'checkout-user' },
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('accepts an aria waitFor definition', () => {
+    const result = WorkflowStepSchema.safeParse({
+      description: 'Add upgrade via icon button',
+      waitFor: [{ type: 'aria', identifier: 'Add Cake' }],
+      action: { type: 'click' },
+    })
+    expect(result.success).toBe(true)
+  })
 })

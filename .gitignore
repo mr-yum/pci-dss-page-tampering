@@ -50,3 +50,4 @@ pulled_repo/
 
 # claude code local settings
 .claude/settings.local.json
+.playwright-cli/

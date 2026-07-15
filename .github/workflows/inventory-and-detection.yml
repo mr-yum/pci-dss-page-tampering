@@ -88,6 +88,14 @@ jobs:
             CLI_ARGS="$CLI_ARGS --target $TARGET"
           fi
 
+          # TOTP seed for workflow steps of type 'totp' (Tables staging
+          # sign-in). Only passed when the secret is configured so runs
+          # without it keep working for targets that don't need TOTP.
+          TABLES_STAGING_TOTP_SEED="${{ secrets.TABLES_STAGING_TOTP_SEED }}"
+          if [ -n "$TABLES_STAGING_TOTP_SEED" ]; then
+            CLI_ARGS="$CLI_ARGS --totp-seed tables-staging=$TABLES_STAGING_TOTP_SEED"
+          fi
+
           echo "Executing: npm start -- $CLI_ARGS"
           npm start -- $CLI_ARGS
 
