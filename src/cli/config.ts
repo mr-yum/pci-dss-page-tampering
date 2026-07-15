@@ -1,5 +1,6 @@
 import type { CliArguments } from '../types/cli.js'
-import type { AlertingConfiguration, AuthenticationConfiguration, BranchConfiguration, ExecutionMode, RepositoryConfiguration, RuntimeConfiguration, TargetFilter } from '../types/config.js'
+import type { AlertingConfiguration, AuthenticationConfiguration, BranchConfiguration, ExecutionMode, RepositoryConfiguration, RuntimeConfiguration, TargetFilter, TotpConfiguration } from '../types/config.js'
+import { parseTotpSeedEntry } from '../utils/totp.js'
 
 /**
  * Build runtime configuration from validated CLI arguments
@@ -16,6 +17,7 @@ export function buildConfiguration(cliArgs: CliArguments): RuntimeConfiguration 
     branches: buildBranchConfiguration(cliArgs.inventoryBranch, cliArgs.detectionBranch),
     authentication: buildAuthenticationConfiguration(cliArgs.repo, cliArgs.gitToken, cliArgs.gitUserName, cliArgs.gitUserEmail),
     alerting: buildAlertingConfiguration(cliArgs.slackToken),
+    totp: buildTotpConfiguration(cliArgs.totpSeed),
   }
 }
 
@@ -68,6 +70,23 @@ function buildAlertingConfiguration(slackToken: string | undefined): AlertingCon
     slackToken: slackToken ?? null,
     mode: slackToken ? 'slack' : 'console',
   }
+}
+
+/**
+ * Build TOTP configuration from validated `<name>=<base32-seed>` entries.
+ * Format and base32 validity are enforced by the CLI Zod schema, which uses
+ * the same parseTotpSeedEntry — entries that fail to parse here were already
+ * rejected there.
+ */
+function buildTotpConfiguration(totpSeed: string[]): TotpConfiguration {
+  const seeds = new Map<string, string>()
+  for (const entry of totpSeed) {
+    const parsed = parseTotpSeedEntry(entry)
+    if (parsed !== null) {
+      seeds.set(parsed.name, parsed.seed)
+    }
+  }
+  return { seeds }
 }
 
 /**

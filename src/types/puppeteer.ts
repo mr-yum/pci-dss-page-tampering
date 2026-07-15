@@ -16,7 +16,7 @@ export type PuppeteerLocatorAction = {
   delay: number
 }
 
-export type PuppeteerAction = PuppeteerClickAction | PuppeteerInputAction | PuppeteerEscapeAction | PuppeteerNavigateAction | PuppeteerClickPopupAction
+export type PuppeteerAction = PuppeteerClickAction | PuppeteerInputAction | PuppeteerTotpAction | PuppeteerEscapeAction | PuppeteerNavigateAction | PuppeteerClickPopupAction
 
 export type PuppeteerClickAction = {
   type: 'click'
@@ -26,6 +26,14 @@ export type PuppeteerClickAction = {
 export type PuppeteerInputAction = {
   type: 'input'
   value: string
+}
+
+// Types a TOTP code generated at step-execution time from the named seed
+// (supplied via --totp-seed). The action carries only the seed's name so
+// workflow definitions never contain the secret.
+export type PuppeteerTotpAction = {
+  type: 'totp'
+  seedRef: string
 }
 
 export type PuppeteerEscapeAction = {

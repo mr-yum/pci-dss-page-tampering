@@ -13,14 +13,27 @@ export const WorkflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() =>
   z.object({
     description: z.string(),
     waitFor: z.array(WorkflowWaitForDefinitionSchema),
-    action: z.object({
-      type: z.enum(['click', 'input', 'escape', 'navigate', 'clickPopup']),
-      value: z.string().optional(),
-      delay: z.number().optional(),
-      waitForNavigation: z.literal(true).optional(),
-      // This is the recursive part, referring back to workflowStepSchema
-      steps: z.array(WorkflowStepSchema).optional(),
-    }) satisfies z.ZodType<WorkflowActionType>, // Ensures this object matches the Action type
+    action: z
+      .object({
+        type: z.enum(['click', 'input', 'escape', 'navigate', 'clickPopup', 'totp']),
+        value: z.string().optional(),
+        seedRef: z.string().optional(),
+        delay: z.number().optional(),
+        waitForNavigation: z.literal(true).optional(),
+        // This is the recursive part, referring back to workflowStepSchema
+        steps: z.array(WorkflowStepSchema).optional(),
+      })
+      .superRefine((action, ctx) => {
+        // Fail-secure: a totp action without a seed reference cannot be
+        // executed, so reject it at deserialization (and in --mode validate).
+        if (action.type === 'totp' && (action.seedRef === undefined || action.seedRef.trim() === '')) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['seedRef'],
+            message: "Workflow actions of type 'totp' require a non-empty seedRef naming a seed passed via --totp-seed",
+          })
+        }
+      }) satisfies z.ZodType<WorkflowActionType>, // Ensures this object matches the Action type
   }),
 )
 

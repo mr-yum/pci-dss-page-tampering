@@ -15,6 +15,7 @@ describe('Configuration Builder', () => {
         detectionBranch: 'main',
         gitUserName: 'PCI DSS Page Tampering Bot',
         gitUserEmail: 'noreply@example.com',
+        totpSeed: [],
         help: false,
       }
 
@@ -43,6 +44,7 @@ describe('Configuration Builder', () => {
         detectionBranch: 'main',
         gitUserName: 'PCI DSS Page Tampering Bot',
         gitUserEmail: 'noreply@example.com',
+        totpSeed: [],
         help: false,
       }
 
@@ -62,6 +64,7 @@ describe('Configuration Builder', () => {
         detectionBranch: 'main',
         gitUserName: 'PCI DSS Page Tampering Bot',
         gitUserEmail: 'noreply@example.com',
+        totpSeed: [],
         help: false,
       }
 
@@ -82,6 +85,7 @@ describe('Configuration Builder', () => {
         detectionBranch: 'main',
         gitUserName: 'PCI DSS Page Tampering Bot',
         gitUserEmail: 'noreply@example.com',
+        totpSeed: [],
         help: false,
       }
 
@@ -101,6 +105,7 @@ describe('Configuration Builder', () => {
         detectionBranch: 'staging',
         gitUserName: 'PCI DSS Page Tampering Bot',
         gitUserEmail: 'noreply@example.com',
+        totpSeed: [],
         help: false,
       }
 
@@ -108,6 +113,48 @@ describe('Configuration Builder', () => {
 
       expect(config.executionMode).toBe(ExecutionMode.Detection)
       expect(config.branches.detection).toBe('staging')
+    })
+
+    it('should build TOTP seeds map from name=seed entries', () => {
+      const cliArgs: CliArguments = {
+        mode: 'detection',
+        target: undefined,
+        repo: 'https://github.com/org/inventory',
+        gitToken: 'ghp_token',
+        slackToken: undefined,
+        inventoryBranch: 'updates/scripts',
+        detectionBranch: 'main',
+        gitUserName: 'PCI DSS Page Tampering Bot',
+        gitUserEmail: 'noreply@example.com',
+        totpSeed: ['checkout=GEZDGNBVGY3TQOJQ', 'admin=MZXW6YTBOI======'],
+        help: false,
+      }
+
+      const config = buildConfiguration(cliArgs)
+
+      expect(config.totp.seeds.size).toBe(2)
+      expect(config.totp.seeds.get('checkout')).toBe('GEZDGNBVGY3TQOJQ')
+      expect(config.totp.seeds.get('admin')).toBe('MZXW6YTBOI======')
+    })
+
+    it('should build an empty TOTP seeds map when no seeds are provided', () => {
+      const cliArgs: CliArguments = {
+        mode: 'all',
+        target: undefined,
+        repo: 'https://github.com/org/inventory',
+        gitToken: 'ghp_token',
+        slackToken: undefined,
+        inventoryBranch: 'updates/scripts',
+        detectionBranch: 'main',
+        gitUserName: 'PCI DSS Page Tampering Bot',
+        gitUserEmail: 'noreply@example.com',
+        totpSeed: [],
+        help: false,
+      }
+
+      const config = buildConfiguration(cliArgs)
+
+      expect(config.totp.seeds.size).toBe(0)
     })
 
     it('should handle custom branch configurations', () => {
@@ -121,6 +168,7 @@ describe('Configuration Builder', () => {
         detectionBranch: 'release/v2.0',
         gitUserName: 'PCI DSS Page Tampering Bot',
         gitUserEmail: 'noreply@example.com',
+        totpSeed: [],
         help: false,
       }
 

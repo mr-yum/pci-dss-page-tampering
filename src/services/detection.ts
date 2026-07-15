@@ -6,14 +6,25 @@ import type { IDetectionService } from '../interfaces/detection.js'
 import type { DetectionSummary } from '../types/detection.js'
 import type { HeaderName, HeaderUrl } from '../types/header.js'
 import type { ScriptMatcher } from '../types/matcher.js'
-import type { PuppeteerClickAction, PuppeteerClickPopupAction, PuppeteerInputAction, PuppeteerLocatorAction, PuppeteerNavigateAction } from '../types/puppeteer.js'
+import type { PuppeteerClickAction, PuppeteerClickPopupAction, PuppeteerInputAction, PuppeteerLocatorAction, PuppeteerNavigateAction, PuppeteerTotpAction } from '../types/puppeteer.js'
 import type { ScriptInfo } from '../types/script.js'
 import type { Target } from '../types/target.js'
 import { getInlineScriptsFromPage } from '../utils/page.js'
 import { INLINE_SCRIPT_ATTRIBUTION_SCRIPT } from '../utils/page-attribution.js'
+import { generateTotp, millisecondsRemainingInTotpWindow } from '../utils/totp.js'
 import { getPuppeteerWorkflowFromTarget, stepsToPuppeteerLocatorAction } from '../utils/workflow.js'
 
+// If fewer than this many milliseconds remain in the current TOTP window,
+// wait for the next window before generating the code, so it cannot expire
+// between being typed and being verified server-side.
+const TOTP_WINDOW_SAFETY_MARGIN_MS = 5000
+
 export class DetectionService implements IDetectionService {
+  private readonly totpSeeds: ReadonlyMap<string, string>
+
+  constructor(options: { totpSeeds?: ReadonlyMap<string, string> } = {}) {
+    this.totpSeeds = options.totpSeeds ?? new Map()
+  }
   async detect(browser: Browser, target: Target, scriptContentMatchers: ScriptMatcher[]): Promise<DetectionSummary> {
     const externalScripts: ScriptInfo[] = []
     const internalScripts: ScriptInfo[] = []
@@ -159,6 +170,29 @@ export class DetectionService implements IDetectionService {
         const action: PuppeteerInputAction = step.action
         await this.evalClick(page, step)
         await page.type(step.querySelector, action.value)
+        break
+      }
+
+      case 'totp': {
+        const action: PuppeteerTotpAction = step.action
+        const seed = this.totpSeeds.get(action.seedRef)
+        if (seed === undefined) {
+          const availableSeeds = this.totpSeeds.size > 0 ? [...this.totpSeeds.keys()].join(', ') : '(none)'
+          throw new Error(`TOTP seed '${action.seedRef}' was not provided. Pass it via --totp-seed ${action.seedRef}=<base32-seed>. Available seeds: ${availableSeeds}`)
+        }
+
+        // Focus the field first so the code is generated as late as possible.
+        await this.evalClick(page, step)
+
+        const remainingMs = millisecondsRemainingInTotpWindow(Date.now())
+        if (remainingMs < TOTP_WINDOW_SAFETY_MARGIN_MS) {
+          await this.sleep(remainingMs + 50)
+        }
+
+        // Generated at execution time (not workflow-build time) so the code
+        // is fresh even in long-running flows. Never log or rethrow the code.
+        const code = generateTotp(seed, Date.now())
+        await page.type(step.querySelector, code)
         break
       }
 

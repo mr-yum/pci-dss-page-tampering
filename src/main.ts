@@ -23,6 +23,7 @@ import type { ExecutionSummary } from './types/execution-summary.js'
 import type { Inventory, InventoryAlert, InventoryDifferenceResult } from './types/inventory/model.js'
 import { PullTarget, type Target } from './types/target.js'
 import { getScriptContentMatchersFromInventory } from './utils/script/matcher.js'
+import { collectTotpSeedRefs } from './utils/workflow.js'
 
 /**
  * Main entry point for PCI DSS Page Tampering Detection system
@@ -101,7 +102,7 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
   })
   const scriptInventoryRepository = new ScriptInventoryRepository({ inventoryStore: gitInventoryStore })
   const scriptInventoryService = new ScriptInventoryService({ inventoryRepository: scriptInventoryRepository })
-  const detectionService = new DetectionService()
+  const detectionService = new DetectionService({ totpSeeds: config.totp.seeds })
   const scriptComparisonService = new ScriptComparisonService()
   const headerComparisonService = new HeaderComparisonService()
 
@@ -144,6 +145,13 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
   const runForTargetAsync = async (browser: Browser, payload: Inventory, target: Target): Promise<TargetRunResult> => {
     try {
       console.log(`[Main]: Starting processing for target: ${target.url}`)
+
+      // Fail fast, before any navigation, if the workflow references TOTP
+      // seeds that were not supplied via --totp-seed.
+      const missingSeedRefs = [...collectTotpSeedRefs(target.workflow.definition.steps)].filter((seedRef) => !config.totp.seeds.has(seedRef))
+      if (missingSeedRefs.length > 0) {
+        throw new Error(`Target '${target.url}' references TOTP seed(s) that were not provided: ${missingSeedRefs.join(', ')}. Pass them via --totp-seed <name>=<base32-seed>.`)
+      }
 
       // Get content matchers for in-script detection
       const scriptMatchers = getScriptContentMatchersFromInventory(payload)
@@ -451,6 +459,8 @@ function logConfiguration(config: RuntimeConfiguration): void {
   console.log(`[Main]:   Detection Branch: ${config.branches.detection}`)
   console.log(`[Main]:   Git Token: ${redactToken(config.authentication.gitToken)}`)
   console.log(`[Main]:   Alerting: ${config.alerting.mode}${config.alerting.mode === 'slack' ? ` (token: ${redactToken(config.alerting.slackToken)})` : ''}`)
+  // Log seed names only — the seed values are durable credentials.
+  console.log(`[Main]:   TOTP Seeds: ${config.totp.seeds.size > 0 ? `${[...config.totp.seeds.keys()].join(', ')} (values redacted)` : '(none)'}`)
   console.log('')
 }
 

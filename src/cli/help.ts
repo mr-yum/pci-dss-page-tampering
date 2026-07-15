@@ -53,6 +53,13 @@ OPTIONAL PARAMETERS:
   --git-user-email <EMAIL> Git committer email for inventory updates
                            Default: noreply@example.com
 
+  --totp-seed <NAME>=<SEED> TOTP seed for workflow steps of type 'totp'
+                           (RFC 6238, 6 digits / 30s). NAME is the seedRef used
+                           by workflow definitions; SEED is the base32 secret.
+                           Repeatable for multiple seeds. Pass from a secret
+                           store (e.g. GitHub Actions secrets) — never commit
+                           seeds to the inventory repository.
+
   --help, -h               Display this help message and exit
 
 EXIT CODES:

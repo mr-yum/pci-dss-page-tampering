@@ -73,7 +73,7 @@ function normalizeKey(key: string): keyof RawCliArgs | null {
   const camelCase = cleaned.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())
 
   // Map to valid RawCliArgs keys
-  const validKeys: (keyof RawCliArgs)[] = ['mode', 'target', 'repo', 'gitToken', 'slackToken', 'inventoryBranch', 'detectionBranch', 'gitUserName', 'gitUserEmail', 'help']
+  const validKeys: (keyof RawCliArgs)[] = ['mode', 'target', 'repo', 'gitToken', 'slackToken', 'inventoryBranch', 'detectionBranch', 'gitUserName', 'gitUserEmail', 'totpSeed', 'help']
 
   if (validKeys.includes(camelCase as keyof RawCliArgs)) {
     return camelCase as keyof RawCliArgs
@@ -85,9 +85,14 @@ function normalizeKey(key: string): keyof RawCliArgs | null {
 /**
  * Set argument value in RawCliArgs object
  */
+// Array-valued keys: each occurrence accumulates instead of overwriting
+const REPEATABLE_KEYS = new Set<keyof RawCliArgs>(['totpSeed'])
+
 function setArgValue(args: RawCliArgs, key: keyof RawCliArgs, value: string): void {
   if (key === 'help') {
     args[key] = true
+  } else if (REPEATABLE_KEYS.has(key)) {
+    ;(args as any)[key] = [...((args[key] as string[] | undefined) ?? []), value]
   } else {
     ;(args as any)[key] = value
   }

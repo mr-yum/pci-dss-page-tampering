@@ -16,6 +16,25 @@ export async function getWorkflowFromFile(fileName: string): Promise<Workflow> {
   }
 }
 
+/**
+ * Collect every TOTP seed name referenced by the given steps, recursing into
+ * clickPopup sub-steps. Lets callers fail fast — before launching a browser
+ * session — when a workflow references a seed not supplied via --totp-seed.
+ */
+export function collectTotpSeedRefs(steps: WorkflowStep[]): Set<string> {
+  const seedRefs = new Set<string>()
+  for (const step of steps) {
+    const trimmedSeedRef = step.action.seedRef?.trim()
+    if (step.action.type === 'totp' && trimmedSeedRef) {
+      seedRefs.add(trimmedSeedRef)
+    }
+    if (step.action.steps) {
+      collectTotpSeedRefs(step.action.steps).forEach((seedRef) => seedRefs.add(seedRef))
+    }
+  }
+  return seedRefs
+}
+
 export function getPuppeteerWorkflowFromTarget(page: Page, target: Target): PuppeteerWorkflow {
   return {
     target: target,
@@ -60,6 +79,20 @@ function actionToPuppeteerAction(action: WorkflowActionType): PuppeteerAction {
         value: action.value!,
       }
     }
+    case 'totp': {
+      // The Zod schema guarantees a non-empty seedRef for deserialized
+      // workflows; this guard covers programmatically-built definitions that
+      // bypass it. Trimmed to match the trimmed --totp-seed names.
+      const seedRef = action.seedRef?.trim()
+      if (!seedRef) {
+        throw new Error("Workflow action of type 'totp' is missing its seedRef")
+      }
+      return {
+        type: 'totp',
+        seedRef: seedRef,
+      }
+    }
+
     case 'escape': {
       return {
         type: 'escape',

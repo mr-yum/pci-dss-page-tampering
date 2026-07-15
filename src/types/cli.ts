@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { decodeBase32, parseTotpSeedEntry } from '../utils/totp.js'
+
 /**
  * Raw CLI arguments parsed from process.argv
  * No validation applied at this stage
@@ -14,6 +16,7 @@ export type RawCliArgs = {
   detectionBranch?: string
   gitUserName?: string
   gitUserEmail?: string
+  totpSeed?: string[]
   help?: boolean
 }
 
@@ -74,6 +77,54 @@ const repoUrlSchema = z.string().superRefine((value, ctx) => {
 })
 
 /**
+ * Validates repeatable `--totp-seed <name>=<base32-seed>` entries.
+ * Error messages identify entries by position and name only — never by the
+ * seed value, which is a durable credential.
+ */
+const totpSeedSchema = z
+  .array(z.string())
+  .default([])
+  .superRefine((entries, ctx) => {
+    const seenNames = new Set<string>()
+
+    entries.forEach((entry, index) => {
+      const parsed = parseTotpSeedEntry(entry)
+
+      if (parsed === null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [index],
+          message: `TOTP seed entry #${index + 1} must use the format <name>=<base32-seed>`,
+        })
+        return
+      }
+
+      const { name, seed } = parsed
+
+      if (seenNames.has(name)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [index],
+          message: `Duplicate TOTP seed name '${name}'`,
+        })
+        return
+      }
+      seenNames.add(name)
+
+      try {
+        decodeBase32(seed)
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : 'invalid base32'
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [index],
+          message: `TOTP seed '${name}' is invalid: ${reason}`,
+        })
+      }
+    })
+  })
+
+/**
  * Zod schema for CLI argument validation
  * Applies type checking, format validation, and default values
  *
@@ -93,6 +144,7 @@ export const CliArgsSchema = z
     detectionBranch: z.string().default('main'),
     gitUserName: z.string().default('PCI DSS Page Tampering Bot'),
     gitUserEmail: z.string().default('noreply@example.com'),
+    totpSeed: totpSeedSchema,
     help: z.boolean().default(false),
   })
   .superRefine((args, ctx) => {

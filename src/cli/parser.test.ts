@@ -65,6 +65,15 @@ describe('CLI Parser', () => {
       })
     })
 
+    it('should accumulate repeated --totp-seed arguments', () => {
+      const argv = ['node', 'script.js', '--totp-seed', 'checkout=GEZDGNBVGY3TQOJQ', '--totp-seed=admin=MZXW6YTBOI======']
+      const result = parseArguments(argv)
+
+      expect(result).toEqual<RawCliArgs>({
+        totpSeed: ['checkout=GEZDGNBVGY3TQOJQ', 'admin=MZXW6YTBOI======'],
+      })
+    })
+
     it('should handle values with equals signs', () => {
       const argv = ['node', 'script.js', '--repo=file:///path/with=equals']
       const result = parseArguments(argv)

@@ -55,6 +55,15 @@ export type AlertingConfiguration = Readonly<{
 }>
 
 /**
+ * TOTP seeds for workflow steps of type 'totp', keyed by the seed name that
+ * workflow definitions reference via `seedRef`. Seeds are secrets: they only
+ * ever arrive via --totp-seed and must never be logged or persisted.
+ */
+export type TotpConfiguration = Readonly<{
+  seeds: ReadonlyMap<string, string>
+}>
+
+/**
  * Complete runtime configuration object
  * Passed to services for workflow execution
  */
@@ -65,6 +74,7 @@ export type RuntimeConfiguration = Readonly<{
   branches: BranchConfiguration
   authentication: AuthenticationConfiguration
   alerting: AlertingConfiguration
+  totp: TotpConfiguration
 }>
 
 /**

@@ -1,6 +1,9 @@
 export type WorkflowActionType = {
-  type: 'click' | 'input' | 'escape' | 'navigate' | 'clickPopup'
+  type: 'click' | 'input' | 'escape' | 'navigate' | 'clickPopup' | 'totp'
   value?: string | undefined
+  // Name of a TOTP seed supplied at runtime via --totp-seed <name>=<seed>.
+  // The seed itself must never appear in workflow files (they live in Git).
+  seedRef?: string | undefined
   delay?: number | undefined
   waitForNavigation?: true | undefined
   steps?: WorkflowStep[] | undefined

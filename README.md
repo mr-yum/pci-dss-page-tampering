@@ -114,7 +114,33 @@ See [Branch Usage](#branch-usage) for the branch model and [CI Validation for th
 | `--detection-branch <name>` | Branch for detection operations                                | `main`                       |
 | `--git-user-name <name>`    | Git committer name for inventory updates                       | `PCI DSS Page Tampering Bot` |
 | `--git-user-email <email>`  | Git committer email for inventory updates                      | `noreply@example.com`        |
+| `--totp-seed <name>=<seed>` | Named base32 TOTP seed for `totp` workflow steps (repeatable)  | -                            |
 | `--help`                    | Display help message and exit                                  | -                            |
+
+### TOTP Verification in Workflows
+
+Workflows that must pass a one-time-password challenge (e.g. logging in to a payment flow behind MFA) can use a step action of type `totp`. It behaves like an `input` action, except the value is an RFC 6238 TOTP code (6 digits, 30-second window, HMAC-SHA1 — Google Authenticator-compatible) generated at the moment the step executes:
+
+```json
+{
+  "description": "Enter one-time code",
+  "waitFor": [{ "type": "input", "identifier": "otp" }],
+  "action": { "type": "totp", "seedRef": "checkout-user" }
+}
+```
+
+The workflow file carries only `seedRef` — a name. The seed itself is a durable credential and must **never** be committed to the inventory repository; supply it at runtime from a secret store:
+
+```bash
+npm start -- \
+  --repo https://github.com/org/inventory \
+  --git-token $TOKEN \
+  --totp-seed checkout-user=$CHECKOUT_TOTP_SEED
+```
+
+`--totp-seed` is repeatable for multiple seeds. Seed values are validated as base32 at startup and never logged (startup logging prints seed names only). If a workflow references a seed name that wasn't provided, the target fails before any page navigation with an error naming the missing seed(s). When a step fires with less than 5 seconds left in the current TOTP window, the run waits for the next window so the code cannot expire mid-submission.
+
+> **Note**: Automating TOTP means the second factor lives alongside the first in the same secrets store, which weakens what MFA provides for that account. Use a dedicated, least-privileged synthetic-monitoring account.
 
 ## Branch Usage
 
