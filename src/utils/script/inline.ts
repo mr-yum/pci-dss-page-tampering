@@ -5,8 +5,9 @@ import type { InLineScriptMatcher } from '../../types/script/inline.js'
  * Shared fallback id for inline scripts that match none of the known
  * framework snippets below. Multiple distinct scripts can carry this id at
  * once, so it must never be used to *identify* a script in the inventory —
- * `InventoryService.addNewScript` generates a provenance + content-snippet
- * matcher for these instead of a name matcher.
+ * `InventoryService.addNewScript` generates an anchored content-snippet
+ * matcher for these (combined with the initiator host when the initiator
+ * URL is available) instead of a name matcher.
  */
 export const UNIDENTIFIED_INLINE_SCRIPT_ID = 'inline_script/id_not_found'
 
@@ -17,6 +18,17 @@ export const UNIDENTIFIED_INLINE_SCRIPT_ID = 'inline_script/id_not_found'
     - [Cloudflare Bot Flight Mode](https://community.cloudflare.com/t/report-of-deprecated-api-usage-in-cloudflares-auto-generated-script/578200/7)
     - [Next.js Server-side Rendering](https://github.com/vercel/next.js/discussions/42170#discussioncomment-8880248)
     - React Server Components runtime helpers and hydration-timing bootstrap
+      (both emitted verbatim by react-dom's server renderer — the exact
+      `$RT=performance.now()` snippet ships inside vercel/next.js's compiled
+      react-dom-server builds)
+
+  Contribution rule: every matcher here classifies a TECHNOLOGY, never a
+  site. A new matcher must target a snippet attributable to the framework or
+  vendor's own source/documentation (link the evidence in its comment), so it
+  holds for any site built on that stack. If a snippet cannot be traced
+  upstream, it is application-specific and belongs in that target's inventory
+  file — the inventory workflow already generates an anchored content-snippet
+  entry for it (combined with the initiator host when available).
  */
 export function tryGetIdFromInLineScriptCode(pageScriptElement: PageScriptElement): string {
   const scriptMatchers = [cloudFlareScriptMatcher, nextJsServerSideRenderingScriptMatcher, reactServerComponentScriptMatcher, reactHydrationTimingScriptMatcher]

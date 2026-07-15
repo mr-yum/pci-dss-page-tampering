@@ -150,7 +150,7 @@ The system uses different branches for different purposes:
    - Review changes in `inventory-updates` branch
    - Add authorization metadata for legitimate resources
    - Merge to `main` after approval
-   - Detection workflow now recognizes these resources as authorized
+   - Detection workflow now recognises these resources as authorized
 
 ### Example: Separate Review Workflow
 
@@ -315,6 +315,24 @@ Each inventory file (`targets/<name>.json`) lists the scripts and headers approv
 - `authoriseWith` — describes what content/hash is acceptable, with `authorisationInfo` metadata
 
 Matcher fields always operate on what their name says: `nameMatcher` on the script URL / inline id (`headerNameMatcher` on the header name), `contentMatcher` on the actual content (external script response body, inline script source, or header value — never the URL), `hashes` on the SHA-256 of that content, and `hostMatcher`/`urlMatcher` on the resource's provenance URL. To authorize a script by where it comes from, use `urlMatcher` or `hostMatcher`, not a URL-shaped `contentMatcher`.
+
+### Inline Script Names
+
+External scripts are named by their URL; inline scripts have no URL, so the system assigns them a stable `inline_script/...` name that inventory entries can match with `nameMatcher`:
+
+- **`inline_script/<element-id>`** — used when the `<script>` element carries a DOM `id` attribute (e.g. a script tag your application renders as `<script id="facebookPixel">` is named `inline_script/facebookPixel`).
+- **Convenience names for known tech types** — scripts that frameworks and edge vendors generate on _any_ site that uses them are recognised by their canonical snippet and given a shared, human-readable name. This keeps one inventory entry per technology instead of one per anonymous script:
+
+  | Name                                   | Technology                                                                                     |
+  | -------------------------------------- | ---------------------------------------------------------------------------------------------- |
+  | `inline_script/cloudflare-bot-fight`   | Cloudflare Bot Fight Mode challenge loader (injected by Cloudflare on any protected site)      |
+  | `inline_script/nextjs-ssr`             | Next.js App Router flight-data scripts (`self.__next_f.push(...)` and its initialiser variant) |
+  | `inline_script/react-server-component` | React streaming-SSR inline runtime (`$RC`/`$RS`/`$RB`/`$RV`/`$RT` bootstrap globals)           |
+  | `inline_script/react-hydration-timing` | react-dom server renderer's paint-timing snippet (`requestAnimationFrame(...$RT=...)`)         |
+
+  These names classify a **technology, never a site**: each recogniser is attributable byte-for-byte to the framework or vendor's own source code, so it holds for every site built on that stack. Application-specific inline scripts must never be added to this list — they belong in the target's inventory file, where the system identifies them by provenance instead (see below).
+
+- **`inline_script/id_not_found`** — the shared fallback for anything unrecognised. Because many distinct scripts can carry this name at once, it can never identify a script; when the inventory workflow discovers one, it generates a content-based entry instead: an anchored snippet of the script body (`contentMatcher`, both ends anchored when the whole body fits the window), combined under an `andMatcher` with the initiator host (`hostMatcher`) whenever the initiator URL is available and parseable. The entry is ready for a human to review and authorise.
 
 ### Simple Matcher
 
