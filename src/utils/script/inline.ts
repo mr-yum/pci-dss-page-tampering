@@ -17,6 +17,17 @@ export const UNIDENTIFIED_INLINE_SCRIPT_ID = 'inline_script/id_not_found'
     - [Cloudflare Bot Flight Mode](https://community.cloudflare.com/t/report-of-deprecated-api-usage-in-cloudflares-auto-generated-script/578200/7)
     - [Next.js Server-side Rendering](https://github.com/vercel/next.js/discussions/42170#discussioncomment-8880248)
     - React Server Components runtime helpers and hydration-timing bootstrap
+      (both emitted verbatim by react-dom's server renderer — the exact
+      `$RT=performance.now()` snippet ships inside vercel/next.js's compiled
+      react-dom-server builds)
+
+  Contribution rule: every matcher here classifies a TECHNOLOGY, never a
+  site. A new matcher must target a snippet attributable to the framework or
+  vendor's own source/documentation (link the evidence in its comment), so it
+  holds for any site built on that stack. If a snippet cannot be traced
+  upstream, it is application-specific and belongs in that target's inventory
+  file — the inventory workflow already generates a provenance-based
+  (initiator host + content snippet) entry for it.
  */
 export function tryGetIdFromInLineScriptCode(pageScriptElement: PageScriptElement): string {
   const scriptMatchers = [cloudFlareScriptMatcher, nextJsServerSideRenderingScriptMatcher, reactServerComponentScriptMatcher, reactHydrationTimingScriptMatcher]
