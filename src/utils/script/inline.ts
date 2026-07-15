@@ -5,8 +5,9 @@ import type { InLineScriptMatcher } from '../../types/script/inline.js'
  * Shared fallback id for inline scripts that match none of the known
  * framework snippets below. Multiple distinct scripts can carry this id at
  * once, so it must never be used to *identify* a script in the inventory —
- * `InventoryService.addNewScript` generates a provenance + content-snippet
- * matcher for these instead of a name matcher.
+ * `InventoryService.addNewScript` generates an anchored content-snippet
+ * matcher for these (combined with the initiator host when the initiator
+ * URL is available) instead of a name matcher.
  */
 export const UNIDENTIFIED_INLINE_SCRIPT_ID = 'inline_script/id_not_found'
 
@@ -26,8 +27,8 @@ export const UNIDENTIFIED_INLINE_SCRIPT_ID = 'inline_script/id_not_found'
   vendor's own source/documentation (link the evidence in its comment), so it
   holds for any site built on that stack. If a snippet cannot be traced
   upstream, it is application-specific and belongs in that target's inventory
-  file — the inventory workflow already generates a provenance-based
-  (initiator host + content snippet) entry for it.
+  file — the inventory workflow already generates an anchored content-snippet
+  entry for it (combined with the initiator host when available).
  */
 export function tryGetIdFromInLineScriptCode(pageScriptElement: PageScriptElement): string {
   const scriptMatchers = [cloudFlareScriptMatcher, nextJsServerSideRenderingScriptMatcher, reactServerComponentScriptMatcher, reactHydrationTimingScriptMatcher]

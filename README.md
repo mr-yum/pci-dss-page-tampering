@@ -150,7 +150,7 @@ The system uses different branches for different purposes:
    - Review changes in `inventory-updates` branch
    - Add authorization metadata for legitimate resources
    - Merge to `main` after approval
-   - Detection workflow now recognizes these resources as authorized
+   - Detection workflow now recognises these resources as authorized
 
 ### Example: Separate Review Workflow
 
@@ -332,7 +332,7 @@ External scripts are named by their URL; inline scripts have no URL, so the syst
 
   These names classify a **technology, never a site**: each recogniser is attributable byte-for-byte to the framework or vendor's own source code, so it holds for every site built on that stack. Application-specific inline scripts must never be added to this list — they belong in the target's inventory file, where the system identifies them by provenance instead (see below).
 
-- **`inline_script/id_not_found`** — the shared fallback for anything unrecognised. Because many distinct scripts can carry this name at once, it can never identify a script; when the inventory workflow discovers one, it generates a provenance-based entry instead: an `andMatcher` of the initiator host (`hostMatcher`) and an anchored snippet of the script body (`contentMatcher`), ready for a human to review and authorise.
+- **`inline_script/id_not_found`** — the shared fallback for anything unrecognised. Because many distinct scripts can carry this name at once, it can never identify a script; when the inventory workflow discovers one, it generates a content-based entry instead: an anchored snippet of the script body (`contentMatcher`, both ends anchored when the whole body fits the window), combined under an `andMatcher` with the initiator host (`hostMatcher`) whenever the initiator URL is available and parseable. The entry is ready for a human to review and authorise.
 
 ### Simple Matcher
 
