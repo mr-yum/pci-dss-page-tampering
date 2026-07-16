@@ -283,8 +283,27 @@ export class DetectionService implements IDetectionService {
   }
 
   private async detectNewInlineScripts(page: Page, existingScripts: ScriptInfo[], scriptContentMatchers: ScriptMatcher[]): Promise<ScriptInfo[]> {
-    const detectedInlineScripts = await getInlineScriptsFromPage(page, scriptContentMatchers)
+    const detectedInlineScripts = await this.getInlineScriptsSettled(page, scriptContentMatchers)
     return detectedInlineScripts.filter((detectedScript) => !existingScripts.some((existingScript) => existingScript.hash.value === detectedScript.hash.value))
+  }
+
+  /**
+   * Scan the page for inline scripts, tolerating a step-triggered navigation.
+   * When a step's click starts a hard navigation, the evaluate can race the
+   * document teardown ("Execution context was destroyed"); in that case wait
+   * for the new document to settle and scan it instead. Any other error, or a
+   * second destruction, still fails the run (fail-secure).
+   */
+  private async getInlineScriptsSettled(page: Page, scriptContentMatchers: ScriptMatcher[]): Promise<ScriptInfo[]> {
+    try {
+      return await getInlineScriptsFromPage(page, scriptContentMatchers)
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('Execution context was destroyed')) {
+        await this.sleep(1000)
+        return await getInlineScriptsFromPage(page, scriptContentMatchers)
+      }
+      throw error
+    }
   }
 
   private async sleep(ms: number): Promise<void> {
