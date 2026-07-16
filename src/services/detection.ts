@@ -288,21 +288,25 @@ export class DetectionService implements IDetectionService {
   }
 
   /**
-   * Scan the page for inline scripts, tolerating a step-triggered navigation.
+   * Scan the page for inline scripts, tolerating step-triggered navigations.
    * When a step's click starts a hard navigation, the evaluate can race the
-   * document teardown ("Execution context was destroyed"); in that case wait
-   * for the new document to settle and scan it instead. Any other error, or a
-   * second destruction, still fails the run (fail-secure).
+   * document teardown ("Execution context was destroyed") — and a redirect
+   * chain (e.g. checkout → sign-in) can tear down the retry too. Wait for the
+   * document to settle and rescan, up to a few attempts. Any other error, or
+   * destruction on the final attempt, still fails the run (fail-secure).
    */
   private async getInlineScriptsSettled(page: Page, scriptContentMatchers: ScriptMatcher[]): Promise<ScriptInfo[]> {
-    try {
-      return await getInlineScriptsFromPage(page, scriptContentMatchers)
-    } catch (error) {
-      if (error instanceof Error && error.message.includes('Execution context was destroyed')) {
-        await this.sleep(1000)
+    const maxAttempts = 3
+    for (let attempt = 1; ; attempt++) {
+      try {
         return await getInlineScriptsFromPage(page, scriptContentMatchers)
+      } catch (error) {
+        const isContextDestroyed = error instanceof Error && error.message.includes('Execution context was destroyed')
+        if (!isContextDestroyed || attempt >= maxAttempts) {
+          throw error
+        }
+        await this.sleep(1500)
       }
-      throw error
     }
   }
 
