@@ -30,7 +30,20 @@ export class DetectionService implements IDetectionService {
     const internalScripts: ScriptInfo[] = []
     const headers = new Map<HeaderName, Map<string, Set<HeaderUrl>>>()
 
-    const page = await browser.newPage()
+    // Isolated context per run: cookies and storage must not leak between
+    // the inventory and detection phases (a session persisted from the
+    // inventory run skips the sign-in flow and strands the detection
+    // workflow) or between targets running in parallel.
+    const context = await browser.createBrowserContext()
+    let page: Page
+    try {
+      page = await context.newPage()
+    } catch (error) {
+      // The finally below only runs once the workflow try is entered; close
+      // the context here so a failed page creation cannot leak it.
+      await context.close()
+      throw error
+    }
     let puppeteerWorkflow: any = null
 
     try {
@@ -133,7 +146,7 @@ export class DetectionService implements IDetectionService {
       }
       throw e // Re-throw the error to ensure it's propagated
     } finally {
-      await page.close()
+      await context.close() // closes the page and discards cookies/storage
     }
 
     return {
