@@ -40,8 +40,9 @@ export class DetectionService implements IDetectionService {
       page = await context.newPage()
     } catch (error) {
       // The finally below only runs once the workflow try is entered; close
-      // the context here so a failed page creation cannot leak it.
-      await context.close()
+      // the context here so a failed page creation cannot leak it. Never let
+      // a cleanup failure mask the original error.
+      await context.close().catch(() => undefined)
       throw error
     }
     let puppeteerWorkflow: any = null
@@ -146,7 +147,9 @@ export class DetectionService implements IDetectionService {
       }
       throw e // Re-throw the error to ensure it's propagated
     } finally {
-      await context.close() // closes the page and discards cookies/storage
+      // Closes the page and discards cookies/storage. Log-and-continue on
+      // failure so cleanup can never mask a workflow error.
+      await context.close().catch((closeError) => target.logger.error(`Failed to close browser context: ${closeError}`))
     }
 
     return {
