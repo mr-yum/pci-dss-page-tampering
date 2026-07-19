@@ -47,6 +47,9 @@ export class DetectionService implements IDetectionService {
       throw error
     }
     let puppeteerWorkflow: any = null
+    // Resolved from the target's template URL before navigation; hoisted so
+    // every error path can log the URL that was actually navigated.
+    let navigationUrl: string | undefined
 
     try {
       // Set timeouts to 120 seconds
@@ -67,7 +70,7 @@ export class DetectionService implements IDetectionService {
       // Navigate to workflow starting url, resolving any {{date+Nd}}
       // placeholders at run time so booking-style targets always request a
       // date with availability.
-      const navigationUrl = resolveDateTemplates(puppeteerWorkflow.target.url)
+      navigationUrl = resolveDateTemplates(puppeteerWorkflow.target.url)
       try {
         await page.goto(navigationUrl, {
           waitUntil: 'networkidle2',
@@ -111,7 +114,7 @@ export class DetectionService implements IDetectionService {
           if (stepError instanceof Error && stepError.name === 'TimeoutError') {
             target.logger.error(`TIMEOUT ERROR in step ${currentStepIndex}/${totalStepCount}`)
             target.logger.error(`Step description: ${step.description}`)
-            target.logger.error(`Target URL: ${puppeteerWorkflow.target.url}`)
+            target.logger.error(`Target URL: ${navigationUrl ?? puppeteerWorkflow.target.url}`)
             target.logger.error(`Element selector: ${step.querySelector}`)
             target.logger.error(`Action type: ${step.action.type}`)
             target.logger.error(`Current page URL: ${page.url()}`)
@@ -120,7 +123,7 @@ export class DetectionService implements IDetectionService {
           } else {
             target.logger.error(`ERROR in step ${currentStepIndex}/${totalStepCount}`)
             target.logger.error(`Step description: ${step.description}`)
-            target.logger.error(`Target URL: ${puppeteerWorkflow.target.url}`)
+            target.logger.error(`Target URL: ${navigationUrl ?? puppeteerWorkflow.target.url}`)
             target.logger.error(`Element selector: ${step.querySelector}`)
             target.logger.error(`Action type: ${step.action.type}`)
             target.logger.error(`Current page URL: ${page.url()}`)
@@ -136,13 +139,13 @@ export class DetectionService implements IDetectionService {
       // Enhanced error logging for the main catch block
       if (e instanceof Error && e.name === 'TimeoutError') {
         target.logger.error(`TIMEOUT ERROR during page processing`)
-        target.logger.error(`Target URL: ${puppeteerWorkflow?.target?.url || 'Unknown'}`)
+        target.logger.error(`Target URL: ${navigationUrl ?? puppeteerWorkflow?.target?.url ?? 'Unknown'}`)
         target.logger.error(`Current page URL: ${page.url()}`)
         target.logger.error(`Error message: ${e.message}`)
         target.logger.error(`Stack trace:`, e.stack)
       } else {
         target.logger.error(`ERROR during page processing`)
-        target.logger.error(`Target URL: ${puppeteerWorkflow?.target?.url || 'Unknown'}`)
+        target.logger.error(`Target URL: ${navigationUrl ?? puppeteerWorkflow?.target?.url ?? 'Unknown'}`)
         target.logger.error(`Current page URL: ${page.url()}`)
         target.logger.error(`Error: ${e}`)
         if (e instanceof Error) {
