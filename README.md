@@ -142,6 +142,16 @@ npm start -- \
 
 > **Note**: Automating TOTP means the second factor lives alongside the first in the same secrets store, which weakens what MFA provides for that account. Use a dedicated, least-privileged synthetic-monitoring account.
 
+### Date Placeholders in Target URLs
+
+Booking-style targets often need a future date in the URL — a hardcoded date goes stale, and "today" runs out of availability late in the day. Target URLs may embed `{{date}}` or `{{date+Nd}}` placeholders, resolved to a UTC `YYYY-MM-DD` at navigation time:
+
+```json
+{
+  "url": "https://staging.guest.example.com/venue?view=times&partySize=2&date={{date+2d}}"
+}
+```
+
 ## Branch Usage
 
 The system uses different branches for different purposes:

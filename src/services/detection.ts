@@ -9,6 +9,7 @@ import type { ScriptMatcher } from '../types/matcher.js'
 import type { PuppeteerClickAction, PuppeteerClickPopupAction, PuppeteerInputAction, PuppeteerLocatorAction, PuppeteerNavigateAction, PuppeteerTotpAction } from '../types/puppeteer.js'
 import type { ScriptInfo } from '../types/script.js'
 import type { Target } from '../types/target.js'
+import { resolveDateTemplates } from '../utils/date-template.js'
 import { getInlineScriptsFromPage } from '../utils/page.js'
 import { INLINE_SCRIPT_ATTRIBUTION_SCRIPT } from '../utils/page-attribution.js'
 import { generateTotp, millisecondsRemainingInTotpWindow } from '../utils/totp.js'
@@ -63,20 +64,23 @@ export class DetectionService implements IDetectionService {
       // Get Puppeteer workflow
       puppeteerWorkflow = getPuppeteerWorkflowFromTarget(page, target)
 
-      // Navigate to workflow starting url
+      // Navigate to workflow starting url, resolving any {{date+Nd}}
+      // placeholders at run time so booking-style targets always request a
+      // date with availability.
+      const navigationUrl = resolveDateTemplates(puppeteerWorkflow.target.url)
       try {
-        await page.goto(puppeteerWorkflow.target.url, {
+        await page.goto(navigationUrl, {
           waitUntil: 'networkidle2',
         })
       } catch (navError) {
         if (navError instanceof Error && navError.name === 'TimeoutError') {
           target.logger.error(`NAVIGATION TIMEOUT ERROR`)
-          target.logger.error(`Target URL: ${puppeteerWorkflow.target.url}`)
+          target.logger.error(`Target URL: ${navigationUrl}`)
           target.logger.error(`Error message: ${navError.message}`)
           target.logger.error(`Stack trace:`, navError.stack)
         } else {
           target.logger.error(`NAVIGATION ERROR`)
-          target.logger.error(`Target URL: ${puppeteerWorkflow.target.url}`)
+          target.logger.error(`Target URL: ${navigationUrl}`)
           target.logger.error(`Error: ${navError}`)
           if (navError instanceof Error) {
             target.logger.error(`Stack trace:`, navError.stack)
