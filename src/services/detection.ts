@@ -46,7 +46,7 @@ export class DetectionService implements IDetectionService {
       await context.close().catch(() => undefined)
       throw error
     }
-    let puppeteerWorkflow: any = null
+    let puppeteerWorkflow: any
     // Resolved from the target's template URL before navigation; hoisted so
     // every error path can log the URL that was actually navigated.
     let navigationUrl: string | undefined
