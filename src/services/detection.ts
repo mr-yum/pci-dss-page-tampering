@@ -139,13 +139,13 @@ export class DetectionService implements IDetectionService {
       // Enhanced error logging for the main catch block
       if (e instanceof Error && e.name === 'TimeoutError') {
         target.logger.error(`TIMEOUT ERROR during page processing`)
-        target.logger.error(`Target URL: ${navigationUrl ?? puppeteerWorkflow?.target?.url ?? 'Unknown'}`)
+        target.logger.error(`Target URL: ${navigationUrl ?? target.url}`)
         target.logger.error(`Current page URL: ${page.url()}`)
         target.logger.error(`Error message: ${e.message}`)
         target.logger.error(`Stack trace:`, e.stack)
       } else {
         target.logger.error(`ERROR during page processing`)
-        target.logger.error(`Target URL: ${navigationUrl ?? puppeteerWorkflow?.target?.url ?? 'Unknown'}`)
+        target.logger.error(`Target URL: ${navigationUrl ?? target.url}`)
         target.logger.error(`Current page URL: ${page.url()}`)
         target.logger.error(`Error: ${e}`)
         if (e instanceof Error) {
