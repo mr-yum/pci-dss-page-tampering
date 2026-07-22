@@ -140,7 +140,7 @@ npm start -- \
 
 `--totp-seed` is repeatable for multiple seeds. Seed values are validated as base32 at startup and never logged (startup logging prints seed names only). If a workflow references a seed name that wasn't provided, the target fails before any page navigation with an error naming the missing seed(s).
 
-In the bundled GitHub Actions workflow, seeds are discovered by naming convention rather than hardcoded: every `TOTP_SEED_<NAME>` repository secret is passed as `--totp-seed <name>=<value>`, with the name derived from the suffix (`TOTP_SEED_MY_TARGET` → `my-target`). Adding a TOTP-protected target requires only a new secret — no workflow changes. When a step fires with less than 5 seconds left in the current TOTP window, the run waits for the next window so the code cannot expire mid-submission.
+In the bundled GitHub Actions workflow, seeds are discovered by naming convention rather than hardcoded: every `<NAME>_TOTP_SEED` repository secret is passed as `--totp-seed <name>=<value>`, with the name derived from the prefix (`MY_TARGET_TOTP_SEED` → `my-target`). Adding a TOTP-protected target requires only a new secret — no workflow changes. When a step fires with less than 5 seconds left in the current TOTP window, the run waits for the next window so the code cannot expire mid-submission.
 
 > **Note**: Automating TOTP means the second factor lives alongside the first in the same secrets store, which weakens what MFA provides for that account. Use a dedicated, least-privileged synthetic-monitoring account.
 

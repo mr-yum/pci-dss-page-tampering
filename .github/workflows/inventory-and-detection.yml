@@ -66,14 +66,31 @@ jobs:
           npm ci
           echo "✅ Dependencies installed successfully"
 
-      - name: Run PCI DSS detection
-        timeout-minutes: 30
-        # SECRETS_JSON is used solely to discover TOTP_SEED_* secrets by
-        # naming convention (GitHub Actions cannot enumerate secrets any
-        # other way). Individual values remain registered secrets, so log
-        # masking still applies to each of them.
+      - name: Discover TOTP seeds
+        # GitHub Actions cannot enumerate secrets, so the full secrets
+        # context is exposed to this step ONLY — it runs nothing but
+        # jq/shell and exports just the derived --totp-seed arguments.
+        # The application step below never sees the secrets context, and
+        # each seed value remains an individually registered secret, so
+        # log masking applies per seed.
         env:
           SECRETS_JSON: ${{ toJSON(secrets) }}
+        run: |
+          # Naming convention: every <NAME>_TOTP_SEED repository secret is
+          # passed as --totp-seed <name>=<value>, with <name> derived from
+          # the prefix (TABLES_STAGING_TOTP_SEED -> tables-staging). Adding
+          # a TOTP-protected target needs a new secret, not a workflow edit.
+          TOTP_ARGS=""
+          while IFS= read -r key; do
+            [ -z "$key" ] && continue
+            name=$(printf '%s' "${key%_TOTP_SEED}" | tr '[:upper:]_' '[:lower:]-')
+            value=$(jq -r --arg k "$key" '.[$k]' <<< "$SECRETS_JSON")
+            TOTP_ARGS="$TOTP_ARGS --totp-seed $name=$value"
+          done < <(jq -r 'keys[] | select(endswith("_TOTP_SEED"))' <<< "$SECRETS_JSON")
+          echo "TOTP_ARGS=$TOTP_ARGS" >> "$GITHUB_ENV"
+
+      - name: Run PCI DSS detection
+        timeout-minutes: 30
         run: |
           echo "▶️ Running PCI DSS Page Tampering Detection..."
 
@@ -94,17 +111,9 @@ jobs:
             CLI_ARGS="$CLI_ARGS --target $TARGET"
           fi
 
-          # TOTP seeds for workflow steps of type 'totp', discovered by
-          # naming convention: every TOTP_SEED_<NAME> repository secret is
-          # passed as --totp-seed <name>=<value>, with <name> derived from
-          # the suffix (TOTP_SEED_TABLES_STAGING -> tables-staging). Adding
-          # a TOTP-protected target needs a new secret, not a workflow edit.
-          while IFS= read -r key; do
-            [ -z "$key" ] && continue
-            name=$(printf '%s' "${key#TOTP_SEED_}" | tr '[:upper:]_' '[:lower:]-')
-            value=$(jq -r --arg k "$key" '.[$k]' <<< "$SECRETS_JSON")
-            CLI_ARGS="$CLI_ARGS --totp-seed $name=$value"
-          done < <(jq -r 'keys[] | select(startswith("TOTP_SEED_"))' <<< "$SECRETS_JSON")
+          # TOTP seeds discovered by the previous step (naming convention:
+          # <NAME>_TOTP_SEED secret -> --totp-seed <name>=<value>).
+          CLI_ARGS="$CLI_ARGS$TOTP_ARGS"
 
           echo "Executing: npm start -- $CLI_ARGS"
           npm start -- $CLI_ARGS
