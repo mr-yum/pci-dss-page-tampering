@@ -68,6 +68,12 @@ jobs:
 
       - name: Run PCI DSS detection
         timeout-minutes: 30
+        # SECRETS_JSON is used solely to discover TOTP_SEED_* secrets by
+        # naming convention (GitHub Actions cannot enumerate secrets any
+        # other way). Individual values remain registered secrets, so log
+        # masking still applies to each of them.
+        env:
+          SECRETS_JSON: ${{ toJSON(secrets) }}
         run: |
           echo "▶️ Running PCI DSS Page Tampering Detection..."
 
@@ -88,17 +94,17 @@ jobs:
             CLI_ARGS="$CLI_ARGS --target $TARGET"
           fi
 
-          # TOTP seeds for workflow steps of type 'totp' (Tables sign-in).
-          # Each is only passed when its secret is configured so runs
-          # without it keep working for targets that don't need TOTP.
-          TABLES_STAGING_TOTP_SEED="${{ secrets.TABLES_STAGING_TOTP_SEED }}"
-          if [ -n "$TABLES_STAGING_TOTP_SEED" ]; then
-            CLI_ARGS="$CLI_ARGS --totp-seed tables-staging=$TABLES_STAGING_TOTP_SEED"
-          fi
-          TABLES_PROD_TOTP_SEED="${{ secrets.TABLES_PROD_TOTP_SEED }}"
-          if [ -n "$TABLES_PROD_TOTP_SEED" ]; then
-            CLI_ARGS="$CLI_ARGS --totp-seed tables-prod=$TABLES_PROD_TOTP_SEED"
-          fi
+          # TOTP seeds for workflow steps of type 'totp', discovered by
+          # naming convention: every TOTP_SEED_<NAME> repository secret is
+          # passed as --totp-seed <name>=<value>, with <name> derived from
+          # the suffix (TOTP_SEED_TABLES_STAGING -> tables-staging). Adding
+          # a TOTP-protected target needs a new secret, not a workflow edit.
+          while IFS= read -r key; do
+            [ -z "$key" ] && continue
+            name=$(printf '%s' "${key#TOTP_SEED_}" | tr '[:upper:]_' '[:lower:]-')
+            value=$(jq -r --arg k "$key" '.[$k]' <<< "$SECRETS_JSON")
+            CLI_ARGS="$CLI_ARGS --totp-seed $name=$value"
+          done < <(jq -r 'keys[] | select(startswith("TOTP_SEED_"))' <<< "$SECRETS_JSON")
 
           echo "Executing: npm start -- $CLI_ARGS"
           npm start -- $CLI_ARGS
