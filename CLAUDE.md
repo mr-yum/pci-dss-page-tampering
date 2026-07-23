@@ -137,7 +137,7 @@ act push --container-architecture linux/amd64 --secret-file .env.secrets
 ### Core Services
 
 1. **DetectionService** (`src/services/detection.ts`) - Main orchestrator that:
-   - Launches Puppeteer browser sessions
+   - Launches Puppeteer browser sessions (isolated context per target run; the `HeadlessChrome` UA token is normalised to `Chrome` so the monitor sees what real users are served — bot mitigation blocks on the headless token, and cloaking attackers key on it)
    - Executes workflow steps defined in `src/workflows/`
    - Captures scripts and headers during page navigation
    - Returns detection summaries for comparison
