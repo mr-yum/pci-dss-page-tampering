@@ -75,18 +75,21 @@ jobs:
         # log masking applies per seed.
         env:
           SECRETS_JSON: ${{ toJSON(secrets) }}
+        # POSIX sh only (the container's /bin/sh is dash): the JSON parsing
+        # is delegated to node — always present — rather than jq or bash
+        # here-strings/process substitution.
         run: |
           # Naming convention: every <NAME>_TOTP_SEED repository secret is
           # passed as --totp-seed <name>=<value>, with <name> derived from
           # the prefix (TABLES_STAGING_TOTP_SEED -> tables-staging). Adding
           # a TOTP-protected target needs a new secret, not a workflow edit.
-          TOTP_ARGS=""
-          while IFS= read -r key; do
-            [ -z "$key" ] && continue
-            name=$(printf '%s' "${key%_TOTP_SEED}" | tr '[:upper:]_' '[:lower:]-')
-            value=$(jq -r --arg k "$key" '.[$k]' <<< "$SECRETS_JSON")
-            TOTP_ARGS="$TOTP_ARGS --totp-seed $name=$value"
-          done < <(jq -r 'keys[] | select(endswith("_TOTP_SEED"))' <<< "$SECRETS_JSON")
+          TOTP_ARGS=$(node -e '
+            const s = JSON.parse(process.env.SECRETS_JSON);
+            const args = Object.keys(s)
+              .filter((k) => k.endsWith("_TOTP_SEED"))
+              .map((k) => "--totp-seed " + k.replace(/_TOTP_SEED$/, "").toLowerCase().replace(/_/g, "-") + "=" + s[k]);
+            process.stdout.write(args.join(" "));
+          ')
           echo "TOTP_ARGS=$TOTP_ARGS" >> "$GITHUB_ENV"
 
       - name: Run PCI DSS detection
