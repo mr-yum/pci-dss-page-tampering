@@ -57,14 +57,10 @@ export class DetectionService implements IDetectionService {
       page.setDefaultTimeout(120000) // 120 seconds for all operations
       page.setDefaultNavigationTimeout(120000) // 120 seconds for navigation
 
-      // Present the regular Chrome user agent instead of HeadlessChrome so
-      // the monitor observes what real users are served: bot mitigation
-      // blocks on the headless token, and a cloaking attacker could key on
-      // it to hide tampering from the monitor. Override both the UA string
-      // and the Client Hint metadata (Sec-CH-UA), since either surface can
-      // leak the headless brand.
-      const normalisedUserAgent = normaliseHeadlessUserAgent(await browser.userAgent())
-      await page.setUserAgent(normalisedUserAgent, deriveUserAgentMetadata(normalisedUserAgent))
+      // Present the regular Chrome user agent instead of HeadlessChrome (see
+      // applyRealisticUserAgent). Popups opened by clickPopup steps get the
+      // same treatment in their handler.
+      await this.applyRealisticUserAgent(page, browser)
 
       // Install the inline-script attribution shim before any page script
       // runs so we can tag each inserted <script> element with the URL of
@@ -114,7 +110,7 @@ export class DetectionService implements IDetectionService {
           await step.locator.wait()
 
           // Execute action
-          await this.executeAction(page, step, target)
+          await this.executeAction(page, step, target, browser)
 
           // Detect and add new inline scripts on each workflow action
           const newInlineScripts = await this.detectNewInlineScripts(page, internalScripts, scriptContentMatchers)
@@ -181,7 +177,21 @@ export class DetectionService implements IDetectionService {
     }
   }
 
-  private async executeAction(page: Page, step: PuppeteerLocatorAction, target: Target): Promise<void> {
+  /**
+   * Present the regular Chrome user agent instead of HeadlessChrome so the
+   * monitor observes what real users are served: bot mitigation blocks on the
+   * headless token, and a cloaking attacker could key on it to hide tampering
+   * from the monitor. Overrides both the UA string and the Client Hint
+   * metadata (Sec-CH-UA), since either surface can leak the headless brand,
+   * using the browser's real build version so the high-entropy hints match a
+   * real Chrome. Applied to every page — the main page and any popup.
+   */
+  private async applyRealisticUserAgent(page: Page, browser: Browser): Promise<void> {
+    const normalisedUserAgent = normaliseHeadlessUserAgent(await browser.userAgent())
+    await page.setUserAgent(normalisedUserAgent, deriveUserAgentMetadata(normalisedUserAgent, await browser.version()))
+  }
+
+  private async executeAction(page: Page, step: PuppeteerLocatorAction, target: Target, browser: Browser): Promise<void> {
     // Delay action
     if (step.delay > 0) {
       await this.sleep(step.delay)
@@ -251,6 +261,16 @@ export class DetectionService implements IDetectionService {
         page.on('popup', async (popupPage) => {
           if (popupPage) {
             try {
+              // The popup inherits the browser's default (headless) UA; give
+              // it the same realistic UA. This runs once the popup exists, so
+              // its very first (site-initiated) navigation can still send the
+              // default UA before this applies — every subsequent request is
+              // clean. Closing that first-request gap needs CDP auto-attach
+              // with waitForDebuggerOnStart to pause the popup pre-navigation;
+              // deferred until a target actually drives a bot-protected popup
+              // (none do today).
+              await this.applyRealisticUserAgent(popupPage, browser)
+
               const innerSteps = stepsToPuppeteerLocatorAction(popupPage, action.steps)
 
               for (const [popupIndex, innerStep] of innerSteps.entries()) {
@@ -259,7 +279,7 @@ export class DetectionService implements IDetectionService {
 
                 try {
                   await innerStep.locator.wait()
-                  await this.executeAction(popupPage, innerStep, target)
+                  await this.executeAction(popupPage, innerStep, target, browser)
                 } catch (popupStepError) {
                   if (popupStepError instanceof Error && popupStepError.name === 'TimeoutError') {
                     target.logger.error(`POPUP TIMEOUT ERROR in step ${popupStepNumber}/${innerSteps.length}`)
