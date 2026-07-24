@@ -13,6 +13,7 @@ import { resolveDateTemplates } from '../utils/date-template.js'
 import { getInlineScriptsFromPage } from '../utils/page.js'
 import { INLINE_SCRIPT_ATTRIBUTION_SCRIPT } from '../utils/page-attribution.js'
 import { generateTotp, millisecondsRemainingInTotpWindow } from '../utils/totp.js'
+import { deriveUserAgentMetadata, normaliseHeadlessUserAgent } from '../utils/user-agent.js'
 import { getPuppeteerWorkflowFromTarget, stepsToPuppeteerLocatorAction } from '../utils/workflow.js'
 
 // If fewer than this many milliseconds remain in the current TOTP window,
@@ -55,6 +56,15 @@ export class DetectionService implements IDetectionService {
       // Set timeouts to 120 seconds
       page.setDefaultTimeout(120000) // 120 seconds for all operations
       page.setDefaultNavigationTimeout(120000) // 120 seconds for navigation
+
+      // Present the regular Chrome user agent instead of HeadlessChrome so
+      // the monitor observes what real users are served: bot mitigation
+      // blocks on the headless token, and a cloaking attacker could key on
+      // it to hide tampering from the monitor. Override both the UA string
+      // and the Client Hint metadata (Sec-CH-UA), since either surface can
+      // leak the headless brand.
+      const normalisedUserAgent = normaliseHeadlessUserAgent(await browser.userAgent())
+      await page.setUserAgent(normalisedUserAgent, deriveUserAgentMetadata(normalisedUserAgent))
 
       // Install the inline-script attribution shim before any page script
       // runs so we can tag each inserted <script> element with the URL of
