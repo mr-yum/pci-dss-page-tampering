@@ -262,7 +262,13 @@ export class DetectionService implements IDetectionService {
           if (popupPage) {
             try {
               // The popup inherits the browser's default (headless) UA; give
-              // it the same realistic UA before it drives any further requests.
+              // it the same realistic UA. This runs once the popup exists, so
+              // its very first (site-initiated) navigation can still send the
+              // default UA before this applies — every subsequent request is
+              // clean. Closing that first-request gap needs CDP auto-attach
+              // with waitForDebuggerOnStart to pause the popup pre-navigation;
+              // deferred until a target actually drives a bot-protected popup
+              // (none do today).
               await this.applyRealisticUserAgent(popupPage, browser)
 
               const innerSteps = stepsToPuppeteerLocatorAction(popupPage, action.steps)
