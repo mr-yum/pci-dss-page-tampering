@@ -41,6 +41,19 @@ describe('deriveUserAgentMetadata', () => {
     expect(meta?.brands?.[0]?.version).toBe('150')
   })
 
+  it('uses the real build version for the full-version list when provided', () => {
+    const meta = deriveUserAgentMetadata(linux, 'Chrome/150.0.7871.24')
+    expect(meta?.fullVersionList).toEqual([
+      { brand: 'Chromium', version: '150.0.7871.24' },
+      { brand: 'Google Chrome', version: '150.0.7871.24' },
+      { brand: 'Not.A/Brand', version: '24.0.0.0' },
+    ])
+  })
+
+  it('falls back to a major-only full version when no build version is given', () => {
+    expect(deriveUserAgentMetadata(linux)?.fullVersionList?.[0]).toEqual({ brand: 'Chromium', version: '150.0.0.0' })
+  })
+
   it('leaves high-entropy hints blank rather than asserting a possibly-inconsistent value', () => {
     const meta = deriveUserAgentMetadata(linux)
     expect(meta?.architecture).toBe('')
@@ -50,5 +63,18 @@ describe('deriveUserAgentMetadata', () => {
 
   it('returns undefined for a non-Chrome user agent', () => {
     expect(deriveUserAgentMetadata('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Gecko/20100101 Firefox/130.0')).toBeUndefined()
+  })
+
+  it('returns undefined for mobile/unrecognised platforms rather than emitting inconsistent hints', () => {
+    // Android UA also contains "Linux"; must not be misclassified as desktop Linux
+    expect(deriveUserAgentMetadata('Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Mobile Safari/537.36')).toBeUndefined()
+    expect(deriveUserAgentMetadata('Mozilla/5.0 (FreeBSD amd64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36')).toBeUndefined()
+  })
+
+  it('is self-safe: deriving from a raw HeadlessChrome UA still yields clean, versioned metadata', () => {
+    const meta = deriveUserAgentMetadata('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/150.0.0.0 Safari/537.36', 'HeadlessChrome/150.0.7871.24')
+    expect(JSON.stringify(meta)).not.toContain('Headless')
+    expect(meta?.brands?.[0]?.version).toBe('150')
+    expect(meta?.fullVersionList?.[0]?.version).toBe('150.0.7871.24')
   })
 })

@@ -22,20 +22,37 @@ export function normaliseHeadlessUserAgent(userAgent: string): string {
 
 /**
  * Derive Client Hint metadata that presents as regular Chrome, keyed off the
- * (already normalised) User-Agent string so every surface stays self-consistent
- * — a UA string claiming macOS with a `Sec-CH-UA-Platform` of Linux is itself a
- * bot signal. Returns undefined for non-Chrome user agents (no version to
- * derive), so the caller falls back to overriding the UA string alone.
+ * User-Agent string so every surface stays self-consistent — a UA string
+ * claiming macOS with a `Sec-CH-UA-Platform` of Linux is itself a bot signal.
+ *
+ * The UA is normalised internally, so passing a raw `HeadlessChrome` string is
+ * safe. Returns undefined — so the caller falls back to overriding the UA
+ * string alone — when there is no Chrome version to derive, or for mobile /
+ * unrecognised platforms whose consistent hints this desktop-only tool cannot
+ * assert (it always runs desktop headless Chrome).
+ *
+ * @param fullVersion optional real build version (e.g. `browser.version()`,
+ *   `Chrome/150.0.7871.24`); used verbatim for the high-entropy
+ *   `Sec-CH-UA-Full-Version-List` so it matches a real build rather than a
+ *   fabricated `<major>.0.0.0`.
  */
-export function deriveUserAgentMetadata(userAgent: string): Protocol.Emulation.UserAgentMetadata | undefined {
-  const majorVersion = userAgent.match(/Chrome\/(\d+)/)?.[1]
+export function deriveUserAgentMetadata(userAgent: string, fullVersion?: string): Protocol.Emulation.UserAgentMetadata | undefined {
+  const normalised = normaliseHeadlessUserAgent(userAgent)
+  const majorVersion = normalised.match(/Chrome\/(\d+)/)?.[1]
   if (majorVersion === undefined) {
     return undefined
   }
 
-  // GREASE brand list matching Chrome's own low-entropy Sec-CH-UA, minus the
+  const platform = deriveDesktopPlatform(normalised)
+  if (platform === undefined) {
+    return undefined
+  }
+
+  const fullVersionNumber = fullVersion?.match(/\d+\.\d+\.\d+\.\d+/)?.[0] ?? `${majorVersion}.0.0.0`
+
+  // GREASE brand list matching Chrome's own Sec-CH-UA, minus the
   // HeadlessChrome brand. The "Not.A/Brand" entry is Chrome's deliberate
-  // anti-ossification noise.
+  // anti-ossification noise (versioned 24 / 24.0.0.0 in real Chrome).
   const brands = [
     { brand: 'Chromium', version: majorVersion },
     { brand: 'Google Chrome', version: majorVersion },
@@ -44,8 +61,8 @@ export function deriveUserAgentMetadata(userAgent: string): Protocol.Emulation.U
 
   return {
     brands,
-    fullVersionList: brands.map((b) => ({ brand: b.brand, version: b.brand === 'Not.A/Brand' ? '24.0.0.0' : `${majorVersion}.0.0.0` })),
-    platform: derivePlatform(userAgent),
+    fullVersionList: brands.map((b) => ({ brand: b.brand, version: b.brand === 'Not.A/Brand' ? '24.0.0.0' : fullVersionNumber })),
+    platform,
     // High-entropy hints are only disclosed when a site requests them via
     // Accept-CH; leave them blank rather than assert a value that might
     // contradict the platform (e.g. arm64 vs x86).
@@ -56,11 +73,18 @@ export function deriveUserAgentMetadata(userAgent: string): Protocol.Emulation.U
   }
 }
 
-function derivePlatform(userAgent: string): string {
+/**
+ * Map a UA string to a desktop `Sec-CH-UA-Platform` value. Returns undefined
+ * for mobile (Android) or unrecognised platforms — the caller then presents
+ * the UA string alone rather than pairing it with `mobile: false` hints that
+ * would contradict it. Android is checked before Linux because Android UAs
+ * also contain "Linux".
+ */
+function deriveDesktopPlatform(userAgent: string): string | undefined {
   if (/Windows/.test(userAgent)) return 'Windows'
   if (/Macintosh|Mac OS X/.test(userAgent)) return 'macOS'
-  if (/Android/.test(userAgent)) return 'Android'
   if (/CrOS/.test(userAgent)) return 'Chrome OS'
+  if (/Android/.test(userAgent)) return undefined
   if (/Linux|X11/.test(userAgent)) return 'Linux'
-  return 'Unknown'
+  return undefined
 }
