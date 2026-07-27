@@ -85,9 +85,11 @@ mistake is easy to make — pass the object.
 - `maxVerify` _(number)_ — cap on findings carried into verification (default 12). The script
   logs whatever it drops; so must you.
 
-The workflow returns `{ scope, reviewed, failed_dimensions, raw_count, unverified_count, findings }`.
+The workflow returns `{ scope, reviewed, failed_dimensions, raw_count, dropped_count, unverified_count, findings }`.
 `failed_dimensions` lists reviewers that died — their coverage is missing, not clean; say so in the
-report. Each finding carries `verdict`, `severity`, `dimension`, `correction`, and `rationale`.
+report. `dropped_count` is findings skipped by `maxVerify` (never verified at all);
+`unverified_count` is findings whose entire verifier panel died (returned in `findings` with
+verdict `UNVERIFIED`) — do not conflate the two. Each finding carries `verdict`, `severity`, `dimension`, `correction`, and `rationale`.
 Verdicts: `CONFIRMED` = a full, healthy verifier panel upheld it; `PLAUSIBLE` = upheld, but the
 panel was split or degraded; `UNVERIFIED` = every verifier assigned to it died — an unvetted
 reviewer claim the script fails closed on rather than silently dropping. Vet UNVERIFIED findings
@@ -115,9 +117,9 @@ nothing survived; that is a real and good outcome, not a failed review.
 Then, in prose, keep it to what the user needs:
 
 - what the review covered (scope, dimensions, depth) in one line;
-- anything the run did **not** cover — findings dropped by `maxVerify`, every entry in
-  `failed_dimensions`, UNVERIFIED findings you discarded, a scope you had to narrow. Silence
-  here reads as "everything was checked";
+- anything the run did **not** cover — findings dropped by `maxVerify` (`dropped_count`), every
+  entry in `failed_dimensions`, UNVERIFIED findings you discarded, a scope you had to narrow.
+  Silence here reads as "everything was checked";
 - the notable non-issues, when a verifier refuted something that looks alarming in the diff —
   it stops the next reader from re-raising it.
 
