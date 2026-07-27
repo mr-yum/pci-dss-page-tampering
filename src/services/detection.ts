@@ -303,6 +303,11 @@ export class DetectionService implements IDetectionService {
         page.on('popup', async (popupPage) => {
           if (popupPage) {
             try {
+              // Attach blocked-request diagnostics before any await, so a
+              // 403/429 on the popup's initial navigation isn't missed while
+              // the UA setup below is still in flight.
+              popupPage.on('response', (response) => this.logIfBlocked(response, target))
+
               // The popup inherits the browser's default (headless) UA; give
               // it the same realistic UA. This runs once the popup exists, so
               // its very first (site-initiated) navigation can still send the
@@ -312,9 +317,6 @@ export class DetectionService implements IDetectionService {
               // deferred until a target actually drives a bot-protected popup
               // (none do today).
               await this.applyRealisticUserAgent(popupPage, browser)
-
-              // Same blocked-request diagnostics as the main page (see detect()).
-              popupPage.on('response', (response) => this.logIfBlocked(response, target))
 
               const innerSteps = stepsToPuppeteerLocatorAction(popupPage, action.steps)
 
