@@ -21,6 +21,13 @@ import { getPuppeteerWorkflowFromTarget, stepsToPuppeteerLocatorAction } from '.
 // between being typed and being verified server-side.
 const TOTP_WINDOW_SAFETY_MARGIN_MS = 5000
 
+// Per-keystroke delay when typing the TOTP code. The segmented OTP field
+// (input-otp) re-renders per digit; typing with no delay drops or mangles
+// digits on heavier pages (observed ~2/3 of the time on Tables production,
+// yielding a wrong code that fails verification), so pace the keystrokes so
+// the component registers each one.
+const TOTP_TYPING_DELAY_MS = 100
+
 export class DetectionService implements IDetectionService {
   private readonly totpSeeds: ReadonlyMap<string, string>
 
@@ -266,7 +273,7 @@ export class DetectionService implements IDetectionService {
         // Generated at execution time (not workflow-build time) so the code
         // is fresh even in long-running flows. Never log or rethrow the code.
         const code = generateTotp(seed, Date.now())
-        await page.type(step.querySelector, code)
+        await page.type(step.querySelector, code, { delay: TOTP_TYPING_DELAY_MS })
         break
       }
 
