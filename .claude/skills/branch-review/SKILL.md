@@ -42,8 +42,10 @@ people's merged code and reports findings against work the user never touched. P
 
 **Untracked files are invisible to `working` and `staged` diffs.** Before resolving either scope,
 check `git ls-files --others --exclude-standard`; if it lists files that belong to the change,
-`git add -N` them (intent-to-add) so they appear in the diff and the file list — otherwise the
-review silently skips brand-new files, which are exactly the ones most worth reviewing.
+make them visible or the review silently skips brand-new files — exactly the ones most worth
+reviewing. For the `staged` scope, `git add` them (intent-to-add is NOT enough: `git diff --staged`
+skips `git add -N` entries). For the `working` scope, `git add -N` suffices and doesn't stage
+content.
 
 Then get the file list — it is both your empty-check and an input to the workflow:
 
