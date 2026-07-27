@@ -1,4 +1,4 @@
-import type { Browser, Page } from 'puppeteer'
+import type { Browser, HTTPResponse, Page } from 'puppeteer'
 
 import { headerResponseHandler } from '../handlers/header.js'
 import { scriptResponseHandler } from '../handlers/script.js'
@@ -13,6 +13,7 @@ import { resolveDateTemplates } from '../utils/date-template.js'
 import { getInlineScriptsFromPage } from '../utils/page.js'
 import { INLINE_SCRIPT_ATTRIBUTION_SCRIPT } from '../utils/page-attribution.js'
 import { generateTotp, millisecondsRemainingInTotpWindow } from '../utils/totp.js'
+import { redactUrl } from '../utils/url.js'
 import { deriveUserAgentMetadata, normaliseHeadlessUserAgent } from '../utils/user-agent.js'
 import { getPuppeteerWorkflowFromTarget, stepsToPuppeteerLocatorAction } from '../utils/workflow.js'
 
@@ -20,6 +21,13 @@ import { getPuppeteerWorkflowFromTarget, stepsToPuppeteerLocatorAction } from '.
 // wait for the next window before generating the code, so it cannot expire
 // between being typed and being verified server-side.
 const TOTP_WINDOW_SAFETY_MARGIN_MS = 5000
+
+// Per-keystroke delay when typing the TOTP code. The segmented OTP field
+// (input-otp) re-renders per digit; typing with no delay drops or mangles
+// digits on heavier pages (observed ~2/3 of the time on Tables production,
+// yielding a wrong code that fails verification), so pace the keystrokes so
+// the component registers each one.
+const TOTP_TYPING_DELAY_MS = 100
 
 export class DetectionService implements IDetectionService {
   private readonly totpSeeds: ReadonlyMap<string, string>
@@ -69,6 +77,13 @@ export class DetectionService implements IDetectionService {
 
       // Bootstrap page
       page.on('response', (response) => scriptResponseHandler(response, externalScripts)).on('response', (response) => headerResponseHandler(response, headers))
+
+      // Surface blocked requests with their Cloudflare ray ID. Bot mitigation
+      // (managed challenge, Turnstile, rate limit) usually manifests downstream
+      // as an opaque step timeout; logging the 403/429 and its `cf-ray` here
+      // gives an operator the exact identifier to hand the platform team so a
+      // zone-side block can be looked up in Cloudflare's Security Events.
+      page.on('response', (response) => this.logIfBlocked(response, target))
 
       // Get Puppeteer workflow
       puppeteerWorkflow = getPuppeteerWorkflowFromTarget(page, target)
@@ -191,6 +206,33 @@ export class DetectionService implements IDetectionService {
     await page.setUserAgent(normalisedUserAgent, deriveUserAgentMetadata(normalisedUserAgent, await browser.version()))
   }
 
+  /**
+   * Log HTTP 403/429 responses — the statuses bot mitigation and rate limiting
+   * use — with their Cloudflare `cf-ray` and `cf-mitigated` headers when
+   * present. A blocked request typically surfaces later as a step timeout with
+   * no obvious cause; recording the ray ID at the point of the block gives an
+   * operator the exact identifier to look the block up in Cloudflare's Security
+   * Events (or hand to the platform team) rather than reverse-engineering it.
+   */
+  private logIfBlocked(response: HTTPResponse, target: Target): void {
+    const status = response.status()
+    if (status !== 403 && status !== 429) {
+      return
+    }
+    const headers = response.headers()
+    // Log only origin + path, never the query string: on auth endpoints it can
+    // carry tokens, signed URLs, or PII, and the ray ID (below) is the actual
+    // identifier for diagnosis.
+    const details = [`REQUEST BLOCKED: ${status} ${response.request().method()} ${redactUrl(response.url())}`]
+    if (headers['cf-ray']) {
+      details.push(`cf-ray=${headers['cf-ray']}`)
+    }
+    if (headers['cf-mitigated']) {
+      details.push(`cf-mitigated=${headers['cf-mitigated']}`)
+    }
+    target.logger.error(details.join(' '))
+  }
+
   private async executeAction(page: Page, step: PuppeteerLocatorAction, target: Target, browser: Browser): Promise<void> {
     // Delay action
     if (step.delay > 0) {
@@ -235,7 +277,7 @@ export class DetectionService implements IDetectionService {
         // Generated at execution time (not workflow-build time) so the code
         // is fresh even in long-running flows. Never log or rethrow the code.
         const code = generateTotp(seed, Date.now())
-        await page.type(step.querySelector, code)
+        await page.type(step.querySelector, code, { delay: TOTP_TYPING_DELAY_MS })
         break
       }
 
@@ -261,6 +303,11 @@ export class DetectionService implements IDetectionService {
         page.on('popup', async (popupPage) => {
           if (popupPage) {
             try {
+              // Attach blocked-request diagnostics before any await, so a
+              // 403/429 on the popup's initial navigation isn't missed while
+              // the UA setup below is still in flight.
+              popupPage.on('response', (response) => this.logIfBlocked(response, target))
+
               // The popup inherits the browser's default (headless) UA; give
               // it the same realistic UA. This runs once the popup exists, so
               // its very first (site-initiated) navigation can still send the

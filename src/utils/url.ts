@@ -22,3 +22,19 @@ export function extractHost(url: string | undefined | null): string {
     return UNKNOWN_HOST
   }
 }
+
+/**
+ * Returns `origin + pathname`, dropping the query string and fragment. Use
+ * when logging a URL that may carry sensitive query parameters (tokens,
+ * signed URLs, PII) — keeps the endpoint identifiable without leaking secrets.
+ * Falls back to `(unknown)` for unparseable input.
+ */
+export function redactUrl(url: string | undefined | null): string {
+  if (!url || url.trim() === '') return UNKNOWN_HOST
+  try {
+    const parsed = new URL(url)
+    return `${parsed.origin}${parsed.pathname}`
+  } catch {
+    return UNKNOWN_HOST
+  }
+}
