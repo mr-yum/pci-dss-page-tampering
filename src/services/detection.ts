@@ -13,6 +13,7 @@ import { resolveDateTemplates } from '../utils/date-template.js'
 import { getInlineScriptsFromPage } from '../utils/page.js'
 import { INLINE_SCRIPT_ATTRIBUTION_SCRIPT } from '../utils/page-attribution.js'
 import { generateTotp, millisecondsRemainingInTotpWindow } from '../utils/totp.js'
+import { redactUrl } from '../utils/url.js'
 import { deriveUserAgentMetadata, normaliseHeadlessUserAgent } from '../utils/user-agent.js'
 import { getPuppeteerWorkflowFromTarget, stepsToPuppeteerLocatorAction } from '../utils/workflow.js'
 
@@ -219,7 +220,10 @@ export class DetectionService implements IDetectionService {
       return
     }
     const headers = response.headers()
-    const details = [`REQUEST BLOCKED: ${status} ${response.request().method()} ${response.url()}`]
+    // Log only origin + path, never the query string: on auth endpoints it can
+    // carry tokens, signed URLs, or PII, and the ray ID (below) is the actual
+    // identifier for diagnosis.
+    const details = [`REQUEST BLOCKED: ${status} ${response.request().method()} ${redactUrl(response.url())}`]
     if (headers['cf-ray']) {
       details.push(`cf-ray=${headers['cf-ray']}`)
     }
@@ -308,6 +312,9 @@ export class DetectionService implements IDetectionService {
               // deferred until a target actually drives a bot-protected popup
               // (none do today).
               await this.applyRealisticUserAgent(popupPage, browser)
+
+              // Same blocked-request diagnostics as the main page (see detect()).
+              popupPage.on('response', (response) => this.logIfBlocked(response, target))
 
               const innerSteps = stepsToPuppeteerLocatorAction(popupPage, action.steps)
 
