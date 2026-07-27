@@ -1,4 +1,4 @@
-import type { Browser, Page } from 'puppeteer'
+import type { Browser, HTTPResponse, Page } from 'puppeteer'
 
 import { headerResponseHandler } from '../handlers/header.js'
 import { scriptResponseHandler } from '../handlers/script.js'
@@ -69,6 +69,13 @@ export class DetectionService implements IDetectionService {
 
       // Bootstrap page
       page.on('response', (response) => scriptResponseHandler(response, externalScripts)).on('response', (response) => headerResponseHandler(response, headers))
+
+      // Surface blocked requests with their Cloudflare ray ID. Bot mitigation
+      // (managed challenge, Turnstile, rate limit) usually manifests downstream
+      // as an opaque step timeout; logging the 403/429 and its `cf-ray` here
+      // gives an operator the exact identifier to hand the platform team so a
+      // zone-side block can be looked up in Cloudflare's Security Events.
+      page.on('response', (response) => this.logIfBlocked(response, target))
 
       // Get Puppeteer workflow
       puppeteerWorkflow = getPuppeteerWorkflowFromTarget(page, target)
@@ -189,6 +196,30 @@ export class DetectionService implements IDetectionService {
   private async applyRealisticUserAgent(page: Page, browser: Browser): Promise<void> {
     const normalisedUserAgent = normaliseHeadlessUserAgent(await browser.userAgent())
     await page.setUserAgent(normalisedUserAgent, deriveUserAgentMetadata(normalisedUserAgent, await browser.version()))
+  }
+
+  /**
+   * Log HTTP 403/429 responses — the statuses bot mitigation and rate limiting
+   * use — with their Cloudflare `cf-ray` and `cf-mitigated` headers when
+   * present. A blocked request typically surfaces later as a step timeout with
+   * no obvious cause; recording the ray ID at the point of the block gives an
+   * operator the exact identifier to look the block up in Cloudflare's Security
+   * Events (or hand to the platform team) rather than reverse-engineering it.
+   */
+  private logIfBlocked(response: HTTPResponse, target: Target): void {
+    const status = response.status()
+    if (status !== 403 && status !== 429) {
+      return
+    }
+    const headers = response.headers()
+    const details = [`REQUEST BLOCKED: ${status} ${response.request().method()} ${response.url()}`]
+    if (headers['cf-ray']) {
+      details.push(`cf-ray=${headers['cf-ray']}`)
+    }
+    if (headers['cf-mitigated']) {
+      details.push(`cf-mitigated=${headers['cf-mitigated']}`)
+    }
+    target.logger.error(details.join(' '))
   }
 
   private async executeAction(page: Page, step: PuppeteerLocatorAction, target: Target, browser: Browser): Promise<void> {
