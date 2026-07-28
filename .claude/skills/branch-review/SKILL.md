@@ -26,14 +26,14 @@ Vendored and adapted from
 
 ## 1. Resolve the scope
 
-| Argument            | Scope to use                                                                                                                                                                                 |
-| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| _(none)_            | `origin/main...HEAD` — the whole branch, the pre-PR gate                                                                                                                                     |
-| `HEAD` / a sha      | `<sha>^..<sha>` — that single commit (`git diff HEAD` alone diffs the worktree, not the commit)                                                                                              |
-| `abc..def`          | that range, as given                                                                                                                                                                         |
-| a PR number (`257`) | `git fetch -q origin pull/<n>/head` + `gh pr view <n> --json baseRefName` → `origin/<base>...FETCH_HEAD` — do not rely on `headRefName`; for a fork PR no such local or origin branch exists |
-| `staged`            | `--staged` — the index, the pre-commit gate                                                                                                                                                  |
-| `working`           | `HEAD` — everything uncommitted, staged and unstaged (as a diff scope, `HEAD` means worktree-vs-HEAD)                                                                                        |
+| Argument            | Scope to use                                                                                                                                                                                                                                                                                            |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| _(none)_            | `origin/main...HEAD` — the whole branch, the pre-PR gate                                                                                                                                                                                                                                                |
+| `HEAD` / a sha      | `<sha>^..<sha>` — that single commit (`git diff HEAD` alone diffs the worktree, not the commit)                                                                                                                                                                                                         |
+| `abc..def`          | that range, as given                                                                                                                                                                                                                                                                                    |
+| a PR number (`257`) | `git fetch -q origin pull/<n>/head && head=$(git rev-parse FETCH_HEAD)` + `gh pr view <n> --json baseRefName` → `origin/<base>...<head-sha>` — capture the SHA immediately (any later fetch overwrites `FETCH_HEAD`); do not rely on `headRefName`, for a fork PR no such local or origin branch exists |
+| `staged`            | `--staged` — the index, the pre-commit gate                                                                                                                                                                                                                                                             |
+| `working`           | `HEAD` — everything uncommitted, staged and unstaged (as a diff scope, `HEAD` means worktree-vs-HEAD)                                                                                                                                                                                                   |
 
 **For any scope that references `origin` (the default branch scope, PR scopes): `git fetch -q origin`
 first, and diff against the remote-tracking ref, never a local branch.** For the default branch
