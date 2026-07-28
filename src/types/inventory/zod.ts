@@ -1,5 +1,6 @@
 import { z } from 'zod'
 
+import { RESPONSE_RESOURCE_TYPES } from '../header.js'
 import { createMatcher } from '../matcher/matcher-factory.js'
 import { OrMatcher } from '../matcher/or-matcher.js'
 import type { RawTargetDetection, RawTargetInventory } from '../target/raw.js'
@@ -21,6 +22,8 @@ export const AlertDetectionSchema: z.ZodType<AlertDetection> = z.object({
   newScriptDetected: AlertDestinationSchema,
   scriptMismatchDetected: AlertDestinationSchema,
   newHeaderDetected: AlertDestinationSchema,
+  headerMismatchDetected: AlertDestinationSchema.optional(),
+  missingHeaderDetected: AlertDestinationSchema.optional(),
 })
 
 export const InventoryAlertSchema: z.ZodType<InventoryAlert> = z.object({
@@ -157,10 +160,51 @@ export const RawInventoryTargetSchema: z.ZodType<RawInventoryTarget> = z.object(
  * - authoriseWith uses RawAuthorizeWithConfigSchema (matcher config + authorization metadata)
  * - Replaces old nameMatcher/contentMatcher RegExp structure
  */
-export const RawInventoryHeaderInfoSchema: z.ZodType<RawInventoryHeaderInfo> = z.object({
-  identifyWith: MatcherConfigSchema,
-  authoriseWith: RawAuthorizeWithConfigSchema,
-})
+export const RawInventoryHeaderInfoSchema: z.ZodType<RawInventoryHeaderInfo> = z
+  .object({
+    identifyWith: MatcherConfigSchema,
+    authoriseWith: RawAuthorizeWithConfigSchema,
+    requiredOn: z.array(z.enum(RESPONSE_RESOURCE_TYPES)).min(1).optional(),
+  })
+  .superRefine((entry, context) => {
+    if (entry.requiredOn === undefined) return
+
+    const exactHeaderNames = (matcher: any): string[] => {
+      if ('headerNameMatcher' in matcher) {
+        const match = /^\^([a-z0-9-]+)\$$/i.exec(matcher.headerNameMatcher)
+        return match?.[1] ? [match[1].toLowerCase()] : []
+      }
+      if ('andMatcher' in matcher) return matcher.andMatcher.flatMap(exactHeaderNames)
+      return []
+    }
+
+    const unsupportedPresenceMatchers = (matcher: any): string[] => {
+      if ('headerNameMatcher' in matcher || 'hostMatcher' in matcher || 'urlMatcher' in matcher) return []
+      if ('andMatcher' in matcher) return matcher.andMatcher.flatMap(unsupportedPresenceMatchers)
+      if ('contentMatcher' in matcher) return ['contentMatcher']
+      if ('nameMatcher' in matcher) return ['nameMatcher']
+      if ('hashes' in matcher) return ['hashes']
+      if ('orMatcher' in matcher) return ['orMatcher']
+      return ['unknown matcher']
+    }
+
+    if (exactHeaderNames(entry.identifyWith).length !== 1) {
+      context.addIssue({
+        code: 'custom',
+        path: ['identifyWith'],
+        message: 'A requiredOn header entry must contain exactly one anchored headerNameMatcher such as "^strict-transport-security$".',
+      })
+    }
+
+    const unsupported = unsupportedPresenceMatchers(entry.identifyWith)
+    if (unsupported.length > 0) {
+      context.addIssue({
+        code: 'custom',
+        path: ['identifyWith'],
+        message: `A requiredOn header entry can identify responses only with headerNameMatcher, hostMatcher, urlMatcher, and andMatcher; unsupported: ${[...new Set(unsupported)].join(', ')}.`,
+      })
+    }
+  })
 
 /**
  * Schema for the complete inventory.

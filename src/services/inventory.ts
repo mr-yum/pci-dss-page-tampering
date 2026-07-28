@@ -91,6 +91,7 @@ export class ScriptInventoryService implements IInventoryService {
         }
         case 'authorized_script':
         case 'authorized_header':
+        case 'missing_required_header':
           break
         default: {
           const _exhaustive: never = result
@@ -138,6 +139,20 @@ export class ScriptInventoryService implements IInventoryService {
       appliedResults.push(result)
     }
     for (const result of unknownHeaders) {
+      if (this.isHeaderCoveredByExistingEntry(result, updatedInventory)) {
+        continue
+      }
+      const pendingIdentity = this.findPendingHeaderIdentity(result, updatedInventory)
+      if (pendingIdentity) {
+        if (this.canAppendPendingHeaderValue(pendingIdentity)) {
+          const updatedPending = this.appendPendingHeaderValue(pendingIdentity, result, updateDate)
+          updatedInventory = copyInventory(updatedInventory, {
+            newHeaders: updatedInventory.headers.map((entry) => (entry === pendingIdentity ? updatedPending : entry)),
+          })
+          appliedResults.push(result)
+        }
+        continue
+      }
       updatedInventory = this.addNewHeader(result, updatedInventory, updateDate)
       appliedResults.push(result)
     }
@@ -328,9 +343,25 @@ export class ScriptInventoryService implements IInventoryService {
   private addNewHeader(result: UnknownHeaderFound, inventory: Inventory, updateDate: Date): Inventory {
     const headerNamePattern = `^${result.header.name.toLowerCase()}$`
     const headerValuePattern = `^${this.escapeRegex(result.header.value)}$`
+    const identifyChildren: any[] = [{ headerNameMatcher: headerNamePattern }]
+
+    if (result.header.name.toLowerCase() === 'set-cookie') {
+      const cookieName = /^cookie=([^;]+)/.exec(result.header.value)?.[1]
+      if (cookieName) {
+        identifyChildren.push({ contentMatcher: `^cookie=${this.escapeRegex(cookieName)};` })
+      }
+    }
+
+    if (result.header.url) {
+      try {
+        identifyChildren.push({ hostMatcher: `^${this.escapeRegex(new URL(result.header.url).host)}$` })
+      } catch {
+        // Keep header/content identification when provenance is unparseable.
+      }
+    }
 
     const newHeader: InventoryHeaderInfo = {
-      identifyWith: createMatcher({ headerNameMatcher: headerNamePattern }),
+      identifyWith: createMatcher(identifyChildren.length === 1 ? identifyChildren[0] : { andMatcher: identifyChildren }),
       authoriseWith: {
         matcher: createMatcher({ contentMatcher: headerValuePattern }),
         authorisationInfo: {
@@ -342,6 +373,59 @@ export class ScriptInventoryService implements IInventoryService {
     }
 
     return copyInventory(inventory, { newHeaders: inventory.headers.concat([newHeader]) })
+  }
+
+  /** Avoid appending the same pending header observation on every run. */
+  private isHeaderCoveredByExistingEntry(result: UnknownHeaderFound, inventory: Inventory): boolean {
+    const matchable = {
+      name: result.header.name,
+      content: result.header.value,
+      ...(result.header.url !== undefined ? { url: result.header.url } : {}),
+    }
+    return inventory.headers.some((entry) => entry.identifyWith.identify(matchable) && entry.authoriseWith.matcher.authorize(matchable).authorized)
+  }
+
+  /** Find an unapproved entry with the same stable header/cookie identity. */
+  private findPendingHeaderIdentity(result: UnknownHeaderFound, inventory: Inventory): InventoryHeaderInfo | undefined {
+    const matchable = {
+      name: result.header.name,
+      content: result.header.value,
+      ...(result.header.url !== undefined ? { url: result.header.url } : {}),
+    }
+    return inventory.headers.find((entry) => !entry.authoriseWith.authorisationInfo.authorised && entry.identifyWith.identify(matchable))
+  }
+
+  private canAppendPendingHeaderValue(entry: InventoryHeaderInfo): boolean {
+    const authorizer = entry.authoriseWith.matcher
+    return authorizer instanceof ContentMatcher || (authorizer instanceof OrMatcher && authorizer.getPattern().every((child) => child instanceof ContentMatcher))
+  }
+
+  /**
+   * Keep alternative observations for one pending identity in a single OR
+   * authorizer. Separate entries with the same identifyWith are unreachable
+   * after approval because comparison is first-match-wins.
+   */
+  private appendPendingHeaderValue(entry: InventoryHeaderInfo, result: UnknownHeaderFound, updateDate: Date): InventoryHeaderInfo {
+    const rawEntry = inventoryHeaderInfoToRawInventoryHeaderInfo(entry)
+    const matcherConfig = {
+      contentMatcher: `^${this.escapeRegex(result.header.value)}$`,
+      authorisationInfo: {
+        description: 'NO_DESCRIPTION',
+        authorised: false,
+        date: updateDate.toISOString(),
+      },
+    }
+
+    if (Array.isArray(rawEntry.authoriseWith)) {
+      rawEntry.authoriseWith.push(matcherConfig)
+    } else if ('orMatcher' in rawEntry.authoriseWith) {
+      const alternatives = rawEntry.authoriseWith.orMatcher as any[]
+      alternatives.push(matcherConfig)
+    } else {
+      rawEntry.authoriseWith = [rawEntry.authoriseWith, matcherConfig]
+    }
+
+    return rawInventoryHeaderInfoToInventoryHeaderInfo(rawEntry)
   }
 
   /**

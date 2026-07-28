@@ -4,7 +4,8 @@ import { headerResponseHandler } from '../handlers/header.js'
 import { scriptResponseHandler } from '../handlers/script.js'
 import type { IDetectionService } from '../interfaces/detection.js'
 import type { DetectionSummary } from '../types/detection.js'
-import type { HeaderName, HeaderUrl } from '../types/header.js'
+import type { DetectedResponse, HeaderName, HeaderUrl } from '../types/header.js'
+import type { InventoryHeaderInfo } from '../types/inventory/model.js'
 import type { ScriptMatcher } from '../types/matcher.js'
 import type { PuppeteerClickAction, PuppeteerClickPopupAction, PuppeteerInputAction, PuppeteerLocatorAction, PuppeteerNavigateAction, PuppeteerTotpAction } from '../types/puppeteer.js'
 import type { ScriptInfo } from '../types/script.js'
@@ -35,10 +36,11 @@ export class DetectionService implements IDetectionService {
   constructor(options: { totpSeeds?: ReadonlyMap<string, string> } = {}) {
     this.totpSeeds = options.totpSeeds ?? new Map()
   }
-  async detect(browser: Browser, target: Target, scriptContentMatchers: ScriptMatcher[]): Promise<DetectionSummary> {
+  async detect(browser: Browser, target: Target, scriptContentMatchers: ScriptMatcher[], inventoryHeaders: readonly InventoryHeaderInfo[] = []): Promise<DetectionSummary> {
     const externalScripts: ScriptInfo[] = []
     const internalScripts: ScriptInfo[] = []
     const headers = new Map<HeaderName, Map<string, Set<HeaderUrl>>>()
+    const responses: DetectedResponse[] = []
 
     // Isolated context per run: cookies and storage must not leak between
     // the inventory and detection phases (a session persisted from the
@@ -76,7 +78,7 @@ export class DetectionService implements IDetectionService {
       await page.evaluateOnNewDocument(INLINE_SCRIPT_ATTRIBUTION_SCRIPT)
 
       // Bootstrap page
-      page.on('response', (response) => scriptResponseHandler(response, externalScripts)).on('response', (response) => headerResponseHandler(response, headers))
+      page.on('response', (response) => scriptResponseHandler(response, externalScripts)).on('response', (response) => headerResponseHandler(response, headers, responses, target.url, inventoryHeaders))
 
       // Surface blocked requests with their Cloudflare ray ID. Bot mitigation
       // (managed challenge, Turnstile, rate limit) usually manifests downstream
@@ -188,6 +190,7 @@ export class DetectionService implements IDetectionService {
       },
       headerSummary: {
         headers: headers,
+        responses,
       },
     }
   }

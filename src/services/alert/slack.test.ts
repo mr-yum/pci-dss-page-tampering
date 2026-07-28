@@ -14,6 +14,7 @@ import { AuthorizedHeaderFound } from '../../types/comparison/authorized-header-
 import { AuthorizedScriptFound } from '../../types/comparison/authorized-script-found.js'
 import { KnownHeaderWithUnauthorisedContentFound } from '../../types/comparison/known-header-unauthorised-content-found.js'
 import { KnownScriptWithUnauthorisedContentFound } from '../../types/comparison/known-script-unauthorised-content-found.js'
+import { MissingRequiredHeader } from '../../types/comparison/missing-required-header.js'
 import { UnknownHeaderFound } from '../../types/comparison/unknown-header-found.js'
 import { UnknownScriptFound } from '../../types/comparison/unknown-script-found.js'
 import type { DetectedHeader } from '../../types/header.js'
@@ -106,6 +107,41 @@ describe('SlackAlertService - Typed Results Handling (Phase 4)', () => {
           channel: 'detection-header-channel', // NOT 'success-channel'
         }),
       )
+    })
+
+    it('redacts query credentials from Set-Cookie alert prompts', async () => {
+      const header: DetectedHeader = {
+        name: 'set-cookie',
+        value: 'cookie=session; empty=false; httponly=true; path=/; secure=true',
+        url: 'https://example.com/checkout?token=super-secret#payment',
+        target: mockTarget,
+        workflow: mockTarget.workflow,
+      }
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertForTypedResults([new UnknownHeaderFound(mockTarget, new Date(), header)], mockTarget, mockAlertDestinations)
+
+      const payload = JSON.stringify(sendMessageSpy.mock.calls[0]?.[0])
+      expect(payload).toContain('https://example.com/checkout')
+      expect(payload).not.toContain('super-secret')
+      expect(payload).not.toContain('token=')
+    })
+
+    it('routes missing required headers to the dedicated destination when configured', async () => {
+      mockAlertDestinations.detection.missingHeaderDetected = { destination: 'missing-header-channel' }
+      const entry = {
+        identifyWith: { getDescription: () => 'header-name', getType: () => 'header-name', getPattern: () => '^strict-transport-security$' },
+      } as unknown as InventoryHeaderInfo
+      const result = new MissingRequiredHeader(mockTarget, new Date(), 'strict-transport-security', `${mockTarget.url}/checkout?token=super-secret#payment`, 'document', entry)
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertForTypedResults([result], mockTarget, mockAlertDestinations)
+
+      expect(sendMessageSpy).toHaveBeenCalledWith(expect.objectContaining({ channel: 'missing-header-channel' }))
+      const payload = JSON.stringify(sendMessageSpy.mock.calls[0]?.[0])
+      expect(payload).toContain(`${mockTarget.url}/checkout`)
+      expect(payload).not.toContain('super-secret')
+      expect(payload).not.toContain('token=')
     })
   })
 
@@ -260,7 +296,7 @@ describe('SlackAlertService - Typed Results Handling (Phase 4)', () => {
       )
     })
 
-    it('should route to scriptMismatchDetected channel for detection workflow', async () => {
+    it('should route to the header detection channel for detection workflow', async () => {
       const header: DetectedHeader = {
         name: 'content-security-policy',
         value: 'default-src *', // Unauthorized value
@@ -302,7 +338,7 @@ describe('SlackAlertService - Typed Results Handling (Phase 4)', () => {
 
       expect(sendMessageSpy).toHaveBeenCalledWith(
         expect.objectContaining({
-          channel: 'script-mismatch-channel', // Note: using scriptMismatchDetected for headers too
+          channel: 'detection-header-channel',
         }),
       )
     })

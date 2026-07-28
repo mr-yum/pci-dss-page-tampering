@@ -1095,6 +1095,90 @@ describe('ScriptInventoryService', () => {
         expect(diff.appliedResults).toEqual(expect.arrayContaining([unknownScript, unknownHeader]))
         expect(diff.appliedResults).toHaveLength(2)
       })
+
+      it('does not duplicate a pending unknown header on a later inventory run', async () => {
+        const target = createMockTarget()
+        const unknownHeader = new UnknownHeaderFound(target, new Date('2026-07-28T00:00:00.000Z'), {
+          name: 'set-cookie',
+          value: 'cookie=session; empty=false; httponly=true; path=/; secure=true',
+          url: 'https://staging.example.com/login',
+          target,
+          workflow: target.workflow,
+        })
+
+        const first = await service.diff(createMockInventory([]), [unknownHeader])
+        const second = await service.diff(first.newInventory, [unknownHeader])
+
+        expect(first.newInventory.headers).toHaveLength(1)
+        expect(second.newInventory.headers).toHaveLength(1)
+        expect(second.appliedResults).toEqual([])
+        expect(inventoryHeaderInfoToRawInventoryHeaderInfo(second.newInventory.headers[0]!).identifyWith).toEqual({
+          andMatcher: [{ headerNameMatcher: '^set-cookie$' }, { contentMatcher: '^cookie=session;' }, { hostMatcher: '^staging\\.example\\.com$' }],
+        })
+      })
+
+      it('coalesces different values for one pending cookie identity', async () => {
+        const target = createMockTarget()
+        const firstValue = new UnknownHeaderFound(target, new Date('2026-07-28T00:00:00.000Z'), {
+          name: 'set-cookie',
+          value: 'cookie=session; empty=false; httponly=true; path=/; secure=true',
+          url: 'https://staging.example.com/login',
+          target,
+          workflow: target.workflow,
+        })
+        const secondValue = new UnknownHeaderFound(target, new Date('2026-07-28T00:00:00.000Z'), {
+          name: 'set-cookie',
+          value: 'cookie=session; empty=false; httponly=true; path=/admin; secure=true',
+          url: 'https://staging.example.com/admin',
+          target,
+          workflow: target.workflow,
+        })
+
+        const diff = await service.diff(createMockInventory([]), [firstValue, secondValue])
+
+        expect(diff.newInventory.headers).toHaveLength(1)
+        expect(diff.appliedResults).toEqual([firstValue, secondValue])
+        const raw = inventoryHeaderInfoToRawInventoryHeaderInfo(diff.newInventory.headers[0]!)
+        expect(Array.isArray(raw.authoriseWith)).toBe(true)
+        if (!Array.isArray(raw.authoriseWith)) return
+        expect(raw.authoriseWith).toHaveLength(2)
+        const authorizer = diff.newInventory.headers[0]!.authoriseWith.matcher
+        expect(authorizer.authorize({ name: 'set-cookie', content: firstValue.header.value, url: firstValue.header.url! }).authorized).toBe(true)
+        expect(authorizer.authorize({ name: 'set-cookie', content: secondValue.header.value, url: secondValue.header.url! }).authorized).toBe(true)
+      })
+
+      it('does not weaken a pending composite header policy when a new value appears', async () => {
+        const pending = rawInventoryHeaderInfoToInventoryHeaderInfo({
+          identifyWith: {
+            andMatcher: [{ headerNameMatcher: '^set-cookie$' }, { contentMatcher: '^cookie=session;' }, { hostMatcher: '^staging\\.example\\.com$' }],
+          },
+          authoriseWith: [
+            {
+              contentMatcher: '^cookie=session; empty=false; path=\\/old$',
+              authorisationInfo: { description: 'old value', authorised: false, date: '2026-07-28T00:00:00.000Z' },
+            },
+            {
+              hostMatcher: '^other\\.example$',
+              authorisationInfo: { description: 'additional constraint', authorised: false, date: '2026-07-28T00:00:00.000Z' },
+            },
+          ],
+        })
+        const inventory = createMockInventory([])
+        inventory.headers = [pending]
+        const target = createMockTarget()
+        const unknown = new UnknownHeaderFound(target, new Date('2026-07-28T00:00:00.000Z'), {
+          name: 'set-cookie',
+          value: 'cookie=session; empty=false; path=/new',
+          url: 'https://staging.example.com/login',
+          target,
+          workflow: target.workflow,
+        })
+
+        const diff = await service.diff(inventory, [unknown])
+
+        expect(diff.newInventory.headers).toEqual([pending])
+        expect(diff.appliedResults).toEqual([])
+      })
     })
 
     describe('New unidentifiable inline scripts (inline_script/id_not_found)', () => {

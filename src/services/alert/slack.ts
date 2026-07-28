@@ -5,6 +5,7 @@ import { AlertType } from '../../types/alert.js'
 import type { ComparisonResultType } from '../../types/comparison.js'
 import type { KnownHeaderWithUnauthorisedContentFound } from '../../types/comparison/known-header-unauthorised-content-found.js'
 import type { KnownScriptWithUnauthorisedContentFound } from '../../types/comparison/known-script-unauthorised-content-found.js'
+import type { MissingRequiredHeader } from '../../types/comparison/missing-required-header.js'
 import type { UnknownHeaderFound } from '../../types/comparison/unknown-header-found.js'
 import type { UnknownScriptFound } from '../../types/comparison/unknown-script-found.js'
 import { ExecutionMode } from '../../types/config.js'
@@ -14,7 +15,7 @@ import type { AlertDestination, InventoryAlert } from '../../types/inventory/mod
 import type { DetectedScript } from '../../types/matcher/matcher.interface.js'
 import type { ScriptInfo } from '../../types/script.js'
 import type { Target } from '../../types/target.js'
-import { extractHost } from '../../utils/url.js'
+import { extractHost, redactUrl } from '../../utils/url.js'
 
 /**
  * Row passed to the unknown-header alert table. Carries the originating
@@ -65,6 +66,7 @@ export class SlackAlertService implements IAlertService {
     const unauthorizedScripts = comparisonResults.filter((r): r is KnownScriptWithUnauthorisedContentFound => r.type === 'known_script_unauthorised_content')
     const unknownHeaders = comparisonResults.filter((r): r is UnknownHeaderFound => r.type === 'unknown_header_found')
     const unauthorizedHeaders = comparisonResults.filter((r): r is KnownHeaderWithUnauthorisedContentFound => r.type === 'known_header_unauthorised_content')
+    const missingHeaders = comparisonResults.filter((r): r is MissingRequiredHeader => r.type === 'missing_required_header')
 
     // For inventory-mode unauthorised results, split into "diff applied an
     // inventory mutation for this result" vs "diff did not auto-update".
@@ -134,7 +136,7 @@ export class SlackAlertService implements IAlertService {
       // appended a new content matcher for; the rest get a manual-review
       // message so operators aren't told the inventory changed when it didn't.
       if (unauthorizedHeaders.length > 0) {
-        const destination = isInventoryMode ? alertDestinations.inventory.newHeaderIdentified : alertDestinations.detection.scriptMismatchDetected
+        const destination = isInventoryMode ? alertDestinations.inventory.newHeaderIdentified : (alertDestinations.detection.headerMismatchDetected ?? alertDestinations.detection.newHeaderDetected)
         const { applied, skipped } = splitByApplied(unauthorizedHeaders)
         if (applied.length > 0) {
           await this.alertOnUnauthorizedHeaders(applied, target, destination, 'updated')
@@ -145,6 +147,17 @@ export class SlackAlertService implements IAlertService {
       }
     } catch (error) {
       console.error('[Alert Error] Failed to send unauthorized header alerts:', error)
+    }
+
+    try {
+      if (missingHeaders.length > 0) {
+        const destination = isInventoryMode
+          ? alertDestinations.inventory.newHeaderIdentified
+          : (alertDestinations.detection.missingHeaderDetected ?? alertDestinations.detection.headerMismatchDetected ?? alertDestinations.detection.newHeaderDetected)
+        await this.alertOnMissingHeaders(missingHeaders, target, destination)
+      }
+    } catch (error) {
+      console.error('[Alert Error] Failed to send missing header alerts:', error)
     }
 
     // T030: AuthorizedScriptFound and AuthorizedHeaderFound are no-ops (no alert)
@@ -230,6 +243,28 @@ export class SlackAlertService implements IAlertService {
 
     this.log(AlertType.Header, message)
     await this.sendMessage(messagePayload)
+  }
+
+  private async alertOnMissingHeaders(missingHeaders: MissingRequiredHeader[], target: Target, destination: AlertDestination): Promise<void> {
+    const message = `Required security header missing from target!`
+    const rows = missingHeaders
+      .slice(0, 19)
+      .map((result) => [this.buildRichTextCell(result.headerName), this.buildRichTextCell(extractHost(result.url)), this.buildRichTextCell(result.resourceType), this.buildRichTextCell(redactUrl(result.url))])
+    const payload = {
+      channel: destination.destination,
+      blocks: [
+        { type: 'section', text: { type: 'mrkdwn', text: `:warning: *${message}* :warning:` } },
+        { type: 'section', text: { type: 'mrkdwn', text: `*Target*: \`${target.url}\`` } },
+        {
+          type: 'table',
+          column_settings: [{ is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }],
+          rows: [[this.buildBoldHeaderCell('Header Name'), this.buildBoldHeaderCell('Host'), this.buildBoldHeaderCell('Resource Type'), this.buildBoldHeaderCell('Response URL')], ...rows],
+        },
+      ],
+    }
+
+    this.log(AlertType.Header, message)
+    await this.sendMessage(payload)
   }
 
   /**
@@ -929,7 +964,7 @@ export class SlackAlertService implements IAlertService {
    */
   private buildHeaderAiPrompt(header: HeaderAlertRow, target: Target): string {
     const provenanceHint = header.url
-      ? ` This header was emitted by "${header.url}" (host: ${extractHost(header.url)}) — if it should only be authorised from that origin, combine the HeaderNameMatcher with a HostMatcher (host-only) or UrlMatcher (full-URL precision) under an AndMatcher in identifyWith.`
+      ? ` This header was emitted by "${redactUrl(header.url)}" (host: ${extractHost(header.url)}) — if it should only be authorised from that origin, combine the HeaderNameMatcher with a HostMatcher (host-only) or UrlMatcher (path precision) under an AndMatcher in identifyWith.`
       : ''
     return `Add a new entry to the inventory file for target ${target.url} authorising response header "${header.name}" with value "${header.value}".${provenanceHint} Use a HeaderNameMatcher for identification and a ContentMatcher for authorisation. Include authorisationInfo with a description and today's date.`
   }
@@ -938,7 +973,7 @@ export class SlackAlertService implements IAlertService {
    * Suggested AI prompt for a known header whose value failed authorisation.
    */
   private buildUnauthorizedHeaderAiPrompt(result: KnownHeaderWithUnauthorisedContentFound): string {
-    const provenanceHint = result.header.url ? ` Note: this value was emitted by "${result.header.url}" (host: ${extractHost(result.header.url)}).` : ''
+    const provenanceHint = result.header.url ? ` Note: this value was emitted by "${redactUrl(result.header.url)}" (host: ${extractHost(result.header.url)}).` : ''
     return `In the inventory file for target ${result.target.url}, the existing entry that identifies header "${result.header.name}" failed authorisation (${result.failureReason}). Update its authoriseWith matcher to allow the new value "${result.header.value}" with today's date, or investigate before authorising.${provenanceHint}`
   }
 

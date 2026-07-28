@@ -65,6 +65,7 @@ export function rawInventoryHeaderInfoToInventoryHeaderInfo(rawHeaderInfo: RawIn
   return {
     identifyWith: createMatcher(rawHeaderInfo.identifyWith),
     authoriseWith: processAuthorizeWith(rawHeaderInfo.authoriseWith),
+    ...(rawHeaderInfo.requiredOn !== undefined ? { requiredOn: rawHeaderInfo.requiredOn } : {}),
   }
 }
 
@@ -176,6 +177,7 @@ export function inventoryHeaderInfoToRawInventoryHeaderInfo(headerInfo: Inventor
       return {
         identifyWith: matcherToConfig(headerInfo.identifyWith),
         authoriseWith: arrayConfig,
+        ...(headerInfo.requiredOn !== undefined ? { requiredOn: headerInfo.requiredOn } : {}),
       }
     }
     // Fall through to use orMatcher format (OrMatcher has its own authorisationInfo)
@@ -194,5 +196,6 @@ export function inventoryHeaderInfoToRawInventoryHeaderInfo(headerInfo: Inventor
         date: headerInfo.authoriseWith.authorisationInfo.date.toISOString(),
       },
     },
+    ...(headerInfo.requiredOn !== undefined ? { requiredOn: headerInfo.requiredOn } : {}),
   }
 }

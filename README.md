@@ -352,6 +352,67 @@ Each inventory file (`targets/<name>.json`) lists the scripts and headers approv
 - `identifyWith` — picks out the script or header (e.g. by URL or header name)
 - `authoriseWith` — describes what content/hash is acceptable, with `authorisationInfo` metadata
 
+### Tracked response headers
+
+The detector captures these headers:
+
+| Header                      | Production capture scope                              | Canonicalisation                                               |
+| --------------------------- | ----------------------------------------------------- | -------------------------------------------------------------- |
+| `Content-Security-Policy`   | All responses (existing behaviour)                    | One observation per non-empty directive                        |
+| `X-Frame-Options`           | Target-host document responses                        | Upper-case canonical token                                     |
+| `Strict-Transport-Security` | Target-host document responses, including redirects   | Case/order-normalised directives and numeric `max-age`         |
+| `X-XSS-Protection`          | Target-host document responses                        | Normalised legacy policy; report URL query/credentials removed |
+| `X-Content-Type-Options`    | Target-host document, script and stylesheet responses | Lower-case canonical token                                     |
+| `Set-Cookie`                | All target-host responses, including redirects        | One redacted observation per cookie                            |
+
+The same resource-type rules apply to a third-party response when an existing
+inventory entry explicitly identifies that header and origin. Uninventoried
+third-party security headers are excluded to avoid turning vendor response
+churn into false-positive inventory growth.
+
+`Set-Cookie` values and exact expiry timestamps are discarded before an
+observation enters comparison, inventory, console output, Slack, or an AI
+prompt. Inventory contains only the cookie name and security-relevant
+attributes such as `Domain`, `Path`, `Secure`, `HttpOnly`, `SameSite`,
+`Partitioned`, `Max-Age`, whether `Expires` is future/expired/invalid, and
+whether the value was empty. Distinct
+`Set-Cookie` fields are split on Puppeteer's preserved newline separator,
+never commas (`Expires` dates contain commas).
+
+`X-XSS-Protection` is retained for change monitoring of legacy policy. New
+inventories should normally authorise only `0`; CSP is the active XSS control.
+
+### Required headers
+
+An approved header entry can declare the response resource types on which it
+must be present. This detects removal in addition to changed values:
+
+```json
+{
+  "identifyWith": {
+    "andMatcher": [{ "headerNameMatcher": "^strict-transport-security$" }, { "hostMatcher": "^pay\\.example\\.com$" }]
+  },
+  "authoriseWith": {
+    "contentMatcher": "^max-age=31536000; includesubdomains$",
+    "authorisationInfo": {
+      "description": "One-year HSTS policy",
+      "authorised": true,
+      "date": "2026-07-28T00:00:00.000Z"
+    }
+  },
+  "requiredOn": ["document"]
+}
+```
+
+Required entries must contain one exact anchored `headerNameMatcher`. Their
+identifiers may otherwise contain only `hostMatcher` and `urlMatcher` children
+under `andMatcher`, because content-dependent matchers cannot be evaluated when
+the header is absent. `requiredOn` values are validated against Puppeteer's
+response resource types (for example `document`, `script`, and `stylesheet`),
+so misspellings fail inventory validation instead of silently disabling the
+check. `Set-Cookie` should not be blanket-required because many legitimate
+responses do not issue a cookie.
+
 Matcher fields always operate on what their name says: `nameMatcher` on the script URL / inline id (`headerNameMatcher` on the header name), `contentMatcher` on the actual content (external script response body, inline script source, or header value — never the URL), `hashes` on the SHA-256 of that content, and `hostMatcher`/`urlMatcher` on the resource's provenance URL. To authorize a script by where it comes from, use `urlMatcher` or `hostMatcher`, not a URL-shaped `contentMatcher`.
 
 ### Inline Script Names
