@@ -36,10 +36,13 @@ Vendored and adapted from
 | `working`           | `HEAD` — everything uncommitted, staged and unstaged (as a diff scope, `HEAD` means worktree-vs-HEAD)                                                                                        |
 
 **For any scope that references `origin` (the default branch scope, PR scopes): `git fetch -q origin`
-first, and diff against `origin/main`, not local `main`.** A stale local `main` silently widens the
-scope to include whatever has landed upstream since — the review then spends its agents on other
-people's merged code and reports findings against work the user never touched. Purely local scopes
-(`staged`, `working`, a sha) need no fetch and must not fail for lack of network or a remote.
+first, and diff against the remote-tracking ref, never a local branch.** For the default branch
+scope that means `origin/main`, not local `main` — a stale local `main` silently widens the scope
+to include whatever has landed upstream since, and the review then spends its agents on other
+people's merged code. For a PR scope it means `origin/<base>` with the base resolved from
+`gh pr view` — a PR targeting `release/*` or any non-main branch must be diffed against _its_
+base, not `origin/main`. Purely local scopes (`staged`, `working`, a sha) need no fetch and must
+not fail for lack of network or a remote.
 
 **Untracked files are invisible to `working` and `staged` diffs.** Before resolving either scope,
 check `git ls-files --others --exclude-standard`; if it lists files that belong to the change,
