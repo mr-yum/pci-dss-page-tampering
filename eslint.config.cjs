@@ -44,6 +44,24 @@ module.exports = tseslint.config(
     },
   },
   {
+    // Claude Code Workflow scripts (.claude/skills/*/review-workflow.js) run in
+    // an async wrapper with these globals injected by the Workflow tool — they
+    // are not part of the app build and never imported.
+    files: ['.claude/skills/**/*.js'],
+    languageOptions: {
+      globals: {
+        args: 'readonly',
+        agent: 'readonly',
+        parallel: 'readonly',
+        pipeline: 'readonly',
+        phase: 'readonly',
+        log: 'readonly',
+        budget: 'readonly',
+        workflow: 'readonly',
+      },
+    },
+  },
+  {
     files: ['**/*.test.(j|t)s', '**/*.spec.(j|t)s', '**/test/**/*.(j|t)s'],
     plugins: {
       jest: jestPlugin,
