@@ -17,12 +17,14 @@ export { AuthorizedScriptFound } from './authorized-script-found.js'
 export { UnknownHeaderFound } from './unknown-header-found.js'
 export { KnownHeaderWithUnauthorisedContentFound as KnownHeaderWithUnauthorisedContentFound_Header } from './known-header-unauthorised-content-found.js'
 export { AuthorizedHeaderFound } from './authorized-header-found.js'
+export { MissingRequiredHeader } from './missing-required-header.js'
 
 // Type imports for union
 import type { AuthorizedHeaderFound } from './authorized-header-found.js'
 import type { AuthorizedScriptFound } from './authorized-script-found.js'
 import type { KnownHeaderWithUnauthorisedContentFound as KnownHeaderWithUnauthorisedContentFound_Header } from './known-header-unauthorised-content-found.js'
 import type { KnownScriptWithUnauthorisedContentFound } from './known-script-unauthorised-content-found.js'
+import type { MissingRequiredHeader } from './missing-required-header.js'
 import type { UnknownHeaderFound } from './unknown-header-found.js'
 import type { UnknownScriptFound } from './unknown-script-found.js'
 
@@ -54,4 +56,4 @@ import type { UnknownScriptFound } from './unknown-script-found.js'
  * }
  * ```
  */
-export type ComparisonResultType = UnknownScriptFound | KnownScriptWithUnauthorisedContentFound | AuthorizedScriptFound | UnknownHeaderFound | KnownHeaderWithUnauthorisedContentFound_Header | AuthorizedHeaderFound
+export type ComparisonResultType = UnknownScriptFound | KnownScriptWithUnauthorisedContentFound | AuthorizedScriptFound | UnknownHeaderFound | KnownHeaderWithUnauthorisedContentFound_Header | AuthorizedHeaderFound | MissingRequiredHeader

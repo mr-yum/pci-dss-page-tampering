@@ -1,0 +1,133 @@
+import type { Inventory, InventoryHeaderInfo } from '../../types/inventory/model.js'
+import { createMatcher } from '../../types/matcher/matcher-factory.js'
+import type { TargetDetection, TargetInventory } from '../../types/target.js'
+import { inventoryHeaderInfoToRawInventoryHeaderInfo, rawInventoryHeaderInfoToInventoryHeaderInfo } from '../../utils/inventory.js'
+import { createLogger } from '../../utils/logger.js'
+import { HeaderComparisonService } from './header.js'
+
+describe('HeaderComparisonService required headers', () => {
+  const target: TargetDetection = {
+    type: 'detection',
+    url: 'https://pay.example.com/checkout',
+    workflow: { fileName: 'workflow.json', definition: { steps: [] } },
+    logger: createLogger('header-test'),
+  }
+
+  const requiredHeader: InventoryHeaderInfo = {
+    identifyWith: createMatcher({
+      andMatcher: [{ headerNameMatcher: '^strict-transport-security$' }, { hostMatcher: '^pay\\.example\\.com$' }],
+    }),
+    authoriseWith: {
+      matcher: createMatcher({ contentMatcher: '^max-age=31536000; includesubdomains$' }),
+      authorisationInfo: { description: 'Required HSTS policy', authorised: true, date: new Date('2026-07-28T00:00:00.000Z') },
+    },
+    requiredOn: ['document'],
+  }
+
+  const inventory: Inventory = {
+    fileName: 'target.json',
+    target: { inventory: { ...target, type: 'inventory' } as TargetInventory, detection: target },
+    alerts: {
+      inventory: { newScriptIdentified: { destination: 'x' }, newHeaderIdentified: { destination: 'x' } },
+      detection: { newScriptDetected: { destination: 'x' }, scriptMismatchDetected: { destination: 'x' }, newHeaderDetected: { destination: 'x' } },
+      successNotification: { destination: 'x' },
+    },
+    scripts: [],
+    headers: [requiredHeader],
+  }
+
+  it('reports an in-scope required header that is absent', async () => {
+    const results = await new HeaderComparisonService().compare(target, inventory, {
+      headers: new Map(),
+      responses: [{ url: target.url, resourceType: 'document', headerNames: new Set() }],
+    })
+
+    expect(results).toHaveLength(1)
+    expect(results[0]).toMatchObject({
+      type: 'missing_required_header',
+      headerName: 'strict-transport-security',
+      url: target.url,
+      resourceType: 'document',
+    })
+  })
+
+  it('normalizes inventory-authored header-name casing for required checks', async () => {
+    const uppercaseEntry: InventoryHeaderInfo = {
+      ...requiredHeader,
+      identifyWith: createMatcher({
+        andMatcher: [{ headerNameMatcher: '^Strict-Transport-Security$' }, { hostMatcher: '^pay\\.example\\.com$' }],
+      }),
+    }
+    const results = await new HeaderComparisonService().compare(
+      target,
+      { ...inventory, headers: [uppercaseEntry] },
+      {
+        headers: new Map(),
+        responses: [{ url: target.url, resourceType: 'document', headerNames: new Set() }],
+      },
+    )
+
+    expect(results[0]).toMatchObject({ type: 'missing_required_header', headerName: 'strict-transport-security' })
+  })
+
+  it('does not report a required header when it was observed on the same response', async () => {
+    const results = await new HeaderComparisonService().compare(target, inventory, {
+      headers: new Map([['strict-transport-security', new Map([['max-age=31536000; includesubdomains', new Set([target.url])]])]]),
+      responses: [{ url: target.url, resourceType: 'document', headerNames: new Set(['strict-transport-security']) }],
+    })
+
+    expect(results.map((result) => result.type)).toEqual(['authorized_header'])
+  })
+
+  it('does not require a document-only header on a script response', async () => {
+    const results = await new HeaderComparisonService().compare(target, inventory, {
+      headers: new Map(),
+      responses: [{ url: 'https://pay.example.com/app.js', resourceType: 'script', headerNames: new Set() }],
+    })
+
+    expect(results).toEqual([])
+  })
+
+  it('reports a later response that drops a required header at the same URL', async () => {
+    const results = await new HeaderComparisonService().compare(target, inventory, {
+      headers: new Map([['strict-transport-security', new Map([['max-age=31536000; includesubdomains', new Set([target.url])]])]]),
+      responses: [
+        { url: target.url, resourceType: 'document', headerNames: new Set(['strict-transport-security']) },
+        { url: target.url, resourceType: 'document', headerNames: new Set() },
+      ],
+    })
+
+    expect(results.map((result) => result.type)).toEqual(['authorized_header', 'missing_required_header'])
+  })
+
+  it('redacts query parameters when logging a missing required header', async () => {
+    const responseUrl = `${target.url}?token=super-secret#payment`
+    const logSpy = jest.spyOn(target.logger, 'log').mockImplementation()
+
+    await new HeaderComparisonService().compare(target, inventory, {
+      headers: new Map(),
+      responses: [{ url: responseUrl, resourceType: 'document', headerNames: new Set() }],
+    })
+
+    const output = logSpy.mock.calls.flat().join(' ')
+    expect(output).toContain(target.url)
+    expect(output).not.toContain('super-secret')
+    expect(output).not.toContain('token=')
+    logSpy.mockRestore()
+  })
+
+  it('preserves requiredOn through inventory serialization', () => {
+    const raw = inventoryHeaderInfoToRawInventoryHeaderInfo(
+      rawInventoryHeaderInfoToInventoryHeaderInfo({
+        identifyWith: { headerNameMatcher: '^x-frame-options$' },
+        authoriseWith: {
+          contentMatcher: '^DENY$',
+          authorisationInfo: { description: 'clickjacking policy', authorised: true, date: '2026-07-28T00:00:00.000Z' },
+        },
+        requiredOn: ['document'],
+      }),
+    )
+
+    expect(raw.requiredOn).toEqual(['document'])
+  })
+})

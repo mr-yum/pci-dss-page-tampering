@@ -14,7 +14,68 @@
  */
 
 import { MatcherConfigSchema } from './matcher-config-schema.js'
-import { AlertDestinationSchema, InventoryAlertSchema, RawInventoryScriptInfoSchema } from './zod.js'
+import { AlertDestinationSchema, InventoryAlertSchema, RawInventoryHeaderInfoSchema, RawInventoryScriptInfoSchema } from './zod.js'
+
+describe('Required header inventory validation', () => {
+  const authoriseWith = {
+    contentMatcher: '^nosniff$',
+    authorisationInfo: { description: 'required header', authorised: true, date: '2026-07-28T00:00:00.000Z' },
+  }
+
+  it('accepts requiredOn with one exact header name inside a composite identifier', () => {
+    expect(
+      RawInventoryHeaderInfoSchema.safeParse({
+        identifyWith: { andMatcher: [{ headerNameMatcher: '^x-content-type-options$' }, { hostMatcher: '^example\\.com$' }] },
+        authoriseWith,
+        requiredOn: ['document'],
+      }).success,
+    ).toBe(true)
+  })
+
+  it('accepts an exact header name with inventory-authored casing', () => {
+    const result = RawInventoryHeaderInfoSchema.safeParse({
+      identifyWith: { headerNameMatcher: '^X-Content-Type-Options$' },
+      authoriseWith,
+      requiredOn: ['document'],
+    })
+
+    expect(result.success).toBe(true)
+  })
+
+  it('rejects requiredOn when the header name cannot be determined exactly', () => {
+    const result = RawInventoryHeaderInfoSchema.safeParse({
+      identifyWith: { headerNameMatcher: '^x-.*$' },
+      authoriseWith,
+      requiredOn: ['document'],
+    })
+
+    expect(result.success).toBe(false)
+    if (!result.success) expect(result.error.issues[0]!.message).toContain('exactly one anchored headerNameMatcher')
+  })
+
+  it('rejects unknown requiredOn resource types', () => {
+    const result = RawInventoryHeaderInfoSchema.safeParse({
+      identifyWith: { headerNameMatcher: '^x-content-type-options$' },
+      authoriseWith,
+      requiredOn: ['documents'],
+    })
+
+    expect(result.success).toBe(false)
+  })
+
+  it('rejects content-dependent identifiers for required headers', () => {
+    const result = RawInventoryHeaderInfoSchema.safeParse({
+      identifyWith: {
+        andMatcher: [{ headerNameMatcher: '^set-cookie$' }, { contentMatcher: '^cookie=session;' }, { hostMatcher: '^example\\.com$' }],
+      },
+      authoriseWith,
+      requiredOn: ['document'],
+    })
+
+    expect(result.success).toBe(false)
+    if (!result.success) expect(result.error.issues.some((issue) => issue.message.includes('contentMatcher'))).toBe(true)
+  })
+})
 
 describe('MatcherConfigSchema', () => {
   describe('Invalid regex patterns (T027)', () => {

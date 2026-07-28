@@ -157,7 +157,7 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
       const scriptMatchers = getScriptContentMatchersFromInventory(payload)
 
       // Prepare to run resource detection
-      const detectResourcesForTarget = detectionService.detect(browser, target, scriptMatchers)
+      const detectResourcesForTarget = detectionService.detect(browser, target, scriptMatchers, payload.headers)
 
       // Run resource detection
       const detectionSummaryForTarget = await detectResourcesForTarget

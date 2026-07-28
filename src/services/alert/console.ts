@@ -3,13 +3,14 @@ import { AlertType } from '../../types/alert.js'
 import type { ComparisonResultType } from '../../types/comparison.js'
 import type { KnownHeaderWithUnauthorisedContentFound } from '../../types/comparison/known-header-unauthorised-content-found.js'
 import type { KnownScriptWithUnauthorisedContentFound } from '../../types/comparison/known-script-unauthorised-content-found.js'
+import type { MissingRequiredHeader } from '../../types/comparison/missing-required-header.js'
 import type { UnknownHeaderFound } from '../../types/comparison/unknown-header-found.js'
 import type { UnknownScriptFound } from '../../types/comparison/unknown-script-found.js'
 import { ExecutionMode } from '../../types/config.js'
 import type { ExecutionSummary } from '../../types/execution-summary.js'
 import type { InventoryAlert } from '../../types/inventory/model.js'
 import type { Target } from '../../types/target.js'
-import { extractHost } from '../../utils/url.js'
+import { extractHost, redactUrl } from '../../utils/url.js'
 
 /**
  * T042: Console-based alert service for local development and testing.
@@ -34,6 +35,7 @@ export class ConsoleAlertService implements IAlertService {
     const unauthorizedScripts = comparisonResults.filter((r): r is KnownScriptWithUnauthorisedContentFound => r.type === 'known_script_unauthorised_content')
     const unknownHeaders = comparisonResults.filter((r): r is UnknownHeaderFound => r.type === 'unknown_header_found')
     const unauthorizedHeaders = comparisonResults.filter((r): r is KnownHeaderWithUnauthorisedContentFound => r.type === 'known_header_unauthorised_content')
+    const missingHeaders = comparisonResults.filter((r): r is MissingRequiredHeader => r.type === 'missing_required_header')
 
     // Log unknown scripts
     if (unknownScripts.length > 0) {
@@ -54,6 +56,10 @@ export class ConsoleAlertService implements IAlertService {
     // Log unauthorized headers — same applied/skipped split as scripts.
     if (unauthorizedHeaders.length > 0) {
       this.logUnauthorizedHeaders(unauthorizedHeaders, target, inventoryUpdatedResults)
+    }
+
+    if (missingHeaders.length > 0) {
+      this.logMissingHeaders(missingHeaders, target)
     }
 
     // AuthorizedScriptFound and AuthorizedHeaderFound are no-ops (no alert needed)
@@ -108,7 +114,7 @@ export class ConsoleAlertService implements IAlertService {
     headers.forEach((result, index) => {
       console.log(`    ${index + 1}. ${result.header.name}`)
       console.log(`       Value: ${this.truncate(result.header.value)}`)
-      console.log(`       From host: ${extractHost(result.header.url)} (url: ${result.header.url || '(unknown)'})`)
+      console.log(`       From host: ${extractHost(result.header.url)} (url: ${redactUrl(result.header.url)})`)
     })
     console.log()
   }
@@ -125,13 +131,23 @@ export class ConsoleAlertService implements IAlertService {
       const outcome = target.type === 'inventory' && inventoryUpdatedResults ? (inventoryUpdatedResults.has(result) ? 'inventory auto-updated' : 'manual review required (inventory unchanged)') : null
       console.log(`    ${index + 1}. ${result.header.name}`)
       console.log(`       Value: ${this.truncate(result.header.value)}`)
-      console.log(`       From host: ${extractHost(result.header.url)} (url: ${result.header.url || '(unknown)'})`)
+      console.log(`       From host: ${extractHost(result.header.url)} (url: ${redactUrl(result.header.url)})`)
       console.log(`       Failed Matcher: ${matcherType}`)
       console.log(`       Reason: ${reason}`)
       if (outcome !== null) {
         console.log(`       Outcome: ${outcome}`)
       }
     })
+    console.log()
+  }
+
+  private logMissingHeaders(headers: MissingRequiredHeader[], target: Target): void {
+    this.log(AlertType.Header, `Required headers missing for target: ${target.url}`)
+    for (const [index, result] of headers.entries()) {
+      console.log(`    ${index + 1}. ${result.headerName}`)
+      console.log(`       Response: ${redactUrl(result.url)}`)
+      console.log(`       Resource Type: ${result.resourceType}`)
+    }
     console.log()
   }
 

@@ -42,6 +42,7 @@ import type { DetectedScript, Matcher } from './matcher.interface.js'
  */
 export class HeaderNameMatcher implements Matcher {
   private readonly pattern: RegExp
+  private readonly identificationPattern: RegExp
 
   /**
    * Creates a new HeaderNameMatcher with the specified regex pattern.
@@ -50,6 +51,7 @@ export class HeaderNameMatcher implements Matcher {
    */
   constructor(patternString: string) {
     this.pattern = new RegExp(patternString)
+    this.identificationPattern = new RegExp(patternString, 'i')
   }
 
   /**
@@ -86,8 +88,8 @@ export class HeaderNameMatcher implements Matcher {
    *
    * For headers:
    * - input.name represents the header name (e.g., "Content-Type")
-   * - Normalizes to lowercase before regex test per RFC 7230 (BR-3)
-   * - Pattern should be written in lowercase (e.g., "^content-type$")
+   * - Tests case-insensitively per RFC 7230 (BR-3), regardless of how the
+   *   inventory author cased the regex pattern
    *
    * @param input - The detected resource to test (name field used for headers)
    * @returns true if name (normalized) matches the pattern, false otherwise
@@ -96,8 +98,9 @@ export class HeaderNameMatcher implements Matcher {
     if (!input.name || input.name.trim() === '') {
       return false
     }
-    // T053: Normalize to lowercase for case-insensitive matching (BR-3)
-    return this.pattern.test(input.name.toLowerCase())
+    // Keep a separate case-insensitive regex for identification so authorize()
+    // can retain its historical case-sensitive content semantics.
+    return this.identificationPattern.test(input.name)
   }
 
   /**

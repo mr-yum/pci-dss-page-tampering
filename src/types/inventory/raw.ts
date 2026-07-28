@@ -1,3 +1,4 @@
+import type { ResponseResourceType } from '../header.js'
 import type { RawTargetDetection, RawTargetInventory } from '../target/raw.js'
 import type { RawMatcherConfig } from './matcher-config-schema.js'
 import type { Inventory, InventoryTarget } from './model.js'
@@ -32,6 +33,7 @@ export type RawInventoryScriptInfo = {
 export type RawInventoryHeaderInfo = {
   identifyWith: RawMatcherConfig
   authoriseWith: RawAuthorizeWithConfig
+  requiredOn?: ResponseResourceType[] | undefined
 }
 
 export type RawInventoryTarget = Omit<InventoryTarget, 'inventory' | 'detection'> & {

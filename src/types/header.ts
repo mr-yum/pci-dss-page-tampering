@@ -1,9 +1,42 @@
+import type { ResourceType } from 'puppeteer'
+
 import type { Target } from './target.js'
 import type { Workflow } from './workflow.js'
 
 export type HeaderName = string
 export type HeaderValues = Set<string>
 export type HeaderUrl = string
+
+/** Runtime counterpart to Puppeteer's ResourceType union for inventory validation. */
+export const RESPONSE_RESOURCE_TYPES = [
+  'document',
+  'stylesheet',
+  'image',
+  'media',
+  'font',
+  'script',
+  'texttrack',
+  'xhr',
+  'fetch',
+  'prefetch',
+  'eventsource',
+  'websocket',
+  'manifest',
+  'signedexchange',
+  'ping',
+  'cspviolationreport',
+  'preflight',
+  'fedcm',
+  'other',
+] as const satisfies readonly ResourceType[]
+export type ResponseResourceType = (typeof RESPONSE_RESOURCE_TYPES)[number]
+
+export type DetectedResponse = {
+  readonly url: string
+  readonly resourceType: ResponseResourceType
+  /** Header names present on this exact response occurrence. Values remain redacted elsewhere. */
+  readonly headerNames: ReadonlySet<HeaderName>
+}
 
 /**
  * Headers are keyed by name, then by individual directive/value, then by the
@@ -14,6 +47,13 @@ export type HeaderUrl = string
  */
 export type HeaderDetectionSummary = {
   headers: Map<HeaderName, Map<string, Set<HeaderUrl>>>
+  /**
+   * Responses seen during the run. Optional for backwards-compatible test
+   * fixtures; production detection always populates it. Required-header
+   * checks use the per-response header-name set to detect removal, including
+   * when the same URL responds more than once during a workflow.
+   */
+  responses?: DetectedResponse[]
 }
 
 export type HeaderInfo = {

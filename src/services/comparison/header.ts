@@ -12,11 +12,12 @@ import type { IHeaderComparisonService } from '../../interfaces/comparison.js'
 import type { ComparisonResultType } from '../../types/comparison.js'
 import { AuthorizedHeaderFound } from '../../types/comparison/authorized-header-found.js'
 import { KnownHeaderWithUnauthorisedContentFound as KnownHeaderWithUnauthorisedContentFound_Header } from '../../types/comparison/known-header-unauthorised-content-found.js'
+import { MissingRequiredHeader } from '../../types/comparison/missing-required-header.js'
 import { UnknownHeaderFound } from '../../types/comparison/unknown-header-found.js'
 import type { DetectedHeader, HeaderDetectionSummary } from '../../types/header.js'
 import type { Inventory, InventoryHeaderInfo } from '../../types/inventory/model.js'
 import type { Target } from '../../types/target.js'
-import { extractHost } from '../../utils/url.js'
+import { extractHost, redactUrl } from '../../utils/url.js'
 
 export class HeaderComparisonService implements IHeaderComparisonService {
   /**
@@ -64,7 +65,63 @@ export class HeaderComparisonService implements IHeaderComparisonService {
       }
     }
 
+    results.push(...this.findMissingRequiredHeaders(target, inventoryHeaders, headerDetectionSummary, timestamp))
+
     return Promise.resolve(results)
+  }
+
+  private findMissingRequiredHeaders(target: Target, inventoryHeaders: InventoryHeaderInfo[], summary: HeaderDetectionSummary, timestamp: Date): MissingRequiredHeader[] {
+    const responses = summary.responses ?? []
+    const missing: MissingRequiredHeader[] = []
+    const seen = new Set<string>()
+
+    for (const entry of inventoryHeaders) {
+      if (!entry.authoriseWith.authorisationInfo.authorised || !entry.requiredOn?.length) continue
+
+      const headerName = this.getRequiredHeaderName(entry)
+      if (headerName === null) {
+        target.logger.error(`Required header entry '${entry.identifyWith.getDescription()}' must contain one exact anchored HeaderNameMatcher and only presence-safe HeaderName/Host/URL matchers.`)
+        continue
+      }
+
+      for (const response of responses) {
+        if (!entry.requiredOn.includes(response.resourceType)) continue
+        if (!entry.identifyWith.identify({ name: headerName, content: '', url: response.url })) continue
+
+        const wasObserved = response.headerNames.has(headerName)
+        const key = `${headerName}\u0000${response.resourceType}\u0000${response.url}`
+        if (!wasObserved && !seen.has(key)) {
+          seen.add(key)
+          target.logger.log(`Required header '${headerName}' missing from ${response.resourceType} response '${redactUrl(response.url)}'.`)
+          missing.push(new MissingRequiredHeader(target, timestamp, headerName, response.url, response.resourceType, entry))
+        }
+      }
+    }
+
+    return missing
+  }
+
+  private getRequiredHeaderName(entry: InventoryHeaderInfo): string | null {
+    const isPresenceSafeMatcher = (matcher: InventoryHeaderInfo['identifyWith']): boolean => {
+      const matcherType = matcher.getType()
+      if (matcherType === 'header-name' || matcherType === 'host' || matcherType === 'url') return true
+      if (matcherType !== 'and') return false
+      return (matcher.getPattern() as InventoryHeaderInfo['identifyWith'][]).every(isPresenceSafeMatcher)
+    }
+
+    if (!isPresenceSafeMatcher(entry.identifyWith)) return null
+
+    const findNames = (matcher: InventoryHeaderInfo['identifyWith']): string[] => {
+      if (matcher.getType() === 'header-name') {
+        const match = /^\^([a-z0-9-]+)\$$/i.exec(matcher.getPattern() as string)
+        return match?.[1] ? [match[1].toLowerCase()] : []
+      }
+      if (matcher.getType() !== 'and') return []
+      return (matcher.getPattern() as InventoryHeaderInfo['identifyWith'][]).flatMap(findNames)
+    }
+
+    const names = findNames(entry.identifyWith)
+    return names.length === 1 ? names[0]! : null
   }
 
   /**
@@ -157,10 +214,10 @@ export class HeaderComparisonService implements IHeaderComparisonService {
       // Skip non-authorized entries (legacy compatibility)
       if (!entry.authoriseWith.authorisationInfo.authorised) continue
 
-      // Pass host so identifyWith can include a HostMatcher (typically combined
-      // with HeaderNameMatcher under an AndMatcher) — e.g. "match CSP from
-      // *.meandu.app only". Empty content is fine for header identification.
-      if (entry.identifyWith.identify({ name: header.name, content: '', ...(header.url !== undefined ? { url: header.url } : {}) })) {
+      // Pass both canonical content and provenance. Structured Set-Cookie
+      // entries use content to distinguish cookie names, while ordinary
+      // security headers generally identify by header name + host.
+      if (entry.identifyWith.identify({ name: header.name, content: header.value, ...(header.url !== undefined ? { url: header.url } : {}) })) {
         return entry // First match wins (BR-2)
       }
     }

@@ -1,5 +1,6 @@
 import type { ComparisonResultType } from '../comparison.js'
 import type { SHA256Hash } from '../hash.js'
+import type { ResponseResourceType } from '../header.js'
 import type { Matcher } from '../matcher/matcher.interface.js'
 import type { TargetDetection, TargetInventory } from '../target.js'
 import type { RawInventory } from './raw.js'
@@ -46,6 +47,8 @@ export type InventoryScriptInfo = {
 export type InventoryHeaderInfo = {
   identifyWith: Matcher
   authoriseWith: AuthorizeWithConfig
+  /** Resource types on which this header must be present. */
+  requiredOn?: ResponseResourceType[] | undefined
 }
 
 export type InventoryTarget = {
@@ -66,6 +69,8 @@ export type AlertDetection = {
   newScriptDetected: AlertDestination
   scriptMismatchDetected: AlertDestination
   newHeaderDetected: AlertDestination
+  headerMismatchDetected?: AlertDestination | undefined
+  missingHeaderDetected?: AlertDestination | undefined
 }
 
 export type InventoryAlert = {
