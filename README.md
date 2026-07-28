@@ -356,14 +356,14 @@ Each inventory file (`targets/<name>.json`) lists the scripts and headers approv
 
 The detector captures these headers:
 
-| Header                      | Production capture scope                              | Canonicalisation                                               |
-| --------------------------- | ----------------------------------------------------- | -------------------------------------------------------------- |
-| `Content-Security-Policy`   | All responses (existing behaviour)                    | One observation per non-empty directive                        |
-| `X-Frame-Options`           | Target-host document responses                        | Upper-case canonical token                                     |
-| `Strict-Transport-Security` | Target-host document responses, including redirects   | Case/order-normalised directives and numeric `max-age`         |
-| `X-XSS-Protection`          | Target-host document responses                        | Normalised legacy policy; report URL query/credentials removed |
-| `X-Content-Type-Options`    | Target-host document, script and stylesheet responses | Lower-case canonical token                                     |
-| `Set-Cookie`                | All target-host responses, including redirects        | One redacted observation per cookie                            |
+| Header                      | Production capture scope                              | Canonicalisation                                                                        |
+| --------------------------- | ----------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `Content-Security-Policy`   | All responses (existing behaviour)                    | One observation per non-empty directive                                                 |
+| `X-Frame-Options`           | Target-host document responses                        | Upper-case canonical token                                                              |
+| `Strict-Transport-Security` | Target-host document responses, including redirects   | Case/order-normalised directives and numeric `max-age`                                  |
+| `X-XSS-Protection`          | Target-host document responses                        | Normalised legacy policy; report URL credentials, query and fragment components removed |
+| `X-Content-Type-Options`    | Target-host document, script and stylesheet responses | Lower-case canonical token                                                              |
+| `Set-Cookie`                | All target-host responses, including redirects        | One redacted observation per cookie                                                     |
 
 The same resource-type rules apply to a third-party response when an existing
 inventory entry explicitly identifies that header and origin. Uninventoried
