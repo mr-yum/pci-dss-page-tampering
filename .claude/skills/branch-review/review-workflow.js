@@ -317,7 +317,10 @@ mark it not-refuted and give the accurate statement in "correction".`,
           upheld: kept.length,
           verdict: verdict,
           correction: (kept[0] && kept[0].correction) || '',
-          rationale: (cast[0] && cast[0].reason) || '',
+          // An upholding voter's reasoning, consistent with the surviving
+          // verdict (and with `correction`); only a REFUTED finding — kept
+          // empty — falls back to the refuter's reasoning.
+          rationale: ((kept[0] || cast[0]) && (kept[0] || cast[0]).reason) || '',
         })
       }),
   ),

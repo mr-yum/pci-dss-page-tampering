@@ -15,8 +15,9 @@ invoke it). It runs **alongside**, not instead of, the other two gates: `npm run
 (correctness) and CodeRabbit (`/coderabbit:review --base main` before commit, plus its
 asynchronous PR review rounds after every push).
 
-**Cost is real**: ~7–20 agents per run. It is the right spend before a commit or a PR; it is
-the wrong spend on a one-line change. For a trivial diff, read it yourself.
+**Cost is real**: ~7–20 agents per run at `standard` depth, up to ~40 at `deep` (3 verifiers per
+finding). It is the right spend before a commit or a PR; it is the wrong spend on a one-line
+change. For a trivial diff, read it yourself.
 
 Vendored and adapted from
 [dailyripple/dailyripple `.claude/skills/branch-review`](https://github.com/dailyripple/dailyripple/tree/main/.claude/skills/branch-review).
