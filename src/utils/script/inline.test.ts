@@ -1,8 +1,8 @@
 /**
  * Inline-script classifier tests.
  *
- * The framework snippets below are captured verbatim from live pages
- * (staging.meandu.app, 2026-07-14) — they are the exact scripts that fell
+ * The framework snippets below are representative framework output
+ * captured during regression analysis — they are scripts that previously fell
  * through to `inline_script/id_not_found` before the classifiers were
  * broadened.
  */

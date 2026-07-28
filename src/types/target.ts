@@ -11,6 +11,8 @@ export type TargetDetection = Target & {
 
 export type Target = {
   type: 'inventory' | 'detection'
+  /** Stable identifier for the checkout workflow this target exercises. */
+  workflowId?: string | undefined
   name?: string | undefined
   url: string
   workflow: Workflow

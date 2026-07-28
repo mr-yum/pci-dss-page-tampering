@@ -52,10 +52,10 @@ describe('HostMatcher', () => {
     })
 
     it('matches a subdomain wildcard', () => {
-      const m = new HostMatcher('^([^.]+\\.)*meandu\\.app$')
-      expect(m.identify(make('https://staging.meandu.app/x'))).toBe(true)
-      expect(m.identify(make('https://app.meandu.app/'))).toBe(true)
-      expect(m.identify(make('https://meandu.app/'))).toBe(true)
+      const m = new HostMatcher('^([^.]+\\.)*checkout\\.example$')
+      expect(m.identify(make('https://staging.checkout.example/x'))).toBe(true)
+      expect(m.identify(make('https://app.checkout.example/'))).toBe(true)
+      expect(m.identify(make('https://checkout.example/'))).toBe(true)
     })
 
     it('does not match a different host', () => {

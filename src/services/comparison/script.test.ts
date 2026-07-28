@@ -109,6 +109,23 @@ describe('ScriptComparisonService', () => {
   }
 
   describe('compareSingleScriptWithInventory', () => {
+    it('uses the target workflow id when identifying scripts', () => {
+      const detectedScript = createScriptInfo('https://cdn.example.com/payment.js', 'hash123')
+      const workflowEntry: InventoryScriptInfo = {
+        identifyWith: createMatcher({ andMatcher: [{ workflowMatcher: '^workflow-a$' }, { nameMatcher: 'payment\\.js$' }] }),
+        authoriseWith: {
+          matcher: createMatcher({ hashes: [{ timestamp: new Date(), hash: { value: 'hash123' } as SHA256Hash }] }),
+          authorisationInfo: { description: 'Workflow A payment script', authorised: true, date: new Date() },
+        },
+      }
+
+      const workflowAResult = (service as any).compareSingleScriptWithInventory(detectedScript, [workflowEntry], { ...mockTarget, workflowId: 'workflow-a' })
+      const workflowBResult = (service as any).compareSingleScriptWithInventory(detectedScript, [workflowEntry], { ...mockTarget, workflowId: 'workflow-b' })
+
+      expect(workflowAResult.type).toBe('authorized_script')
+      expect(workflowBResult.type).toBe('unknown_script_found')
+    })
+
     describe('script exists in inventory with content matcher and empty hashes', () => {
       it('should return AuthorizedScriptFound when content matcher matches', () => {
         const detectedScript = createScriptInfo('https://cdn.example.com/payment.js', 'hash123', 'initPayment({ amount: total })')

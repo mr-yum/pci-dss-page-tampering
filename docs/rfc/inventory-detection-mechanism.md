@@ -196,7 +196,7 @@ URL; for external scripts, the script's own URL; for inline scripts, the
 initiator URL captured at insertion time by a page-attribution shim (falling
 back to `location.href` for parser-inserted inline scripts). `hostMatcher`
 and `urlMatcher` build on this — e.g. "only accept this CSP when it comes from
-`*.meandu.app`".
+`*.checkout.example`".
 
 Composite matchers nest to arbitrary depth (tested to 10 levels; 2–4 typical).
 `authorisationInfo` may live at any level, and the full root-to-leaf chain is

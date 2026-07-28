@@ -863,6 +863,36 @@ describe('ScriptInventoryService', () => {
         expect(diff.appliedResults).toEqual([result])
       })
 
+      it('scopes a new OR hash alternative to the workflow that observed it', async () => {
+        const existingScript = rawInventoryScriptInfoToInventoryScriptInfo({
+          identifyWith: { nameMatcher: '^https://cdn\\.example\\.com/script\\.js$' },
+          authoriseWith: [
+            {
+              andMatcher: [{ workflowMatcher: '^workflow-a$' }, { hashes: [{ timestamp: '2026-01-01T00:00:00.000Z', hash: { value: 'workflow-a-v1' } }] }],
+              authorisationInfo: { description: 'Workflow A v1', authorised: true, date: '2026-01-01T00:00:00.000Z' },
+            },
+          ],
+        })
+        const target = { ...createMockTarget(), workflowId: 'workflow-b' }
+        const result = new KnownScriptWithUnauthorisedContentFound(
+          target,
+          new Date('2026-04-22T00:00:00.000Z'),
+          { name: 'https://cdn.example.com/script.js', content: 'new', hash: { value: 'workflow-b-v1' }, workflowId: 'workflow-b' },
+          existingScript,
+          existingScript.authoriseWith.matcher,
+          'no workflow alternative matched',
+        )
+
+        const diff = await service.diff(createMockInventory([existingScript]), [result])
+        const raw = inventoryScriptInfoToRawInventoryScriptInfo(diff.newInventory.scripts[0]!)
+
+        expect(Array.isArray(raw.authoriseWith)).toBe(true)
+        if (!Array.isArray(raw.authoriseWith)) return
+        expect(raw.authoriseWith[1]).toMatchObject({
+          andMatcher: [{ workflowMatcher: '^workflow-b$' }, { hashes: [{ hash: { value: 'workflow-b-v1' } }] }],
+        })
+      })
+
       it('skips known_script_unauthorised_content when the top-level authoriser is an AndMatcher', async () => {
         // AndMatcher means "must satisfy ALL children" — adding an OR'd hash
         // alternative would silently weaken the operator's policy. The diff
@@ -1014,15 +1044,15 @@ describe('ScriptInventoryService', () => {
         // Two per-host CSP entries with composite identifyWith, mirroring
         // the script-inventory shape. Each only authorises one directive
         // today; the new value below should land in the m.stripe.network
-        // bucket, not the meandu one.
-        const meanduEntry = rawInventoryHeaderInfoToInventoryHeaderInfo({
+        // bucket, not the first-party merchant one.
+        const merchantEntry = rawInventoryHeaderInfoToInventoryHeaderInfo({
           identifyWith: {
-            andMatcher: [{ headerNameMatcher: '^content-security-policy$' }, { hostMatcher: '^app-dev\\.meandu\\.com$' }],
+            andMatcher: [{ headerNameMatcher: '^content-security-policy$' }, { hostMatcher: '^app\\.checkout\\.example$' }],
           },
           authoriseWith: [
             {
-              contentMatcher: '^frame-ancestors https:\\/\\/\\*\\.meandu\\.com$',
-              authorisationInfo: { description: 'Me&u (first-party)', authorised: true, date: '2026-05-19T00:00:00.000Z' },
+              contentMatcher: '^frame-ancestors https:\\/\\/\\*\\.checkout\\.example$',
+              authorisationInfo: { description: 'First-party checkout', authorised: true, date: '2026-05-19T00:00:00.000Z' },
             },
           ],
         })
@@ -1038,7 +1068,7 @@ describe('ScriptInventoryService', () => {
           ],
         })
 
-        const inventory: Inventory = { ...createMockInventory([]), headers: [meanduEntry, stripeEntry] }
+        const inventory: Inventory = { ...createMockInventory([]), headers: [merchantEntry, stripeEntry] }
 
         // A new CSP value arrives from m.stripe.network that doesn't match
         // any existing content matcher in the Stripe bucket. The comparison
@@ -1065,11 +1095,11 @@ describe('ScriptInventoryService', () => {
         const newPatterns = updatedStripe.authoriseWith.filter((m: any): m is { contentMatcher: string } => 'contentMatcher' in m).map((m) => m.contentMatcher)
         expect(newPatterns).toContain("^object-src 'none'$")
 
-        // 2. The meandu entry is untouched (no result targeted it).
-        const updatedMeandu = inventoryHeaderInfoToRawInventoryHeaderInfo(diff.newInventory.headers[0]!)
-        expect(Array.isArray(updatedMeandu.authoriseWith)).toBe(true)
-        if (!Array.isArray(updatedMeandu.authoriseWith)) return
-        expect(updatedMeandu.authoriseWith).toHaveLength(1)
+        // 2. The first-party entry is untouched (no result targeted it).
+        const updatedMerchant = inventoryHeaderInfoToRawInventoryHeaderInfo(diff.newInventory.headers[0]!)
+        expect(Array.isArray(updatedMerchant.authoriseWith)).toBe(true)
+        if (!Array.isArray(updatedMerchant.authoriseWith)) return
+        expect(updatedMerchant.authoriseWith).toHaveLength(1)
 
         // 3. The Stripe entry's composite identifyWith is preserved structurally
         //    — the matcher type and child shape are the same after round-trip.

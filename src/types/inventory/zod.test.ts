@@ -14,7 +14,49 @@
  */
 
 import { MatcherConfigSchema } from './matcher-config-schema.js'
-import { AlertDestinationSchema, InventoryAlertSchema, RawInventoryHeaderInfoSchema, RawInventoryScriptInfoSchema } from './zod.js'
+import { AlertDestinationSchema, InventoryAlertSchema, RawInventoryHeaderInfoSchema, RawInventoryScriptInfoSchema, RawInventoryTargetSchema } from './zod.js'
+
+describe('Multi-workflow inventory target validation', () => {
+  const target = (type: 'inventory' | 'detection') => ({ type, url: 'https://example.com', workflow: `${type}.json` })
+
+  it('accepts multiple named inventory/detection pairs', () => {
+    const result = RawInventoryTargetSchema.safeParse({
+      workflows: [
+        { id: 'workflow-a', inventory: target('inventory'), detection: target('detection') },
+        { id: 'workflow-b', inventory: target('inventory'), detection: target('detection') },
+      ],
+    })
+
+    expect(result.success).toBe(true)
+  })
+
+  it('continues to accept the legacy single-workflow shape', () => {
+    expect(RawInventoryTargetSchema.safeParse({ inventory: target('inventory'), detection: target('detection') }).success).toBe(true)
+  })
+
+  it('rejects duplicate or unstable workflow ids', () => {
+    const duplicate = RawInventoryTargetSchema.safeParse({
+      workflows: [
+        { id: 'workflow-a', inventory: target('inventory'), detection: target('detection') },
+        { id: 'workflow-a', inventory: target('inventory'), detection: target('detection') },
+      ],
+    })
+    const unstable = RawInventoryTargetSchema.safeParse({ workflows: [{ id: 'Pay Stack', inventory: target('inventory'), detection: target('detection') }] })
+
+    expect(duplicate.success).toBe(false)
+    expect(unstable.success).toBe(false)
+  })
+
+  it('rejects ambiguous legacy and multi-workflow fields together', () => {
+    const result = RawInventoryTargetSchema.safeParse({
+      inventory: target('inventory'),
+      detection: target('detection'),
+      workflows: [{ id: 'workflow-a', inventory: target('inventory'), detection: target('detection') }],
+    })
+
+    expect(result.success).toBe(false)
+  })
+})
 
 describe('Required header inventory validation', () => {
   const authoriseWith = {

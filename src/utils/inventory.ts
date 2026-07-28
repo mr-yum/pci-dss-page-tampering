@@ -1,5 +1,5 @@
-import type { Inventory, InventoryAuthorisationInfo, InventoryHeaderInfo, InventoryScriptInfo } from '../types/inventory/model.js'
-import type { RawInventory, RawInventoryHeaderInfo } from '../types/inventory/raw.js'
+import type { Inventory, InventoryAuthorisationInfo, InventoryHeaderInfo, InventoryScriptInfo, InventoryWorkflow } from '../types/inventory/model.js'
+import type { RawInventory, RawInventoryHeaderInfo, RawInventoryWorkflow } from '../types/inventory/raw.js'
 import { processAuthorizeWith } from '../types/inventory/zod.js'
 import { createMatcher } from '../types/matcher/matcher-factory.js'
 import { inventoryScriptInfoToRawInventoryScriptInfo } from './script.js'
@@ -30,21 +30,32 @@ export function copyInventory(inventory: Inventory, args?: { newScripts?: Invent
 }
 
 export function inventoryToRawInventory(inventory: Inventory): RawInventory {
-  return {
-    target: {
-      inventory: {
-        type: inventory.target.inventory.type,
-        ...(inventory.target.inventory.name !== undefined && { name: inventory.target.inventory.name }),
-        url: inventory.target.inventory.url,
-        workflow: inventory.target.inventory.workflow.fileName,
-      },
-      detection: {
-        type: inventory.target.detection.type,
-        ...(inventory.target.detection.name !== undefined && { name: inventory.target.detection.name }),
-        url: inventory.target.detection.url,
-        workflow: inventory.target.detection.workflow.fileName,
-      },
+  const workflowToRaw = (workflow: InventoryWorkflow): RawInventoryWorkflow => ({
+    id: workflow.id,
+    inventory: {
+      type: workflow.inventory.type,
+      ...(workflow.inventory.name !== undefined && { name: workflow.inventory.name }),
+      url: workflow.inventory.url,
+      workflow: workflow.inventory.workflow.fileName,
     },
+    detection: {
+      type: workflow.detection.type,
+      ...(workflow.detection.name !== undefined && { name: workflow.detection.name }),
+      url: workflow.detection.url,
+      workflow: workflow.detection.workflow.fileName,
+    },
+  })
+
+  const rawTarget: RawInventory['target'] =
+    inventory.target.workflows !== undefined
+      ? { workflows: inventory.target.workflows.map(workflowToRaw) }
+      : (() => {
+          const rawWorkflow = workflowToRaw({ id: 'default', inventory: inventory.target.inventory, detection: inventory.target.detection })
+          return { inventory: rawWorkflow.inventory, detection: rawWorkflow.detection }
+        })()
+
+  return {
+    target: rawTarget,
     alerts: inventory.alerts,
     scripts: inventory.scripts.map(inventoryScriptInfoToRawInventoryScriptInfo),
     headers: inventory.headers.map(inventoryHeaderInfoToRawInventoryHeaderInfo),
@@ -120,6 +131,12 @@ export function inventoryHeaderInfoToRawInventoryHeaderInfo(headerInfo: Inventor
         if (authInfo) {
           config.authorisationInfo = serializeAuthorisationInfo(authInfo)
         }
+        return config
+      }
+      case 'workflow': {
+        const config: any = { workflowMatcher: pattern as string }
+        const authInfo = (matcher as any).getAuthorisationInfo?.()
+        if (authInfo) config.authorisationInfo = serializeAuthorisationInfo(authInfo)
         return config
       }
       case 'hash': {

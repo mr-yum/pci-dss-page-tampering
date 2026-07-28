@@ -138,7 +138,7 @@
       "authoriseWith": {
         "contentMatcher": ".*",
         "authorisationInfo": {
-          "description": "Facebook Connect part of Facebook Pixel used by our customers to track analytics to their electronic menus",
+          "description": "Facebook Connect script used for website analytics",
           "authorised": true,
           "date": "2025-08-25T00:00:00.000Z"
         }
@@ -151,7 +151,7 @@
       "authoriseWith": {
         "contentMatcher": "https:\\/\\/connect\\.facebook\\.net\\/en_US\\/fbevents\\.js",
         "authorisationInfo": {
-          "description": "Facebook Pixel used by our customers to track analytics to their electronic menus",
+          "description": "Facebook Pixel script used for website analytics",
           "authorised": true,
           "date": "2025-08-25T00:00:00.000Z"
         }
@@ -203,7 +203,7 @@
       "authoriseWith": {
         "contentMatcher": ".*",
         "authorisationInfo": {
-          "description": "Google Tag Manager used by our customers to track analytics to their electronic menus",
+          "description": "Google Tag Manager script used for website analytics",
           "authorised": true,
           "date": "2025-08-25T00:00:00.000Z"
         }
@@ -211,7 +211,7 @@
     },
     {
       "identifyWith": {
-        "nameMatcher": "^inline_script\\/staging\\.meandu\\.app\\/.*$"
+        "nameMatcher": "^inline_script\\/staging\\.checkout\\.example\\/.*$"
       },
       "authoriseWith": {
         "hashes": [
@@ -229,7 +229,7 @@
           }
         ],
         "authorisationInfo": {
-          "description": "Part of our 2.0 Guest App (Serve) product code",
+          "description": "Part of the example checkout application",
           "authorised": true,
           "date": "2025-08-25T00:00:00.000Z"
         }
@@ -237,12 +237,12 @@
     },
     {
       "identifyWith": {
-        "nameMatcher": "^inline_script\\/staging\\.meandu\\.app\\/.*$"
+        "nameMatcher": "^inline_script\\/staging\\.checkout\\.example\\/.*$"
       },
       "authoriseWith": {
-        "nameMatcher": "^inline_script\\/staging\\.meandu\\.app\\/.*$",
+        "nameMatcher": "^inline_script\\/staging\\.checkout\\.example\\/.*$",
         "authorisationInfo": {
-          "description": "Part of our 2.0 Guest App (Serve) product code",
+          "description": "Part of the example checkout application",
           "authorised": true,
           "date": "2025-08-25T00:00:00.000Z"
         }
@@ -255,7 +255,7 @@
       "authoriseWith": {
         "contentMatcher": ".*",
         "authorisationInfo": {
-          "description": "Part of Stripe SDK used to integrate their iframe into our payment flow",
+          "description": "Part of the Stripe SDK used to integrate its iframe into a payment flow",
           "authorised": true,
           "date": "2025-08-25T00:00:00.000Z"
         }
@@ -268,7 +268,7 @@
       "authoriseWith": {
         "contentMatcher": ".*",
         "authorisationInfo": {
-          "description": "Facebook Connect part of Facebook Pixel used by our customers to track analytics to their electronic menus",
+          "description": "Facebook Connect script used for website analytics",
           "authorised": true,
           "date": "2025-08-25T00:00:00.000Z"
         }
@@ -281,7 +281,7 @@
       "authoriseWith": {
         "contentMatcher": ".*",
         "authorisationInfo": {
-          "description": "Part of Stripe SDK used to integrate their iframe into our payment flow",
+          "description": "Part of the Stripe SDK used to integrate its iframe into a payment flow",
           "authorised": true,
           "date": "2025-08-25T00:00:00.000Z"
         }
@@ -307,7 +307,7 @@
           }
         ],
         "authorisationInfo": {
-          "description": "Part of Stripe SDK used to integrate their iframe into our payment flow",
+          "description": "Part of the Stripe SDK used to integrate its iframe into a payment flow",
           "authorised": true,
           "date": "2025-08-25T00:00:00.000Z"
         }
@@ -315,12 +315,12 @@
     },
     {
       "identifyWith": {
-        "nameMatcher": "^https:\\/\\/static\\.meandu\\.app\\/app\\/front-end-web\\/deploy-[0-9]+\\/_next\\/static\\/(.*)\\/.*?\\.js$"
+        "nameMatcher": "^https:\\/\\/static\\.checkout\\.example\\/assets\\/deploy-[0-9]+\\/_next\\/static\\/(.*)\\/.*?\\.js$"
       },
       "authoriseWith": {
         "contentMatcher": ".*",
         "authorisationInfo": {
-          "description": "Part of our 2.0 Guest App (Serve) product code",
+          "description": "Part of the example checkout application",
           "authorised": true,
           "date": "2025-08-25T00:00:00.000Z"
         }
@@ -372,12 +372,12 @@
     },
     {
       "identifyWith": {
-        "contentMatcher": "https:\\/\\/static\\.meandu\\.app\\/app\\/front-end-web\\/deploy-\\d+"
+        "contentMatcher": "https:\\/\\/static\\.checkout\\.example\\/assets\\/deploy-\\d+"
       },
       "authoriseWith": {
-        "contentMatcher": "https:\\/\\/static\\.meandu\\.app\\/app\\/front-end-web\\/deploy-\\d+",
+        "contentMatcher": "https:\\/\\/static\\.checkout\\.example\\/assets\\/deploy-\\d+",
         "authorisationInfo": {
-          "description": "Part of our 2.0 Guest App (Serve) product code",
+          "description": "Part of the example checkout application",
           "authorised": true,
           "date": "2025-08-25T00:00:00.000Z"
         }
@@ -403,7 +403,7 @@
           }
         ],
         "authorisationInfo": {
-          "description": "Part of Google Tag Manager used by our customers to track analytics to their electronic menus",
+          "description": "Part of Google Tag Manager used for website analytics",
           "authorised": true,
           "date": "2025-08-25T00:00:00.000Z"
         }
@@ -416,7 +416,7 @@
       "authoriseWith": {
         "contentMatcher": ".*",
         "authorisationInfo": {
-          "description": "Part of Google Tag Manager used by our customers to track analytics to their electronic menus. Authorising any content from that URL as the hashes change constantly.",
+          "description": "Part of Google Tag Manager used for website analytics. Authorising any content from that URL as the hashes change constantly.",
           "authorised": true,
           "date": "2025-10-17T00:00:00.000Z"
         }
@@ -520,7 +520,7 @@
           }
         ],
         "authorisationInfo": {
-          "description": "Part of Stripe SDK used to integrate their iframe into our payment flow",
+          "description": "Part of the Stripe SDK used to integrate its iframe into a payment flow",
           "authorised": true,
           "date": "2025-08-25T00:00:00.000Z"
         }
@@ -554,7 +554,7 @@
     },
     {
       "identifyWith": {
-        "nameMatcher": "^https:\\/\\/www\\.meandu\\.app\\/cdn-cgi\\/challenge-platform\\/([^\\/]+)\\/([^\\/]+)\\/scripts\\/jsd\\/[0-9a-f]+\\/main\\.js\\?$"
+        "nameMatcher": "^https:\\/\\/www\\.checkout\\.example\\/cdn-cgi\\/challenge-platform\\/([^\\/]+)\\/([^\\/]+)\\/scripts\\/jsd\\/[0-9a-f]+\\/main\\.js\\?$"
       },
       "authoriseWith": {
         "contentMatcher": ".*",
@@ -1276,7 +1276,7 @@
           }
         },
         {
-          "contentMatcher": "^script-src self 'unsafe-inline' 'unsafe-eval' https:\\/\\/cdn\\.mryum\\.com https:\\/\\/static\\.meandu\\.app https:\\/\\/connect\\.facebook\\.net https:\\/\\/www\\.google-analytics\\.com https:\\/\\/www\\.googletagmanager\\.com https:\\/\\/api\\.paystack\\.co https:\\/\\/api2\\.amplitude\\.com https:\\/\\/cdn\\.amplitude\\.com https:\\/\\/challenges\\.cloudflare\\.com https:\\/\\/js\\.paystack\\.co https:\\/\\/js\\.stripe\\.com https:\\/\\/maps\\.googleapis\\.com https:\\/\\/\\*\\.eonx\\.com https:\\/\\/cdn\\.eonx\\.com https:\\/\\/dev\\.meandu\\.app https:\\/\\/mryum\\.local$",
+          "contentMatcher": "^script-src self 'unsafe-inline' 'unsafe-eval' https:\\/\\/cdn\\.checkout\\.example https:\\/\\/static\\.checkout\\.example https:\\/\\/connect\\.facebook\\.net https:\\/\\/www\\.google-analytics\\.com https:\\/\\/www\\.googletagmanager\\.com https:\\/\\/api\\.paystack\\.co https:\\/\\/api2\\.amplitude\\.com https:\\/\\/cdn\\.amplitude\\.com https:\\/\\/challenges\\.cloudflare\\.com https:\\/\\/js\\.paystack\\.co https:\\/\\/js\\.stripe\\.com https:\\/\\/maps\\.googleapis\\.com https:\\/\\/\\*\\.rewards\\.example https:\\/\\/cdn\\.rewards\\.example https:\\/\\/dev\\.checkout\\.example https:\\/\\/checkout\\.test$",
           "authorisationInfo": {
             "description": "Known headers",
             "authorised": true,

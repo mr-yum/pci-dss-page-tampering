@@ -17,6 +17,7 @@ import type { AuthorisationInfo, Matcher } from './matcher.interface.js'
 import { NameMatcher } from './name-matcher.js'
 import { OrMatcher } from './or-matcher.js'
 import { UrlMatcher } from './url-matcher.js'
+import { WorkflowMatcher } from './workflow-matcher.js'
 
 /**
  * Raw authorization info as it appears in JSON (with string date).
@@ -62,6 +63,7 @@ export type MatcherConfig =
   | { contentMatcher: string; authorisationInfo?: RawAuthorisationInfo }
   | { hostMatcher: string; authorisationInfo?: RawAuthorisationInfo }
   | { urlMatcher: string; authorisationInfo?: RawAuthorisationInfo }
+  | { workflowMatcher: string; authorisationInfo?: RawAuthorisationInfo }
   | { hashes: InventoryScriptHashInfo[]; authorisationInfo?: RawAuthorisationInfo }
   | { orMatcher: MatcherConfig[]; authorisationInfo?: RawAuthorisationInfo }
   | { andMatcher: MatcherConfig[]; authorisationInfo?: RawAuthorisationInfo }
@@ -123,6 +125,10 @@ export function createMatcher(config: MatcherConfig): Matcher {
     return new UrlMatcher(config.urlMatcher, convertAuthorisationInfo(config.authorisationInfo))
   }
 
+  if ('workflowMatcher' in config) {
+    return new WorkflowMatcher(config.workflowMatcher, convertAuthorisationInfo(config.authorisationInfo))
+  }
+
   if ('hashes' in config) {
     return new HashMatcher(config.hashes, convertAuthorisationInfo(config.authorisationInfo))
   }
@@ -141,5 +147,5 @@ export function createMatcher(config: MatcherConfig): Matcher {
   }
 
   // This should never happen if Zod schema validation is working
-  throw new Error(`Invalid MatcherConfig: must have nameMatcher, headerNameMatcher, contentMatcher, hashes, orMatcher, or andMatcher: ${JSON.stringify(config)}`)
+  throw new Error(`Invalid MatcherConfig: unknown matcher configuration: ${JSON.stringify(config)}`)
 }

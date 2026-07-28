@@ -7,7 +7,7 @@ import type { RawTargetDetection, RawTargetInventory } from '../target/raw.js'
 import { SHA256HashSchema } from '../zod.js'
 import { MatcherConfigSchema } from './matcher-config-schema.js'
 import type { AlertDestination, AlertDetection, AlertInventory, AuthorizeWithConfig, InventoryAlert, InventoryAuthorisationInfo, InventoryScriptHashInfo } from './model.js'
-import type { RawAuthorizeWithConfig, RawInventory, RawInventoryHeaderInfo, RawInventoryScriptInfo, RawInventoryTarget } from './raw.js'
+import type { RawAuthorizeWithConfig, RawInventory, RawInventoryHeaderInfo, RawInventoryScriptInfo, RawInventoryTarget, RawInventoryWorkflow } from './raw.js'
 
 export const AlertDestinationSchema: z.ZodType<AlertDestination> = z.object({
   destination: z.string().min(1, 'Alert destination cannot be empty'),
@@ -146,10 +146,40 @@ export const RawInventoryScriptInfoSchema: z.ZodType<RawInventoryScriptInfo> = z
  * Schema for the inventory target, including its workflow.
  * Corresponds to `RawInventoryTarget`.
  */
-export const RawInventoryTargetSchema: z.ZodType<RawInventoryTarget> = z.object({
+const WorkflowIdSchema = z.string().regex(/^[a-z0-9][a-z0-9._-]*$/, 'Workflow id must start with a lowercase letter or number and contain only lowercase letters, numbers, dots, underscores, or hyphens')
+
+export const RawInventoryWorkflowSchema: z.ZodType<RawInventoryWorkflow> = z.object({
+  id: WorkflowIdSchema,
   inventory: RawTargetInventorySchema,
   detection: RawTargetDetectionSchema,
 })
+
+export const RawInventoryTargetSchema: z.ZodType<RawInventoryTarget> = z.union([
+  z
+    .object({
+      inventory: RawTargetInventorySchema,
+      detection: RawTargetDetectionSchema,
+    })
+    .strict(),
+  z
+    .object({
+      workflows: z.array(RawInventoryWorkflowSchema).min(1, 'target.workflows must contain at least one workflow'),
+    })
+    .strict()
+    .superRefine((target, context) => {
+      const seen = new Set<string>()
+      target.workflows.forEach((workflow, index) => {
+        if (seen.has(workflow.id)) {
+          context.addIssue({
+            code: 'custom',
+            path: ['workflows', index, 'id'],
+            message: `Workflow id '${workflow.id}' must be unique within an inventory`,
+          })
+        }
+        seen.add(workflow.id)
+      })
+    }),
+])
 
 /**
  * Schema for information about an inventory header.
@@ -179,7 +209,7 @@ export const RawInventoryHeaderInfoSchema: z.ZodType<RawInventoryHeaderInfo> = z
     }
 
     const unsupportedPresenceMatchers = (matcher: any): string[] => {
-      if ('headerNameMatcher' in matcher || 'hostMatcher' in matcher || 'urlMatcher' in matcher) return []
+      if ('headerNameMatcher' in matcher || 'hostMatcher' in matcher || 'urlMatcher' in matcher || 'workflowMatcher' in matcher) return []
       if ('andMatcher' in matcher) return matcher.andMatcher.flatMap(unsupportedPresenceMatchers)
       if ('contentMatcher' in matcher) return ['contentMatcher']
       if ('nameMatcher' in matcher) return ['nameMatcher']
@@ -201,7 +231,7 @@ export const RawInventoryHeaderInfoSchema: z.ZodType<RawInventoryHeaderInfo> = z
       context.addIssue({
         code: 'custom',
         path: ['identifyWith'],
-        message: `A requiredOn header entry can identify responses only with headerNameMatcher, hostMatcher, urlMatcher, and andMatcher; unsupported: ${[...new Set(unsupported)].join(', ')}.`,
+        message: `A requiredOn header entry can identify responses only with headerNameMatcher, hostMatcher, urlMatcher, workflowMatcher, and andMatcher; unsupported: ${[...new Set(unsupported)].join(', ')}.`,
       })
     }
   })

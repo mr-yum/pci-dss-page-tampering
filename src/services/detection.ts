@@ -78,7 +78,7 @@ export class DetectionService implements IDetectionService {
       await page.evaluateOnNewDocument(INLINE_SCRIPT_ATTRIBUTION_SCRIPT)
 
       // Bootstrap page
-      page.on('response', (response) => scriptResponseHandler(response, externalScripts)).on('response', (response) => headerResponseHandler(response, headers, responses, target.url, inventoryHeaders))
+      page.on('response', (response) => scriptResponseHandler(response, externalScripts)).on('response', (response) => headerResponseHandler(response, headers, responses, target.url, inventoryHeaders, target.workflowId ?? 'default'))
 
       // Surface blocked requests with their Cloudflare ray ID. Bot mitigation
       // (managed challenge, Turnstile, rate limit) usually manifests downstream

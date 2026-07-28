@@ -51,9 +51,28 @@ export type InventoryHeaderInfo = {
   requiredOn?: ResponseResourceType[] | undefined
 }
 
-export type InventoryTarget = {
+export type InventoryWorkflow = {
+  id: string
   inventory: TargetInventory
   detection: TargetDetection
+}
+
+export type InventoryTarget =
+  | {
+      inventory: TargetInventory
+      detection: TargetDetection
+      workflows?: never
+    }
+  | {
+      workflows: InventoryWorkflow[]
+      inventory?: never
+      detection?: never
+    }
+
+/** Normalize legacy single-target inventories into the multi-workflow shape. */
+export function getInventoryWorkflows(target: InventoryTarget): InventoryWorkflow[] {
+  if (target.workflows !== undefined) return target.workflows
+  return [{ id: 'default', inventory: target.inventory, detection: target.detection }]
 }
 
 export type AlertDestination = {

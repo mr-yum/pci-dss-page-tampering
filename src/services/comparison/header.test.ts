@@ -51,6 +51,26 @@ describe('HeaderComparisonService required headers', () => {
     })
   })
 
+  it('scopes required header presence checks to the current workflow', async () => {
+    const workflowTarget = { ...target, workflowId: 'workflow-a' }
+    const workflowHeader: InventoryHeaderInfo = {
+      ...requiredHeader,
+      identifyWith: createMatcher({
+        andMatcher: [{ workflowMatcher: '^workflow-a$' }, { headerNameMatcher: '^strict-transport-security$' }, { hostMatcher: '^pay\\.example\\.com$' }],
+      }),
+    }
+    const summary = {
+      headers: new Map(),
+      responses: [{ url: target.url, resourceType: 'document' as const, headerNames: new Set<string>() }],
+    }
+
+    const workflowAResults = await new HeaderComparisonService().compare(workflowTarget, { ...inventory, headers: [workflowHeader] }, summary)
+    const workflowBResults = await new HeaderComparisonService().compare({ ...workflowTarget, workflowId: 'workflow-b' }, { ...inventory, headers: [workflowHeader] }, summary)
+
+    expect(workflowAResults.map((result) => result.type)).toEqual(['missing_required_header'])
+    expect(workflowBResults).toEqual([])
+  })
+
   it('normalizes inventory-authored header-name casing for required checks', async () => {
     const uppercaseEntry: InventoryHeaderInfo = {
       ...requiredHeader,
