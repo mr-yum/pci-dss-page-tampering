@@ -23,6 +23,7 @@ import type { ExecutionSummary } from './types/execution-summary.js'
 import { getInventoryWorkflows, type Inventory, type InventoryAlert, type InventoryDifferenceResult, type InventoryWorkflow } from './types/inventory/model.js'
 import { PullTarget, type Target } from './types/target.js'
 import { getScriptContentMatchersFromInventory } from './utils/script/matcher.js'
+import { redactRepositoryTarget } from './utils/url.js'
 import { collectTotpSeedRefs } from './utils/workflow.js'
 
 /**
@@ -463,15 +464,14 @@ function getWorkflowsForTargetFilter(inventory: Inventory, targetName: string | 
 function logConfiguration(config: RuntimeConfiguration): void {
   const redactToken = (token: string | null): string => {
     if (!token) return '(not provided)'
-    if (token.length <= 8) return '***'
-    return `${token.substring(0, 4)}...${token.substring(token.length - 4)} (${token.length} chars)`
+    return '(redacted)'
   }
 
   console.log('[Main]: Starting PCI DSS Page Tampering Detection')
   console.log('[Main]: Configuration:')
   console.log(`[Main]:   Mode: ${config.executionMode}`)
   console.log(`[Main]:   Target: ${config.targetFilter.targetName ?? 'all targets'}`)
-  console.log(`[Main]:   Repository: ${config.repository.url}`)
+  console.log(`[Main]:   Repository: ${redactRepositoryTarget(config.repository.url)}`)
   console.log(`[Main]:   Inventory Branch: ${config.branches.inventory}`)
   console.log(`[Main]:   Detection Branch: ${config.branches.detection}`)
   console.log(`[Main]:   Git Token: ${redactToken(config.authentication.gitToken)}`)

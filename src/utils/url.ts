@@ -9,6 +9,40 @@
 const UNKNOWN_HOST = '(unknown)'
 
 /**
+ * Remove URL userinfo from arbitrary log text. Git errors commonly echo the
+ * authenticated remote (`https://user:token@host/...`), so sanitising only
+ * the normal success-path log line is not sufficient.
+ */
+export function redactUrlCredentials(value: string): string {
+  return value.replace(/([a-z][a-z\d+.-]*:\/\/)[^\s/@]+@/giu, '$1[credentials-redacted]@')
+}
+
+/**
+ * Render a repository target without credentials, query parameters, or a
+ * fragment. HTTPS credentials contain the Git token; queries and fragments
+ * may also contain secrets. Local file URLs remain useful, and SCP-style SSH
+ * targets have their username removed.
+ */
+export function redactRepositoryTarget(target: string | undefined | null): string {
+  if (!target || target.trim() === '') return UNKNOWN_HOST
+
+  try {
+    const parsed = new URL(target)
+    parsed.username = ''
+    parsed.password = ''
+    parsed.search = ''
+    parsed.hash = ''
+
+    if (parsed.protocol === 'file:') return parsed.href
+    if (parsed.host === '') return UNKNOWN_HOST
+    return `${parsed.protocol}//${parsed.host}${parsed.pathname}`
+  } catch {
+    const scpTarget = target.trim().match(/^(?:[^@\s]+@)?([^:/\s]+):([^?#\s]+)(?:[?#].*)?$/u)
+    return scpTarget ? `${scpTarget[1]}:${scpTarget[2]}` : UNKNOWN_HOST
+  }
+}
+
+/**
  * Returns the host portion of a URL string. Returns `(unknown)` when the
  * input is undefined, empty, or unparseable so callers can interpolate the
  * result directly into log lines and Slack cells without conditionals.
