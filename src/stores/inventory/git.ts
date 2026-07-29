@@ -8,10 +8,12 @@ import type { GitInventoryStoreProps } from '../../types/inventory/props.js'
 import { PullTarget } from '../../types/target.js'
 import { GIT_CLONE_PATH, GIT_DETECTION_SCRIPTS_BRANCH_NAME, GIT_UPDATED_SCRIPTS_BRANCH_NAME, TARGET_DIRECTORY_NAME, TARGET_PATH, WORKFLOW_DIRECTORY_NAME } from '../../utils/constants.js'
 import { getInventoryFileNames, getRawInventoryFromFile } from '../../utils/file.js'
+import { redactRepositoryTarget, redactUrlCredentials } from '../../utils/url.js'
 
 export class GitInventoryStore implements IInventoryStore {
   private readonly initialGitClient: SimpleGit
   private readonly repositoryTarget: string
+  private readonly displayRepositoryTarget: string
   private readonly gitUserName: string
   private readonly gitUserEmail: string
   private repositoryGitClient: SimpleGit | undefined
@@ -19,14 +21,19 @@ export class GitInventoryStore implements IInventoryStore {
   constructor(args: GitInventoryStoreProps) {
     this.initialGitClient = args.gitClient
     this.repositoryTarget = args.repositoryTarget
+    this.displayRepositoryTarget = redactRepositoryTarget(args.repositoryTarget)
     this.gitUserName = args.gitUserName
     this.gitUserEmail = args.gitUserEmail
   }
 
   async pull(target: PullTarget, branchName?: string): Promise<InventoryPullResult> {
     // Clone repository
-    console.log(`[Inventory → Store] Cloning repository '${this.repositoryTarget}' to path '${GIT_CLONE_PATH}'.`)
-    await this.initialGitClient.clone(this.repositoryTarget, GIT_CLONE_PATH)
+    console.log(`[Inventory → Store] Cloning repository '${this.displayRepositoryTarget}' to path '${GIT_CLONE_PATH}'.`)
+    try {
+      await this.initialGitClient.clone(this.repositoryTarget, GIT_CLONE_PATH)
+    } catch (error) {
+      throw this.sanitizedGitError(`Failed to clone repository '${this.displayRepositoryTarget}'`, error)
+    }
 
     // Ensure that the appropriate folders exist
     if (!(await this.requiredFoldersExist())) {
@@ -84,7 +91,11 @@ export class GitInventoryStore implements IInventoryStore {
 
     const targetBranch = branchName ?? GIT_UPDATED_SCRIPTS_BRANCH_NAME
     console.log(`[Inventory → Store] Pushing changes to branch '${targetBranch}'`)
-    await this.repositoryGitClient?.push('origin', targetBranch)
+    try {
+      await this.repositoryGitClient?.push('origin', targetBranch)
+    } catch (error) {
+      throw this.sanitizedGitError(`Failed to push repository '${this.displayRepositoryTarget}'`, error)
+    }
 
     return Promise.resolve()
   }
@@ -97,7 +108,7 @@ export class GitInventoryStore implements IInventoryStore {
   private async switchBranch(gitClient: SimpleGit, branchName: string): Promise<void> {
     try {
       // Fetch to make sure we have the latest remote information
-      console.log(`[Inventory → Store] Fetching from repository '${this.repositoryTarget}'.`)
+      console.log(`[Inventory → Store] Fetching from repository '${this.displayRepositoryTarget}'.`)
       await gitClient.fetch()
 
       // Get a list of all branches (local and remote)
@@ -122,7 +133,16 @@ export class GitInventoryStore implements IInventoryStore {
         await gitClient.checkoutBranch(branchName, 'origin/main')
       }
     } catch (error) {
-      console.error('[Inventory → Store] An error occurred: ', error)
+      console.error('[Inventory → Store] An error occurred: ', this.sanitizeGitErrorMessage(error))
     }
+  }
+
+  private sanitizeGitErrorMessage(error: unknown): string {
+    const message = error instanceof Error ? error.message : String(error)
+    return redactUrlCredentials(message)
+  }
+
+  private sanitizedGitError(context: string, error: unknown): Error {
+    return new Error(`[Inventory → Store] ${context}: ${this.sanitizeGitErrorMessage(error)}`)
   }
 }
