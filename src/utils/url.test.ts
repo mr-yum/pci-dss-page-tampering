@@ -8,6 +8,14 @@ describe('redactUrlCredentials', () => {
     expect(redactUrlCredentials(message)).not.toContain('ghp_super_secret')
   })
 
+  it('removes query and fragment contents from URLs in arbitrary Git error text', () => {
+    const message = "fatal: unable to access 'https://github.com/org/inventory?token=query_secret#fragment_secret'"
+
+    expect(redactUrlCredentials(message)).toBe("fatal: unable to access 'https://github.com/org/inventory?[query-redacted]#[fragment-redacted]'")
+    expect(redactUrlCredentials(message)).not.toContain('query_secret')
+    expect(redactUrlCredentials(message)).not.toContain('fragment_secret')
+  })
+
   it('leaves credential-free text unchanged', () => {
     expect(redactUrlCredentials('fatal: unable to access https://github.com/org/inventory')).toBe('fatal: unable to access https://github.com/org/inventory')
   })

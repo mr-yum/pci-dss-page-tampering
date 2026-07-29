@@ -54,13 +54,15 @@ describe('GitInventoryStore repository logging', () => {
   })
 
   it('scrubs credentials from propagated clone errors', async () => {
-    const clone = jest.fn().mockRejectedValue(new Error(`fatal: repository '${authenticatedTarget}' not found`))
+    const clone = jest.fn().mockRejectedValue(new Error(`fatal: repository '${authenticatedTarget}?access_token=query_secret#fragment_secret' not found`))
     const { store } = createStore(clone)
 
     const error = await store.pull(PullTarget.Detection, 'main').catch((caught: unknown) => caught)
 
     expect(error).toBeInstanceOf(Error)
-    expect((error as Error).message).toContain('https://[credentials-redacted]@github.com/org/inventory')
+    expect((error as Error).message).toContain('https://[credentials-redacted]@github.com/org/inventory?[query-redacted]#[fragment-redacted]')
     expect((error as Error).message).not.toContain('ghp_super_secret')
+    expect((error as Error).message).not.toContain('query_secret')
+    expect((error as Error).message).not.toContain('fragment_secret')
   })
 })

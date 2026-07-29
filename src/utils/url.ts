@@ -9,12 +9,17 @@
 const UNKNOWN_HOST = '(unknown)'
 
 /**
- * Remove URL userinfo from arbitrary log text. Git errors commonly echo the
- * authenticated remote (`https://user:token@host/...`), so sanitising only
- * the normal success-path log line is not sufficient.
+ * Remove credentials and other secret-bearing URL components from arbitrary
+ * log text. Git errors commonly echo the authenticated remote, so sanitising
+ * only the normal success-path log line is not sufficient.
  */
 export function redactUrlCredentials(value: string): string {
-  return value.replace(/([a-z][a-z\d+.-]*:\/\/)[^\s/@]+@/giu, '$1[credentials-redacted]@')
+  const credentialsRedacted = value.replace(/([a-z][a-z\d+.-]*:\/\/)[^\s/@]+@/giu, '$1[credentials-redacted]@')
+
+  return credentialsRedacted.replace(
+    /([a-z][a-z\d+.-]*:\/\/[^\s"'?#]*)(\?[^\s"'#]*)?(#[^\s"']*)?/giu,
+    (_url, repositoryPath: string, query: string | undefined, fragment: string | undefined) => `${repositoryPath}${query === undefined ? '' : '?[query-redacted]'}${fragment === undefined ? '' : '#[fragment-redacted]'}`,
+  )
 }
 
 /**
