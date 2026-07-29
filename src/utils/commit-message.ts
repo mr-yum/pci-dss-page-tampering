@@ -11,25 +11,35 @@ type InventoryChangeCounts = {
 
 type PerFileChange = InventoryChangeCounts & { fileName: string }
 
+function matcherChildren(matcher: unknown): unknown[] {
+  if (Array.isArray(matcher)) return matcher
+  if (typeof matcher !== 'object' || matcher === null) return []
+
+  const config = matcher as { orMatcher?: unknown; andMatcher?: unknown }
+  return [...(Array.isArray(config.orMatcher) ? config.orMatcher : []), ...(Array.isArray(config.andMatcher) ? config.andMatcher : [])]
+}
+
+function countHashesInMatcher(matcher: unknown): number {
+  if (typeof matcher !== 'object' || matcher === null) return 0
+
+  const config = matcher as { hashes?: unknown }
+  const ownHashes = Array.isArray(config.hashes) ? config.hashes.length : 0
+  return ownHashes + matcherChildren(matcher).reduce<number>((total, child) => total + countHashesInMatcher(child), 0)
+}
+
+function countContentMatchersInMatcher(matcher: unknown): number {
+  if (typeof matcher !== 'object' || matcher === null) return 0
+
+  const ownMatcher = 'contentMatcher' in matcher ? 1 : 0
+  return ownMatcher + matcherChildren(matcher).reduce<number>((total, child) => total + countContentMatchersInMatcher(child), 0)
+}
+
 function countScriptHashes(script: RawInventoryScriptInfo): number {
-  const aw = script.authoriseWith
-  if (Array.isArray(aw)) {
-    return aw.reduce((total, element) => {
-      return total + ('hashes' in element && Array.isArray(element.hashes) ? element.hashes.length : 0)
-    }, 0)
-  }
-  if ('hashes' in aw && Array.isArray(aw.hashes)) {
-    return aw.hashes.length
-  }
-  return 0
+  return countHashesInMatcher(script.authoriseWith)
 }
 
 function countHeaderContentMatchers(header: RawInventoryHeaderInfo): number {
-  const aw = header.authoriseWith
-  if (Array.isArray(aw)) {
-    return aw.reduce((total, element) => total + ('contentMatcher' in element ? 1 : 0), 0)
-  }
-  return 'contentMatcher' in aw ? 1 : 0
+  return countContentMatchersInMatcher(header.authoriseWith)
 }
 
 function computeCountsForDiff(diff: InventoryDifferenceResult): PerFileChange {

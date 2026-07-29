@@ -175,9 +175,9 @@ Each script/header entry uses two matchers:
 ## Matcher system
 
 Matching is a strategy + composite pattern. Every detected resource is a
-`Matchable` (`name`, `content`, optional `hash`, optional `url`), and every
-matcher implements `identify()` (is this the resource I care about?) and
-`authorize()` (is its content/hash acceptable?).
+`Matchable` (`name`, `content`, optional `hash`, optional `url`, optional
+`workflowId`), and every matcher implements `identify()` (is this the resource
+I care about?) and `authorize()` (is its content/hash acceptable?).
 
 | Matcher             | Identifies by                           | Notes                                                     |
 | ------------------- | --------------------------------------- | --------------------------------------------------------- |
@@ -187,6 +187,7 @@ matcher implements `identify()` (is this the resource I care about?) and
 | `hashMatcher`       | SHA-256 of content                      | exact-version identity or strict integrity authorization  |
 | `hostMatcher`       | host portion of `url` (regex)           | origin cares, path doesn't; fails secure if `url` missing |
 | `urlMatcher`        | full `url` (regex)                      | path precision; fails secure if `url` missing             |
+| `workflowMatcher`   | stable `workflowId` (regex)             | scopes shared inventory entries to checkout variations    |
 | `orMatcher`         | any child matches (first-match-wins)    | composite                                                 |
 | `andMatcher`        | all children match (short-circuit)      | composite, e.g. multi-directive CSP                       |
 

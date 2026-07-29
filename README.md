@@ -96,26 +96,23 @@ The intended day-to-day cycle:
 
 One inventory file can run several checkout variations while keeping a single
 authorised `scripts` and `headers` list. Configure each variation as a named
-staging/production pair under `target.workflows`:
+staging/production pair under `target.workflows`. The following snippet is the
+value of `target`, not a complete inventory file:
 
 ```json
 {
-  "target": {
-    "workflows": [
-      {
-        "id": "workflow-a",
-        "inventory": { "type": "inventory", "url": "https://staging.example.com/workflow-a", "workflow": "workflow-a-staging.json" },
-        "detection": { "type": "detection", "url": "https://www.example.com/workflow-a", "workflow": "workflow-a-production.json" }
-      },
-      {
-        "id": "workflow-b",
-        "inventory": { "type": "inventory", "url": "https://staging.example.com/workflow-b", "workflow": "workflow-b-staging.json" },
-        "detection": { "type": "detection", "url": "https://www.example.com/workflow-b", "workflow": "workflow-b-production.json" }
-      }
-    ]
-  },
-  "scripts": [],
-  "headers": []
+  "workflows": [
+    {
+      "id": "workflow-a",
+      "inventory": { "type": "inventory", "url": "https://staging.example.com/workflow-a", "workflow": "workflow-a-staging.json" },
+      "detection": { "type": "detection", "url": "https://www.example.com/workflow-a", "workflow": "workflow-a-production.json" }
+    },
+    {
+      "id": "workflow-b",
+      "inventory": { "type": "inventory", "url": "https://staging.example.com/workflow-b", "workflow": "workflow-b-staging.json" },
+      "detection": { "type": "detection", "url": "https://www.example.com/workflow-b", "workflow": "workflow-b-production.json" }
+    }
+  ]
 }
 ```
 
@@ -361,7 +358,7 @@ jobs:
       - name: Checkout validation tool
         uses: actions/checkout@v4
         with:
-          repository: your-org/pci-dss-page-tampering
+          repository: mr-yum/pci-dss-page-tampering
           path: tool
 
       - name: Install tool dependencies

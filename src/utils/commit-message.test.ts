@@ -53,6 +53,38 @@ function scriptWithHashes(hashes: string[]): InventoryScriptInfo {
   })
 }
 
+function scriptWithScopedHashes(globalHashes: string[], scopedHashes: string[]): InventoryScriptInfo {
+  return rawInventoryScriptInfoToInventoryScriptInfo({
+    identifyWith: { nameMatcher: '^https://cdn\\.example\\.com/s\\.js$' },
+    authoriseWith: [
+      {
+        hashes: globalHashes.map((hash) => ({ timestamp: '2026-01-01T00:00:00.000Z', hash: { value: hash } })),
+        authorisationInfo: { description: 'global', authorised: true, date: '2026-01-01T00:00:00.000Z' },
+      },
+      ...scopedHashes.map((hash) => ({
+        andMatcher: [{ workflowMatcher: '^workflow-a$' }, { hashes: [{ timestamp: '2026-01-02T00:00:00.000Z', hash: { value: hash } }] }],
+        authorisationInfo: { description: 'scoped', authorised: true, date: '2026-01-02T00:00:00.000Z' },
+      })),
+    ],
+  })
+}
+
+function headerWithScopedContentMatchers(globalValues: string[], scopedValues: string[]): InventoryHeaderInfo {
+  return rawInventoryHeaderInfoToInventoryHeaderInfo({
+    identifyWith: { headerNameMatcher: '^x-content-type-options$' },
+    authoriseWith: [
+      ...globalValues.map((value) => ({
+        contentMatcher: `^${value}$`,
+        authorisationInfo: { description: 'global', authorised: true, date: '2026-01-01T00:00:00.000Z' },
+      })),
+      ...scopedValues.map((value) => ({
+        andMatcher: [{ workflowMatcher: '^workflow-a$' }, { contentMatcher: `^${value}$` }],
+        authorisationInfo: { description: 'scoped', authorised: true, date: '2026-01-02T00:00:00.000Z' },
+      })),
+    ],
+  })
+}
+
 function newScriptEntry(url: string): InventoryScriptInfo {
   return rawInventoryScriptInfoToInventoryScriptInfo({
     identifyWith: { nameMatcher: `^${url}$` },
@@ -115,6 +147,20 @@ describe('buildInventoryCommitMessage', () => {
     const message = buildInventoryCommitMessage([diffOf('1.0.json', before, after)])
 
     expect(message).toBe('inventory(1.0): add 2 script hashes')
+  })
+
+  it('counts new hashes nested in workflow-scoped composite matchers', () => {
+    const before = makeInventory('1.0.json', [scriptWithScopedHashes(['baseline'], [])], [])
+    const after = makeInventory('1.0.json', [scriptWithScopedHashes(['baseline'], ['workflow-hash'])], [])
+
+    expect(buildInventoryCommitMessage([diffOf('1.0.json', before, after)])).toBe('inventory(1.0): add 1 script hash')
+  })
+
+  it('counts new header matchers nested in workflow-scoped composites', () => {
+    const before = makeInventory('1.0.json', [], [headerWithScopedContentMatchers(['nosniff'], [])])
+    const after = makeInventory('1.0.json', [], [headerWithScopedContentMatchers(['nosniff'], ['legacy-value'])])
+
+    expect(buildInventoryCommitMessage([diffOf('1.0.json', before, after)])).toBe('inventory(1.0): add 1 header matcher')
   })
 
   it('omits files with no changes from the scope', () => {
