@@ -288,10 +288,20 @@ export class ScriptInventoryService implements IInventoryService {
       const newHashInfo = { timestamp: result.timestamp, hash: result.script.hash }
 
       if ('hashes' in rawInventoryScript.authoriseWith) {
-        // Single HashMatcher: append to its hashes array.
+        // Preserve the existing global hashes, but keep a newly observed hash
+        // local to the workflow that produced it. Targets constructed outside
+        // normal orchestration may not carry a workflow id; retain the legacy
+        // append behavior for those callers.
         const hashAlreadyExists = rawInventoryScript.authoriseWith.hashes.some((h: any) => h.hash.value === newHashInfo.hash.value)
         if (!hashAlreadyExists) {
-          rawInventoryScript.authoriseWith.hashes.push(newHashInfo)
+          if (result.target.workflowId === undefined) {
+            rawInventoryScript.authoriseWith.hashes.push(newHashInfo)
+          } else {
+            rawInventoryScript.authoriseWith = [
+              rawInventoryScript.authoriseWith,
+              this.scopeNewAuthorisationAlternative({ hashes: [newHashInfo] }, result.target.workflowId, `Hash detected during inventory run ${updateDate.toISOString()}`, updateDate),
+            ]
+          }
           applied.push(result)
         }
       } else if (Array.isArray(rawInventoryScript.authoriseWith)) {
@@ -463,7 +473,9 @@ export class ScriptInventoryService implements IInventoryService {
         // Single ContentMatcher: promote to array syntax with the new value
         // OR'd in. Skip if the pattern is already exactly the existing one.
         if (rawInventoryHeader.authoriseWith.contentMatcher !== newMatcherConfig.contentMatcher) {
-          rawInventoryHeader.authoriseWith = [rawInventoryHeader.authoriseWith, newMatcherConfig]
+          const newAlternative =
+            result.target.workflowId === undefined ? newMatcherConfig : this.scopeNewAuthorisationAlternative({ contentMatcher: headerValuePattern }, result.target.workflowId, newMatcherConfig.authorisationInfo.description, updateDate)
+          rawInventoryHeader.authoriseWith = [rawInventoryHeader.authoriseWith, newAlternative]
           applied.push(result)
         }
       }

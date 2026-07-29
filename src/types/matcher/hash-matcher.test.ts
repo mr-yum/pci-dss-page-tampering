@@ -9,8 +9,10 @@
 
 import type { SHA256Hash } from '../hash.js'
 import type { InventoryScriptHashInfo } from '../inventory/model.js'
+import { ContentMatcher } from './content-matcher.js'
 import { HashMatcher } from './hash-matcher.js'
 import type { DetectedScript } from './matcher.interface.js'
+import { OrMatcher } from './or-matcher.js'
 
 describe('HashMatcher', () => {
   const createHash = (value: string): SHA256Hash => ({ value })
@@ -67,22 +69,53 @@ describe('HashMatcher', () => {
   })
 
   describe('identify', () => {
-    it('should always return false (hashes cannot identify scripts)', () => {
+    it('identifies a script whose pre-computed hash is authorized', () => {
       const matcher = new HashMatcher([createHashInfo('hash123')])
       const script = createDetectedScript('https://example.com/script.js', 'content', 'hash123')
+
+      expect(matcher.identify(script)).toBe(true)
+    })
+
+    it('does not identify a script whose hash is not authorized', () => {
+      const matcher = new HashMatcher([createHashInfo('matching-hash')])
+      const script = createDetectedScript('https://example.com/script.js', 'content', 'different-hash')
 
       expect(matcher.identify(script)).toBe(false)
     })
 
-    it('should return false even when hash matches', () => {
+    it('fails secure for empty content even when the pre-computed hash matches', () => {
       const matcher = new HashMatcher([createHashInfo('matching-hash')])
-      const script = createDetectedScript('https://example.com/script.js', 'content', 'matching-hash')
 
-      expect(matcher.identify(script)).toBe(false)
+      expect(matcher.identify(createDetectedScript('https://example.com/script.js', '', 'matching-hash'))).toBe(false)
+      expect(matcher.identify(createDetectedScript('https://example.com/script.js', null, 'matching-hash'))).toBe(false)
+    })
+
+    it('fails secure when a non-script resource has no hash', () => {
+      const matcher = new HashMatcher([createHashInfo('matching-hash')])
+      const resource = { name: 'content-security-policy', content: "default-src 'self'" }
+
+      expect(matcher.identify(resource)).toBe(false)
+      expect(matcher.authorize(resource)).toEqual({ authorized: false, reason: 'hash is missing' })
     })
   })
 
   describe('authorize', () => {
+    it('denies a matching hash whose authorization metadata is denied', () => {
+      const authorisationInfo = {
+        description: 'Deprecated script version',
+        authorised: false,
+        date: new Date('2025-10-15T00:00:00.000Z'),
+      }
+      const script = createDetectedScript('https://example.com/script.js', 'content', 'matching-hash')
+      const matcher = new OrMatcher([new HashMatcher([createHashInfo('matching-hash')], authorisationInfo), new ContentMatcher('never-matches')])
+
+      expect(matcher.authorize(script)).toEqual({
+        authorized: false,
+        reason: 'Top-level authorization denied: Deprecated script version',
+        metadataPath: [authorisationInfo],
+      })
+    })
+
     describe('single hash match', () => {
       it('should authorize when script hash matches the authorized hash', () => {
         const authorizedHash = 'abc123def456'

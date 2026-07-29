@@ -272,7 +272,7 @@ export class NameMatcher implements Matcher<Matchable> {
 export class HashMatcher implements Matcher<DetectedScript> {
   identify(script: DetectedScript): boolean {
     // script.hash is guaranteed to exist (not optional)
-    return false // Hash cannot identify, only authorize
+    return this.authorizedHashes.some((authorized) => authorized.hash.value === script.hash.value)
   }
 }
 ```

@@ -407,6 +407,13 @@ Each inventory file (`targets/<name>.json`) lists the scripts and headers approv
 - `identifyWith` — picks out the script or header (e.g. by URL or header name)
 - `authoriseWith` — describes what content/hash is acceptable, with `authorisationInfo` metadata
 
+Hash matchers are valid in either block, but the usual inventory convention is
+to identify a script by a stable name, content signature, or provenance and use
+its hash for authorization. That way changed bytes remain associated with the
+known script and produce a content-mismatch result. Use a hash in
+`identifyWith` only when the exact byte-for-byte version is intentionally the
+resource identity; a changed version will then be reported as unknown.
+
 ### Tracked response headers
 
 The detector captures these headers:

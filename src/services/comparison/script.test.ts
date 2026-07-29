@@ -109,6 +109,23 @@ describe('ScriptComparisonService', () => {
   }
 
   describe('compareSingleScriptWithInventory', () => {
+    it('supports exact-version identification with a hash matcher', () => {
+      const hash = { timestamp: new Date(), hash: { value: 'hash123' } as SHA256Hash }
+      const inventoryEntry: InventoryScriptInfo = {
+        identifyWith: createMatcher({ hashes: [hash] }),
+        authoriseWith: {
+          matcher: createMatcher({ hashes: [hash] }),
+          authorisationInfo: { description: 'Exact approved version', authorised: true, date: new Date() },
+        },
+      }
+
+      const matchingResult = (service as any).compareSingleScriptWithInventory(createScriptInfo('https://cdn.example.com/payment.js', 'hash123'), [inventoryEntry], mockTarget)
+      const changedResult = (service as any).compareSingleScriptWithInventory(createScriptInfo('https://cdn.example.com/payment.js', 'changed'), [inventoryEntry], mockTarget)
+
+      expect(matchingResult.type).toBe('authorized_script')
+      expect(changedResult.type).toBe('unknown_script_found')
+    })
+
     it('uses the target workflow id when identifying scripts', () => {
       const detectedScript = createScriptInfo('https://cdn.example.com/payment.js', 'hash123')
       const workflowEntry: InventoryScriptInfo = {

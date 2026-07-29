@@ -154,7 +154,9 @@ export interface Matcher<T extends Matchable = Matchable> {
    * - NameMatcher: Tests resource.name against regex pattern
    * - HeaderNameMatcher: Tests resource.name against regex pattern (case-insensitive)
    * - ContentMatcher: Tests resource.content against regex pattern
-   * - HashMatcher: Always returns false (hashes cannot identify, only authorize)
+   * - HashMatcher: Compares the resource's pre-computed hash; supported for
+   *   exact-version identity, though stable name/content/provenance matchers
+   *   are preferred for inventory identification
    * - OrMatcher: Returns true if ANY child identifies the resource
    * - AndMatcher: Returns true if ALL children identify the resource
    *

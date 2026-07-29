@@ -666,6 +666,41 @@ describe('ScriptInventoryService', () => {
         expect(rawUpdated.authoriseWith.length).toBe(2)
       })
 
+      it('scopes a value added to a single ContentMatcher without narrowing the existing value', async () => {
+        const existingHeader = rawInventoryHeaderInfoToInventoryHeaderInfo({
+          identifyWith: { headerNameMatcher: '^x-content-type-options$' },
+          authoriseWith: {
+            contentMatcher: '^nosniff$',
+            authorisationInfo: { description: 'Global baseline', authorised: true, date: '2026-01-01T00:00:00.000Z' },
+          },
+        })
+        const target = { ...createMockTarget(), workflowId: 'workflow-a' }
+        const result = new KnownHeaderWithUnauthorisedContentFound(
+          target,
+          new Date('2026-04-22T00:00:00.000Z'),
+          { name: 'x-content-type-options', value: 'legacy-value', target, workflow: target.workflow },
+          existingHeader,
+          existingHeader.authoriseWith.matcher,
+          'new value',
+        )
+
+        const diff = await service.diff({ ...createMockInventory([]), headers: [existingHeader] }, [result])
+        const updatedHeader = diff.newInventory.headers[0]!
+        const raw = inventoryHeaderInfoToRawInventoryHeaderInfo(updatedHeader)
+
+        expect(Array.isArray(raw.authoriseWith)).toBe(true)
+        if (!Array.isArray(raw.authoriseWith)) return
+        expect(raw.authoriseWith[0]).toMatchObject({ contentMatcher: '^nosniff$' })
+        expect(raw.authoriseWith[1]).toMatchObject({
+          andMatcher: [{ workflowMatcher: '^workflow-a$' }, { contentMatcher: '^legacy-value$' }],
+        })
+
+        const newValue = { name: 'x-content-type-options', content: 'legacy-value', workflowId: 'workflow-a' }
+        expect(updatedHeader.authoriseWith.matcher.authorize(newValue).authorized).toBe(true)
+        expect(updatedHeader.authoriseWith.matcher.authorize({ ...newValue, workflowId: 'workflow-b' }).authorized).toBe(false)
+        expect(updatedHeader.authoriseWith.matcher.authorize({ ...newValue, content: 'nosniff', workflowId: 'workflow-b' }).authorized).toBe(true)
+      })
+
       it('applies every new hash when multiple KnownScriptWithUnauthorisedContentFound target the same script entry', async () => {
         const existingScript = rawInventoryScriptInfoToInventoryScriptInfo({
           identifyWith: { nameMatcher: '^https://cdn\\.example\\.com/payment\\.js$' },
@@ -891,6 +926,43 @@ describe('ScriptInventoryService', () => {
         expect(raw.authoriseWith[1]).toMatchObject({
           andMatcher: [{ workflowMatcher: '^workflow-b$' }, { hashes: [{ hash: { value: 'workflow-b-v1' } }] }],
         })
+
+        const updatedScript = diff.newInventory.scripts[0]!
+        const matchingScript = { name: 'https://cdn.example.com/script.js', content: 'new', hash: { value: 'workflow-b-v1' }, workflowId: 'workflow-b' }
+        expect(updatedScript.authoriseWith.matcher.authorize(matchingScript).authorized).toBe(true)
+        expect(updatedScript.authoriseWith.matcher.authorize({ ...matchingScript, workflowId: 'workflow-a' }).authorized).toBe(false)
+
+        const repeatedResult = new KnownScriptWithUnauthorisedContentFound(target, result.timestamp, matchingScript, updatedScript, updatedScript.authoriseWith.matcher, 'defensive duplicate')
+        const repeatedDiff = await service.diff(diff.newInventory, [repeatedResult])
+        expect(repeatedDiff.appliedResults).toEqual([])
+      })
+
+      it('scopes a hash added to a single HashMatcher without narrowing existing hashes', async () => {
+        const existingScript = rawInventoryScriptInfoToInventoryScriptInfo({
+          identifyWith: { nameMatcher: '^https://cdn\\.example\\.com/script\\.js$' },
+          authoriseWith: {
+            hashes: [{ timestamp: '2026-01-01T00:00:00.000Z', hash: { value: 'global-v1' } }],
+            authorisationInfo: { description: 'Global v1', authorised: true, date: '2026-01-01T00:00:00.000Z' },
+          },
+        })
+        const target = { ...createMockTarget(), workflowId: 'workflow-a' }
+        const newScript = { name: 'https://cdn.example.com/script.js', content: 'new', hash: { value: 'workflow-a-v2' }, workflowId: 'workflow-a' }
+        const result = new KnownScriptWithUnauthorisedContentFound(target, new Date('2026-04-22T00:00:00.000Z'), newScript, existingScript, existingScript.authoriseWith.matcher, 'new hash')
+
+        const diff = await service.diff(createMockInventory([existingScript]), [result])
+        const updatedScript = diff.newInventory.scripts[0]!
+        const raw = inventoryScriptInfoToRawInventoryScriptInfo(updatedScript)
+
+        expect(Array.isArray(raw.authoriseWith)).toBe(true)
+        if (!Array.isArray(raw.authoriseWith)) return
+        expect(raw.authoriseWith[0]).toMatchObject({ hashes: [{ hash: { value: 'global-v1' } }] })
+        expect(raw.authoriseWith[1]).toMatchObject({
+          andMatcher: [{ workflowMatcher: '^workflow-a$' }, { hashes: [{ hash: { value: 'workflow-a-v2' } }] }],
+        })
+
+        expect(updatedScript.authoriseWith.matcher.authorize(newScript).authorized).toBe(true)
+        expect(updatedScript.authoriseWith.matcher.authorize({ ...newScript, workflowId: 'workflow-b' }).authorized).toBe(false)
+        expect(updatedScript.authoriseWith.matcher.authorize({ ...newScript, hash: { value: 'global-v1' }, workflowId: 'workflow-b' }).authorized).toBe(true)
       })
 
       it('skips known_script_unauthorised_content when the top-level authoriser is an AndMatcher', async () => {

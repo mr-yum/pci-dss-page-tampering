@@ -9,7 +9,7 @@
 
 import type { InventoryScriptHashInfo } from '../inventory/model.js'
 import type { AuthorizationResult } from './authorization-result.js'
-import type { AuthorisationInfo, AuthorisationMatcher, DetectedScript } from './matcher.interface.js'
+import type { AuthorisationInfo, AuthorisationMatcher, Matchable } from './matcher.interface.js'
 
 /**
  * Matches scripts by cryptographic hash (SHA-256).
@@ -19,7 +19,9 @@ import type { AuthorisationInfo, AuthorisationMatcher, DetectedScript } from './
  * - Tracking hash history for scripts that change over time
  *
  * Behavior:
- * - identify(): Always returns false (hashes cannot identify, only authorize)
+ * - identify(): Matches the script's pre-computed hash. Prefer a stable
+ *   name/content/provenance matcher for inventory identification so changed
+ *   bytes remain associated with the known script.
  * - authorize(): Compares the script's pre-computed SHA-256 hash (computed from
  *   the response body at detection time) against the authorizedHashes array
  * - Returns false for null/empty content (fail-secure: no content, no trust)
@@ -28,7 +30,7 @@ import type { AuthorisationInfo, AuthorisationMatcher, DetectedScript } from './
  * - authorizedHashes array must contain at least 1 hash (with timestamp)
  * - Each hash must have value (hex string) and timestamp
  */
-export class HashMatcher implements AuthorisationMatcher {
+export class HashMatcher implements AuthorisationMatcher<Matchable> {
   private readonly authorizedHashes: InventoryScriptHashInfo[]
   private readonly authorisationInfo: AuthorisationInfo | undefined
 
@@ -85,15 +87,23 @@ export class HashMatcher implements AuthorisationMatcher {
   }
 
   /**
-   * Identifies scripts - always returns false for HashMatcher.
-   * Hashes cannot identify scripts (requires known content), only authorize them.
+   * Identifies an exact script body using its pre-computed hash.
    *
-   * @param _script - The detected script (unused)
-   * @returns Always false - use NameMatcher or ContentMatcher for identification
+   * Hash identification is supported for policies that deliberately treat a
+   * byte-for-byte version as the resource identity. Most inventory entries
+   * should instead identify by stable name/content/provenance and reserve the
+   * hash for authorization, so a changed body is reported as a known script
+   * with unauthorized content rather than as an unknown script.
+   *
+   * @param script - The detected resource with an optional pre-computed hash
+   * @returns true when the script has non-empty content and its hash is listed
    */
-  identify(_script: DetectedScript): boolean {
-    // Hashes cannot identify scripts, only authorize them
-    return false
+  identify(script: Matchable): boolean {
+    const hash = script.hash
+    if (!script.content || script.content.trim() === '' || !hash) {
+      return false
+    }
+    return this.authorizedHashes.some((authorizedHashInfo) => authorizedHashInfo.hash.value === hash.value)
   }
 
   /**
@@ -103,7 +113,7 @@ export class HashMatcher implements AuthorisationMatcher {
    * @param script - The detected script with pre-computed hash
    * @returns AuthorizationResult with authorized=true if hash matches any authorized hash, authorized=false with reason otherwise
    */
-  authorize(script: DetectedScript): AuthorizationResult {
+  authorize(script: Matchable): AuthorizationResult {
     if (!script.content || script.content.trim() === '') {
       return {
         authorized: false,
@@ -111,14 +121,30 @@ export class HashMatcher implements AuthorisationMatcher {
       }
     }
 
+    const hash = script.hash
+    if (!hash) {
+      return {
+        authorized: false,
+        reason: 'hash is missing',
+      }
+    }
+
+    if (this.authorisationInfo?.authorised === false) {
+      return {
+        authorized: false,
+        reason: `Top-level authorization denied: ${this.authorisationInfo.description}`,
+        metadataPath: [this.authorisationInfo],
+      }
+    }
+
     // Check if the script's computed hash matches any authorized hash
-    const isAuthorized = this.authorizedHashes.some((authorizedHashInfo) => authorizedHashInfo.hash.value === script.hash.value)
+    const isAuthorized = this.authorizedHashes.some((authorizedHashInfo) => authorizedHashInfo.hash.value === hash.value)
 
     const result: AuthorizationResult = isAuthorized
       ? { authorized: true }
       : {
           authorized: false,
-          reason: `hash ${script.hash.value} not in authorized list`,
+          reason: `hash ${hash.value} not in authorized list`,
         }
 
     // Include authorisationInfo in metadataPath if present
