@@ -138,7 +138,7 @@
       "authoriseWith": {
         "contentMatcher": ".*",
         "authorisationInfo": {
-          "description": "Facebook Connect script used for website analytics",
+          "description": "Analytics provider loader script used for website analytics",
           "authorised": true,
           "date": "2025-08-25T00:00:00.000Z"
         }
@@ -151,7 +151,7 @@
       "authoriseWith": {
         "contentMatcher": "https:\\/\\/connect\\.facebook\\.net\\/en_US\\/fbevents\\.js",
         "authorisationInfo": {
-          "description": "Facebook Pixel script used for website analytics",
+          "description": "Analytics provider event script used for website analytics",
           "authorised": true,
           "date": "2025-08-25T00:00:00.000Z"
         }
@@ -203,7 +203,7 @@
       "authoriseWith": {
         "contentMatcher": ".*",
         "authorisationInfo": {
-          "description": "Google Tag Manager script used for website analytics",
+          "description": "Analytics provider script used for website analytics",
           "authorised": true,
           "date": "2025-08-25T00:00:00.000Z"
         }
@@ -237,19 +237,6 @@
     },
     {
       "identifyWith": {
-        "nameMatcher": "^inline_script\\/staging\\.checkout\\.example\\/.*$"
-      },
-      "authoriseWith": {
-        "nameMatcher": "^inline_script\\/staging\\.checkout\\.example\\/.*$",
-        "authorisationInfo": {
-          "description": "Part of the example checkout application",
-          "authorised": true,
-          "date": "2025-08-25T00:00:00.000Z"
-        }
-      }
-    },
-    {
-      "identifyWith": {
         "nameMatcher": "^https:\\/\\/js\\.stripe\\.com\\/basil\\/stripe.js$"
       },
       "authoriseWith": {
@@ -268,7 +255,7 @@
       "authoriseWith": {
         "contentMatcher": ".*",
         "authorisationInfo": {
-          "description": "Facebook Connect script used for website analytics",
+          "description": "Analytics provider loader script used for website analytics",
           "authorised": true,
           "date": "2025-08-25T00:00:00.000Z"
         }
@@ -403,7 +390,7 @@
           }
         ],
         "authorisationInfo": {
-          "description": "Part of Google Tag Manager used for website analytics",
+          "description": "Inline analytics bootstrap script used for website analytics",
           "authorised": true,
           "date": "2025-08-25T00:00:00.000Z"
         }
@@ -416,7 +403,7 @@
       "authoriseWith": {
         "contentMatcher": ".*",
         "authorisationInfo": {
-          "description": "Part of Google Tag Manager used for website analytics. Authorising any content from that URL as the hashes change constantly.",
+          "description": "Payment provider client script. Authorising any content from that URL because its hashes change constantly.",
           "authorised": true,
           "date": "2025-10-17T00:00:00.000Z"
         }

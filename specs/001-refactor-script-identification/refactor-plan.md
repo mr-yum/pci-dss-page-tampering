@@ -91,7 +91,7 @@ Example inventory schema:
         "contentMatcher": ".*"
       },
       "authorisationInfo": {
-        "description": "Facebook Connect script used for website analytics",
+        "description": "Analytics provider loader script used for website analytics",
         "authorised": true,
         "date": "2025-08-25T00:00:00.000Z"
       }
@@ -111,7 +111,7 @@ Example inventory schema:
         ]
       },
       "authorisationInfo": {
-        "description": "Facebook Pixel script used for website analytics",
+        "description": "Analytics provider event script used for website analytics",
         "authorised": true,
         "date": "2025-08-25T00:00:00.000Z"
       }
