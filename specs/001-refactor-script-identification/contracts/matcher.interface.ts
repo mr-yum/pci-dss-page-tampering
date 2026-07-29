@@ -62,7 +62,7 @@ export interface Matcher {
    * Behavior by matcher type:
    * - NameMatcher: Tests script.name against regex pattern
    * - ContentMatcher: Tests script.content against regex pattern
-   * - HashMatcher: Always returns false (hashes cannot identify, only authorize)
+   * - HashMatcher: Compares the script's pre-computed hash against the configured hashes
    *
    * Edge cases:
    * - Null/empty script.name (NameMatcher): returns false

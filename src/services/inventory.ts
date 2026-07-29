@@ -209,9 +209,11 @@ export class ScriptInventoryService implements IInventoryService {
    */
   private buildIdentifyMatcher(result: UnknownScriptFound): InventoryScriptInfo['identifyWith'] {
     const script = result.script
+    const workflowMatcher = result.target.workflowId === undefined ? null : { workflowMatcher: `^${this.escapeRegex(result.target.workflowId)}$` }
+    const withWorkflow = (matcher: any): any => (workflowMatcher === null ? matcher : { andMatcher: [workflowMatcher, matcher] })
 
     if (script.name !== UNIDENTIFIED_INLINE_SCRIPT_ID) {
-      return createMatcher({ nameMatcher: `^${this.escapeRegex(script.name)}$` })
+      return createMatcher(withWorkflow({ nameMatcher: `^${this.escapeRegex(script.name)}$` }))
     }
 
     const content = script.content ?? ''
@@ -220,7 +222,7 @@ export class ScriptInventoryService implements IInventoryService {
       // Whitespace-only content would produce a bare `^` matcher that
       // identifies every script. Fall back to the (degenerate) exact-name
       // matcher rather than minting a universal one.
-      return createMatcher({ nameMatcher: `^${this.escapeRegex(script.name)}$` })
+      return createMatcher(withWorkflow({ nameMatcher: `^${this.escapeRegex(script.name)}$` }))
     }
     // When the whole body fits in the snippet window, anchor both ends —
     // a prefix-only match would also identify any longer script that merely
@@ -240,12 +242,12 @@ export class ScriptInventoryService implements IInventoryService {
     }
 
     if (!host) {
-      return createMatcher(contentConfig)
+      return createMatcher(withWorkflow(contentConfig))
     }
 
-    return createMatcher({
-      andMatcher: [{ hostMatcher: `^${this.escapeRegex(host)}$` }, contentConfig],
-    })
+    const children: any[] = [{ hostMatcher: `^${this.escapeRegex(host)}$` }, contentConfig]
+    if (workflowMatcher !== null) children.unshift(workflowMatcher)
+    return createMatcher({ andMatcher: children })
   }
 
   private addNewScript(result: UnknownScriptFound, inventory: Inventory, updateDate: Date): Inventory {
@@ -286,27 +288,31 @@ export class ScriptInventoryService implements IInventoryService {
       const newHashInfo = { timestamp: result.timestamp, hash: result.script.hash }
 
       if ('hashes' in rawInventoryScript.authoriseWith) {
-        // Single HashMatcher: append to its hashes array.
+        // Preserve the existing global hashes, but keep a newly observed hash
+        // local to the workflow that produced it. Targets constructed outside
+        // normal orchestration may not carry a workflow id; retain the legacy
+        // append behavior for those callers.
         const hashAlreadyExists = rawInventoryScript.authoriseWith.hashes.some((h: any) => h.hash.value === newHashInfo.hash.value)
         if (!hashAlreadyExists) {
-          rawInventoryScript.authoriseWith.hashes.push(newHashInfo)
+          if (result.target.workflowId === undefined) {
+            rawInventoryScript.authoriseWith.hashes.push(newHashInfo)
+          } else {
+            rawInventoryScript.authoriseWith = [
+              rawInventoryScript.authoriseWith,
+              this.scopeNewAuthorisationAlternative({ hashes: [newHashInfo] }, result.target.workflowId, `Hash detected during inventory run ${updateDate.toISOString()}`, updateDate),
+            ]
+          }
           applied.push(result)
         }
       } else if (Array.isArray(rawInventoryScript.authoriseWith)) {
         // Top-level OrMatcher serialised as array syntax: append a new
         // hash matcher element to the OR.
         const hashAlreadyExists = rawInventoryScript.authoriseWith.some((element: any) => {
-          return 'hashes' in element && element.hashes.some((h: any) => h.hash.value === newHashInfo.hash.value)
+          return createMatcher(element).authorize(result.script).authorized
         })
         if (!hashAlreadyExists) {
-          rawInventoryScript.authoriseWith.push({
-            hashes: [newHashInfo],
-            authorisationInfo: {
-              description: `Hash detected during inventory run ${updateDate.toISOString()}`,
-              authorised: true,
-              date: updateDate.toISOString(),
-            },
-          })
+          const matcher = { hashes: [newHashInfo] }
+          rawInventoryScript.authoriseWith.push(this.scopeNewAuthorisationAlternative(matcher, result.target.workflowId, `Hash detected during inventory run ${updateDate.toISOString()}`, updateDate))
           applied.push(result)
         }
       } else if ('orMatcher' in rawInventoryScript.authoriseWith) {
@@ -316,17 +322,11 @@ export class ScriptInventoryService implements IInventoryService {
         // into array syntax, which would drop the OrMatcher's own authInfo.
         const orChildren = rawInventoryScript.authoriseWith.orMatcher as any[]
         const hashAlreadyExists = orChildren.some((element: any) => {
-          return 'hashes' in element && element.hashes.some((h: any) => h.hash.value === newHashInfo.hash.value)
+          return createMatcher(element).authorize(result.script).authorized
         })
         if (!hashAlreadyExists) {
-          orChildren.push({
-            hashes: [newHashInfo],
-            authorisationInfo: {
-              description: `Hash detected during inventory run ${updateDate.toISOString()}`,
-              authorised: true,
-              date: updateDate.toISOString(),
-            },
-          })
+          const matcher = { hashes: [newHashInfo] }
+          orChildren.push(this.scopeNewAuthorisationAlternative(matcher, result.target.workflowId, `Hash detected during inventory run ${updateDate.toISOString()}`, updateDate))
           applied.push(result)
         }
       }
@@ -344,6 +344,7 @@ export class ScriptInventoryService implements IInventoryService {
     const headerNamePattern = `^${result.header.name.toLowerCase()}$`
     const headerValuePattern = `^${this.escapeRegex(result.header.value)}$`
     const identifyChildren: any[] = [{ headerNameMatcher: headerNamePattern }]
+    if (result.target.workflowId !== undefined) identifyChildren.push({ workflowMatcher: `^${this.escapeRegex(result.target.workflowId)}$` })
 
     if (result.header.name.toLowerCase() === 'set-cookie') {
       const cookieName = /^cookie=([^;]+)/.exec(result.header.value)?.[1]
@@ -380,6 +381,7 @@ export class ScriptInventoryService implements IInventoryService {
     const matchable = {
       name: result.header.name,
       content: result.header.value,
+      ...(result.target.workflowId !== undefined ? { workflowId: result.target.workflowId } : {}),
       ...(result.header.url !== undefined ? { url: result.header.url } : {}),
     }
     return inventory.headers.some((entry) => entry.identifyWith.identify(matchable) && entry.authoriseWith.matcher.authorize(matchable).authorized)
@@ -390,6 +392,7 @@ export class ScriptInventoryService implements IInventoryService {
     const matchable = {
       name: result.header.name,
       content: result.header.value,
+      ...(result.target.workflowId !== undefined ? { workflowId: result.target.workflowId } : {}),
       ...(result.header.url !== undefined ? { url: result.header.url } : {}),
     }
     return inventory.headers.find((entry) => !entry.authoriseWith.authorisationInfo.authorised && entry.identifyWith.identify(matchable))
@@ -452,23 +455,27 @@ export class ScriptInventoryService implements IInventoryService {
       }
 
       if (Array.isArray(rawInventoryHeader.authoriseWith)) {
-        const patternAlreadyExists = rawInventoryHeader.authoriseWith.some((m: any) => 'contentMatcher' in m && m.contentMatcher === newMatcherConfig.contentMatcher)
+        const matchable = { name: result.header.name, content: result.header.value, workflowId: result.target.workflowId ?? 'default', ...(result.header.url !== undefined ? { url: result.header.url } : {}) }
+        const patternAlreadyExists = rawInventoryHeader.authoriseWith.some((m: any) => createMatcher(m).authorize(matchable).authorized)
         if (!patternAlreadyExists) {
-          rawInventoryHeader.authoriseWith.push(newMatcherConfig)
+          rawInventoryHeader.authoriseWith.push(this.scopeNewAuthorisationAlternative({ contentMatcher: headerValuePattern }, result.target.workflowId, newMatcherConfig.authorisationInfo.description, updateDate))
           applied.push(result)
         }
       } else if ('orMatcher' in rawInventoryHeader.authoriseWith) {
         const orChildren = rawInventoryHeader.authoriseWith.orMatcher as any[]
-        const patternAlreadyExists = orChildren.some((m: any) => 'contentMatcher' in m && m.contentMatcher === newMatcherConfig.contentMatcher)
+        const matchable = { name: result.header.name, content: result.header.value, workflowId: result.target.workflowId ?? 'default', ...(result.header.url !== undefined ? { url: result.header.url } : {}) }
+        const patternAlreadyExists = orChildren.some((m: any) => createMatcher(m).authorize(matchable).authorized)
         if (!patternAlreadyExists) {
-          orChildren.push(newMatcherConfig)
+          orChildren.push(this.scopeNewAuthorisationAlternative({ contentMatcher: headerValuePattern }, result.target.workflowId, newMatcherConfig.authorisationInfo.description, updateDate))
           applied.push(result)
         }
       } else if ('contentMatcher' in rawInventoryHeader.authoriseWith) {
         // Single ContentMatcher: promote to array syntax with the new value
         // OR'd in. Skip if the pattern is already exactly the existing one.
         if (rawInventoryHeader.authoriseWith.contentMatcher !== newMatcherConfig.contentMatcher) {
-          rawInventoryHeader.authoriseWith = [rawInventoryHeader.authoriseWith, newMatcherConfig]
+          const newAlternative =
+            result.target.workflowId === undefined ? newMatcherConfig : this.scopeNewAuthorisationAlternative({ contentMatcher: headerValuePattern }, result.target.workflowId, newMatcherConfig.authorisationInfo.description, updateDate)
+          rawInventoryHeader.authoriseWith = [rawInventoryHeader.authoriseWith, newAlternative]
           applied.push(result)
         }
       }
@@ -484,5 +491,14 @@ export class ScriptInventoryService implements IInventoryService {
    */
   private escapeRegex(str: string): string {
     return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  }
+
+  /** Keep auto-added OR alternatives local to the workflow that observed them. */
+  private scopeNewAuthorisationAlternative(matcher: any, workflowId: string | undefined, description: string, date: Date): any {
+    const scopedMatcher = workflowId === undefined ? matcher : { andMatcher: [{ workflowMatcher: `^${this.escapeRegex(workflowId)}$` }, matcher] }
+    return {
+      ...scopedMatcher,
+      authorisationInfo: { description, authorised: true, date: date.toISOString() },
+    }
   }
 }

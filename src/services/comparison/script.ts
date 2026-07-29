@@ -53,7 +53,7 @@ export class ScriptComparisonService implements IScriptComparisonService {
    *   by the page-attribution shim (`InlineScriptSource.url`); both matchers
    *   fail-secure when it's missing.
    */
-  private scriptInfoToDetectedScript(scriptInfo: ScriptInfo): DetectedScript {
+  private scriptInfoToDetectedScript(scriptInfo: ScriptInfo, target: Target): DetectedScript {
     const name = getScriptSource(scriptInfo)
     const content = scriptInfo.source.content
     // Both source variants carry `url` directly — external (its own URL,
@@ -65,6 +65,7 @@ export class ScriptComparisonService implements IScriptComparisonService {
       name,
       content,
       hash: scriptInfo.hash,
+      workflowId: target.workflowId ?? 'default',
       ...(url !== undefined ? { url } : {}),
     }
   }
@@ -84,7 +85,7 @@ export class ScriptComparisonService implements IScriptComparisonService {
    */
   private compareSingleScriptWithInventory(script: ScriptInfo, inventoryScripts: InventoryScriptInfo[], target: Target): ComparisonResultType {
     const scriptSourceValue = getScriptSource(script)
-    const detectedScript = this.scriptInfoToDetectedScript(script)
+    const detectedScript = this.scriptInfoToDetectedScript(script, target)
     const timestamp = new Date()
 
     // Mirror the header format — lead log lines with `Script '<host>':'<identifier>'`

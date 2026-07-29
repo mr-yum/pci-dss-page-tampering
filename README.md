@@ -92,6 +92,58 @@ The intended day-to-day cycle:
 2. A human reviews the PR, adds authorization metadata for legitimate resources, and merges to `main`.
 3. Detection mode (against production) reads from `main` and alerts on anything unauthorized.
 
+### Multiple checkout workflows
+
+One inventory file can run several checkout variations while keeping a single
+authorised `scripts` and `headers` list. Configure each variation as a named
+staging/production pair under `target.workflows`. The following snippet is the
+value of `target`, not a complete inventory file:
+
+```json
+{
+  "workflows": [
+    {
+      "id": "workflow-a",
+      "inventory": { "type": "inventory", "url": "https://staging.example.com/workflow-a", "workflow": "workflow-a-staging.json" },
+      "detection": { "type": "detection", "url": "https://www.example.com/workflow-a", "workflow": "workflow-a-production.json" }
+    },
+    {
+      "id": "workflow-b",
+      "inventory": { "type": "inventory", "url": "https://staging.example.com/workflow-b", "workflow": "workflow-b-staging.json" },
+      "detection": { "type": "detection", "url": "https://www.example.com/workflow-b", "workflow": "workflow-b-production.json" }
+    }
+  ]
+}
+```
+
+Inventory mode runs every `inventory` member and combines all observations
+before calculating one update. Detection mode runs every matching `detection`
+member against that same reviewed inventory. The legacy `target.inventory` /
+`target.detection` form remains valid and is treated as workflow `default`.
+
+Use `workflowMatcher` anywhere another matcher can be used. It matches the
+stable workflow `id`, so entries can be shared or scoped as narrowly as needed:
+
+```json
+{
+  "identifyWith": {
+    "andMatcher": [{ "workflowMatcher": "^workflow-b$" }, { "hostMatcher": "^payments\\.example\\.com$" }]
+  },
+  "authoriseWith": {
+    "contentMatcher": "^approved content$",
+    "authorisationInfo": {
+      "description": "Workflow B resource",
+      "authorised": true,
+      "date": "2026-07-28T00:00:00.000Z"
+    }
+  }
+}
+```
+
+Omit `workflowMatcher` when an entry should apply to every variation. Newly
+discovered resources are generated with an exact workflow matcher so approving
+one variation cannot silently approve another.
+
 See [Branch Usage](#branch-usage) for the branch model and [CI Validation for the Inventory Repo](#ci-validation-for-the-inventory-repo) for the CI wiring.
 
 ## CLI Parameters
@@ -352,6 +404,13 @@ Each inventory file (`targets/<name>.json`) lists the scripts and headers approv
 - `identifyWith` — picks out the script or header (e.g. by URL or header name)
 - `authoriseWith` — describes what content/hash is acceptable, with `authorisationInfo` metadata
 
+Hash matchers are valid in either block, but the usual inventory convention is
+to identify a script by a stable name, content signature, or provenance and use
+its hash for authorization. That way changed bytes remain associated with the
+known script and produce a content-mismatch result. Use a hash in
+`identifyWith` only when the exact byte-for-byte version is intentionally the
+resource identity; a changed version will then be reported as unknown.
+
 ### Tracked response headers
 
 The detector captures these headers:
@@ -405,7 +464,8 @@ must be present. This detects removal in addition to changed values:
 ```
 
 Required entries must contain one exact anchored `headerNameMatcher`. Their
-identifiers may otherwise contain only `hostMatcher` and `urlMatcher` children
+identifiers may otherwise contain only `hostMatcher`, `urlMatcher`, and
+`workflowMatcher` children
 under `andMatcher`, because content-dependent matchers cannot be evaluated when
 the header is absent. `requiredOn` values are validated against Puppeteer's
 response resource types (for example `document`, `script`, and `stylesheet`),
@@ -413,7 +473,7 @@ so misspellings fail inventory validation instead of silently disabling the
 check. `Set-Cookie` should not be blanket-required because many legitimate
 responses do not issue a cookie.
 
-Matcher fields always operate on what their name says: `nameMatcher` on the script URL / inline id (`headerNameMatcher` on the header name), `contentMatcher` on the actual content (external script response body, inline script source, or header value — never the URL), `hashes` on the SHA-256 of that content, and `hostMatcher`/`urlMatcher` on the resource's provenance URL. To authorize a script by where it comes from, use `urlMatcher` or `hostMatcher`, not a URL-shaped `contentMatcher`.
+Matcher fields always operate on what their name says: `nameMatcher` on the script URL / inline id (`headerNameMatcher` on the header name), `contentMatcher` on the actual content (external script response body, inline script source, or header value — never the URL), `hashes` on the SHA-256 of that content, `hostMatcher`/`urlMatcher` on the resource's provenance URL, and `workflowMatcher` on the configured workflow id. To authorize a script by where it comes from, use `urlMatcher` or `hostMatcher`, not a URL-shaped `contentMatcher`.
 
 ### Inline Script Names
 
@@ -522,7 +582,7 @@ matches the full URL — use when path precision matters.
 ```json
 {
   "identifyWith": {
-    "andMatcher": [{ "headerNameMatcher": "^content-security-policy$" }, { "hostMatcher": "^([^.]+\\.)*meandu\\.app$" }]
+    "andMatcher": [{ "headerNameMatcher": "^content-security-policy$" }, { "hostMatcher": "^([^.]+\\.)*checkout\\.example$" }]
   },
   "authoriseWith": [
     {
@@ -534,7 +594,7 @@ matches the full URL — use when path precision matters.
 ```
 
 This entry matches a `content-security-policy` header **only** when its
-response came from a `*.meandu.app` host. The same `default-src 'self'`
+response came from a `*.checkout.example` host. The same `default-src 'self'`
 emitted by a third-party domain (e.g. Stripe) will not match this entry —
 operators can decide whether to add a separate entry for it or treat it
 as a violation.

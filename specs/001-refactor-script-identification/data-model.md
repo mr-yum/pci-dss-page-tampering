@@ -90,7 +90,10 @@ This document defines the data structures for the refactored matcher system, typ
 
 **Behavior**:
 
-- `identify()`: Always returns `false` (hashes cannot identify, only authorize)
+- `identify()`: Checks the script's pre-computed hash against `authorizedHashes`.
+  This supports exact-version identity, although inventory entries conventionally
+  identify by stable name/content/provenance so changed bytes remain a known
+  script with unauthorized content.
 - `authorize()`: Computes SHA-256 hash of `script.content`, checks if in `authorizedHashes` array
 - Returns `false` for null/empty content (cannot compute hash)
 

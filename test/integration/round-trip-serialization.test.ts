@@ -33,6 +33,8 @@ describe('Round-Trip Serialization Integration Tests', () => {
    * Uses mock workflow for testing - we don't need real workflow files for serialization tests.
    */
   async function rawInventoryToInventory(raw: RawInventory, fileName: string): Promise<Inventory> {
+    if (raw.target.workflows !== undefined) throw new Error('Legacy round-trip fixture unexpectedly contains multiple workflows')
+
     // Mock workflow for testing - serialization tests don't need real workflow execution
     const mockWorkflow = {
       fileName: raw.target.inventory.workflow,

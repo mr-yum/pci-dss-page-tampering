@@ -666,6 +666,41 @@ describe('ScriptInventoryService', () => {
         expect(rawUpdated.authoriseWith.length).toBe(2)
       })
 
+      it('scopes a value added to a single ContentMatcher without narrowing the existing value', async () => {
+        const existingHeader = rawInventoryHeaderInfoToInventoryHeaderInfo({
+          identifyWith: { headerNameMatcher: '^x-content-type-options$' },
+          authoriseWith: {
+            contentMatcher: '^nosniff$',
+            authorisationInfo: { description: 'Global baseline', authorised: true, date: '2026-01-01T00:00:00.000Z' },
+          },
+        })
+        const target = { ...createMockTarget(), workflowId: 'workflow-a' }
+        const result = new KnownHeaderWithUnauthorisedContentFound(
+          target,
+          new Date('2026-04-22T00:00:00.000Z'),
+          { name: 'x-content-type-options', value: 'legacy-value', target, workflow: target.workflow },
+          existingHeader,
+          existingHeader.authoriseWith.matcher,
+          'new value',
+        )
+
+        const diff = await service.diff({ ...createMockInventory([]), headers: [existingHeader] }, [result])
+        const updatedHeader = diff.newInventory.headers[0]!
+        const raw = inventoryHeaderInfoToRawInventoryHeaderInfo(updatedHeader)
+
+        expect(Array.isArray(raw.authoriseWith)).toBe(true)
+        if (!Array.isArray(raw.authoriseWith)) return
+        expect(raw.authoriseWith[0]).toMatchObject({ contentMatcher: '^nosniff$' })
+        expect(raw.authoriseWith[1]).toMatchObject({
+          andMatcher: [{ workflowMatcher: '^workflow-a$' }, { contentMatcher: '^legacy-value$' }],
+        })
+
+        const newValue = { name: 'x-content-type-options', content: 'legacy-value', workflowId: 'workflow-a' }
+        expect(updatedHeader.authoriseWith.matcher.authorize(newValue).authorized).toBe(true)
+        expect(updatedHeader.authoriseWith.matcher.authorize({ ...newValue, workflowId: 'workflow-b' }).authorized).toBe(false)
+        expect(updatedHeader.authoriseWith.matcher.authorize({ ...newValue, content: 'nosniff', workflowId: 'workflow-b' }).authorized).toBe(true)
+      })
+
       it('applies every new hash when multiple KnownScriptWithUnauthorisedContentFound target the same script entry', async () => {
         const existingScript = rawInventoryScriptInfoToInventoryScriptInfo({
           identifyWith: { nameMatcher: '^https://cdn\\.example\\.com/payment\\.js$' },
@@ -863,6 +898,73 @@ describe('ScriptInventoryService', () => {
         expect(diff.appliedResults).toEqual([result])
       })
 
+      it('scopes a new OR hash alternative to the workflow that observed it', async () => {
+        const existingScript = rawInventoryScriptInfoToInventoryScriptInfo({
+          identifyWith: { nameMatcher: '^https://cdn\\.example\\.com/script\\.js$' },
+          authoriseWith: [
+            {
+              andMatcher: [{ workflowMatcher: '^workflow-a$' }, { hashes: [{ timestamp: '2026-01-01T00:00:00.000Z', hash: { value: 'workflow-a-v1' } }] }],
+              authorisationInfo: { description: 'Workflow A v1', authorised: true, date: '2026-01-01T00:00:00.000Z' },
+            },
+          ],
+        })
+        const target = { ...createMockTarget(), workflowId: 'workflow-b' }
+        const result = new KnownScriptWithUnauthorisedContentFound(
+          target,
+          new Date('2026-04-22T00:00:00.000Z'),
+          { name: 'https://cdn.example.com/script.js', content: 'new', hash: { value: 'workflow-b-v1' }, workflowId: 'workflow-b' },
+          existingScript,
+          existingScript.authoriseWith.matcher,
+          'no workflow alternative matched',
+        )
+
+        const diff = await service.diff(createMockInventory([existingScript]), [result])
+        const raw = inventoryScriptInfoToRawInventoryScriptInfo(diff.newInventory.scripts[0]!)
+
+        expect(Array.isArray(raw.authoriseWith)).toBe(true)
+        if (!Array.isArray(raw.authoriseWith)) return
+        expect(raw.authoriseWith[1]).toMatchObject({
+          andMatcher: [{ workflowMatcher: '^workflow-b$' }, { hashes: [{ hash: { value: 'workflow-b-v1' } }] }],
+        })
+
+        const updatedScript = diff.newInventory.scripts[0]!
+        const matchingScript = { name: 'https://cdn.example.com/script.js', content: 'new', hash: { value: 'workflow-b-v1' }, workflowId: 'workflow-b' }
+        expect(updatedScript.authoriseWith.matcher.authorize(matchingScript).authorized).toBe(true)
+        expect(updatedScript.authoriseWith.matcher.authorize({ ...matchingScript, workflowId: 'workflow-a' }).authorized).toBe(false)
+
+        const repeatedResult = new KnownScriptWithUnauthorisedContentFound(target, result.timestamp, matchingScript, updatedScript, updatedScript.authoriseWith.matcher, 'defensive duplicate')
+        const repeatedDiff = await service.diff(diff.newInventory, [repeatedResult])
+        expect(repeatedDiff.appliedResults).toEqual([])
+      })
+
+      it('scopes a hash added to a single HashMatcher without narrowing existing hashes', async () => {
+        const existingScript = rawInventoryScriptInfoToInventoryScriptInfo({
+          identifyWith: { nameMatcher: '^https://cdn\\.example\\.com/script\\.js$' },
+          authoriseWith: {
+            hashes: [{ timestamp: '2026-01-01T00:00:00.000Z', hash: { value: 'global-v1' } }],
+            authorisationInfo: { description: 'Global v1', authorised: true, date: '2026-01-01T00:00:00.000Z' },
+          },
+        })
+        const target = { ...createMockTarget(), workflowId: 'workflow-a' }
+        const newScript = { name: 'https://cdn.example.com/script.js', content: 'new', hash: { value: 'workflow-a-v2' }, workflowId: 'workflow-a' }
+        const result = new KnownScriptWithUnauthorisedContentFound(target, new Date('2026-04-22T00:00:00.000Z'), newScript, existingScript, existingScript.authoriseWith.matcher, 'new hash')
+
+        const diff = await service.diff(createMockInventory([existingScript]), [result])
+        const updatedScript = diff.newInventory.scripts[0]!
+        const raw = inventoryScriptInfoToRawInventoryScriptInfo(updatedScript)
+
+        expect(Array.isArray(raw.authoriseWith)).toBe(true)
+        if (!Array.isArray(raw.authoriseWith)) return
+        expect(raw.authoriseWith[0]).toMatchObject({ hashes: [{ hash: { value: 'global-v1' } }] })
+        expect(raw.authoriseWith[1]).toMatchObject({
+          andMatcher: [{ workflowMatcher: '^workflow-a$' }, { hashes: [{ hash: { value: 'workflow-a-v2' } }] }],
+        })
+
+        expect(updatedScript.authoriseWith.matcher.authorize(newScript).authorized).toBe(true)
+        expect(updatedScript.authoriseWith.matcher.authorize({ ...newScript, workflowId: 'workflow-b' }).authorized).toBe(false)
+        expect(updatedScript.authoriseWith.matcher.authorize({ ...newScript, hash: { value: 'global-v1' }, workflowId: 'workflow-b' }).authorized).toBe(true)
+      })
+
       it('skips known_script_unauthorised_content when the top-level authoriser is an AndMatcher', async () => {
         // AndMatcher means "must satisfy ALL children" — adding an OR'd hash
         // alternative would silently weaken the operator's policy. The diff
@@ -1014,15 +1116,15 @@ describe('ScriptInventoryService', () => {
         // Two per-host CSP entries with composite identifyWith, mirroring
         // the script-inventory shape. Each only authorises one directive
         // today; the new value below should land in the m.stripe.network
-        // bucket, not the meandu one.
-        const meanduEntry = rawInventoryHeaderInfoToInventoryHeaderInfo({
+        // bucket, not the first-party merchant one.
+        const merchantEntry = rawInventoryHeaderInfoToInventoryHeaderInfo({
           identifyWith: {
-            andMatcher: [{ headerNameMatcher: '^content-security-policy$' }, { hostMatcher: '^app-dev\\.meandu\\.com$' }],
+            andMatcher: [{ headerNameMatcher: '^content-security-policy$' }, { hostMatcher: '^app\\.checkout\\.example$' }],
           },
           authoriseWith: [
             {
-              contentMatcher: '^frame-ancestors https:\\/\\/\\*\\.meandu\\.com$',
-              authorisationInfo: { description: 'Me&u (first-party)', authorised: true, date: '2026-05-19T00:00:00.000Z' },
+              contentMatcher: '^frame-ancestors https:\\/\\/\\*\\.checkout\\.example$',
+              authorisationInfo: { description: 'First-party checkout', authorised: true, date: '2026-05-19T00:00:00.000Z' },
             },
           ],
         })
@@ -1038,7 +1140,7 @@ describe('ScriptInventoryService', () => {
           ],
         })
 
-        const inventory: Inventory = { ...createMockInventory([]), headers: [meanduEntry, stripeEntry] }
+        const inventory: Inventory = { ...createMockInventory([]), headers: [merchantEntry, stripeEntry] }
 
         // A new CSP value arrives from m.stripe.network that doesn't match
         // any existing content matcher in the Stripe bucket. The comparison
@@ -1065,11 +1167,11 @@ describe('ScriptInventoryService', () => {
         const newPatterns = updatedStripe.authoriseWith.filter((m: any): m is { contentMatcher: string } => 'contentMatcher' in m).map((m) => m.contentMatcher)
         expect(newPatterns).toContain("^object-src 'none'$")
 
-        // 2. The meandu entry is untouched (no result targeted it).
-        const updatedMeandu = inventoryHeaderInfoToRawInventoryHeaderInfo(diff.newInventory.headers[0]!)
-        expect(Array.isArray(updatedMeandu.authoriseWith)).toBe(true)
-        if (!Array.isArray(updatedMeandu.authoriseWith)) return
-        expect(updatedMeandu.authoriseWith).toHaveLength(1)
+        // 2. The first-party entry is untouched (no result targeted it).
+        const updatedMerchant = inventoryHeaderInfoToRawInventoryHeaderInfo(diff.newInventory.headers[0]!)
+        expect(Array.isArray(updatedMerchant.authoriseWith)).toBe(true)
+        if (!Array.isArray(updatedMerchant.authoriseWith)) return
+        expect(updatedMerchant.authoriseWith).toHaveLength(1)
 
         // 3. The Stripe entry's composite identifyWith is preserved structurally
         //    — the matcher type and child shape are the same after round-trip.

@@ -70,6 +70,11 @@ const UrlMatcherConfigSchema = z.object({
   authorisationInfo: InventoryAuthorisationInfoRawSchema.optional(),
 })
 
+const WorkflowMatcherConfigSchema = z.object({
+  workflowMatcher: z.string().min(1, 'workflowMatcher must not be empty'),
+  authorisationInfo: InventoryAuthorisationInfoRawSchema.optional(),
+})
+
 const HashMatcherConfigSchema = z.object({
   hashes: z.array(InventoryScriptHashInfoSchema).min(1, 'hashes array must contain at least 1 hash'),
   authorisationInfo: InventoryAuthorisationInfoRawSchema.optional(),
@@ -114,7 +119,17 @@ const AndMatcherConfigSchema = z.object({
  * IMPORTANT: Explicit type annotation required for z.lazy() circular reference resolution.
  */
 export const MatcherConfigSchema: z.ZodType<any> = z
-  .union([NameMatcherConfigSchema, HeaderNameMatcherConfigSchema, ContentMatcherConfigSchema, HostMatcherConfigSchema, UrlMatcherConfigSchema, HashMatcherConfigSchema, OrMatcherConfigSchema, AndMatcherConfigSchema])
+  .union([
+    NameMatcherConfigSchema,
+    HeaderNameMatcherConfigSchema,
+    ContentMatcherConfigSchema,
+    HostMatcherConfigSchema,
+    UrlMatcherConfigSchema,
+    WorkflowMatcherConfigSchema,
+    HashMatcherConfigSchema,
+    OrMatcherConfigSchema,
+    AndMatcherConfigSchema,
+  ])
   .superRefine((val, ctx) => {
     // Validate regex syntax for nameMatcher
     if ('nameMatcher' in val) {
@@ -182,6 +197,19 @@ export const MatcherConfigSchema: z.ZodType<any> = z
           code: 'custom',
           message: `Invalid regex in urlMatcher: "${val.urlMatcher}". Error: ${errorMessage}. Ensure all brackets are closed and escape sequences are valid.`,
           path: ['urlMatcher'],
+        })
+      }
+    }
+
+    if ('workflowMatcher' in val) {
+      try {
+        new RegExp(val.workflowMatcher)
+      } catch (e: unknown) {
+        const errorMessage = e instanceof Error ? e.message : 'Unknown regex error'
+        ctx.addIssue({
+          code: 'custom',
+          message: `Invalid regex in workflowMatcher: "${val.workflowMatcher}". Error: ${errorMessage}. Ensure all brackets are closed and escape sequences are valid.`,
+          path: ['workflowMatcher'],
         })
       }
     }

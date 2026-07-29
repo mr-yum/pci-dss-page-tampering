@@ -4,8 +4,8 @@
  * Matches a resource (script or response header) by the host portion of its
  * originating URL. `Matchable.url` is the single source of truth — this
  * matcher derives the host from it on the fly so an inventory entry like
- * `hostMatcher: "^([^.]+\\.)*meandu\\.app$"` matches every CSP directive
- * emitted by any `*.meandu.app` response, regardless of path. Use
+ * `hostMatcher: "^([^.]+\\.)*checkout\\.example$"` matches every CSP directive
+ * emitted by any `*.checkout.example` response, regardless of path. Use
  * `UrlMatcher` instead when you need to discriminate by path or query.
  *
  * `Matchable.url` is populated for:

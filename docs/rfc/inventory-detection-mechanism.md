@@ -175,18 +175,19 @@ Each script/header entry uses two matchers:
 ## Matcher system
 
 Matching is a strategy + composite pattern. Every detected resource is a
-`Matchable` (`name`, `content`, optional `hash`, optional `url`), and every
-matcher implements `identify()` (is this the resource I care about?) and
-`authorize()` (is its content/hash acceptable?).
+`Matchable` (`name`, `content`, optional `hash`, optional `url`, optional
+`workflowId`), and every matcher implements `identify()` (is this the resource
+I care about?) and `authorize()` (is its content/hash acceptable?).
 
 | Matcher             | Identifies by                           | Notes                                                     |
 | ------------------- | --------------------------------------- | --------------------------------------------------------- |
 | `nameMatcher`       | script URL/name (regex, case-sensitive) | external scripts with dynamic params                      |
 | `headerNameMatcher` | header name (regex, case-insensitive)   | RFC 7230 semantics                                        |
 | `contentMatcher`    | script/header content (regex)           | inline scripts, header values                             |
-| `hashMatcher`       | SHA-256 of content                      | strict integrity; cannot identify, only authorise         |
+| `hashMatcher`       | SHA-256 of content                      | exact-version identity or strict integrity authorization  |
 | `hostMatcher`       | host portion of `url` (regex)           | origin cares, path doesn't; fails secure if `url` missing |
 | `urlMatcher`        | full `url` (regex)                      | path precision; fails secure if `url` missing             |
+| `workflowMatcher`   | stable `workflowId` (regex)             | scopes shared inventory entries to checkout variations    |
 | `orMatcher`         | any child matches (first-match-wins)    | composite                                                 |
 | `andMatcher`        | all children match (short-circuit)      | composite, e.g. multi-directive CSP                       |
 
@@ -196,11 +197,18 @@ URL; for external scripts, the script's own URL; for inline scripts, the
 initiator URL captured at insertion time by a page-attribution shim (falling
 back to `location.href` for parser-inserted inline scripts). `hostMatcher`
 and `urlMatcher` build on this — e.g. "only accept this CSP when it comes from
-`*.meandu.app`".
+`*.checkout.example`".
 
 Composite matchers nest to arbitrary depth (tested to 10 levels; 2–4 typical).
 `authorisationInfo` may live at any level, and the full root-to-leaf chain is
 collected into the comparison result's `metadataPath` for audit.
+
+Although `hashMatcher` can be used in `identifyWith`, the inventory convention
+is to identify by a stable name, content signature, or provenance and use the
+hash in `authoriseWith`. This preserves the distinction between an unknown
+script and a known script whose bytes changed. Hash identification is reserved
+for policies where the exact byte-for-byte version is deliberately the
+resource identity.
 
 ## Comparison pipeline
 

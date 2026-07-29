@@ -1,8 +1,9 @@
 import { rm, writeFile } from 'fs/promises'
 
 import type { IInventoryStore, InventoryPushResult, IScriptInventoryRepository } from '../interfaces/inventory.js'
-import type { Inventory } from '../types/inventory/model.js'
+import type { Inventory, InventoryWorkflow } from '../types/inventory/model.js'
 import type { InventoryRepositoryProps } from '../types/inventory/props.js'
+import type { RawInventoryWorkflow } from '../types/inventory/raw.js'
 import type { PullTarget } from '../types/target.js'
 import { GIT_CLONE_PATH, TARGET_PATH } from '../utils/constants.js'
 import { inventoryToRawInventory, rawInventoryHeaderInfoToInventoryHeaderInfo } from '../utils/inventory.js'
@@ -26,49 +27,65 @@ export class ScriptInventoryRepository implements IScriptInventoryRepository {
     const payloads = pullResult.payloads
 
     const payloadsToProcess = payloads.map(async (payload): Promise<Inventory> => {
-      const inventoryWorkflow = await getWorkflowFromFile(payload.rawInventory.target.inventory.workflow)
-      const detectionWorkflow = await getWorkflowFromFile(payload.rawInventory.target.detection.workflow)
-
       // Default name to filename (without .json extension) if not specified
       const defaultName = payload.fileName.replace(/\.json$/, '')
-      const inventoryName = payload.rawInventory.target.inventory.name ?? defaultName
-      const detectionName = payload.rawInventory.target.detection.name ?? defaultName
 
-      const inventoryTarget = {
-        type: payload.rawInventory.target.inventory.type,
-        name: inventoryName,
-        url: payload.rawInventory.target.inventory.url,
-        workflow: inventoryWorkflow,
-        logger: createTargetLogger({
-          type: payload.rawInventory.target.inventory.type,
+      const processWorkflow = async (rawWorkflow: RawInventoryWorkflow): Promise<InventoryWorkflow> => {
+        const inventoryWorkflow = await getWorkflowFromFile(rawWorkflow.inventory.workflow)
+        const detectionWorkflow = await getWorkflowFromFile(rawWorkflow.detection.workflow)
+        const workflowDefaultName = rawWorkflow.id === 'default' ? defaultName : `${defaultName}/${rawWorkflow.id}`
+        const inventoryName = rawWorkflow.inventory.name ?? workflowDefaultName
+        const detectionName = rawWorkflow.detection.name ?? workflowDefaultName
+
+        const inventoryTarget = {
+          type: rawWorkflow.inventory.type,
+          workflowId: rawWorkflow.id,
           name: inventoryName,
-          url: payload.rawInventory.target.inventory.url,
+          url: rawWorkflow.inventory.url,
           workflow: inventoryWorkflow,
-          logger: undefined as any, // Temporary for creating logger
-        }),
+          logger: createTargetLogger({
+            type: rawWorkflow.inventory.type,
+            workflowId: rawWorkflow.id,
+            name: inventoryName,
+            url: rawWorkflow.inventory.url,
+            workflow: inventoryWorkflow,
+            logger: undefined as any, // Temporary for creating logger
+          }),
+        }
+
+        const detectionTarget = {
+          type: rawWorkflow.detection.type,
+          workflowId: rawWorkflow.id,
+          name: detectionName,
+          url: rawWorkflow.detection.url,
+          workflow: detectionWorkflow,
+          logger: createTargetLogger({
+            type: rawWorkflow.detection.type,
+            workflowId: rawWorkflow.id,
+            name: detectionName,
+            url: rawWorkflow.detection.url,
+            workflow: detectionWorkflow,
+            logger: undefined as any, // Temporary for creating logger
+          }),
+        }
+
+        return { id: rawWorkflow.id, inventory: inventoryTarget, detection: detectionTarget }
       }
 
-      const detectionTarget = {
-        type: payload.rawInventory.target.detection.type,
-        name: detectionName,
-        url: payload.rawInventory.target.detection.url,
-        workflow: detectionWorkflow,
-        logger: createTargetLogger({
-          type: payload.rawInventory.target.detection.type,
-          name: detectionName,
-          url: payload.rawInventory.target.detection.url,
-          workflow: detectionWorkflow,
-          logger: undefined as any, // Temporary for creating logger
-        }),
-      }
+      const rawTarget = payload.rawInventory.target
+      const rawWorkflows: RawInventoryWorkflow[] = rawTarget.workflows !== undefined ? rawTarget.workflows : [{ id: 'default', inventory: rawTarget.inventory, detection: rawTarget.detection }]
+      const workflows = await Promise.all(rawWorkflows.map(processWorkflow))
 
       return {
         fileName: payload.fileName,
         alerts: payload.rawInventory.alerts,
-        target: {
-          inventory: inventoryTarget,
-          detection: detectionTarget,
-        },
+        target:
+          rawTarget.workflows !== undefined
+            ? { workflows }
+            : {
+                inventory: workflows[0]!.inventory,
+                detection: workflows[0]!.detection,
+              },
         scripts: payload.rawInventory.scripts.map(rawInventoryScriptInfoToInventoryScriptInfo),
         headers: (payload.rawInventory.headers || []).map(rawInventoryHeaderInfoToInventoryHeaderInfo),
       }

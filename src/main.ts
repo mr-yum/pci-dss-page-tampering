@@ -20,7 +20,7 @@ import { CliArgsSchema, ExitCode } from './types/cli.js'
 import type { ComparisonResultType } from './types/comparison.js'
 import { ExecutionMode, type RuntimeConfiguration } from './types/config.js'
 import type { ExecutionSummary } from './types/execution-summary.js'
-import type { Inventory, InventoryAlert, InventoryDifferenceResult } from './types/inventory/model.js'
+import { getInventoryWorkflows, type Inventory, type InventoryAlert, type InventoryDifferenceResult, type InventoryWorkflow } from './types/inventory/model.js'
 import { PullTarget, type Target } from './types/target.js'
 import { getScriptContentMatchersFromInventory } from './utils/script/matcher.js'
 import { collectTotpSeedRefs } from './utils/workflow.js'
@@ -135,7 +135,7 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
      */
     inventoryUpdatedResults: ReadonlySet<ComparisonResultType>
   }
-  type TargetRunResult = { diffResult: InventoryDifferenceResult | null; resourceCount: number; pendingAlerts: PendingAlerts | null }
+  type TargetRunResult = { comparisonResults: ComparisonResultType[]; resourceCount: number; pendingAlerts: PendingAlerts | null }
 
   // Helper function to run workflow for a single target.
   // For detection targets, alerts are sent immediately (no PR exists). For
@@ -174,18 +174,16 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
       if (target.type === 'inventory') {
         // Defer alerting; main flow will flush after PR creation.
         const allComparisonResults: ComparisonResultType[] = [...scriptComparisonResults, ...headerComparisonResults]
-        const diffResult = await scriptInventoryService.diff(payload, allComparisonResults)
-        const inventoryUpdatedResults: ReadonlySet<ComparisonResultType> = new Set(diffResult.appliedResults ?? [])
         return {
-          diffResult,
+          comparisonResults: allComparisonResults,
           resourceCount,
-          pendingAlerts: { scriptComparisonResults, headerComparisonResults, target, alertDestinations: payload.alerts, inventoryUpdatedResults },
+          pendingAlerts: { scriptComparisonResults, headerComparisonResults, target, alertDestinations: payload.alerts, inventoryUpdatedResults: new Set() },
         }
       } else {
         // Detection mode: no PR is ever created here, alert immediately.
         await alertService.alertForTypedResults(scriptComparisonResults, target, payload.alerts)
         await alertService.alertForTypedResults(headerComparisonResults, target, payload.alerts)
-        return { diffResult: null, resourceCount, pendingAlerts: null }
+        return { comparisonResults: [...scriptComparisonResults, ...headerComparisonResults], resourceCount, pendingAlerts: null }
       }
     } catch (error) {
       console.error(`[Main]: Error processing target: ${target.url}`)
@@ -239,14 +237,26 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
       log('Preparing to run inventory workflow.')
       const targetRunResults = await Promise.all(
         filteredInventory.map(async (inventory) => {
-          const result = await runForTargetAsync(browser, inventory, inventory.target.inventory)
-          // T009: Track resource count and target name
-          totalResourceCount += result.resourceCount
-          const targetName = inventory.fileName.replace(/\.json$/, '')
-          if (!processedTargets.includes(targetName)) {
-            processedTargets.push(targetName)
+          const workflowResults = await Promise.all(
+            getWorkflowsForTargetFilter(inventory, config.targetFilter.targetName).map(async (workflow) => {
+              const result = await runForTargetAsync(browser, inventory, workflow.inventory)
+              totalResourceCount += result.resourceCount
+              const targetName = workflow.inventory.name ?? `${inventory.fileName.replace(/\.json$/, '')}/${workflow.id}`
+              if (!processedTargets.includes(targetName)) processedTargets.push(targetName)
+              return result
+            }),
+          )
+
+          // One inventory is shared by every variation. Diff once against the
+          // complete observation set so later workflow runs cannot overwrite
+          // entries discovered by earlier ones.
+          const comparisonResults = workflowResults.flatMap((result) => result.comparisonResults)
+          const diffResult = await scriptInventoryService.diff(inventory, comparisonResults)
+          const inventoryUpdatedResults: ReadonlySet<ComparisonResultType> = new Set(diffResult.appliedResults ?? [])
+          for (const result of workflowResults) {
+            if (result.pendingAlerts) result.pendingAlerts.inventoryUpdatedResults = inventoryUpdatedResults
           }
-          return result
+          return { diffResult, workflowResults }
         }),
       )
 
@@ -256,12 +266,7 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
       let prError: unknown = null
       try {
         log('Preparing to push inventory.')
-        const inventoriesToPush = targetRunResults.map((result) => {
-          if (result.diffResult === null) {
-            throw new Error('Expected inventory diff result to exist, but received null!')
-          }
-          return result.diffResult
-        })
+        const inventoriesToPush: InventoryDifferenceResult[] = targetRunResults.map((result) => result.diffResult)
         const pushResult = await scriptInventoryService.push(inventoriesToPush, config.branches.inventory)
 
         log('Inventory workflow completed successfully.')
@@ -294,8 +299,8 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
         // URL is set so the "Review changes" button points to the PR; on a
         // failed push we fall back to the default branch-compare URL.
         for (const result of targetRunResults) {
-          if (result.pendingAlerts) {
-            await flushPendingAlerts(result.pendingAlerts)
+          for (const workflowResult of result.workflowResults) {
+            if (workflowResult.pendingAlerts) await flushPendingAlerts(workflowResult.pendingAlerts)
           }
         }
         // Clear the override so the detection phase (under --mode all) doesn't
@@ -339,13 +344,14 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
       log('Preparing to run detection workflow.')
       await Promise.all(
         filteredDetectionInventory.map(async (inventory) => {
-          const result = await runForTargetAsync(browser, inventory, inventory.target.detection)
-          // T009: Track resource count and target name
-          totalResourceCount += result.resourceCount
-          const targetName = inventory.fileName.replace(/\.json$/, '')
-          if (!processedTargets.includes(targetName)) {
-            processedTargets.push(targetName)
-          }
+          await Promise.all(
+            getWorkflowsForTargetFilter(inventory, config.targetFilter.targetName).map(async (workflow) => {
+              const result = await runForTargetAsync(browser, inventory, workflow.detection)
+              totalResourceCount += result.resourceCount
+              const targetName = workflow.detection.name ?? `${inventory.fileName.replace(/\.json$/, '')}/${workflow.id}`
+              if (!processedTargets.includes(targetName)) processedTargets.push(targetName)
+            }),
+          )
         }),
       )
 
@@ -424,19 +430,30 @@ function filterInventoryByTarget(inventory: Inventory[], targetName: string | nu
 
   // Filter to specific target by matching the target name
   // Targets are named after their JSON files (e.g., "1.0" from "1.0.json")
-  const filtered = inventory.filter((inv) => {
-    // Match by inventory target name or filename (without .json)
-    const nameFromFile = inv.fileName.replace(/\.json$/, '')
-    return inv.target.inventory.name === targetName || inv.target.detection.name === targetName || nameFromFile === targetName
-  })
+  const filtered = inventory.filter((inv) => getWorkflowsForTargetFilter(inv, targetName).length > 0)
 
   // T024: Throw error if target not found
   if (filtered.length === 0) {
-    const availableTargets = inventory.map((inv) => inv.fileName.replace(/\.json$/, '')).join(', ')
+    const availableTargets = inventory
+      .flatMap((inv) => [
+        inv.fileName.replace(/\.json$/, ''),
+        ...getInventoryWorkflows(inv.target)
+          .flatMap((workflow) => [workflow.inventory.name, workflow.detection.name])
+          .filter((name): name is string => name !== undefined),
+      ])
+      .filter((name, index, names) => names.indexOf(name) === index)
+      .join(', ')
     throw new Error(`Target '${targetName}' not found in inventory repository. Available targets: ${availableTargets}`)
   }
 
   return filtered
+}
+
+/** Select all workflows for a file-level target, or one named variation. */
+function getWorkflowsForTargetFilter(inventory: Inventory, targetName: string | null): InventoryWorkflow[] {
+  const workflows = getInventoryWorkflows(inventory.target)
+  if (targetName === null || inventory.fileName.replace(/\.json$/, '') === targetName) return workflows
+  return workflows.filter((workflow) => workflow.inventory.name === targetName || workflow.detection.name === targetName)
 }
 
 /**
