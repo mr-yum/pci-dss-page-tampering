@@ -1,5 +1,3 @@
-import type { Locator } from 'puppeteer'
-
 import type { Target } from './target.js'
 import type { WorkflowStep } from './workflow.js'
 
@@ -11,7 +9,7 @@ export type PuppeteerWorkflow = {
 export type PuppeteerLocatorAction = {
   description: string
   querySelector: string
-  locator: Locator<Element>
+  frameUrl?: string | undefined
   action: PuppeteerAction
   delay: number
 }

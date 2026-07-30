@@ -1,5 +1,3 @@
-import type { Page } from 'puppeteer'
-
 import type { PuppeteerAction, PuppeteerLocatorAction, PuppeteerWorkflow } from '../types/puppeteer.js'
 import type { Target } from '../types/target.js'
 import type { Workflow, WorkflowActionType, WorkflowStep, WorkflowWaitForDefinition } from '../types/workflow.js'
@@ -35,10 +33,10 @@ export function collectTotpSeedRefs(steps: WorkflowStep[]): Set<string> {
   return seedRefs
 }
 
-export function getPuppeteerWorkflowFromTarget(page: Page, target: Target): PuppeteerWorkflow {
+export function getPuppeteerWorkflowFromTarget(target: Target): PuppeteerWorkflow {
   return {
     target: target,
-    locatorActions: stepsToPuppeteerLocatorAction(page, target.workflow.definition.steps),
+    locatorActions: stepsToPuppeteerLocatorAction(target.workflow.definition.steps),
   }
 }
 
@@ -118,15 +116,14 @@ function actionToPuppeteerAction(action: WorkflowActionType): PuppeteerAction {
   }
 }
 
-export function stepsToPuppeteerLocatorAction(page: Page, steps: WorkflowStep[]): PuppeteerLocatorAction[] {
+export function stepsToPuppeteerLocatorAction(steps: WorkflowStep[]): PuppeteerLocatorAction[] {
   return steps.map((step) => {
     const querySelector = waitForToQuerySelector(step.waitFor)
-    const locator = page.locator(querySelector)
 
     return {
       description: step.description,
       querySelector: querySelector,
-      locator: locator,
+      frameUrl: step.frameUrl,
       action: actionToPuppeteerAction(step.action),
       delay: step.action.delay ?? 0,
     }

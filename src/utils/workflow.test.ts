@@ -1,5 +1,5 @@
 import type { WorkflowStep } from '../types/workflow.js'
-import { collectTotpSeedRefs } from './workflow.js'
+import { collectTotpSeedRefs, stepsToPuppeteerLocatorAction } from './workflow.js'
 
 describe('collectTotpSeedRefs', () => {
   const step = (action: WorkflowStep['action']): WorkflowStep => ({
@@ -26,5 +26,22 @@ describe('collectTotpSeedRefs', () => {
   it('deduplicates repeated seedRefs and returns an empty set when no totp steps exist', () => {
     expect(collectTotpSeedRefs([step({ type: 'totp', seedRef: 'a' }), step({ type: 'totp', seedRef: 'a' })])).toEqual(new Set(['a']))
     expect(collectTotpSeedRefs([step({ type: 'click' })])).toEqual(new Set())
+  })
+
+  it('preserves a frame URL matcher for execution-time frame resolution', () => {
+    const frameStep: WorkflowStep = {
+      ...step({ type: 'input', value: '4242424242424242' }),
+      frameUrl: '^https://payments\\.example\\.com/card-frame',
+    }
+
+    expect(stepsToPuppeteerLocatorAction([frameStep])).toEqual([
+      {
+        description: 'step',
+        querySelector: 'input[name="field"]',
+        frameUrl: '^https://payments\\.example\\.com/card-frame',
+        action: { type: 'input', value: '4242424242424242' },
+        delay: 0,
+      },
+    ])
   })
 })

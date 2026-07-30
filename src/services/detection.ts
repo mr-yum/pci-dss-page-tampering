@@ -1,4 +1,5 @@
-import type { Browser, HTTPResponse, Page } from 'puppeteer'
+import type { Browser, ElementHandle, Frame, HTTPResponse, Page } from 'puppeteer'
+import { TimeoutError } from 'puppeteer'
 
 import { headerResponseHandler } from '../handlers/header.js'
 import { scriptResponseHandler } from '../handlers/script.js'
@@ -29,6 +30,11 @@ const TOTP_WINDOW_SAFETY_MARGIN_MS = 5000
 // yielding a wrong code that fails verification), so pace the keystrokes so
 // the component registers each one.
 const TOTP_TYPING_DELAY_MS = 100
+
+type ActionTarget = {
+  context: Page | Frame
+  element?: ElementHandle<Element>
+}
 
 export class DetectionService implements IDetectionService {
   private readonly totpSeeds: ReadonlyMap<string, string>
@@ -88,7 +94,7 @@ export class DetectionService implements IDetectionService {
       page.on('response', (response) => this.logIfBlocked(response, target))
 
       // Get Puppeteer workflow
-      puppeteerWorkflow = getPuppeteerWorkflowFromTarget(page, target)
+      puppeteerWorkflow = getPuppeteerWorkflowFromTarget(target)
 
       // Navigate to workflow starting url, resolving any {{date+Nd}}
       // placeholders at run time so booking-style targets always request a
@@ -123,11 +129,13 @@ export class DetectionService implements IDetectionService {
         target.logger.log(`(${currentStepIndex}/${totalStepCount}) ${step.description} for target '${puppeteerWorkflow.target.url}'.`)
 
         try {
-          // Wait for element to be available
-          await step.locator.wait()
+          if (step.delay > 0) {
+            await this.sleep(step.delay)
+          }
+          const actionTarget = await this.waitForActionTarget(page, step)
 
           // Execute action
-          await this.executeAction(page, step, target, browser)
+          await this.executeAction(page, actionTarget, step, target, browser)
 
           // Detect and add new inline scripts on each workflow action
           const newInlineScripts = await this.detectNewInlineScripts(page, internalScripts, scriptContentMatchers)
@@ -139,6 +147,7 @@ export class DetectionService implements IDetectionService {
             target.logger.error(`Step description: ${step.description}`)
             target.logger.error(`Target URL: ${navigationUrl ?? puppeteerWorkflow.target.url}`)
             target.logger.error(`Element selector: ${step.querySelector}`)
+            if (step.frameUrl) target.logger.error(`Frame URL matcher: ${step.frameUrl}`)
             target.logger.error(`Action type: ${step.action.type}`)
             target.logger.error(`Current page URL: ${page.url()}`)
             target.logger.error(`Error message: ${stepError.message}`)
@@ -148,6 +157,7 @@ export class DetectionService implements IDetectionService {
             target.logger.error(`Step description: ${step.description}`)
             target.logger.error(`Target URL: ${navigationUrl ?? puppeteerWorkflow.target.url}`)
             target.logger.error(`Element selector: ${step.querySelector}`)
+            if (step.frameUrl) target.logger.error(`Frame URL matcher: ${step.frameUrl}`)
             target.logger.error(`Action type: ${step.action.type}`)
             target.logger.error(`Current page URL: ${page.url()}`)
             target.logger.error(`Error: ${stepError}`)
@@ -236,144 +246,154 @@ export class DetectionService implements IDetectionService {
     target.logger.error(details.join(' '))
   }
 
-  private async executeAction(page: Page, step: PuppeteerLocatorAction, target: Target, browser: Browser): Promise<void> {
-    // Delay action
-    if (step.delay > 0) {
-      await this.sleep(step.delay)
-    }
-
-    // Execute action
-    switch (step.action.type) {
-      case 'click': {
-        const action: PuppeteerClickAction = step.action
-        await this.evalClick(page, step)
-
-        if (action.waitForNavigation) {
-          await page.waitForNavigation()
-        }
-        break
-      }
-
-      case 'input': {
-        const action: PuppeteerInputAction = step.action
-        await this.evalClick(page, step)
-        await page.type(step.querySelector, action.value)
-        break
-      }
-
-      case 'totp': {
-        const action: PuppeteerTotpAction = step.action
-        const seed = this.totpSeeds.get(action.seedRef)
-        if (seed === undefined) {
-          const availableSeeds = this.totpSeeds.size > 0 ? [...this.totpSeeds.keys()].join(', ') : '(none)'
-          throw new Error(`TOTP seed '${action.seedRef}' was not provided. Pass it via --totp-seed ${action.seedRef}=<base32-seed>. Available seeds: ${availableSeeds}`)
-        }
-
-        // Focus the field first so the code is generated as late as possible.
-        await this.evalClick(page, step)
-
-        const remainingMs = millisecondsRemainingInTotpWindow(Date.now())
-        if (remainingMs < TOTP_WINDOW_SAFETY_MARGIN_MS) {
-          await this.sleep(remainingMs + 50)
-        }
-
-        // Generated at execution time (not workflow-build time) so the code
-        // is fresh even in long-running flows. Never log or rethrow the code.
-        const code = generateTotp(seed, Date.now())
-        await page.type(step.querySelector, code, { delay: TOTP_TYPING_DELAY_MS })
-        break
-      }
-
-      case 'escape': {
-        await page.keyboard.press('Escape')
-        break
-      }
-
-      case 'navigate': {
-        const action: PuppeteerNavigateAction = step.action
-        await this.evalClick(page, step)
-
-        if (action.waitForNavigation) {
-          await page.waitForNavigation()
-        }
-        break
-      }
-
-      case 'clickPopup': {
-        const action: PuppeteerClickPopupAction = step.action
-
-        // Add popup page handler
-        page.on('popup', async (popupPage) => {
-          if (popupPage) {
-            try {
-              // Attach blocked-request diagnostics before any await, so a
-              // 403/429 on the popup's initial navigation isn't missed while
-              // the UA setup below is still in flight.
-              popupPage.on('response', (response) => this.logIfBlocked(response, target))
-
-              // The popup inherits the browser's default (headless) UA; give
-              // it the same realistic UA. This runs once the popup exists, so
-              // its very first (site-initiated) navigation can still send the
-              // default UA before this applies — every subsequent request is
-              // clean. Closing that first-request gap needs CDP auto-attach
-              // with waitForDebuggerOnStart to pause the popup pre-navigation;
-              // deferred until a target actually drives a bot-protected popup
-              // (none do today).
-              await this.applyRealisticUserAgent(popupPage, browser)
-
-              const innerSteps = stepsToPuppeteerLocatorAction(popupPage, action.steps)
-
-              for (const [popupIndex, innerStep] of innerSteps.entries()) {
-                const popupStepNumber = popupIndex + 1
-                target.logger.log(`Popup step ${popupStepNumber}/${innerSteps.length}: ${innerStep.description}`)
-
-                try {
-                  await innerStep.locator.wait()
-                  await this.executeAction(popupPage, innerStep, target, browser)
-                } catch (popupStepError) {
-                  if (popupStepError instanceof Error && popupStepError.name === 'TimeoutError') {
-                    target.logger.error(`POPUP TIMEOUT ERROR in step ${popupStepNumber}/${innerSteps.length}`)
-                    target.logger.error(`Popup step description: ${innerStep.description}`)
-                    target.logger.error(`Popup element selector: ${innerStep.querySelector}`)
-                    target.logger.error(`Popup action type: ${innerStep.action.type}`)
-                    target.logger.error(`Popup page URL: ${popupPage.url()}`)
-                    target.logger.error(`Error message: ${popupStepError.message}`)
-                    target.logger.error(`Stack trace:`, popupStepError.stack)
-                  } else {
-                    target.logger.error(`POPUP ERROR in step ${popupStepNumber}/${innerSteps.length}`)
-                    target.logger.error(`Popup step description: ${innerStep.description}`)
-                    target.logger.error(`Popup element selector: ${innerStep.querySelector}`)
-                    target.logger.error(`Popup action type: ${innerStep.action.type}`)
-                    target.logger.error(`Popup page URL: ${popupPage.url()}`)
-                    target.logger.error(`Error: ${popupStepError}`)
-                    if (popupStepError instanceof Error) {
-                      target.logger.error(`Stack trace:`, popupStepError.stack)
-                    }
-                  }
-                  throw popupStepError
-                }
-              }
-            } catch (error) {
-              target.logger.error(`POPUP HANDLING ERROR`)
-              target.logger.error(`Popup page URL: ${popupPage.url()}`)
-              target.logger.error(`Error: ${error}`)
-              if (error instanceof Error) {
-                target.logger.error(`Stack trace:`, error.stack)
-              }
-              throw error // Re-throw to ensure popup errors are caught
-            }
+  private async executeAction(page: Page, actionTarget: ActionTarget, step: PuppeteerLocatorAction, target: Target, browser: Browser): Promise<void> {
+    try {
+      // Execute action
+      switch (step.action.type) {
+        case 'click': {
+          const action: PuppeteerClickAction = step.action
+          if (action.waitForNavigation) {
+            await Promise.all([this.waitForActionNavigation(page, actionTarget.context), this.evalClick(actionTarget, step)])
+          } else {
+            await this.evalClick(actionTarget, step)
           }
-        })
-
-        // 2. Click to pop up new window
-        await this.evalClick(page, step)
-
-        if (action.waitForNavigation) {
-          await page.waitForNavigation()
+          break
         }
 
-        break
+        case 'input': {
+          const action: PuppeteerInputAction = step.action
+          await this.evalClick(actionTarget, step)
+          if (actionTarget.element) {
+            await actionTarget.element.type(action.value)
+          } else {
+            await actionTarget.context.type(step.querySelector, action.value)
+          }
+          break
+        }
+
+        case 'totp': {
+          const action: PuppeteerTotpAction = step.action
+          const seed = this.totpSeeds.get(action.seedRef)
+          if (seed === undefined) {
+            const availableSeeds = this.totpSeeds.size > 0 ? [...this.totpSeeds.keys()].join(', ') : '(none)'
+            throw new Error(`TOTP seed '${action.seedRef}' was not provided. Pass it via --totp-seed ${action.seedRef}=<base32-seed>. Available seeds: ${availableSeeds}`)
+          }
+
+          const remainingMs = millisecondsRemainingInTotpWindow(Date.now())
+          if (remainingMs < TOTP_WINDOW_SAFETY_MARGIN_MS) {
+            await actionTarget.element?.dispose().catch(() => undefined)
+            await this.sleep(remainingMs + 50)
+            actionTarget = await this.waitForActionTarget(page, step)
+          }
+
+          // Focus the final validated element, then generate the code as late
+          // as possible. A navigation detaches the handle and fails secure.
+          await this.evalClick(actionTarget, step)
+          const code = generateTotp(seed, Date.now())
+          if (actionTarget.element) {
+            await actionTarget.element.type(code, { delay: TOTP_TYPING_DELAY_MS })
+          } else {
+            await actionTarget.context.type(step.querySelector, code, { delay: TOTP_TYPING_DELAY_MS })
+          }
+          break
+        }
+
+        case 'escape': {
+          if (actionTarget.element) {
+            await actionTarget.element.focus()
+          }
+          await page.keyboard.press('Escape')
+          break
+        }
+
+        case 'navigate': {
+          const action: PuppeteerNavigateAction = step.action
+          if (action.waitForNavigation) {
+            await Promise.all([this.waitForActionNavigation(page, actionTarget.context), this.evalClick(actionTarget, step)])
+          } else {
+            await this.evalClick(actionTarget, step)
+          }
+          break
+        }
+
+        case 'clickPopup': {
+          const action: PuppeteerClickPopupAction = step.action
+          const popupAbortController = new AbortController()
+          let popupPage: Page
+          try {
+            const popupPromise = this.waitForPopup(page, popupAbortController.signal)
+            const clickPromise = action.waitForNavigation ? Promise.all([this.waitForActionNavigation(page, actionTarget.context), this.evalClick(actionTarget, step)]).then(() => undefined) : this.evalClick(actionTarget, step)
+            ;[popupPage] = await Promise.all([popupPromise, clickPromise])
+          } finally {
+            popupAbortController.abort()
+          }
+
+          try {
+            // Attach blocked-request diagnostics before any await after the
+            // popup is observed. Its initial response may already have landed.
+            popupPage.on('response', (response) => this.logIfBlocked(response, target))
+
+            // Popups start with Puppeteer's defaults rather than inheriting
+            // the parent page's workflow budget. Keep slow provider popups on
+            // the same timeout policy as the page that opened them.
+            popupPage.setDefaultTimeout(page.getDefaultTimeout())
+            popupPage.setDefaultNavigationTimeout(page.getDefaultNavigationTimeout())
+
+            // The popup inherits the browser's default (headless) UA; give it
+            // the same realistic UA for every request after its initial one.
+            await this.applyRealisticUserAgent(popupPage, browser)
+
+            const innerSteps = stepsToPuppeteerLocatorAction(action.steps)
+            for (const [popupIndex, innerStep] of innerSteps.entries()) {
+              const popupStepNumber = popupIndex + 1
+              target.logger.log(`Popup step ${popupStepNumber}/${innerSteps.length}: ${innerStep.description}`)
+
+              try {
+                if (innerStep.delay > 0) {
+                  await this.sleep(innerStep.delay)
+                }
+                const innerActionTarget = await this.waitForActionTarget(popupPage, innerStep)
+                await this.executeAction(popupPage, innerActionTarget, innerStep, target, browser)
+              } catch (popupStepError) {
+                if (popupStepError instanceof Error && popupStepError.name === 'TimeoutError') {
+                  target.logger.error(`POPUP TIMEOUT ERROR in step ${popupStepNumber}/${innerSteps.length}`)
+                  target.logger.error(`Popup step description: ${innerStep.description}`)
+                  target.logger.error(`Popup element selector: ${innerStep.querySelector}`)
+                  if (innerStep.frameUrl) target.logger.error(`Popup frame URL matcher: ${innerStep.frameUrl}`)
+                  target.logger.error(`Popup action type: ${innerStep.action.type}`)
+                  target.logger.error(`Popup page URL: ${this.redactFrameUrl(popupPage.url())}`)
+                  target.logger.error(`Error message: ${popupStepError.message}`)
+                  target.logger.error(`Stack trace:`, popupStepError.stack)
+                } else {
+                  target.logger.error(`POPUP ERROR in step ${popupStepNumber}/${innerSteps.length}`)
+                  target.logger.error(`Popup step description: ${innerStep.description}`)
+                  target.logger.error(`Popup element selector: ${innerStep.querySelector}`)
+                  if (innerStep.frameUrl) target.logger.error(`Popup frame URL matcher: ${innerStep.frameUrl}`)
+                  target.logger.error(`Popup action type: ${innerStep.action.type}`)
+                  target.logger.error(`Popup page URL: ${this.redactFrameUrl(popupPage.url())}`)
+                  target.logger.error(`Error: ${popupStepError}`)
+                  if (popupStepError instanceof Error) {
+                    target.logger.error(`Stack trace:`, popupStepError.stack)
+                  }
+                }
+                throw popupStepError
+              }
+            }
+          } catch (error) {
+            target.logger.error(`POPUP HANDLING ERROR`)
+            target.logger.error(`Popup page URL: ${this.redactFrameUrl(popupPage.url())}`)
+            target.logger.error(`Error: ${error}`)
+            if (error instanceof Error) {
+              target.logger.error(`Stack trace:`, error.stack)
+            }
+            throw error
+          }
+
+          break
+        }
       }
+    } finally {
+      await actionTarget.element?.dispose().catch(() => undefined)
     }
   }
 
@@ -381,8 +401,92 @@ export class DetectionService implements IDetectionService {
    This results in a high success rate than using Locator.click() when element is visible via Locator.wait().
    Only call this function if you are sure that the element is visible, otherwise it will error.
    */
-  private async evalClick(page: Page, step: PuppeteerLocatorAction): Promise<void> {
-    await page.$eval(step.querySelector, (element) => (element as HTMLElement)?.click())
+  private async evalClick(actionTarget: ActionTarget, step: PuppeteerLocatorAction): Promise<void> {
+    if (actionTarget.element) {
+      await actionTarget.element.evaluate((element) => (element as HTMLElement).click())
+    } else {
+      await actionTarget.context.$eval(step.querySelector, (element) => (element as HTMLElement)?.click())
+    }
+  }
+
+  private async waitForActionNavigation(page: Page, actionContext: Page | Frame): Promise<HTTPResponse | null> {
+    if (actionContext === page) return page.waitForNavigation()
+
+    const abortController = new AbortController()
+    try {
+      return await Promise.any([page.waitForNavigation({ signal: abortController.signal }), actionContext.waitForNavigation({ signal: abortController.signal })])
+    } catch (error) {
+      if (error instanceof AggregateError) {
+        throw error.errors.find((candidate) => candidate instanceof Error && candidate.name === 'TimeoutError') ?? error.errors[0] ?? error
+      }
+      throw error
+    } finally {
+      abortController.abort()
+    }
+  }
+
+  private async waitForPopup(page: Page, signal: AbortSignal): Promise<Page> {
+    return new Promise((resolve, reject) => {
+      let settled = false
+      const cleanup = () => {
+        clearTimeout(timeout)
+        page.off('popup', onPopup)
+        signal.removeEventListener('abort', onAbort)
+      }
+      const rejectOnce = (error: unknown) => {
+        if (settled) return
+        settled = true
+        cleanup()
+        reject(error)
+      }
+      const onPopup = (popupPage: Page | null) => {
+        if (settled) return
+        settled = true
+        cleanup()
+        if (popupPage) {
+          resolve(popupPage)
+        } else {
+          reject(new Error('Popup event did not provide a page'))
+        }
+      }
+      const onAbort = () => rejectOnce(signal.reason ?? new Error('Popup wait aborted'))
+      const timeout = setTimeout(() => rejectOnce(new TimeoutError('Timed out waiting for popup page')), page.getDefaultTimeout())
+      page.on('popup', onPopup)
+      signal.addEventListener('abort', onAbort, { once: true })
+      if (signal.aborted) onAbort()
+    })
+  }
+
+  private async waitForActionTarget(page: Page, step: PuppeteerLocatorAction): Promise<ActionTarget> {
+    if (!step.frameUrl) {
+      await page.locator(step.querySelector).wait()
+      return { context: page }
+    }
+
+    const matcher = new RegExp(step.frameUrl)
+    const deadline = Date.now() + page.getDefaultTimeout()
+
+    while (Date.now() < deadline) {
+      for (const frame of page.frames().filter((candidate) => candidate !== page.mainFrame() && matcher.test(candidate.url()))) {
+        const remainingTime = deadline - Date.now()
+        if (remainingTime <= 0) break
+        const element = await frame.waitForSelector(step.querySelector, { visible: true, timeout: Math.min(100, remainingTime) }).catch(() => null)
+        if (element) {
+          if (matcher.test(frame.url())) return { context: frame, element }
+          await element.dispose()
+        }
+      }
+      await this.sleep(100)
+    }
+
+    const observedFrameUrls = [...new Set(page.frames().map((frame) => this.redactFrameUrl(frame.url())))].join(', ')
+    throw new TimeoutError(`Timed out waiting for selector '${step.querySelector}' in a frame URL matching /${step.frameUrl}/. Observed frame URLs: ${observedFrameUrls || '(none)'}`)
+  }
+
+  private redactFrameUrl(url: string): string {
+    if (/^https?:\/\//i.test(url)) return redactUrl(url)
+    const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(url)?.[1]?.toLowerCase()
+    return scheme ? `${scheme}:<redacted>` : '<unparseable>'
   }
 
   private async detectNewInlineScripts(page: Page, existingScripts: ScriptInfo[], scriptContentMatchers: ScriptMatcher[]): Promise<ScriptInfo[]> {

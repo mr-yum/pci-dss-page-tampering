@@ -44,4 +44,55 @@ describe('WorkflowStepSchema', () => {
     })
     expect(result.success).toBe(true)
   })
+
+  it('accepts a valid frame URL matcher', () => {
+    const result = WorkflowStepSchema.safeParse({
+      ...step({ type: 'input', value: '4242424242424242' }),
+      frameUrl: '^https://payments\\.example\\.com/card-frame',
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('rejects an invalid frame URL matcher', () => {
+    const result = WorkflowStepSchema.safeParse({
+      ...step({ type: 'input', value: '4242424242424242' }),
+      frameUrl: '[',
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it.each(['.*', 'payments\\.example\\.com', '^http://payments\\.example\\.com/', '^https://.*/', '^https://payments\\.example\\.com', '^https://payments\\.example\\.com:65536/'])(
+    'rejects an untrusted frame URL matcher: %s',
+    (frameUrl) => {
+      const result = WorkflowStepSchema.safeParse({
+        ...step({ type: 'input', value: '4242424242424242' }),
+        frameUrl,
+      })
+      expect(result.success).toBe(false)
+    },
+  )
+
+  it.each(['^https://payments\\.example\\.com/|.*', '^https://payments\\.example\\.com/|^https://attacker\\.example/'])('rejects top-level alternation that escapes the trusted frame origin: %s', (frameUrl) => {
+    const result = WorkflowStepSchema.safeParse({
+      ...step({ type: 'input', value: '4242424242424242' }),
+      frameUrl,
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('accepts grouped path alternation within the trusted frame origin', () => {
+    const result = WorkflowStepSchema.safeParse({
+      ...step({ type: 'input', value: '4242424242424242' }),
+      frameUrl: '^https://payments\\.example\\.com/card-frame(?:[?#]|$)',
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('accepts the highest valid HTTPS port', () => {
+    const result = WorkflowStepSchema.safeParse({
+      ...step({ type: 'input', value: '4242424242424242' }),
+      frameUrl: '^https://payments\\.example\\.com:65535/card-frame',
+    })
+    expect(result.success).toBe(true)
+  })
 })

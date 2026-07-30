@@ -196,6 +196,26 @@ In the bundled GitHub Actions workflow, seeds are discovered by naming conventio
 
 > **Note**: Automating TOTP means the second factor lives alongside the first in the same secrets store, which weakens what MFA provides for that account. Use a dedicated, least-privileged synthetic-monitoring account.
 
+### Interacting with Embedded Payment Frames
+
+Payment providers commonly isolate card fields in cross-origin iframes. Add a
+`frameUrl` regular expression to a workflow step to run its `waitFor` selector
+and action inside the first matching frame. Without `frameUrl`, the step runs
+against the top-level page as usual:
+
+```json
+{
+  "description": "Enter the test card number",
+  "frameUrl": "^https://payments\\.example\\.com/card-frame",
+  "waitFor": [{ "type": "input", "identifier": "cardnumber" }],
+  "action": { "type": "input", "value": "4242424242424242" }
+}
+```
+
+Anchor frame matchers to a trusted HTTPS origin and the narrowest stable path.
+The frame is resolved when the step executes, so dynamically mounted payment
+frames are supported. The same mechanism works in nested `clickPopup` steps.
+
 ### Date Placeholders in Target URLs
 
 Booking-style targets often need a future date in the URL — a hardcoded date goes stale, and "today" runs out of availability late in the day. Target URLs may embed `{{date}}` or `{{date+Nd}}` placeholders, resolved to a UTC `YYYY-MM-DD` at navigation time:
