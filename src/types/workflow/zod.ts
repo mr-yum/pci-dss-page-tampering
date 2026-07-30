@@ -51,8 +51,14 @@ const FrameUrlSchema = z
   .refine(
     (pattern) => {
       const normalizedPattern = pattern.replaceAll('\\/', '/')
-      const authority = /^\^https:\/\/([^/]+)(?:\/|$)/.exec(normalizedPattern)?.[1]
-      return authority !== undefined && /^[A-Za-z0-9-]+(?:\\\.[A-Za-z0-9-]+)+(?::[1-9][0-9]{0,4})?$/.test(authority)
+      const authority = /^\^https:\/\/([^/]+)\//.exec(normalizedPattern)?.[1]
+      if (authority === undefined) return false
+
+      const authorityParts = /^([A-Za-z0-9-]+(?:\\\.[A-Za-z0-9-]+)+)(?::([1-9][0-9]{0,4}))?$/.exec(authority)
+      if (authorityParts === null) return false
+
+      const port = authorityParts[2]
+      return port === undefined || Number(port) <= 65535
     },
     { message: 'frameUrl must begin with an anchored, exact HTTPS origin' },
   )

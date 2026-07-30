@@ -333,6 +333,12 @@ export class DetectionService implements IDetectionService {
             // popup is observed. Its initial response may already have landed.
             popupPage.on('response', (response) => this.logIfBlocked(response, target))
 
+            // Popups start with Puppeteer's defaults rather than inheriting
+            // the parent page's workflow budget. Keep slow provider popups on
+            // the same timeout policy as the page that opened them.
+            popupPage.setDefaultTimeout(page.getDefaultTimeout())
+            popupPage.setDefaultNavigationTimeout(page.getDefaultNavigationTimeout())
+
             // The popup inherits the browser's default (headless) UA; give it
             // the same realistic UA for every request after its initial one.
             await this.applyRealisticUserAgent(popupPage, browser)
@@ -462,7 +468,9 @@ export class DetectionService implements IDetectionService {
 
     while (Date.now() < deadline) {
       for (const frame of page.frames().filter((candidate) => candidate !== page.mainFrame() && matcher.test(candidate.url()))) {
-        const element = await frame.$(step.querySelector).catch(() => null)
+        const remainingTime = deadline - Date.now()
+        if (remainingTime <= 0) break
+        const element = await frame.waitForSelector(step.querySelector, { visible: true, timeout: Math.min(100, remainingTime) }).catch(() => null)
         if (element) {
           if (matcher.test(frame.url())) return { context: frame, element }
           await element.dispose()
