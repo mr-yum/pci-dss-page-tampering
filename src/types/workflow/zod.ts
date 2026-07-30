@@ -2,16 +2,69 @@ import { z } from 'zod'
 
 import type { WorkflowActionType, WorkflowDefinition, WorkflowStep, WorkflowWaitForDefinition } from '../workflow.js'
 
+function hasTopLevelAlternation(pattern: string): boolean {
+  let escaped = false
+  let inCharacterClass = false
+  let groupDepth = 0
+
+  for (const character of pattern) {
+    if (escaped) {
+      escaped = false
+    } else if (character === '\\') {
+      escaped = true
+    } else if (character === '[') {
+      inCharacterClass = true
+    } else if (character === ']' && inCharacterClass) {
+      inCharacterClass = false
+    } else if (!inCharacterClass && character === '(') {
+      groupDepth += 1
+    } else if (!inCharacterClass && character === ')') {
+      groupDepth -= 1
+    } else if (!inCharacterClass && character === '|' && groupDepth === 0) {
+      return true
+    }
+  }
+
+  return false
+}
+
 // Schema for WorkflowWaitForDefinition
 export const WorkflowWaitForDefinitionSchema: z.ZodType<WorkflowWaitForDefinition> = z.object({
   type: z.enum(['div', 'button', 'input', 'href', 'h2', 'h3', 'span', 'testid', 'aria']),
   identifier: z.string(),
 })
 
+const FrameUrlSchema = z
+  .string()
+  .min(1)
+  .refine(
+    (pattern) => {
+      try {
+        new RegExp(pattern)
+        return true
+      } catch {
+        return false
+      }
+    },
+    { message: 'frameUrl must be a valid regular expression' },
+  )
+  .refine(
+    (pattern) => {
+      const normalizedPattern = pattern.replaceAll('\\/', '/')
+      const authority = /^\^https:\/\/([^/]+)(?:\/|$)/.exec(normalizedPattern)?.[1]
+      return authority !== undefined && /^[A-Za-z0-9-]+(?:\\\.[A-Za-z0-9-]+)+(?::[1-9][0-9]{0,4})?$/.test(authority)
+    },
+    { message: 'frameUrl must begin with an anchored, exact HTTPS origin' },
+  )
+  .refine((pattern) => !hasTopLevelAlternation(pattern), {
+    message: 'frameUrl must not use top-level alternation that can escape its trusted origin',
+  })
+
 // We must use z.lazy() because WorkflowStep and WorkflowActionType refer to each other.
 export const WorkflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() =>
   z.object({
     description: z.string(),
+    frameUrl: FrameUrlSchema.optional(),
     waitFor: z.array(WorkflowWaitForDefinitionSchema),
     action: z
       .object({

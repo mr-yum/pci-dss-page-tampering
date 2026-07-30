@@ -16,6 +16,9 @@ export type WorkflowWaitForDefinition = {
 
 export type WorkflowStep = {
   description: string
+  // When set, resolve the step inside the first child frame whose URL matches
+  // this regular expression. Omit it to act on the top-level page.
+  frameUrl?: string | undefined
   waitFor: WorkflowWaitForDefinition[]
   action: WorkflowActionType
 }
