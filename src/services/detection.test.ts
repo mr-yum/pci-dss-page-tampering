@@ -272,7 +272,7 @@ describe('DetectionService framed workflow actions', () => {
     const element = {
       evaluate: jest.fn().mockImplementation(async (callback) => callback(input)),
       type: jest.fn().mockImplementation(async () => {
-        input.value = '4000 0000 0000 0002'
+        input.value = '9999 9999 9999 9991'
       }),
       dispose: jest.fn().mockResolvedValue(undefined),
     } as unknown as ElementHandle<Element>
@@ -280,14 +280,14 @@ describe('DetectionService framed workflow actions', () => {
       description: 'Enter card number',
       querySelector: 'input[name="cardnumber"]',
       frameUrl: '^https://payments\\.example\\.com/card-frame$',
-      action: { type: 'input', value: '4000000000000002' },
+      action: { type: 'input', value: '9999999999999991' },
       delay: 0,
     }
 
     await serviceInternals().executeAction({} as Page, { context: frame, element }, step, target, browser)
 
     expect(element.evaluate).toHaveBeenCalledTimes(2)
-    expect(element.type).toHaveBeenCalledWith('4000000000000002', { delay: 25 })
+    expect(element.type).toHaveBeenCalledWith('9999999999999991', { delay: 25 })
     expect(element.dispose).toHaveBeenCalledTimes(1)
   })
 
