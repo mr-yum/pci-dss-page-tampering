@@ -22,7 +22,7 @@ import { ExecutionMode, type RuntimeConfiguration } from './types/config.js'
 import type { ExecutionSummary } from './types/execution-summary.js'
 import { getInventoryWorkflows, type Inventory, type InventoryAlert, type InventoryDifferenceResult, type InventoryWorkflow } from './types/inventory/model.js'
 import { PullTarget, type Target } from './types/target.js'
-import { mapConcurrentGroupsSequentially } from './utils/concurrency.js'
+import { mapGroupsSequentially } from './utils/concurrency.js'
 import { getScriptContentMatchersFromInventory } from './utils/script/matcher.js'
 import { redactRepositoryTarget } from './utils/url.js'
 import { collectTotpSeedRefs } from './utils/workflow.js'
@@ -239,9 +239,9 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
       log('Preparing to run inventory workflow.')
       // Variations in one inventory commonly exercise the same application
       // and payment backends. Run them serially to avoid one synthetic user
-      // starving or rate-limiting another; separate inventories still run
-      // concurrently.
-      const targetRunResults = await mapConcurrentGroupsSequentially(
+      // starving or rate-limiting another. Inventory files are also serial so
+      // independent hosted-payment frames cannot starve the shared browser.
+      const targetRunResults = await mapGroupsSequentially(
         filteredInventory,
         (inventory) => getWorkflowsForTargetFilter(inventory, config.targetFilter.targetName),
         async (inventory, workflow) => {
@@ -350,7 +350,7 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
 
       // Run detection workflow
       log('Preparing to run detection workflow.')
-      await mapConcurrentGroupsSequentially(
+      await mapGroupsSequentially(
         filteredDetectionInventory,
         (inventory) => getWorkflowsForTargetFilter(inventory, config.targetFilter.targetName),
         async (inventory, workflow) => {

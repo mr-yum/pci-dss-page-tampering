@@ -96,7 +96,7 @@ jobs:
         # Variations in one inventory run serially so payment workflows do not
         # contend. Leave enough time for their application-level timeout and
         # alert/cleanup handling to complete instead of hard-cancelling the job.
-        timeout-minutes: 60
+        timeout-minutes: 120
         run: |
           echo "▶️ Running PCI DSS Page Tampering Detection..."
 

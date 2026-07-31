@@ -1,4 +1,4 @@
-import { mapConcurrentGroupsSequentially } from './concurrency.js'
+import { mapGroupsSequentially } from './concurrency.js'
 
 type Deferred = { promise: Promise<void>; resolve: () => void }
 
@@ -10,8 +10,8 @@ function deferred(): Deferred {
   return { promise, resolve }
 }
 
-describe('mapConcurrentGroupsSequentially', () => {
-  it('runs groups concurrently without overlapping items from one group', async () => {
+describe('mapGroupsSequentially', () => {
+  it('does not overlap items within or across groups', async () => {
     const gates = {
       'a-1': deferred(),
       'a-2': deferred(),
@@ -24,7 +24,7 @@ describe('mapConcurrentGroupsSequentially', () => {
       { id: 'b', items: ['1', '2'] },
     ]
 
-    const execution = mapConcurrentGroupsSequentially(
+    const execution = mapGroupsSequentially(
       groups,
       (group) => group.items,
       async (group, item) => {
@@ -35,23 +35,51 @@ describe('mapConcurrentGroupsSequentially', () => {
       },
     )
 
-    expect(started).toEqual(['a-1', 'b-1'])
+    expect(started).toEqual(['a-1'])
 
     gates['a-1'].resolve()
     await Promise.resolve()
     await Promise.resolve()
-    expect(started).toEqual(['a-1', 'b-1', 'a-2'])
+    expect(started).toEqual(['a-1', 'a-2'])
+
+    gates['a-2'].resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(started).toEqual(['a-1', 'a-2', 'b-1'])
 
     gates['b-1'].resolve()
     await Promise.resolve()
     await Promise.resolve()
-    expect(started).toEqual(['a-1', 'b-1', 'a-2', 'b-2'])
+    expect(started).toEqual(['a-1', 'a-2', 'b-1', 'b-2'])
 
-    gates['a-2'].resolve()
     gates['b-2'].resolve()
     await expect(execution).resolves.toEqual([
       ['a-1', 'a-2'],
       ['b-1', 'b-2'],
     ])
+  })
+
+  it('continues later items and groups before reporting collected failures', async () => {
+    const started: string[] = []
+    const firstError = new Error('first failed')
+    const secondError = new Error('second failed')
+
+    const execution = mapGroupsSequentially(
+      [
+        { id: 'a', items: ['1', '2'] },
+        { id: 'b', items: ['1', '2'] },
+      ],
+      (group) => group.items,
+      async (group, item) => {
+        const key = `${group.id}-${item}`
+        started.push(key)
+        if (key === 'a-1') throw firstError
+        if (key === 'b-1') throw secondError
+        return key
+      },
+    )
+
+    await expect(execution).rejects.toEqual(new AggregateError([firstError, secondError], '2 sequential workflow execution(s) failed'))
+    expect(started).toEqual(['a-1', 'a-2', 'b-1', 'b-2'])
   })
 })

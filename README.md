@@ -120,9 +120,9 @@ Inventory mode runs every `inventory` member and combines all observations
 before calculating one update. Detection mode runs every matching `detection`
 member against that same reviewed inventory. Variations from one inventory run
 serially so they do not contend for the same application or payment-provider
-resources; different inventory files can still run concurrently. The legacy
-`target.inventory` / `target.detection` form remains valid and is treated as
-workflow `default`.
+resources. Inventory files also run serially because their hosted payment
+frames share one browser process. The legacy `target.inventory` /
+`target.detection` form remains valid and is treated as workflow `default`.
 
 Use `workflowMatcher` anywhere another matcher can be used. It matches the
 stable workflow `id`, so entries can be shared or scoped as narrowly as needed:
