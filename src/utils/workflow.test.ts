@@ -44,4 +44,37 @@ describe('collectTotpSeedRefs', () => {
       },
     ])
   })
+
+  it('preserves a click response matcher for execution-time synchronization', () => {
+    const responseStep = step({
+      type: 'click',
+      waitForResponse: '^https://api\\.payments\\.example/v1/payment_methods(?:\\?.*)?$',
+    })
+
+    expect(stepsToPuppeteerLocatorAction([responseStep])).toEqual([
+      {
+        description: 'step',
+        querySelector: 'input[name="field"]',
+        frameUrl: undefined,
+        action: {
+          type: 'click',
+          waitForNavigation: false,
+          waitForResponse: '^https://api\\.payments\\.example/v1/payment_methods(?:\\?.*)?$',
+        },
+        delay: 0,
+      },
+    ])
+  })
+
+  it('rejects response synchronization on a programmatically constructed non-click action', () => {
+    const invalidStep = step({ type: 'input', value: 'value', waitForResponse: '^https://api\\.payments\\.example/' })
+
+    expect(() => stepsToPuppeteerLocatorAction([invalidStep])).toThrow("waitForResponse is only supported for workflow actions of type 'click'")
+  })
+
+  it('rejects an untrusted response matcher in a programmatically constructed click action', () => {
+    const invalidStep = step({ type: 'click', waitForResponse: '.*' })
+
+    expect(() => stepsToPuppeteerLocatorAction([invalidStep])).toThrow('waitForResponse must begin with an anchored, exact HTTPS origin')
+  })
 })

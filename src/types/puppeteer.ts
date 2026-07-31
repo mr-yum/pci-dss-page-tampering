@@ -19,6 +19,7 @@ export type PuppeteerAction = PuppeteerClickAction | PuppeteerInputAction | Pupp
 export type PuppeteerClickAction = {
   type: 'click'
   waitForNavigation: boolean
+  waitForResponse?: string | undefined
 }
 
 export type PuppeteerInputAction = {

@@ -101,9 +101,7 @@ export class DetectionService implements IDetectionService {
       // date with availability.
       navigationUrl = resolveDateTemplates(puppeteerWorkflow.target.url)
       try {
-        await page.goto(navigationUrl, {
-          waitUntil: 'networkidle2',
-        })
+        await this.navigateToTarget(page, navigationUrl, target)
       } catch (navError) {
         if (navError instanceof Error && navError.name === 'TimeoutError') {
           target.logger.error(`NAVIGATION TIMEOUT ERROR`)
@@ -252,11 +250,24 @@ export class DetectionService implements IDetectionService {
       switch (step.action.type) {
         case 'click': {
           const action: PuppeteerClickAction = step.action
-          if (action.waitForNavigation) {
-            await Promise.all([this.waitForActionNavigation(page, actionTarget.context), this.evalClick(actionTarget, step)])
-          } else {
-            await this.evalClick(actionTarget, step)
+          const completionSignals: Promise<unknown>[] = []
+          if (action.waitForNavigation) completionSignals.push(this.waitForActionNavigation(page, actionTarget.context))
+          if (action.waitForResponse !== undefined) {
+            const responsePattern = new RegExp(action.waitForResponse)
+            completionSignals.push(
+              page.waitForResponse(async (response) => {
+                // Ignore CORS preflight: it uses the same URL but is not the
+                // application response that proves the operation occurred.
+                if (response.request().method() === 'OPTIONS' || !responsePattern.test(response.url())) return false
+                // Keep the body read inside Puppeteer's response predicate so
+                // the page timeout bounds the whole completion signal.
+                await response.content()
+                return true
+              }),
+            )
           }
+          completionSignals.push(this.evalClick(actionTarget, step))
+          await Promise.all(completionSignals)
           break
         }
 
@@ -484,6 +495,27 @@ export class DetectionService implements IDetectionService {
 
     const observedFrameUrls = [...new Set(page.frames().map((frame) => this.redactFrameUrl(frame.url())))].join(', ')
     throw new TimeoutError(`Timed out waiting for selector '${step.querySelector}' in a frame URL matching /${step.frameUrl}/. Observed frame URLs: ${observedFrameUrls || '(none)'}`)
+  }
+
+  private async navigateToTarget(page: Page, url: string, target: Target): Promise<void> {
+    const maxAttempts = 3
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await page.goto(url, { waitUntil: 'networkidle2' })
+        return
+      } catch (error) {
+        if (!this.isRetryableNavigationError(error) || attempt >= maxAttempts) {
+          throw error
+        }
+        target.logger.log(`Transient initial navigation failure; retrying (${attempt + 1}/${maxAttempts}).`)
+        await this.sleep(attempt * 1000)
+      }
+    }
+  }
+
+  private isRetryableNavigationError(error: unknown): boolean {
+    if (!(error instanceof Error)) return false
+    return error.name === 'TimeoutError' || error.message.includes('Navigating frame was detached') || error.message.includes('net::ERR_NETWORK_CHANGED')
   }
 
   private redactFrameUrl(url: string): string {

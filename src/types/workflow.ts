@@ -6,6 +6,9 @@ export type WorkflowActionType = {
   seedRef?: string | undefined
   delay?: number | undefined
   waitForNavigation?: true | undefined
+  // For click actions, wait for a response whose URL matches this regular
+  // expression. Deserialized workflows require an anchored HTTPS origin.
+  waitForResponse?: string | undefined
   steps?: WorkflowStep[] | undefined
 }
 

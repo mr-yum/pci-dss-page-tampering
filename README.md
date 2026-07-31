@@ -216,6 +216,30 @@ Anchor frame matchers to a trusted HTTPS origin and the narrowest stable path.
 The frame is resolved when the step executes, so dynamically mounted payment
 frames are supported. The same mechanism works in nested `clickPopup` steps.
 
+### Waiting for a Click Response
+
+When a click starts asynchronous validation without a stable completion screen,
+set `waitForResponse` to the expected response URL. The response listener is
+registered before the click, uses the page's normal workflow timeout, and waits
+for the matching response body to complete. The option is click-only and can be
+combined with `waitForNavigation` when both signals are required:
+
+```json
+{
+  "description": "Submit payment details",
+  "waitFor": [{ "type": "button", "identifier": "Submit" }],
+  "action": {
+    "type": "click",
+    "waitForResponse": "^https://api\\.payments\\.example/v1/validate(?:\\?.*)?$"
+  }
+}
+```
+
+The matcher must start with an anchored, exact HTTPS origin; keep its path as
+narrow and as late in the operation as the integration permits. A preliminary
+tokenization response is usually too early when the workflow needs to observe
+subsequent authentication or validation resources.
+
 ### Date Placeholders in Target URLs
 
 Booking-style targets often need a future date in the URL — a hardcoded date goes stale, and "today" runs out of availability late in the day. Target URLs may embed `{{date}}` or `{{date+Nd}}` placeholders, resolved to a UTC `YYYY-MM-DD` at navigation time:

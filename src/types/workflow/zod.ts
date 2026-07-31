@@ -34,37 +34,42 @@ export const WorkflowWaitForDefinitionSchema: z.ZodType<WorkflowWaitForDefinitio
   identifier: z.string(),
 })
 
-const FrameUrlSchema = z
-  .string()
-  .min(1)
-  .refine(
-    (pattern) => {
-      try {
-        new RegExp(pattern)
-        return true
-      } catch {
-        return false
-      }
-    },
-    { message: 'frameUrl must be a valid regular expression' },
-  )
-  .refine(
-    (pattern) => {
-      const normalizedPattern = pattern.replaceAll('\\/', '/')
-      const authority = /^\^https:\/\/([^/]+)\//.exec(normalizedPattern)?.[1]
-      if (authority === undefined) return false
+function trustedHttpsPatternSchema(fieldName: 'frameUrl' | 'waitForResponse') {
+  return z
+    .string()
+    .min(1)
+    .refine(
+      (pattern) => {
+        try {
+          new RegExp(pattern)
+          return true
+        } catch {
+          return false
+        }
+      },
+      { message: `${fieldName} must be a valid regular expression` },
+    )
+    .refine(
+      (pattern) => {
+        const normalizedPattern = pattern.replaceAll('\\/', '/')
+        const authority = /^\^https:\/\/([^/]+)\//.exec(normalizedPattern)?.[1]
+        if (authority === undefined) return false
 
-      const authorityParts = /^([A-Za-z0-9-]+(?:\\\.[A-Za-z0-9-]+)+)(?::([1-9][0-9]{0,4}))?$/.exec(authority)
-      if (authorityParts === null) return false
+        const authorityParts = /^([A-Za-z0-9-]+(?:\\\.[A-Za-z0-9-]+)+)(?::([1-9][0-9]{0,4}))?$/.exec(authority)
+        if (authorityParts === null) return false
 
-      const port = authorityParts[2]
-      return port === undefined || Number(port) <= 65535
-    },
-    { message: 'frameUrl must begin with an anchored, exact HTTPS origin' },
-  )
-  .refine((pattern) => !hasTopLevelAlternation(pattern), {
-    message: 'frameUrl must not use top-level alternation that can escape its trusted origin',
-  })
+        const port = authorityParts[2]
+        return port === undefined || Number(port) <= 65535
+      },
+      { message: `${fieldName} must begin with an anchored, exact HTTPS origin` },
+    )
+    .refine((pattern) => !hasTopLevelAlternation(pattern), {
+      message: `${fieldName} must not use top-level alternation that can escape its trusted origin`,
+    })
+}
+
+const FrameUrlSchema = trustedHttpsPatternSchema('frameUrl')
+export const WaitForResponseSchema = trustedHttpsPatternSchema('waitForResponse')
 
 // We must use z.lazy() because WorkflowStep and WorkflowActionType refer to each other.
 export const WorkflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() =>
@@ -79,6 +84,7 @@ export const WorkflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() =>
         seedRef: z.string().optional(),
         delay: z.number().optional(),
         waitForNavigation: z.literal(true).optional(),
+        waitForResponse: WaitForResponseSchema.optional(),
         // This is the recursive part, referring back to workflowStepSchema
         steps: z.array(WorkflowStepSchema).optional(),
       })
@@ -90,6 +96,13 @@ export const WorkflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() =>
             code: z.ZodIssueCode.custom,
             path: ['seedRef'],
             message: "Workflow actions of type 'totp' require a non-empty seedRef naming a seed passed via --totp-seed",
+          })
+        }
+        if (action.waitForResponse !== undefined && action.type !== 'click') {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['waitForResponse'],
+            message: "waitForResponse is only supported for workflow actions of type 'click'",
           })
         }
       }) satisfies z.ZodType<WorkflowActionType>, // Ensures this object matches the Action type

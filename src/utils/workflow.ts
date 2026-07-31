@@ -1,6 +1,7 @@
 import type { PuppeteerAction, PuppeteerLocatorAction, PuppeteerWorkflow } from '../types/puppeteer.js'
 import type { Target } from '../types/target.js'
 import type { Workflow, WorkflowActionType, WorkflowStep, WorkflowWaitForDefinition } from '../types/workflow.js'
+import { WaitForResponseSchema } from '../types/workflow/zod.js'
 import { WORKFLOW_PATH } from './constants.js'
 import { getWorkflowDefinitionFromFile } from './file.js'
 
@@ -68,11 +69,18 @@ function waitForToQuerySelector(waitFor: WorkflowWaitForDefinition[]): string {
 }
 
 function actionToPuppeteerAction(action: WorkflowActionType): PuppeteerAction {
+  // Deserialized workflows are protected by Zod; retain the same fail-secure
+  // behaviour for JavaScript callers or TypeScript casts that bypass it.
+  if (action.type !== 'click' && action.waitForResponse !== undefined) {
+    throw new Error("waitForResponse is only supported for workflow actions of type 'click'")
+  }
+
   switch (action.type) {
     case 'click': {
       return {
         type: 'click',
         waitForNavigation: action.waitForNavigation ?? false,
+        waitForResponse: action.waitForResponse === undefined ? undefined : WaitForResponseSchema.parse(action.waitForResponse),
       }
     }
     case 'input': {

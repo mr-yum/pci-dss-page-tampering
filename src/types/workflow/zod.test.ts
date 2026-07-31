@@ -95,4 +95,19 @@ describe('WorkflowStepSchema', () => {
     })
     expect(result.success).toBe(true)
   })
+
+  it('accepts an anchored HTTPS response matcher on a click action', () => {
+    const result = WorkflowStepSchema.safeParse(step({ type: 'click', waitForResponse: '^https://api\\.payments\\.example/v1/payment_methods(?:\\?.*)?$' }))
+    expect(result.success).toBe(true)
+  })
+
+  it.each(['.*', 'api\\.payments\\.example', '^http://api\\.payments\\.example/', '^https://.*/'])('rejects an untrusted response matcher: %s', (waitForResponse) => {
+    const result = WorkflowStepSchema.safeParse(step({ type: 'click', waitForResponse }))
+    expect(result.success).toBe(false)
+  })
+
+  it('rejects a response matcher on a non-click action', () => {
+    const result = WorkflowStepSchema.safeParse(step({ type: 'input', value: 'value', waitForResponse: '^https://api\\.payments\\.example/v1/complete$' }))
+    expect(result.success).toBe(false)
+  })
 })

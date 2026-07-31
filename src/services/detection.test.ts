@@ -10,6 +10,8 @@ jest.mock('puppeteer', () => ({
 
 type DetectionServiceInternals = {
   executeAction(page: Page, actionTarget: { context: Page | Frame; element?: ElementHandle<Element> }, step: PuppeteerLocatorAction, target: Target, browser: Browser): Promise<void>
+  navigateToTarget(page: Page, url: string, target: Target): Promise<void>
+  sleep(ms: number): Promise<void>
   waitForActionTarget(page: Page, step: PuppeteerLocatorAction): Promise<{ context: Page | Frame; element?: ElementHandle<Element> }>
   redactFrameUrl(url: string): string
 }
@@ -22,6 +24,41 @@ function serviceInternals(): DetectionServiceInternals {
 }
 
 describe('DetectionService framed workflow actions', () => {
+  it('retries a transient initial navigation failure', async () => {
+    const page = {
+      goto: jest.fn().mockRejectedValueOnce(new Error('net::ERR_NETWORK_CHANGED at https://example.com')).mockResolvedValue(null),
+    } as unknown as Page
+    const logger = { log: jest.fn() }
+    const workflowTarget = { logger } as unknown as Target
+    const service = serviceInternals()
+    service.sleep = jest.fn().mockResolvedValue(undefined)
+
+    await service.navigateToTarget(page, 'https://example.com', workflowTarget)
+
+    expect(page.goto).toHaveBeenCalledTimes(2)
+    expect(page.goto).toHaveBeenCalledWith('https://example.com', { waitUntil: 'networkidle2' })
+    expect(service.sleep).toHaveBeenCalledWith(1000)
+    expect(logger.log).toHaveBeenCalledWith('Transient initial navigation failure; retrying (2/3).')
+  })
+
+  it('fails after exhausting transient initial navigation retries', async () => {
+    const firstError = new Error('Navigating frame was detached')
+    const secondError = new Error('Navigating frame was detached')
+    const finalError = new Error('Navigating frame was detached')
+    const page = {
+      goto: jest.fn().mockRejectedValueOnce(firstError).mockRejectedValueOnce(secondError).mockRejectedValueOnce(finalError),
+    } as unknown as Page
+    const workflowTarget = { logger: { log: jest.fn() } } as unknown as Target
+    const service = serviceInternals()
+    service.sleep = jest.fn().mockResolvedValue(undefined)
+
+    await expect(service.navigateToTarget(page, 'https://example.com', workflowTarget)).rejects.toBe(finalError)
+
+    expect(page.goto).toHaveBeenCalledTimes(3)
+    expect(service.sleep).toHaveBeenNthCalledWith(1, 1000)
+    expect(service.sleep).toHaveBeenNthCalledWith(2, 2000)
+  })
+
   it('re-resolves a main-page input when the visible element is replaced', async () => {
     const click = jest.fn().mockResolvedValue(undefined)
     const fill = jest.fn().mockResolvedValue(undefined)
@@ -111,6 +148,62 @@ describe('DetectionService framed workflow actions', () => {
     expect(frame.waitForNavigation).toHaveBeenCalledTimes(1)
     expect(page.waitForNavigation).toHaveBeenCalledTimes(1)
     expect(callOrder).toEqual(['wait', 'click'])
+  })
+
+  it('registers a response waiter before clicking and waits for the matching response', async () => {
+    const callOrder: string[] = []
+    const matchingResponse = {
+      url: () => 'https://api.payments.example/v1/payment_methods?client=browser',
+      request: () => ({ method: () => 'POST' }),
+      content: jest.fn().mockImplementation(async () => {
+        callOrder.push('body')
+        return new Uint8Array()
+      }),
+    }
+    const page = {
+      waitForResponse: jest.fn().mockImplementation(async (predicate: (response: { url(): string; request(): { method(): string }; content(): Promise<Uint8Array> }) => Promise<boolean>) => {
+        callOrder.push('wait')
+        const preflightResponse = {
+          url: matchingResponse.url,
+          request: () => ({ method: () => 'OPTIONS' }),
+          content: jest.fn().mockResolvedValue(new Uint8Array()),
+        }
+        expect(await predicate(preflightResponse)).toBe(false)
+        expect(preflightResponse.content).not.toHaveBeenCalled()
+        expect(
+          await predicate({
+            url: () => 'https://api.payments.example/v1/other',
+            request: () => ({ method: () => 'POST' }),
+            content: jest.fn().mockResolvedValue(new Uint8Array()),
+          }),
+        ).toBe(false)
+        expect(await predicate(matchingResponse)).toBe(true)
+        return matchingResponse
+      }),
+    } as unknown as Page
+    const element = {
+      evaluate: jest.fn().mockImplementation(() => {
+        callOrder.push('click')
+        return Promise.resolve(undefined)
+      }),
+      dispose: jest.fn().mockResolvedValue(undefined),
+    } as unknown as ElementHandle<Element>
+    const step: PuppeteerLocatorAction = {
+      description: 'Submit payment details',
+      querySelector: 'button[type="submit"]',
+      action: {
+        type: 'click',
+        waitForNavigation: false,
+        waitForResponse: '^https://api\\.payments\\.example/v1/payment_methods(?:\\?.*)?$',
+      },
+      delay: 0,
+    }
+
+    await serviceInternals().executeAction(page, { context: page, element }, step, target, browser)
+
+    expect(page.waitForResponse).toHaveBeenCalledTimes(1)
+    expect(matchingResponse.content).toHaveBeenCalledTimes(1)
+    expect(callOrder).toEqual(['wait', 'click', 'body'])
   })
 
   it('accepts a parent navigation triggered from a selected frame', async () => {
