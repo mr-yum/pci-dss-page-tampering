@@ -228,6 +228,15 @@ Anchor frame matchers to a trusted HTTPS origin and the narrowest stable path.
 The frame is resolved when the step executes, so dynamically mounted payment
 frames are supported. The same mechanism works in nested `clickPopup` steps.
 
+For a later step whose pre-action target occasionally fails to mount, set
+`"reloadOnMissingTarget": true` on its action. This option requires an anchored
+trusted `frameUrl`, preventing a redirected top-level page from receiving the
+configured input. The monitor waits 30 seconds, navigates once to the current
+HTTPS URL using GET, then resolves the trusted frame target again using the
+normal workflow timeout. This recovery neither resubmits a POST that produced
+the page nor replays the step's action; use it only when a GET of the current
+route safely reconstructs the required state.
+
 ### Waiting for a Click Response
 
 When a click starts asynchronous validation without a stable completion screen,

@@ -68,7 +68,7 @@ function trustedHttpsPatternSchema(fieldName: 'frameUrl' | 'waitForResponse') {
     })
 }
 
-const FrameUrlSchema = trustedHttpsPatternSchema('frameUrl')
+export const FrameUrlSchema = trustedHttpsPatternSchema('frameUrl')
 export const WaitForResponseSchema = trustedHttpsPatternSchema('waitForResponse')
 export const WaitForResponseTimeoutSchema = z.number().int().positive().max(300000)
 export const WaitForResponseMethodSchema = z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD'])
@@ -91,54 +91,65 @@ export const PostActionDelaySchema = z.number().int().positive().max(300000)
 
 // We must use z.lazy() because WorkflowStep and WorkflowActionType refer to each other.
 export const WorkflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() =>
-  z.object({
-    description: z.string(),
-    frameUrl: FrameUrlSchema.optional(),
-    waitFor: z.array(WorkflowWaitForDefinitionSchema),
-    action: z
-      .object({
-        type: z.enum(['click', 'input', 'escape', 'navigate', 'clickPopup', 'totp']),
-        value: z.string().optional(),
-        seedRef: z.string().optional(),
-        delay: z.number().optional(),
-        waitForNavigation: z.literal(true).optional(),
-        waitForResponse: WaitForResponseSchema.optional(),
-        waitForResponseTimeout: WaitForResponseTimeoutSchema.optional(),
-        waitForResponseMethod: WaitForResponseMethodSchema.optional(),
-        waitForResponseStatuses: WaitForResponseStatusesSchema.optional(),
-        waitForResponseBody: WaitForResponseBodySchema.optional(),
-        postActionDelay: PostActionDelaySchema.optional(),
-        // This is the recursive part, referring back to workflowStepSchema
-        steps: z.array(WorkflowStepSchema).optional(),
-      })
-      .superRefine((action, ctx) => {
-        // Fail-secure: a totp action without a seed reference cannot be
-        // executed, so reject it at deserialization (and in --mode validate).
-        if (action.type === 'totp' && (action.seedRef === undefined || action.seedRef.trim() === '')) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ['seedRef'],
-            message: "Workflow actions of type 'totp' require a non-empty seedRef naming a seed passed via --totp-seed",
-          })
-        }
-        const hasResponseOptions =
-          action.waitForResponse !== undefined || action.waitForResponseTimeout !== undefined || action.waitForResponseMethod !== undefined || action.waitForResponseStatuses !== undefined || action.waitForResponseBody !== undefined
-        if (hasResponseOptions && action.type !== 'click') {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ['waitForResponse'],
-            message: "Response waiting options are only supported for workflow actions of type 'click'",
-          })
-        }
-        if (action.waitForResponse === undefined && (action.waitForResponseTimeout !== undefined || action.waitForResponseMethod !== undefined || action.waitForResponseStatuses !== undefined || action.waitForResponseBody !== undefined)) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ['waitForResponse'],
-            message: 'Response waiting options require waitForResponse',
-          })
-        }
-      }) satisfies z.ZodType<WorkflowActionType>, // Ensures this object matches the Action type
-  }),
+  z
+    .object({
+      description: z.string(),
+      frameUrl: FrameUrlSchema.optional(),
+      waitFor: z.array(WorkflowWaitForDefinitionSchema),
+      action: z
+        .object({
+          type: z.enum(['click', 'input', 'escape', 'navigate', 'clickPopup', 'totp']),
+          value: z.string().optional(),
+          seedRef: z.string().optional(),
+          delay: z.number().optional(),
+          waitForNavigation: z.literal(true).optional(),
+          waitForResponse: WaitForResponseSchema.optional(),
+          waitForResponseTimeout: WaitForResponseTimeoutSchema.optional(),
+          waitForResponseMethod: WaitForResponseMethodSchema.optional(),
+          waitForResponseStatuses: WaitForResponseStatusesSchema.optional(),
+          waitForResponseBody: WaitForResponseBodySchema.optional(),
+          postActionDelay: PostActionDelaySchema.optional(),
+          reloadOnMissingTarget: z.literal(true).optional(),
+          // This is the recursive part, referring back to workflowStepSchema
+          steps: z.array(WorkflowStepSchema).optional(),
+        })
+        .superRefine((action, ctx) => {
+          // Fail-secure: a totp action without a seed reference cannot be
+          // executed, so reject it at deserialization (and in --mode validate).
+          if (action.type === 'totp' && (action.seedRef === undefined || action.seedRef.trim() === '')) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['seedRef'],
+              message: "Workflow actions of type 'totp' require a non-empty seedRef naming a seed passed via --totp-seed",
+            })
+          }
+          const hasResponseOptions =
+            action.waitForResponse !== undefined || action.waitForResponseTimeout !== undefined || action.waitForResponseMethod !== undefined || action.waitForResponseStatuses !== undefined || action.waitForResponseBody !== undefined
+          if (hasResponseOptions && action.type !== 'click') {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['waitForResponse'],
+              message: "Response waiting options are only supported for workflow actions of type 'click'",
+            })
+          }
+          if (action.waitForResponse === undefined && (action.waitForResponseTimeout !== undefined || action.waitForResponseMethod !== undefined || action.waitForResponseStatuses !== undefined || action.waitForResponseBody !== undefined)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['waitForResponse'],
+              message: 'Response waiting options require waitForResponse',
+            })
+          }
+        }) satisfies z.ZodType<WorkflowActionType>, // Ensures this object matches the Action type
+    })
+    .superRefine((step, ctx) => {
+      if (step.action.reloadOnMissingTarget === true && step.frameUrl === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['action', 'reloadOnMissingTarget'],
+          message: 'reloadOnMissingTarget requires a trusted frameUrl so recovery cannot send input to a redirected top-level page',
+        })
+      }
+    }),
 )
 
 // Schema for WorkflowDefinition

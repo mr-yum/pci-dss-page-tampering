@@ -140,7 +140,7 @@ export class DetectionService implements IDetectionService {
 
         try {
           await this.waitForStepDelay(step.delay, index, initialWorkflowDeadline)
-          const actionTarget = index === 0 && navigationUrl !== undefined ? await this.waitForInitialActionTarget(page, step, navigationUrl, target, initialWorkflowDeadline) : await this.waitForActionTarget(page, step)
+          const actionTarget = index === 0 && navigationUrl !== undefined ? await this.waitForInitialActionTarget(page, step, navigationUrl, target, initialWorkflowDeadline) : await this.waitForRecoverableActionTarget(page, step, target)
 
           // Execute action
           await this.executeAction(page, actionTarget, step, target, browser)
@@ -386,7 +386,7 @@ export class DetectionService implements IDetectionService {
                 if (innerStep.delay > 0) {
                   await this.sleep(innerStep.delay)
                 }
-                const innerActionTarget = await this.waitForActionTarget(popupPage, innerStep)
+                const innerActionTarget = await this.waitForRecoverableActionTarget(popupPage, innerStep, target)
                 await this.executeAction(popupPage, innerActionTarget, innerStep, target, browser)
               } catch (popupStepError) {
                 if (popupStepError instanceof Error && popupStepError.name === 'TimeoutError') {
@@ -583,6 +583,24 @@ export class DetectionService implements IDetectionService {
 
     const observedFrameUrls = [...new Set(page.frames().map((frame) => this.redactFrameUrl(frame.url())))].join(', ')
     throw new TimeoutError(`Timed out waiting for selector '${step.querySelector}' in a frame URL matching /${step.frameUrl}/. Observed frame URLs: ${observedFrameUrls || '(none)'}`)
+  }
+
+  private async waitForRecoverableActionTarget(page: Page, step: PuppeteerLocatorAction, target: Target): Promise<ActionTarget> {
+    if (!step.reloadOnMissingTarget) return this.waitForActionTarget(page, step)
+    if (step.frameUrl === undefined) throw new Error('Missing-target recovery requires a trusted frameUrl')
+
+    try {
+      return await this.waitForActionTarget(page, step, Math.min(30000, page.getDefaultTimeout()))
+    } catch (error) {
+      if (!(error instanceof Error) || error.name !== 'TimeoutError') throw error
+      target.logger.log(`Workflow target did not render; reloading the current page once before retrying.`)
+      const recoveryUrl = new URL(page.url())
+      if (recoveryUrl.protocol !== 'https:') throw new Error('Missing-target recovery requires a current HTTPS page URL', { cause: error })
+      // Use an explicit GET navigation. Browser reload can resubmit a POST
+      // that produced the current document and replay a prior side effect.
+      await page.goto(recoveryUrl.href, { waitUntil: 'networkidle2' })
+      return this.waitForActionTarget(page, step)
+    }
   }
 
   private async waitForInitialActionTarget(page: Page, step: PuppeteerLocatorAction, navigationUrl: string, target: Target, deadline = Date.now() + INITIAL_WORKFLOW_TIMEOUT_MS): Promise<ActionTarget> {

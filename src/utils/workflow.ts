@@ -1,7 +1,7 @@
 import type { PuppeteerAction, PuppeteerLocatorAction, PuppeteerWorkflow } from '../types/puppeteer.js'
 import type { Target } from '../types/target.js'
 import type { Workflow, WorkflowActionType, WorkflowStep, WorkflowWaitForDefinition } from '../types/workflow.js'
-import { PostActionDelaySchema, WaitForResponseBodySchema, WaitForResponseMethodSchema, WaitForResponseSchema, WaitForResponseStatusesSchema, WaitForResponseTimeoutSchema } from '../types/workflow/zod.js'
+import { FrameUrlSchema, PostActionDelaySchema, WaitForResponseBodySchema, WaitForResponseMethodSchema, WaitForResponseSchema, WaitForResponseStatusesSchema, WaitForResponseTimeoutSchema } from '../types/workflow/zod.js'
 import { WORKFLOW_PATH } from './constants.js'
 import { getWorkflowDefinitionFromFile } from './file.js'
 
@@ -144,10 +144,11 @@ export function stepsToPuppeteerLocatorAction(steps: WorkflowStep[]): PuppeteerL
     return {
       description: step.description,
       querySelector: querySelector,
-      frameUrl: step.frameUrl,
+      frameUrl: step.frameUrl === undefined ? undefined : FrameUrlSchema.parse(step.frameUrl),
       action: actionToPuppeteerAction(step.action),
       delay: step.action.delay ?? 0,
       ...(step.action.postActionDelay === undefined ? {} : { postActionDelay: PostActionDelaySchema.parse(step.action.postActionDelay) }),
+      ...(step.action.reloadOnMissingTarget === true ? { reloadOnMissingTarget: true } : {}),
     }
   })
 }

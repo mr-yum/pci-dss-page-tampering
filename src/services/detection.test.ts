@@ -14,6 +14,7 @@ type DetectionServiceInternals = {
   sleep(ms: number): Promise<void>
   waitForActionTarget(page: Page, step: PuppeteerLocatorAction, timeout?: number): Promise<{ context: Page | Frame; element?: ElementHandle<Element> }>
   waitForInitialActionTarget(page: Page, step: PuppeteerLocatorAction, navigationUrl: string, target: Target, deadline?: number): Promise<{ context: Page | Frame; element?: ElementHandle<Element> }>
+  waitForRecoverableActionTarget(page: Page, step: PuppeteerLocatorAction, target: Target): Promise<{ context: Page | Frame; element?: ElementHandle<Element> }>
   waitForStepDelay(delay: number, stepIndex: number, initialWorkflowDeadline: number): Promise<void>
   redactFrameUrl(url: string): string
 }
@@ -118,6 +119,75 @@ describe('DetectionService framed workflow actions', () => {
     expect(setTimeout).toHaveBeenNthCalledWith(2, 30000)
     expect(page.goto).toHaveBeenCalledWith('https://booking.example.com/venue', { waitUntil: 'networkidle2', timeout: 120000 })
     expect(logger.log).toHaveBeenCalledWith('Initial workflow content did not render; reloading (2/3).')
+  })
+
+  it('reloads once when an opted-in later target does not render', async () => {
+    const firstTimeout = Object.assign(new Error('payment frame did not render'), { name: 'TimeoutError' })
+    const recoveredTarget = { context: {} as Frame, element: {} as ElementHandle<Element> }
+    const page = {
+      getDefaultTimeout: jest.fn().mockReturnValue(120000),
+      url: jest.fn().mockReturnValue('https://checkout.example.com/pay?new=true'),
+      goto: jest.fn().mockResolvedValue(null),
+    } as unknown as Page
+    const logger = { log: jest.fn() }
+    const workflowTarget = { logger } as unknown as Target
+    const step: PuppeteerLocatorAction = {
+      description: 'Enter card number',
+      querySelector: 'input[name="cardnumber"]',
+      frameUrl: '^https://payments\\.example\\.com/card-frame$',
+      action: { type: 'input', value: '1234567890123456' },
+      delay: 0,
+      reloadOnMissingTarget: true,
+    }
+    const service = serviceInternals()
+    service.waitForActionTarget = jest.fn().mockRejectedValueOnce(firstTimeout).mockResolvedValueOnce(recoveredTarget)
+
+    await expect(service.waitForRecoverableActionTarget(page, step, workflowTarget)).resolves.toBe(recoveredTarget)
+
+    expect(service.waitForActionTarget).toHaveBeenNthCalledWith(1, page, step, 30000)
+    expect(page.goto).toHaveBeenCalledWith('https://checkout.example.com/pay?new=true', { waitUntil: 'networkidle2' })
+    expect(service.waitForActionTarget).toHaveBeenNthCalledWith(2, page, step)
+    expect(logger.log).toHaveBeenCalledWith('Workflow target did not render; reloading the current page once before retrying.')
+  })
+
+  it('refuses missing-target recovery from a non-HTTPS page', async () => {
+    const firstTimeout = Object.assign(new Error('target did not render'), { name: 'TimeoutError' })
+    const page = {
+      getDefaultTimeout: jest.fn().mockReturnValue(120000),
+      url: jest.fn().mockReturnValue('data:text/html,untrusted'),
+      goto: jest.fn(),
+    } as unknown as Page
+    const step: PuppeteerLocatorAction = {
+      description: 'Enter card number',
+      querySelector: 'input[name="cardnumber"]',
+      frameUrl: '^https://payments\\.example\\.com/card-frame$',
+      action: { type: 'input', value: '1234567890123456' },
+      delay: 0,
+      reloadOnMissingTarget: true,
+    }
+    const service = serviceInternals()
+    service.waitForActionTarget = jest.fn().mockRejectedValue(firstTimeout)
+
+    await expect(service.waitForRecoverableActionTarget(page, step, { logger: { log: jest.fn() } } as unknown as Target)).rejects.toThrow('Missing-target recovery requires a current HTTPS page URL')
+    expect(page.goto).not.toHaveBeenCalled()
+  })
+
+  it('refuses missing-target recovery for an unframed step after an HTTPS redirect', async () => {
+    const page = {
+      getDefaultTimeout: jest.fn().mockReturnValue(120000),
+      url: jest.fn().mockReturnValue('https://attacker.example/checkout'),
+      goto: jest.fn(),
+    } as unknown as Page
+    const step: PuppeteerLocatorAction = {
+      description: 'Enter verification code',
+      querySelector: 'input[name="code"]',
+      action: { type: 'input', value: '123456' },
+      delay: 0,
+      reloadOnMissingTarget: true,
+    }
+
+    await expect(serviceInternals().waitForRecoverableActionTarget(page, step, { logger: { log: jest.fn() } } as unknown as Target)).rejects.toThrow('Missing-target recovery requires a trusted frameUrl')
+    expect(page.goto).not.toHaveBeenCalled()
   })
 
   it('re-resolves a main-page input when the visible element is replaced', async () => {

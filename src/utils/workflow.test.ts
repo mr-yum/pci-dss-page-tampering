@@ -30,7 +30,7 @@ describe('collectTotpSeedRefs', () => {
 
   it('preserves a frame URL matcher for execution-time frame resolution', () => {
     const frameStep: WorkflowStep = {
-      ...step({ type: 'input', value: '4242424242424242' }),
+      ...step({ type: 'input', value: '1234567890123456', reloadOnMissingTarget: true }),
       frameUrl: '^https://payments\\.example\\.com/card-frame',
     }
 
@@ -39,10 +39,20 @@ describe('collectTotpSeedRefs', () => {
         description: 'step',
         querySelector: 'input[name="field"]',
         frameUrl: '^https://payments\\.example\\.com/card-frame',
-        action: { type: 'input', value: '4242424242424242' },
+        action: { type: 'input', value: '1234567890123456' },
         delay: 0,
+        reloadOnMissingTarget: true,
       },
     ])
+  })
+
+  it('rejects an untrusted frame matcher in a programmatically constructed recovery step', () => {
+    const frameStep: WorkflowStep = {
+      ...step({ type: 'input', value: 'value', reloadOnMissingTarget: true }),
+      frameUrl: '.*',
+    }
+
+    expect(() => stepsToPuppeteerLocatorAction([frameStep])).toThrow('frameUrl must begin with an anchored, exact HTTPS origin')
   })
 
   it('preserves a click response matcher for execution-time synchronization', () => {

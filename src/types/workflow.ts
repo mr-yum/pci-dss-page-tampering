@@ -18,6 +18,9 @@ export type WorkflowActionType = {
   waitForResponseBody?: string | undefined
   // Optional bounded settling time after the action and its completion signals.
   postActionDelay?: number | undefined
+  // For a later workflow step, reload the current page once when its target
+  // does not appear within the short recovery window. No action is replayed.
+  reloadOnMissingTarget?: true | undefined
   steps?: WorkflowStep[] | undefined
 }
 

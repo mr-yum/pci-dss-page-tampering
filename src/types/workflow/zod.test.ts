@@ -96,6 +96,17 @@ describe('WorkflowStepSchema', () => {
     expect(result.success).toBe(true)
   })
 
+  it('accepts opt-in recovery for a missing pre-action target', () => {
+    expect(
+      WorkflowStepSchema.safeParse({
+        ...step({ type: 'input', value: 'value', reloadOnMissingTarget: true }),
+        frameUrl: '^https://payments\\.example\\.com/card-frame',
+      }).success,
+    ).toBe(true)
+    expect(WorkflowStepSchema.safeParse(step({ type: 'input', value: 'value', reloadOnMissingTarget: true })).success).toBe(false)
+    expect(WorkflowStepSchema.safeParse(step({ type: 'input', value: 'value', reloadOnMissingTarget: false as never })).success).toBe(false)
+  })
+
   it('accepts an anchored HTTPS response matcher on a click action', () => {
     const result = WorkflowStepSchema.safeParse(
       step({

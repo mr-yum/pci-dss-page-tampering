@@ -13,6 +13,7 @@ export type PuppeteerLocatorAction = {
   action: PuppeteerAction
   delay: number
   postActionDelay?: number | undefined
+  reloadOnMissingTarget?: boolean | undefined
 }
 
 export type PuppeteerAction = PuppeteerClickAction | PuppeteerInputAction | PuppeteerTotpAction | PuppeteerEscapeAction | PuppeteerNavigateAction | PuppeteerClickPopupAction
