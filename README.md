@@ -118,8 +118,11 @@ value of `target`, not a complete inventory file:
 
 Inventory mode runs every `inventory` member and combines all observations
 before calculating one update. Detection mode runs every matching `detection`
-member against that same reviewed inventory. The legacy `target.inventory` /
-`target.detection` form remains valid and is treated as workflow `default`.
+member against that same reviewed inventory. Variations from one inventory run
+serially so they do not contend for the same application or payment-provider
+resources; different inventory files can still run concurrently. The legacy
+`target.inventory` / `target.detection` form remains valid and is treated as
+workflow `default`.
 
 Use `workflowMatcher` anywhere another matcher can be used. It matches the
 stable workflow `id`, so entries can be shared or scoped as narrowly as needed:
@@ -195,6 +198,15 @@ npm start -- \
 In the bundled GitHub Actions workflow, seeds are discovered by naming convention rather than hardcoded: every `<NAME>_TOTP_SEED` repository secret is passed as `--totp-seed <name>=<value>`, with the name derived from the prefix (`MY_TARGET_TOTP_SEED` → `my-target`). Adding a TOTP-protected target requires only a new secret — no workflow changes. When a step fires with less than 5 seconds left in the current TOTP window, the run waits for the next window so the code cannot expire mid-submission.
 
 > **Note**: Automating TOTP means the second factor lives alongside the first in the same secrets store, which weakens what MFA provides for that account. Use a dedicated, least-privileged synthetic-monitoring account.
+
+### Initial Workflow Timeout
+
+Initial navigation, the first step's delay and selector wait, and any automatic
+initial-page reloads share one five-minute deadline. Each navigation attempt is
+limited to two minutes and receives no more than the time remaining in that
+shared budget. If the first actionable element cannot be prepared in time, the
+target fails with `Timed out preparing initial workflow content`; later steps
+use their normal workflow or explicitly configured response timeout.
 
 ### Interacting with Embedded Payment Frames
 

@@ -36,6 +36,12 @@ const TOTP_TYPING_DELAY_MS = 100
 // target load while retaining the pinned, origin-validated ElementHandle.
 const FRAMED_INPUT_TYPING_DELAY_MS = 25
 
+// Bound the combined initial navigation, selector waits, and reload retries.
+// Without one shared deadline, their nested per-attempt timeouts can compound
+// into a multi-minute delay for every later variation in the same inventory.
+const INITIAL_WORKFLOW_TIMEOUT_MS = 300000
+const NAVIGATION_ATTEMPT_TIMEOUT_MS = 120000
+
 type ActionTarget = {
   context: Page | Frame
   element?: ElementHandle<Element>
@@ -105,8 +111,9 @@ export class DetectionService implements IDetectionService {
       // placeholders at run time so booking-style targets always request a
       // date with availability.
       navigationUrl = resolveDateTemplates(puppeteerWorkflow.target.url)
+      const initialWorkflowDeadline = Date.now() + INITIAL_WORKFLOW_TIMEOUT_MS
       try {
-        await this.navigateToTarget(page, navigationUrl, target)
+        await this.navigateToTarget(page, navigationUrl, target, initialWorkflowDeadline)
       } catch (navError) {
         if (navError instanceof Error && navError.name === 'TimeoutError') {
           target.logger.error(`NAVIGATION TIMEOUT ERROR`)
@@ -132,10 +139,8 @@ export class DetectionService implements IDetectionService {
         target.logger.log(`(${currentStepIndex}/${totalStepCount}) ${step.description} for target '${puppeteerWorkflow.target.url}'.`)
 
         try {
-          if (step.delay > 0) {
-            await this.sleep(step.delay)
-          }
-          const actionTarget = index === 0 && navigationUrl !== undefined ? await this.waitForInitialActionTarget(page, step, navigationUrl, target) : await this.waitForActionTarget(page, step)
+          await this.waitForStepDelay(step.delay, index, initialWorkflowDeadline)
+          const actionTarget = index === 0 && navigationUrl !== undefined ? await this.waitForInitialActionTarget(page, step, navigationUrl, target, initialWorkflowDeadline) : await this.waitForActionTarget(page, step)
 
           // Execute action
           await this.executeAction(page, actionTarget, step, target, browser)
@@ -551,34 +556,52 @@ export class DetectionService implements IDetectionService {
     throw new TimeoutError(`Timed out waiting for selector '${step.querySelector}' in a frame URL matching /${step.frameUrl}/. Observed frame URLs: ${observedFrameUrls || '(none)'}`)
   }
 
-  private async waitForInitialActionTarget(page: Page, step: PuppeteerLocatorAction, navigationUrl: string, target: Target): Promise<ActionTarget> {
+  private async waitForInitialActionTarget(page: Page, step: PuppeteerLocatorAction, navigationUrl: string, target: Target, deadline = Date.now() + INITIAL_WORKFLOW_TIMEOUT_MS): Promise<ActionTarget> {
     const attemptTimeouts = [30000, 30000, page.getDefaultTimeout()]
-    for (const [index, timeout] of attemptTimeouts.entries()) {
+    for (const [index, configuredTimeout] of attemptTimeouts.entries()) {
       try {
+        const remainingTime = deadline - Date.now()
+        if (remainingTime <= 0) throw new TimeoutError('Timed out preparing initial workflow content')
+        const timeout = Math.min(configuredTimeout, remainingTime)
         return await this.waitForActionTarget(page, step, timeout)
       } catch (error) {
         const isFinalAttempt = index === attemptTimeouts.length - 1
-        if (!(error instanceof Error) || error.name !== 'TimeoutError' || isFinalAttempt) throw error
+        if (!(error instanceof Error) || error.name !== 'TimeoutError' || isFinalAttempt || Date.now() >= deadline) throw error
 
         target.logger.log(`Initial workflow content did not render; reloading (${index + 2}/${attemptTimeouts.length}).`)
-        await this.navigateToTarget(page, navigationUrl, target)
+        await this.navigateToTarget(page, navigationUrl, target, deadline)
       }
     }
     throw new Error('Initial action target retry loop exhausted unexpectedly')
   }
 
-  private async navigateToTarget(page: Page, url: string, target: Target): Promise<void> {
+  private async waitForStepDelay(delay: number, stepIndex: number, initialWorkflowDeadline: number): Promise<void> {
+    if (delay <= 0) return
+    if (stepIndex !== 0) {
+      await this.sleep(delay)
+      return
+    }
+
+    const remainingTime = initialWorkflowDeadline - Date.now()
+    if (remainingTime <= 0) throw new TimeoutError('Timed out preparing initial workflow content')
+    await this.sleep(Math.min(delay, remainingTime))
+    if (delay >= remainingTime || Date.now() >= initialWorkflowDeadline) throw new TimeoutError('Timed out preparing initial workflow content')
+  }
+
+  private async navigateToTarget(page: Page, url: string, target: Target, deadline = Date.now() + INITIAL_WORKFLOW_TIMEOUT_MS): Promise<void> {
     const maxAttempts = 3
     for (let attempt = 1; ; attempt++) {
       try {
-        await page.goto(url, { waitUntil: 'networkidle2' })
+        const remainingTime = deadline - Date.now()
+        if (remainingTime <= 0) throw new TimeoutError('Timed out preparing initial workflow content')
+        await page.goto(url, { waitUntil: 'networkidle2', timeout: Math.min(NAVIGATION_ATTEMPT_TIMEOUT_MS, remainingTime) })
         return
       } catch (error) {
-        if (!this.isRetryableNavigationError(error) || attempt >= maxAttempts) {
+        if (!this.isRetryableNavigationError(error) || attempt >= maxAttempts || Date.now() >= deadline) {
           throw error
         }
         target.logger.log(`Transient initial navigation failure; retrying (${attempt + 1}/${maxAttempts}).`)
-        await this.sleep(attempt * 1000)
+        await this.sleep(Math.min(attempt * 1000, Math.max(0, deadline - Date.now())))
       }
     }
   }

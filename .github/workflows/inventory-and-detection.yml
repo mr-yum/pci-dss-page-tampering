@@ -93,7 +93,10 @@ jobs:
           echo "TOTP_ARGS=$TOTP_ARGS" >> "$GITHUB_ENV"
 
       - name: Run PCI DSS detection
-        timeout-minutes: 30
+        # Variations in one inventory run serially so payment workflows do not
+        # contend. Leave enough time for their application-level timeout and
+        # alert/cleanup handling to complete instead of hard-cancelling the job.
+        timeout-minutes: 60
         run: |
           echo "▶️ Running PCI DSS Page Tampering Detection..."
 

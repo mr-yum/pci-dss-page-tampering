@@ -10,10 +10,11 @@ jest.mock('puppeteer', () => ({
 
 type DetectionServiceInternals = {
   executeAction(page: Page, actionTarget: { context: Page | Frame; element?: ElementHandle<Element> }, step: PuppeteerLocatorAction, target: Target, browser: Browser): Promise<void>
-  navigateToTarget(page: Page, url: string, target: Target): Promise<void>
+  navigateToTarget(page: Page, url: string, target: Target, deadline?: number): Promise<void>
   sleep(ms: number): Promise<void>
   waitForActionTarget(page: Page, step: PuppeteerLocatorAction, timeout?: number): Promise<{ context: Page | Frame; element?: ElementHandle<Element> }>
-  waitForInitialActionTarget(page: Page, step: PuppeteerLocatorAction, navigationUrl: string, target: Target): Promise<{ context: Page | Frame; element?: ElementHandle<Element> }>
+  waitForInitialActionTarget(page: Page, step: PuppeteerLocatorAction, navigationUrl: string, target: Target, deadline?: number): Promise<{ context: Page | Frame; element?: ElementHandle<Element> }>
+  waitForStepDelay(delay: number, stepIndex: number, initialWorkflowDeadline: number): Promise<void>
   redactFrameUrl(url: string): string
 }
 
@@ -25,6 +26,8 @@ function serviceInternals(): DetectionServiceInternals {
 }
 
 describe('DetectionService framed workflow actions', () => {
+  afterEach(() => jest.restoreAllMocks())
+
   it('retries a transient initial navigation failure', async () => {
     const page = {
       goto: jest.fn().mockRejectedValueOnce(new Error('net::ERR_NETWORK_CHANGED at https://example.com')).mockResolvedValue(null),
@@ -37,7 +40,7 @@ describe('DetectionService framed workflow actions', () => {
     await service.navigateToTarget(page, 'https://example.com', workflowTarget)
 
     expect(page.goto).toHaveBeenCalledTimes(2)
-    expect(page.goto).toHaveBeenCalledWith('https://example.com', { waitUntil: 'networkidle2' })
+    expect(page.goto).toHaveBeenCalledWith('https://example.com', { waitUntil: 'networkidle2', timeout: 120000 })
     expect(service.sleep).toHaveBeenCalledWith(1000)
     expect(logger.log).toHaveBeenCalledWith('Transient initial navigation failure; retrying (2/3).')
   })
@@ -58,6 +61,37 @@ describe('DetectionService framed workflow actions', () => {
     expect(page.goto).toHaveBeenCalledTimes(3)
     expect(service.sleep).toHaveBeenNthCalledWith(1, 1000)
     expect(service.sleep).toHaveBeenNthCalledWith(2, 2000)
+  })
+
+  it('bounds navigation retries by the shared initial workflow deadline', async () => {
+    const timeoutError = Object.assign(new Error('navigation timed out'), { name: 'TimeoutError' })
+    let now = 0
+    jest.spyOn(Date, 'now').mockImplementation(() => now)
+    const page = {
+      goto: jest.fn().mockImplementation(async (_url: string, options: { timeout: number }) => {
+        now += options.timeout
+        throw timeoutError
+      }),
+    } as unknown as Page
+    const workflowTarget = { logger: { log: jest.fn() } } as unknown as Target
+    const service = serviceInternals()
+    service.sleep = jest.fn().mockResolvedValue(undefined)
+
+    await expect(service.navigateToTarget(page, 'https://example.com', workflowTarget, 150000)).rejects.toBe(timeoutError)
+
+    expect(page.goto).toHaveBeenNthCalledWith(1, 'https://example.com', { waitUntil: 'networkidle2', timeout: 120000 })
+    expect(page.goto).toHaveBeenNthCalledWith(2, 'https://example.com', { waitUntil: 'networkidle2', timeout: 30000 })
+    expect(page.goto).toHaveBeenCalledTimes(2)
+  })
+
+  it('caps the first step delay at the shared initial workflow deadline', async () => {
+    jest.spyOn(Date, 'now').mockReturnValue(1000)
+    const service = serviceInternals()
+    service.sleep = jest.fn().mockResolvedValue(undefined)
+
+    await expect(service.waitForStepDelay(6000, 0, 6000)).rejects.toThrow('Timed out preparing initial workflow content')
+
+    expect(service.sleep).toHaveBeenCalledWith(5000)
   })
 
   it('reloads when the first workflow selector does not render', async () => {
@@ -82,7 +116,7 @@ describe('DetectionService framed workflow actions', () => {
 
     expect(setTimeout).toHaveBeenNthCalledWith(1, 30000)
     expect(setTimeout).toHaveBeenNthCalledWith(2, 30000)
-    expect(page.goto).toHaveBeenCalledWith('https://booking.example.com/venue', { waitUntil: 'networkidle2' })
+    expect(page.goto).toHaveBeenCalledWith('https://booking.example.com/venue', { waitUntil: 'networkidle2', timeout: 120000 })
     expect(logger.log).toHaveBeenCalledWith('Initial workflow content did not render; reloading (2/3).')
   })
 
