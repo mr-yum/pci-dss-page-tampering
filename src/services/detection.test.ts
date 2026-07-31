@@ -22,6 +22,27 @@ function serviceInternals(): DetectionServiceInternals {
 }
 
 describe('DetectionService framed workflow actions', () => {
+  it('re-resolves a main-page input when the visible element is replaced', async () => {
+    const click = jest.fn().mockResolvedValue(undefined)
+    const fill = jest.fn().mockResolvedValue(undefined)
+    const page = {
+      locator: jest.fn().mockReturnValueOnce({ click }).mockReturnValueOnce({ fill }),
+    } as unknown as Page
+    const step: PuppeteerLocatorAction = {
+      description: 'Enter guest name',
+      querySelector: 'input[name="name"]',
+      action: { type: 'input', value: 'PCI Monitor' },
+      delay: 0,
+    }
+
+    await serviceInternals().executeAction(page, { context: page }, step, target, browser)
+
+    expect(page.locator).toHaveBeenNthCalledWith(1, step.querySelector)
+    expect(click).toHaveBeenCalledTimes(1)
+    expect(page.locator).toHaveBeenNthCalledWith(2, step.querySelector)
+    expect(fill).toHaveBeenCalledWith('PCI Monitor')
+  })
+
   it("applies the parent page's timeouts to a popup workflow", async () => {
     let popupListener: ((popup: Page) => void) | undefined
     const popupPage = {

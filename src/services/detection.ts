@@ -262,11 +262,14 @@ export class DetectionService implements IDetectionService {
 
         case 'input': {
           const action: PuppeteerInputAction = step.action
-          await this.evalClick(actionTarget, step)
           if (actionTarget.element) {
+            await this.evalClick(actionTarget, step)
             await actionTarget.element.type(action.value)
           } else {
-            await actionTarget.context.type(step.querySelector, action.value)
+            // Locators re-resolve the selector if a framework replaces the
+            // element between the visibility wait and the input action.
+            await actionTarget.context.locator(step.querySelector).click()
+            await actionTarget.context.locator(step.querySelector).fill(action.value)
           }
           break
         }
