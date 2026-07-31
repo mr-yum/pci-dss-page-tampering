@@ -30,7 +30,7 @@ describe('collectTotpSeedRefs', () => {
 
   it('preserves a frame URL matcher for execution-time frame resolution', () => {
     const frameStep: WorkflowStep = {
-      ...step({ type: 'input', value: '4242424242424242' }),
+      ...step({ type: 'input', value: '1234567890123456', reloadOnMissingTarget: true }),
       frameUrl: '^https://payments\\.example\\.com/card-frame',
     }
 
@@ -39,9 +39,114 @@ describe('collectTotpSeedRefs', () => {
         description: 'step',
         querySelector: 'input[name="field"]',
         frameUrl: '^https://payments\\.example\\.com/card-frame',
-        action: { type: 'input', value: '4242424242424242' },
+        action: { type: 'input', value: '1234567890123456' },
         delay: 0,
+        reloadOnMissingTarget: true,
       },
     ])
+  })
+
+  it('rejects an untrusted frame matcher in a programmatically constructed recovery step', () => {
+    const frameStep: WorkflowStep = {
+      ...step({ type: 'input', value: 'value', reloadOnMissingTarget: true }),
+      frameUrl: '.*',
+    }
+
+    expect(() => stepsToPuppeteerLocatorAction([frameStep])).toThrow('frameUrl must begin with an anchored, exact HTTPS origin')
+  })
+
+  it('preserves a click response matcher for execution-time synchronization', () => {
+    const responseStep = step({
+      type: 'click',
+      waitForResponse: '^https://api\\.payments\\.example/v1/payment_methods(?:\\?.*)?$',
+      waitForResponseTimeout: 240000,
+      waitForResponseMethod: 'POST',
+      waitForResponseStatuses: [200, 402],
+      waitForResponseBody: '"code"\\s*:\\s*"card_declined"',
+      postActionDelay: 2500,
+    })
+
+    expect(stepsToPuppeteerLocatorAction([responseStep])).toEqual([
+      {
+        description: 'step',
+        querySelector: 'input[name="field"]',
+        frameUrl: undefined,
+        action: {
+          type: 'click',
+          waitForNavigation: false,
+          waitForResponse: '^https://api\\.payments\\.example/v1/payment_methods(?:\\?.*)?$',
+          waitForResponseTimeout: 240000,
+          waitForResponseMethod: 'POST',
+          waitForResponseStatuses: [200, 402],
+          waitForResponseBody: '"code"\\s*:\\s*"card_declined"',
+        },
+        delay: 0,
+        postActionDelay: 2500,
+      },
+    ])
+  })
+
+  it('rejects response synchronization on a programmatically constructed non-click action', () => {
+    const invalidStep = step({ type: 'input', value: 'value', waitForResponse: '^https://api\\.payments\\.example/' })
+
+    expect(() => stepsToPuppeteerLocatorAction([invalidStep])).toThrow("Response waiting options are only supported for workflow actions of type 'click'")
+  })
+
+  it('rejects an untrusted response matcher in a programmatically constructed click action', () => {
+    const invalidStep = step({ type: 'click', waitForResponse: '.*' })
+
+    expect(() => stepsToPuppeteerLocatorAction([invalidStep])).toThrow('waitForResponse must begin with an anchored, exact HTTPS origin')
+  })
+
+  it('rejects a programmatic response timeout without a response matcher', () => {
+    const invalidStep = step({ type: 'click', waitForResponseTimeout: 240000 })
+
+    expect(() => stepsToPuppeteerLocatorAction([invalidStep])).toThrow('Response waiting options require waitForResponse')
+  })
+
+  it.each([0, -1, 1.5, 300001, Number.NaN, Number.POSITIVE_INFINITY])('rejects an invalid programmatic response timeout: %s', (waitForResponseTimeout) => {
+    const invalidStep = step({
+      type: 'click',
+      waitForResponse: '^https://api\\.payments\\.example/v1/payment_methods$',
+      waitForResponseTimeout,
+    })
+
+    expect(() => stepsToPuppeteerLocatorAction([invalidStep])).toThrow()
+  })
+
+  it.each([{ statuses: [] }, { statuses: [99] }, { statuses: [600] }, { statuses: [200.5] }])('rejects invalid programmatic response statuses: $statuses', ({ statuses: waitForResponseStatuses }) => {
+    const invalidStep = step({
+      type: 'click',
+      waitForResponse: '^https://api\\.payments\\.example/v1/payment_methods$',
+      waitForResponseStatuses,
+    })
+
+    expect(() => stepsToPuppeteerLocatorAction([invalidStep])).toThrow()
+  })
+
+  it('rejects an invalid programmatic response method', () => {
+    const invalidStep = step({
+      type: 'click',
+      waitForResponse: '^https://api\\.payments\\.example/v1/payment_methods$',
+      waitForResponseMethod: 'TRACE',
+    } as unknown as WorkflowStep['action'])
+
+    expect(() => stepsToPuppeteerLocatorAction([invalidStep])).toThrow()
+  })
+
+  it('rejects an invalid programmatic response body matcher', () => {
+    const invalidStep = step({
+      type: 'click',
+      waitForResponse: '^https://api\\.payments\\.example/v1/payment_methods$',
+      waitForResponseBody: '[',
+    })
+
+    expect(() => stepsToPuppeteerLocatorAction([invalidStep])).toThrow('waitForResponseBody must be a valid regular expression')
+  })
+
+  it.each([0, -1, 1.5, 300001, Number.NaN, Number.POSITIVE_INFINITY])('rejects an invalid programmatic post-action delay: %s', (postActionDelay) => {
+    const invalidStep = step({ type: 'click', postActionDelay })
+
+    expect(() => stepsToPuppeteerLocatorAction([invalidStep])).toThrow()
   })
 })

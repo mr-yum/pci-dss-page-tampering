@@ -31,6 +31,17 @@ const TOTP_WINDOW_SAFETY_MARGIN_MS = 5000
 // the component registers each one.
 const TOTP_TYPING_DELAY_MS = 100
 
+// Hosted payment fields format and validate after each key event. A small
+// delay prevents their iframe handlers from dropping digits under concurrent
+// target load while retaining the pinned, origin-validated ElementHandle.
+const FRAMED_INPUT_TYPING_DELAY_MS = 25
+
+// Bound the combined initial navigation, selector waits, and reload retries.
+// Without one shared deadline, their nested per-attempt timeouts can compound
+// into a multi-minute delay for every later variation in the same inventory.
+const INITIAL_WORKFLOW_TIMEOUT_MS = 300000
+const NAVIGATION_ATTEMPT_TIMEOUT_MS = 120000
+
 type ActionTarget = {
   context: Page | Frame
   element?: ElementHandle<Element>
@@ -100,10 +111,9 @@ export class DetectionService implements IDetectionService {
       // placeholders at run time so booking-style targets always request a
       // date with availability.
       navigationUrl = resolveDateTemplates(puppeteerWorkflow.target.url)
+      const initialWorkflowDeadline = Date.now() + INITIAL_WORKFLOW_TIMEOUT_MS
       try {
-        await page.goto(navigationUrl, {
-          waitUntil: 'networkidle2',
-        })
+        await this.navigateToTarget(page, navigationUrl, target, initialWorkflowDeadline)
       } catch (navError) {
         if (navError instanceof Error && navError.name === 'TimeoutError') {
           target.logger.error(`NAVIGATION TIMEOUT ERROR`)
@@ -129,10 +139,8 @@ export class DetectionService implements IDetectionService {
         target.logger.log(`(${currentStepIndex}/${totalStepCount}) ${step.description} for target '${puppeteerWorkflow.target.url}'.`)
 
         try {
-          if (step.delay > 0) {
-            await this.sleep(step.delay)
-          }
-          const actionTarget = await this.waitForActionTarget(page, step)
+          await this.waitForStepDelay(step.delay, index, initialWorkflowDeadline)
+          const actionTarget = index === 0 && navigationUrl !== undefined ? await this.waitForInitialActionTarget(page, step, navigationUrl, target, initialWorkflowDeadline) : await this.waitForRecoverableActionTarget(page, step, target)
 
           // Execute action
           await this.executeAction(page, actionTarget, step, target, browser)
@@ -252,21 +260,54 @@ export class DetectionService implements IDetectionService {
       switch (step.action.type) {
         case 'click': {
           const action: PuppeteerClickAction = step.action
-          if (action.waitForNavigation) {
-            await Promise.all([this.waitForActionNavigation(page, actionTarget.context), this.evalClick(actionTarget, step)])
-          } else {
-            await this.evalClick(actionTarget, step)
+          const completionSignals: Promise<unknown>[] = []
+          if (action.waitForNavigation) completionSignals.push(this.waitForActionNavigation(page, actionTarget.context))
+          if (action.waitForResponse !== undefined) {
+            const responsePattern = new RegExp(action.waitForResponse)
+            const responseBodyPattern = action.waitForResponseBody === undefined ? undefined : new RegExp(action.waitForResponseBody)
+            completionSignals.push(
+              page.waitForResponse(
+                async (response) => {
+                  // Ignore CORS preflight: it uses the same URL but is not the
+                  // application response that proves the operation occurred.
+                  const method = response.request().method()
+                  if (method === 'OPTIONS' || !responsePattern.test(response.url())) return false
+                  if (action.waitForResponseMethod !== undefined && method !== action.waitForResponseMethod) return false
+                  if (action.waitForResponseStatuses !== undefined && !action.waitForResponseStatuses.includes(response.status())) return false
+                  // Keep the body read inside Puppeteer's response predicate so
+                  // the configured timeout bounds the whole completion signal
+                  // and bodyless matchers still wait for the response to finish.
+                  try {
+                    const body = await response.content()
+                    return responseBodyPattern === undefined || responseBodyPattern.test(new TextDecoder().decode(body))
+                  } catch {
+                    // Chrome can discard bodies during navigation or redirects.
+                    // URL/method/status-only waits do not depend on the bytes;
+                    // body-constrained waits must keep looking for proof.
+                    return responseBodyPattern === undefined
+                  }
+                },
+                action.waitForResponseTimeout === undefined ? undefined : { timeout: action.waitForResponseTimeout },
+              ),
+            )
           }
+          completionSignals.push(this.evalClick(actionTarget, step))
+          await Promise.all(completionSignals)
           break
         }
 
         case 'input': {
           const action: PuppeteerInputAction = step.action
-          await this.evalClick(actionTarget, step)
           if (actionTarget.element) {
-            await actionTarget.element.type(action.value)
+            await this.typeIntoFramedInput(actionTarget, step, action.value)
           } else {
-            await actionTarget.context.type(step.querySelector, action.value)
+            // Resolve a fresh element for the DOM click, then let Locator
+            // re-resolve again if the framework replaces it before filling.
+            // Input modals can animate continuously under load, so fill does
+            // not require an identical bounding box across consecutive frames;
+            // Locator still checks visibility and enabled state.
+            await this.evalClick(actionTarget, step)
+            await actionTarget.context.locator(step.querySelector).setWaitForStableBoundingBox(false).fill(action.value)
           }
           break
         }
@@ -352,7 +393,7 @@ export class DetectionService implements IDetectionService {
                 if (innerStep.delay > 0) {
                   await this.sleep(innerStep.delay)
                 }
-                const innerActionTarget = await this.waitForActionTarget(popupPage, innerStep)
+                const innerActionTarget = await this.waitForRecoverableActionTarget(popupPage, innerStep, target)
                 await this.executeAction(popupPage, innerActionTarget, innerStep, target, browser)
               } catch (popupStepError) {
                 if (popupStepError instanceof Error && popupStepError.name === 'TimeoutError') {
@@ -392,20 +433,88 @@ export class DetectionService implements IDetectionService {
           break
         }
       }
+      if (step.postActionDelay !== undefined) {
+        await this.sleep(step.postActionDelay)
+      }
     } finally {
       await actionTarget.element?.dispose().catch(() => undefined)
     }
   }
 
-  /*
-   This results in a high success rate than using Locator.click() when element is visible via Locator.wait().
-   Only call this function if you are sure that the element is visible, otherwise it will error.
+  /**
+   * Hosted payment fields can drop key events while formatting under load.
+   * Verify the retained value before a later payment click; retrying input is
+   * side-effect-free, unlike retrying the click that submits the payment.
+   */
+  private async typeIntoFramedInput(actionTarget: ActionTarget, step: PuppeteerLocatorAction, expectedValue: string): Promise<void> {
+    const element = actionTarget.element
+    if (!element) throw new Error('Framed input target did not include an element handle')
+
+    const maxAttempts = 3
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      if (attempt === 1) {
+        await this.evalClick(actionTarget, step)
+      } else {
+        await element.evaluate((candidate) => {
+          const input = candidate as HTMLInputElement
+          input.focus()
+          input.select()
+        })
+      }
+
+      await element.type(expectedValue, { delay: FRAMED_INPUT_TYPING_DELAY_MS })
+      const actualValue = await element.evaluate((candidate) => (candidate as HTMLInputElement).value)
+      const matches = /^\d+$/.test(expectedValue) ? actualValue.replace(/\D/g, '') === expectedValue : actualValue === expectedValue
+      if (matches) return
+    }
+
+    throw new Error(`Framed input did not retain the expected value after ${maxAttempts} attempts: ${step.querySelector}`)
+  }
+
+  /**
+   * Dispatch a DOM click without Locator.click()'s stable-bounding-box wait.
+   * The Locator retries only side-effect-free preconditions. The final pinned
+   * click uses a pinned handle and returns structured pre-dispatch outcomes.
+   * Missing, detached, or disabled candidates are safe to re-resolve; any
+   * thrown evaluation/navigation failure is ambiguous and never replayed.
    */
   private async evalClick(actionTarget: ActionTarget, step: PuppeteerLocatorAction): Promise<void> {
     if (actionTarget.element) {
       await actionTarget.element.evaluate((element) => (element as HTMLElement).click())
     } else {
-      await actionTarget.context.$eval(step.querySelector, (element) => (element as HTMLElement)?.click())
+      const maxSafeAttempts = 3
+      for (let attempt = 1; ; attempt++) {
+        await actionTarget.context
+          .locator(step.querySelector)
+          .setVisibility('visible')
+          .map((element) => {
+            const clickable = element as HTMLElement
+            if (!clickable.isConnected) throw new Error('Element was replaced before it could be clicked')
+            if ((clickable as HTMLElement & { disabled?: boolean }).disabled === true) throw new Error('Element is disabled')
+            return true
+          })
+          .wait()
+
+        const element = await actionTarget.context.$(step.querySelector)
+        if (element === null) {
+          if (attempt >= maxSafeAttempts) throw new Error(`Element disappeared before it could be clicked: ${step.querySelector}`)
+          continue
+        }
+
+        try {
+          const outcome = await element.evaluate((candidate): 'clicked' | 'detached' | 'disabled' => {
+            const clickable = candidate as HTMLElement
+            if (!clickable.isConnected) return 'detached'
+            if ((clickable as HTMLElement & { disabled?: boolean }).disabled === true) return 'disabled'
+            clickable.click()
+            return 'clicked'
+          })
+          if (outcome === 'clicked') return
+          if (attempt >= maxSafeAttempts) throw new Error(`Element remained ${outcome} before it could be clicked: ${step.querySelector}`)
+        } finally {
+          await element.dispose().catch(() => undefined)
+        }
+      }
     }
   }
 
@@ -457,14 +566,14 @@ export class DetectionService implements IDetectionService {
     })
   }
 
-  private async waitForActionTarget(page: Page, step: PuppeteerLocatorAction): Promise<ActionTarget> {
+  private async waitForActionTarget(page: Page, step: PuppeteerLocatorAction, timeout = page.getDefaultTimeout()): Promise<ActionTarget> {
     if (!step.frameUrl) {
-      await page.locator(step.querySelector).wait()
+      await page.locator(step.querySelector).setTimeout(timeout).wait()
       return { context: page }
     }
 
     const matcher = new RegExp(step.frameUrl)
-    const deadline = Date.now() + page.getDefaultTimeout()
+    const deadline = Date.now() + timeout
 
     while (Date.now() < deadline) {
       for (const frame of page.frames().filter((candidate) => candidate !== page.mainFrame() && matcher.test(candidate.url()))) {
@@ -481,6 +590,79 @@ export class DetectionService implements IDetectionService {
 
     const observedFrameUrls = [...new Set(page.frames().map((frame) => this.redactFrameUrl(frame.url())))].join(', ')
     throw new TimeoutError(`Timed out waiting for selector '${step.querySelector}' in a frame URL matching /${step.frameUrl}/. Observed frame URLs: ${observedFrameUrls || '(none)'}`)
+  }
+
+  private async waitForRecoverableActionTarget(page: Page, step: PuppeteerLocatorAction, target: Target): Promise<ActionTarget> {
+    if (!step.reloadOnMissingTarget) return this.waitForActionTarget(page, step)
+    if (step.frameUrl === undefined) throw new Error('Missing-target recovery requires a trusted frameUrl')
+
+    try {
+      return await this.waitForActionTarget(page, step, Math.min(30000, page.getDefaultTimeout()))
+    } catch (error) {
+      if (!(error instanceof Error) || error.name !== 'TimeoutError') throw error
+      target.logger.log(`Workflow target did not render; reloading the current page once before retrying.`)
+      const recoveryUrl = new URL(page.url())
+      if (recoveryUrl.protocol !== 'https:') throw new Error('Missing-target recovery requires a current HTTPS page URL', { cause: error })
+      // Use an explicit GET navigation. Browser reload can resubmit a POST
+      // that produced the current document and replay a prior side effect.
+      await page.goto(recoveryUrl.href, { waitUntil: 'networkidle2' })
+      return this.waitForActionTarget(page, step)
+    }
+  }
+
+  private async waitForInitialActionTarget(page: Page, step: PuppeteerLocatorAction, navigationUrl: string, target: Target, deadline = Date.now() + INITIAL_WORKFLOW_TIMEOUT_MS): Promise<ActionTarget> {
+    const attemptTimeouts = [30000, 30000, page.getDefaultTimeout()]
+    for (const [index, configuredTimeout] of attemptTimeouts.entries()) {
+      try {
+        const remainingTime = deadline - Date.now()
+        if (remainingTime <= 0) throw new TimeoutError('Timed out preparing initial workflow content')
+        const timeout = Math.min(configuredTimeout, remainingTime)
+        return await this.waitForActionTarget(page, step, timeout)
+      } catch (error) {
+        const isFinalAttempt = index === attemptTimeouts.length - 1
+        if (!(error instanceof Error) || error.name !== 'TimeoutError' || isFinalAttempt || Date.now() >= deadline) throw error
+
+        target.logger.log(`Initial workflow content did not render; reloading (${index + 2}/${attemptTimeouts.length}).`)
+        await this.navigateToTarget(page, navigationUrl, target, deadline)
+      }
+    }
+    throw new Error('Initial action target retry loop exhausted unexpectedly')
+  }
+
+  private async waitForStepDelay(delay: number, stepIndex: number, initialWorkflowDeadline: number): Promise<void> {
+    if (delay <= 0) return
+    if (stepIndex !== 0) {
+      await this.sleep(delay)
+      return
+    }
+
+    const remainingTime = initialWorkflowDeadline - Date.now()
+    if (remainingTime <= 0) throw new TimeoutError('Timed out preparing initial workflow content')
+    await this.sleep(Math.min(delay, remainingTime))
+    if (delay >= remainingTime || Date.now() >= initialWorkflowDeadline) throw new TimeoutError('Timed out preparing initial workflow content')
+  }
+
+  private async navigateToTarget(page: Page, url: string, target: Target, deadline = Date.now() + INITIAL_WORKFLOW_TIMEOUT_MS): Promise<void> {
+    const maxAttempts = 3
+    for (let attempt = 1; ; attempt++) {
+      try {
+        const remainingTime = deadline - Date.now()
+        if (remainingTime <= 0) throw new TimeoutError('Timed out preparing initial workflow content')
+        await page.goto(url, { waitUntil: 'networkidle2', timeout: Math.min(NAVIGATION_ATTEMPT_TIMEOUT_MS, remainingTime) })
+        return
+      } catch (error) {
+        if (!this.isRetryableNavigationError(error) || attempt >= maxAttempts || Date.now() >= deadline) {
+          throw error
+        }
+        target.logger.log(`Transient initial navigation failure; retrying (${attempt + 1}/${maxAttempts}).`)
+        await this.sleep(Math.min(attempt * 1000, Math.max(0, deadline - Date.now())))
+      }
+    }
+  }
+
+  private isRetryableNavigationError(error: unknown): boolean {
+    if (!(error instanceof Error)) return false
+    return error.name === 'TimeoutError' || error.message.includes('Navigating frame was detached') || error.message.includes('net::ERR_NETWORK_CHANGED')
   }
 
   private redactFrameUrl(url: string): string {

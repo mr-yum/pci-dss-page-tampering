@@ -6,6 +6,21 @@ export type WorkflowActionType = {
   seedRef?: string | undefined
   delay?: number | undefined
   waitForNavigation?: true | undefined
+  // For click actions, wait for a response whose URL matches this regular
+  // expression. Deserialized workflows require an anchored HTTPS origin.
+  waitForResponse?: string | undefined
+  // Optional timeout for waitForResponse. Omit to use the page default.
+  waitForResponseTimeout?: number | undefined
+  // Optional request method and response statuses that must also match.
+  waitForResponseMethod?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | undefined
+  waitForResponseStatuses?: number[] | undefined
+  // Optional regular expression that must match the completed response body.
+  waitForResponseBody?: string | undefined
+  // Optional bounded settling time after the action and its completion signals.
+  postActionDelay?: number | undefined
+  // For a later workflow step, reload the current page once when its target
+  // does not appear within the short recovery window. No action is replayed.
+  reloadOnMissingTarget?: true | undefined
   steps?: WorkflowStep[] | undefined
 }
 

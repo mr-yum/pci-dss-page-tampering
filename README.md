@@ -118,7 +118,10 @@ value of `target`, not a complete inventory file:
 
 Inventory mode runs every `inventory` member and combines all observations
 before calculating one update. Detection mode runs every matching `detection`
-member against that same reviewed inventory. The legacy `target.inventory` /
+member against that same reviewed inventory. Variations in one inventory execute
+serially so they do not contend for the same application or payment-provider
+resources. Inventory files also run serially because their hosted payment
+frames share one browser process. The legacy `target.inventory` /
 `target.detection` form remains valid and is treated as workflow `default`.
 
 Use `workflowMatcher` anywhere another matcher can be used. It matches the
@@ -196,6 +199,15 @@ In the bundled GitHub Actions workflow, seeds are discovered by naming conventio
 
 > **Note**: Automating TOTP means the second factor lives alongside the first in the same secrets store, which weakens what MFA provides for that account. Use a dedicated, least-privileged synthetic-monitoring account.
 
+### Initial Workflow Timeout
+
+Initial navigation, the first step's delay and selector wait, and any automatic
+initial-page reloads share one five-minute deadline. Each navigation attempt is
+limited to two minutes and receives no more than the time remaining in that
+shared budget. If the first actionable element cannot be prepared in time, the
+target fails with `Timed out preparing initial workflow content`; later steps
+use their normal workflow or explicitly configured response timeout.
+
 ### Interacting with Embedded Payment Frames
 
 Payment providers commonly isolate card fields in cross-origin iframes. Add a
@@ -215,6 +227,53 @@ against the top-level page as usual:
 Anchor frame matchers to a trusted HTTPS origin and the narrowest stable path.
 The frame is resolved when the step executes, so dynamically mounted payment
 frames are supported. The same mechanism works in nested `clickPopup` steps.
+
+For a later step whose pre-action target occasionally fails to mount, set
+`"reloadOnMissingTarget": true` on its action. This option requires an anchored
+trusted `frameUrl`, preventing a redirected top-level page from receiving the
+configured input. The monitor waits 30 seconds, navigates once to the current
+HTTPS URL using GET, then resolves the trusted frame target again using the
+normal workflow timeout. This recovery neither resubmits a POST that produced
+the page nor replays the step's action; use it only when a GET of the current
+route safely reconstructs the required state.
+
+### Waiting for a Click Response
+
+When a click starts asynchronous validation without a stable completion screen,
+set `waitForResponse` to the expected response URL. The response listener is
+registered before the click, uses the page's normal workflow timeout, and waits
+for the matching response body to complete. The option is click-only and can be
+combined with `waitForNavigation` when both signals are required:
+
+```json
+{
+  "description": "Submit payment details",
+  "waitFor": [{ "type": "button", "identifier": "Submit" }],
+  "action": {
+    "type": "click",
+    "waitForResponse": "^https://api\\.payments\\.example/v1/validate(?:\\?.*)?$",
+    "waitForResponseTimeout": 240000,
+    "waitForResponseMethod": "POST",
+    "waitForResponseStatuses": [200, 402],
+    "waitForResponseBody": "\"code\"\\s*:\\s*\"card_declined\"",
+    "postActionDelay": 2500
+  }
+}
+```
+
+The matcher must start with an anchored, exact HTTPS origin; keep its path as
+narrow and as late in the operation as the integration permits. A preliminary
+tokenization response is usually too early when the workflow needs to observe
+subsequent authentication or validation resources. Optional
+`waitForResponseTimeout` sets a bounded 1–300000 ms override for unusually slow
+provider validation; otherwise the page's normal workflow timeout applies.
+`waitForResponseMethod`, `waitForResponseStatuses`, and
+`waitForResponseBody` optionally constrain the completion signal so blocked,
+failed, or semantically different responses cannot satisfy a successful
+workflow accidentally. The body option is a regular expression tested against
+the completed response bytes decoded as UTF-8. `postActionDelay` adds a bounded
+1–300000 ms settling window after all action completion signals, before the
+monitor performs its next script scan.
 
 ### Date Placeholders in Target URLs
 

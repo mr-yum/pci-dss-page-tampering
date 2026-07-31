@@ -1,6 +1,7 @@
 import type { PuppeteerAction, PuppeteerLocatorAction, PuppeteerWorkflow } from '../types/puppeteer.js'
 import type { Target } from '../types/target.js'
 import type { Workflow, WorkflowActionType, WorkflowStep, WorkflowWaitForDefinition } from '../types/workflow.js'
+import { FrameUrlSchema, PostActionDelaySchema, WaitForResponseBodySchema, WaitForResponseMethodSchema, WaitForResponseSchema, WaitForResponseStatusesSchema, WaitForResponseTimeoutSchema } from '../types/workflow/zod.js'
 import { WORKFLOW_PATH } from './constants.js'
 import { getWorkflowDefinitionFromFile } from './file.js'
 
@@ -68,11 +69,31 @@ function waitForToQuerySelector(waitFor: WorkflowWaitForDefinition[]): string {
 }
 
 function actionToPuppeteerAction(action: WorkflowActionType): PuppeteerAction {
+  // Deserialized workflows are protected by Zod; retain the same fail-secure
+  // behaviour for JavaScript callers or TypeScript casts that bypass it.
+  const hasResponseOptions =
+    action.waitForResponse !== undefined || action.waitForResponseTimeout !== undefined || action.waitForResponseMethod !== undefined || action.waitForResponseStatuses !== undefined || action.waitForResponseBody !== undefined
+  if (action.type !== 'click' && hasResponseOptions) {
+    throw new Error("Response waiting options are only supported for workflow actions of type 'click'")
+  }
+  if (
+    action.type === 'click' &&
+    action.waitForResponse === undefined &&
+    (action.waitForResponseTimeout !== undefined || action.waitForResponseMethod !== undefined || action.waitForResponseStatuses !== undefined || action.waitForResponseBody !== undefined)
+  ) {
+    throw new Error('Response waiting options require waitForResponse')
+  }
+
   switch (action.type) {
     case 'click': {
       return {
         type: 'click',
         waitForNavigation: action.waitForNavigation ?? false,
+        waitForResponse: action.waitForResponse === undefined ? undefined : WaitForResponseSchema.parse(action.waitForResponse),
+        ...(action.waitForResponseTimeout === undefined ? {} : { waitForResponseTimeout: WaitForResponseTimeoutSchema.parse(action.waitForResponseTimeout) }),
+        ...(action.waitForResponseMethod === undefined ? {} : { waitForResponseMethod: WaitForResponseMethodSchema.parse(action.waitForResponseMethod) }),
+        ...(action.waitForResponseStatuses === undefined ? {} : { waitForResponseStatuses: WaitForResponseStatusesSchema.parse(action.waitForResponseStatuses) }),
+        ...(action.waitForResponseBody === undefined ? {} : { waitForResponseBody: WaitForResponseBodySchema.parse(action.waitForResponseBody) }),
       }
     }
     case 'input': {
@@ -123,9 +144,11 @@ export function stepsToPuppeteerLocatorAction(steps: WorkflowStep[]): PuppeteerL
     return {
       description: step.description,
       querySelector: querySelector,
-      frameUrl: step.frameUrl,
+      frameUrl: step.frameUrl === undefined ? undefined : FrameUrlSchema.parse(step.frameUrl),
       action: actionToPuppeteerAction(step.action),
       delay: step.action.delay ?? 0,
+      ...(step.action.postActionDelay === undefined ? {} : { postActionDelay: PostActionDelaySchema.parse(step.action.postActionDelay) }),
+      ...(step.action.reloadOnMissingTarget === true ? { reloadOnMissingTarget: true } : {}),
     }
   })
 }

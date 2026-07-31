@@ -22,6 +22,7 @@ import { ExecutionMode, type RuntimeConfiguration } from './types/config.js'
 import type { ExecutionSummary } from './types/execution-summary.js'
 import { getInventoryWorkflows, type Inventory, type InventoryAlert, type InventoryDifferenceResult, type InventoryWorkflow } from './types/inventory/model.js'
 import { PullTarget, type Target } from './types/target.js'
+import { mapGroupsSequentially } from './utils/concurrency.js'
 import { getScriptContentMatchersFromInventory } from './utils/script/matcher.js'
 import { redactRepositoryTarget } from './utils/url.js'
 import { collectTotpSeedRefs } from './utils/workflow.js'
@@ -236,21 +237,27 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
       }
 
       log('Preparing to run inventory workflow.')
-      const targetRunResults = await Promise.all(
-        filteredInventory.map(async (inventory) => {
-          const workflowResults = await Promise.all(
-            getWorkflowsForTargetFilter(inventory, config.targetFilter.targetName).map(async (workflow) => {
-              const result = await runForTargetAsync(browser, inventory, workflow.inventory)
-              totalResourceCount += result.resourceCount
-              const targetName = workflow.inventory.name ?? `${inventory.fileName.replace(/\.json$/, '')}/${workflow.id}`
-              if (!processedTargets.includes(targetName)) processedTargets.push(targetName)
-              return result
-            }),
-          )
+      // Variations in one inventory commonly exercise the same application
+      // and payment backends. Run them serially to avoid one synthetic user
+      // starving or rate-limiting another. Inventory files are also serial so
+      // independent hosted-payment frames cannot starve the shared browser.
+      const targetRunResults = await mapGroupsSequentially(
+        filteredInventory,
+        (inventory) => getWorkflowsForTargetFilter(inventory, config.targetFilter.targetName),
+        async (inventory, workflow) => {
+          const result = await runForTargetAsync(browser, inventory, workflow.inventory)
+          totalResourceCount += result.resourceCount
+          const targetName = workflow.inventory.name ?? `${inventory.fileName.replace(/\.json$/, '')}/${workflow.id}`
+          if (!processedTargets.includes(targetName)) processedTargets.push(targetName)
+          return result
+        },
+      )
 
-          // One inventory is shared by every variation. Diff once against the
-          // complete observation set so later workflow runs cannot overwrite
-          // entries discovered by earlier ones.
+      const diffResults = await Promise.all(
+        filteredInventory.map(async (inventory, index) => {
+          const workflowResults = targetRunResults[index] ?? []
+          // One inventory is shared by every variation. Diff once against the complete
+          // observation set so later workflow runs cannot overwrite earlier discoveries.
           const comparisonResults = workflowResults.flatMap((result) => result.comparisonResults)
           const diffResult = await scriptInventoryService.diff(inventory, comparisonResults)
           const inventoryUpdatedResults: ReadonlySet<ComparisonResultType> = new Set(diffResult.appliedResults ?? [])
@@ -267,7 +274,7 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
       let prError: unknown = null
       try {
         log('Preparing to push inventory.')
-        const inventoriesToPush: InventoryDifferenceResult[] = targetRunResults.map((result) => result.diffResult)
+        const inventoriesToPush: InventoryDifferenceResult[] = diffResults.map((result) => result.diffResult)
         const pushResult = await scriptInventoryService.push(inventoriesToPush, config.branches.inventory)
 
         log('Inventory workflow completed successfully.')
@@ -299,7 +306,7 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
         // Flush deferred inventory alerts. When push+PR succeed, the override
         // URL is set so the "Review changes" button points to the PR; on a
         // failed push we fall back to the default branch-compare URL.
-        for (const result of targetRunResults) {
+        for (const result of diffResults) {
           for (const workflowResult of result.workflowResults) {
             if (workflowResult.pendingAlerts) await flushPendingAlerts(workflowResult.pendingAlerts)
           }
@@ -343,17 +350,16 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
 
       // Run detection workflow
       log('Preparing to run detection workflow.')
-      await Promise.all(
-        filteredDetectionInventory.map(async (inventory) => {
-          await Promise.all(
-            getWorkflowsForTargetFilter(inventory, config.targetFilter.targetName).map(async (workflow) => {
-              const result = await runForTargetAsync(browser, inventory, workflow.detection)
-              totalResourceCount += result.resourceCount
-              const targetName = workflow.detection.name ?? `${inventory.fileName.replace(/\.json$/, '')}/${workflow.id}`
-              if (!processedTargets.includes(targetName)) processedTargets.push(targetName)
-            }),
-          )
-        }),
+      await mapGroupsSequentially(
+        filteredDetectionInventory,
+        (inventory) => getWorkflowsForTargetFilter(inventory, config.targetFilter.targetName),
+        async (inventory, workflow) => {
+          const result = await runForTargetAsync(browser, inventory, workflow.detection)
+          totalResourceCount += result.resourceCount
+          const targetName = workflow.detection.name ?? `${inventory.fileName.replace(/\.json$/, '')}/${workflow.id}`
+          if (!processedTargets.includes(targetName)) processedTargets.push(targetName)
+          return result
+        },
       )
 
       log('Detection workflow completed successfully.')
