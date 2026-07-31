@@ -292,8 +292,7 @@ export class DetectionService implements IDetectionService {
         case 'input': {
           const action: PuppeteerInputAction = step.action
           if (actionTarget.element) {
-            await this.evalClick(actionTarget, step)
-            await actionTarget.element.type(action.value, { delay: FRAMED_INPUT_TYPING_DELAY_MS })
+            await this.typeIntoFramedInput(actionTarget, step, action.value)
           } else {
             // Resolve a fresh element for the DOM click, then let Locator
             // re-resolve again if the framework replaces it before filling.
@@ -433,6 +432,36 @@ export class DetectionService implements IDetectionService {
     } finally {
       await actionTarget.element?.dispose().catch(() => undefined)
     }
+  }
+
+  /**
+   * Hosted payment fields can drop key events while formatting under load.
+   * Verify the retained value before a later payment click; retrying input is
+   * side-effect-free, unlike retrying the click that submits the payment.
+   */
+  private async typeIntoFramedInput(actionTarget: ActionTarget, step: PuppeteerLocatorAction, expectedValue: string): Promise<void> {
+    const element = actionTarget.element
+    if (!element) throw new Error('Framed input target did not include an element handle')
+
+    const maxAttempts = 3
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      if (attempt === 1) {
+        await this.evalClick(actionTarget, step)
+      } else {
+        await element.evaluate((candidate) => {
+          const input = candidate as HTMLInputElement
+          input.focus()
+          input.select()
+        })
+      }
+
+      await element.type(expectedValue, { delay: FRAMED_INPUT_TYPING_DELAY_MS })
+      const actualValue = await element.evaluate((candidate) => (candidate as HTMLInputElement).value)
+      const matches = /^\d+$/.test(expectedValue) ? actualValue.replace(/\D/g, '') === expectedValue : actualValue === expectedValue
+      if (matches) return
+    }
+
+    throw new Error(`Framed input did not retain the expected value after ${maxAttempts} attempts: ${step.querySelector}`)
   }
 
   /**

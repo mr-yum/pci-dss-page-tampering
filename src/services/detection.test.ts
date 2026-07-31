@@ -198,9 +198,12 @@ describe('DetectionService framed workflow actions', () => {
 
   it('paces input into a pinned payment frame field', async () => {
     const frame = {} as Frame
+    const input = { click: jest.fn(), focus: jest.fn(), select: jest.fn(), value: '' }
     const element = {
-      evaluate: jest.fn().mockResolvedValue(undefined),
-      type: jest.fn().mockResolvedValue(undefined),
+      evaluate: jest.fn().mockImplementation(async (callback) => callback(input)),
+      type: jest.fn().mockImplementation(async () => {
+        input.value = '4000 0000 0000 0002'
+      }),
       dispose: jest.fn().mockResolvedValue(undefined),
     } as unknown as ElementHandle<Element>
     const step: PuppeteerLocatorAction = {
@@ -213,8 +216,38 @@ describe('DetectionService framed workflow actions', () => {
 
     await serviceInternals().executeAction({} as Page, { context: frame, element }, step, target, browser)
 
-    expect(element.evaluate).toHaveBeenCalledTimes(1)
+    expect(element.evaluate).toHaveBeenCalledTimes(2)
     expect(element.type).toHaveBeenCalledWith('4000000000000002', { delay: 25 })
+    expect(element.dispose).toHaveBeenCalledTimes(1)
+  })
+
+  it('retypes a framed payment value that was not fully retained', async () => {
+    const frame = {} as Frame
+    const input = { click: jest.fn(), focus: jest.fn(), select: jest.fn(), value: '' }
+    const element = {
+      evaluate: jest.fn().mockImplementation(async (callback) => callback(input)),
+      type: jest
+        .fn()
+        .mockImplementationOnce(async () => {
+          input.value = '1234 5678 9012'
+        })
+        .mockImplementationOnce(async () => {
+          input.value = '1234 5678 9012 3456'
+        }),
+      dispose: jest.fn().mockResolvedValue(undefined),
+    } as unknown as ElementHandle<Element>
+    const step: PuppeteerLocatorAction = {
+      description: 'Enter card number',
+      querySelector: 'input[name="cardnumber"]',
+      frameUrl: '^https://payments\\.example\\.com/card-frame$',
+      action: { type: 'input', value: '1234567890123456' },
+      delay: 0,
+    }
+
+    await serviceInternals().executeAction({} as Page, { context: frame, element }, step, target, browser)
+
+    expect(element.type).toHaveBeenCalledTimes(2)
+    expect(input.select).toHaveBeenCalledTimes(1)
     expect(element.dispose).toHaveBeenCalledTimes(1)
   })
 
