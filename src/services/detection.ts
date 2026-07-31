@@ -31,6 +31,11 @@ const TOTP_WINDOW_SAFETY_MARGIN_MS = 5000
 // the component registers each one.
 const TOTP_TYPING_DELAY_MS = 100
 
+// Hosted payment fields format and validate after each key event. A small
+// delay prevents their iframe handlers from dropping digits under concurrent
+// target load while retaining the pinned, origin-validated ElementHandle.
+const FRAMED_INPUT_TYPING_DELAY_MS = 25
+
 type ActionTarget = {
   context: Page | Frame
   element?: ElementHandle<Element>
@@ -283,24 +288,14 @@ export class DetectionService implements IDetectionService {
           const action: PuppeteerInputAction = step.action
           if (actionTarget.element) {
             await this.evalClick(actionTarget, step)
-            await actionTarget.element.type(action.value)
+            await actionTarget.element.type(action.value, { delay: FRAMED_INPUT_TYPING_DELAY_MS })
           } else {
             // Resolve a fresh element for the DOM click, then let Locator
             // re-resolve again if the framework replaces it before filling.
             // Input modals can animate continuously under load, so fill does
             // not require an identical bounding box across consecutive frames;
             // Locator still checks visibility and enabled state.
-            await actionTarget.context
-              .locator(step.querySelector)
-              .setVisibility('visible')
-              .map((element) => {
-                const clickable = element as HTMLElement
-                if (!clickable.isConnected) throw new Error('Input element was replaced before it could be clicked')
-                if ((clickable as HTMLInputElement).disabled) throw new Error('Input element is disabled')
-                clickable.click()
-                return true
-              })
-              .wait()
+            await this.evalClick(actionTarget, step)
             await actionTarget.context.locator(step.querySelector).setWaitForStableBoundingBox(false).fill(action.value)
           }
           break
@@ -435,15 +430,50 @@ export class DetectionService implements IDetectionService {
     }
   }
 
-  /*
-   This results in a high success rate than using Locator.click() when element is visible via Locator.wait().
-   Only call this function if you are sure that the element is visible, otherwise it will error.
+  /**
+   * Dispatch a DOM click without Locator.click()'s stable-bounding-box wait.
+   * The Locator retries only side-effect-free preconditions. The final pinned
+   * click uses a pinned handle and returns structured pre-dispatch outcomes.
+   * Missing, detached, or disabled candidates are safe to re-resolve; any
+   * thrown evaluation/navigation failure is ambiguous and never replayed.
    */
   private async evalClick(actionTarget: ActionTarget, step: PuppeteerLocatorAction): Promise<void> {
     if (actionTarget.element) {
       await actionTarget.element.evaluate((element) => (element as HTMLElement).click())
     } else {
-      await actionTarget.context.$eval(step.querySelector, (element) => (element as HTMLElement)?.click())
+      const maxSafeAttempts = 3
+      for (let attempt = 1; ; attempt++) {
+        await actionTarget.context
+          .locator(step.querySelector)
+          .setVisibility('visible')
+          .map((element) => {
+            const clickable = element as HTMLElement
+            if (!clickable.isConnected) throw new Error('Element was replaced before it could be clicked')
+            if ((clickable as HTMLElement & { disabled?: boolean }).disabled === true) throw new Error('Element is disabled')
+            return true
+          })
+          .wait()
+
+        const element = await actionTarget.context.$(step.querySelector)
+        if (element === null) {
+          if (attempt >= maxSafeAttempts) throw new Error(`Element disappeared before it could be clicked: ${step.querySelector}`)
+          continue
+        }
+
+        try {
+          const outcome = await element.evaluate((candidate): 'clicked' | 'detached' | 'disabled' => {
+            const clickable = candidate as HTMLElement
+            if (!clickable.isConnected) return 'detached'
+            if ((clickable as HTMLElement & { disabled?: boolean }).disabled === true) return 'disabled'
+            clickable.click()
+            return 'clicked'
+          })
+          if (outcome === 'clicked') return
+          if (attempt >= maxSafeAttempts) throw new Error(`Element remained ${outcome} before it could be clicked: ${step.querySelector}`)
+        } finally {
+          await element.dispose().catch(() => undefined)
+        }
+      }
     }
   }
 

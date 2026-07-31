@@ -96,8 +96,14 @@ describe('DetectionService framed workflow actions', () => {
     const setVisibility = jest.fn().mockReturnValue({ map })
     const fill = jest.fn().mockResolvedValue(undefined)
     const fillStableBox = jest.fn().mockReturnValue({ fill })
+    const domClick = jest.fn()
+    const clickHandle = {
+      evaluate: jest.fn().mockImplementation(async (evaluate) => evaluate({ click: domClick, disabled: false, isConnected: true })),
+      dispose: jest.fn().mockResolvedValue(undefined),
+    }
     const page = {
       locator: jest.fn().mockReturnValueOnce({ setVisibility }).mockReturnValueOnce({ setWaitForStableBoundingBox: fillStableBox }),
+      $: jest.fn().mockResolvedValue(clickHandle),
     } as unknown as Page
     const step: PuppeteerLocatorAction = {
       description: 'Enter guest name',
@@ -111,15 +117,130 @@ describe('DetectionService framed workflow actions', () => {
     expect(page.locator).toHaveBeenNthCalledWith(1, step.querySelector)
     expect(setVisibility).toHaveBeenCalledWith('visible')
     expect(map).toHaveBeenCalledWith(expect.any(Function))
-    const domClick = jest.fn()
-    expect(() => clickMapper?.({ click: domClick, isConnected: false } as unknown as HTMLElement)).toThrow('Input element was replaced before it could be clicked')
-    expect(() => clickMapper?.({ click: domClick, disabled: true, isConnected: true } as unknown as HTMLElement)).toThrow('Input element is disabled')
-    expect(clickMapper?.({ click: domClick, disabled: false, isConnected: true } as unknown as HTMLElement)).toBe(true)
+    expect(() => clickMapper?.({ isConnected: false } as unknown as HTMLElement)).toThrow('Element was replaced before it could be clicked')
+    expect(() => clickMapper?.({ disabled: true, isConnected: true } as unknown as HTMLElement)).toThrow('Element is disabled')
+    expect(clickMapper?.({ disabled: false, isConnected: true } as unknown as HTMLElement)).toBe(true)
     expect(domClick).toHaveBeenCalledTimes(1)
     expect(clickWait).toHaveBeenCalledTimes(1)
     expect(page.locator).toHaveBeenNthCalledWith(2, step.querySelector)
     expect(fillStableBox).toHaveBeenCalledWith(false)
     expect(fill).toHaveBeenCalledWith('PCI Monitor')
+    expect(clickHandle.dispose).toHaveBeenCalledTimes(1)
+  })
+
+  it('re-resolves a main-page navigation target when an SPA replaces it', async () => {
+    const clickWait = jest.fn().mockResolvedValue(true)
+    let clickMapper: ((element: HTMLElement) => boolean) | undefined
+    const map = jest.fn().mockImplementation((mapper: (element: HTMLElement) => boolean) => {
+      clickMapper = mapper
+      return { wait: clickWait }
+    })
+    const setVisibility = jest.fn().mockReturnValue({ map })
+    const domClick = jest.fn()
+    const clickHandle = {
+      evaluate: jest.fn().mockImplementation(async (evaluate) => evaluate({ click: domClick, isConnected: true })),
+      dispose: jest.fn().mockResolvedValue(undefined),
+    }
+    const page = {
+      locator: jest.fn().mockReturnValue({ setVisibility }),
+      $: jest.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(clickHandle),
+    } as unknown as Page
+    const step: PuppeteerLocatorAction = {
+      description: 'Select a menu item',
+      querySelector: 'a[href$="/item"]',
+      action: { type: 'navigate', waitForNavigation: false },
+      delay: 0,
+    }
+
+    await serviceInternals().executeAction(page, { context: page }, step, target, browser)
+
+    expect(() => clickMapper?.({ isConnected: false } as unknown as HTMLElement)).toThrow('Element was replaced before it could be clicked')
+    expect(clickMapper?.({ isConnected: true } as unknown as HTMLElement)).toBe(true)
+    expect(page.$).toHaveBeenCalledTimes(2)
+    expect(domClick).toHaveBeenCalledTimes(1)
+    expect(clickWait).toHaveBeenCalledTimes(2)
+    expect(clickHandle.dispose).toHaveBeenCalledTimes(1)
+  })
+
+  it('paces input into a pinned payment frame field', async () => {
+    const frame = {} as Frame
+    const element = {
+      evaluate: jest.fn().mockResolvedValue(undefined),
+      type: jest.fn().mockResolvedValue(undefined),
+      dispose: jest.fn().mockResolvedValue(undefined),
+    } as unknown as ElementHandle<Element>
+    const step: PuppeteerLocatorAction = {
+      description: 'Enter card number',
+      querySelector: 'input[name="cardnumber"]',
+      frameUrl: '^https://payments\\.example\\.com/card-frame$',
+      action: { type: 'input', value: '4000000000000002' },
+      delay: 0,
+    }
+
+    await serviceInternals().executeAction({} as Page, { context: frame, element }, step, target, browser)
+
+    expect(element.evaluate).toHaveBeenCalledTimes(1)
+    expect(element.type).toHaveBeenCalledWith('4000000000000002', { delay: 25 })
+    expect(element.dispose).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    { firstCandidate: { isConnected: false }, outcome: 'detached' },
+    { firstCandidate: { disabled: true, isConnected: true }, outcome: 'disabled' },
+  ])('safely retries a final pre-click $outcome outcome', async ({ firstCandidate }) => {
+    const map = jest.fn().mockReturnValue({ wait: jest.fn().mockResolvedValue(true) })
+    const setVisibility = jest.fn().mockReturnValue({ map })
+    const domClick = jest.fn()
+    const firstHandle = {
+      evaluate: jest.fn().mockImplementation(async (evaluate) => evaluate(firstCandidate)),
+      dispose: jest.fn().mockResolvedValue(undefined),
+    }
+    const liveHandle = {
+      evaluate: jest.fn().mockImplementation(async (evaluate) => evaluate({ click: domClick, disabled: false, isConnected: true })),
+      dispose: jest.fn().mockResolvedValue(undefined),
+    }
+    const page = {
+      locator: jest.fn().mockReturnValue({ setVisibility }),
+      $: jest.fn().mockResolvedValueOnce(firstHandle).mockResolvedValueOnce(liveHandle),
+    } as unknown as Page
+    const step: PuppeteerLocatorAction = {
+      description: 'Select a menu item',
+      querySelector: 'a[href$="/item"]',
+      action: { type: 'navigate', waitForNavigation: false },
+      delay: 0,
+    }
+
+    await serviceInternals().executeAction(page, { context: page }, step, target, browser)
+
+    expect(page.$).toHaveBeenCalledTimes(2)
+    expect(domClick).toHaveBeenCalledTimes(1)
+    expect(firstHandle.dispose).toHaveBeenCalledTimes(1)
+    expect(liveHandle.dispose).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not retry an ambiguous main-page click failure', async () => {
+    const map = jest.fn().mockReturnValue({ wait: jest.fn().mockResolvedValue(true) })
+    const setVisibility = jest.fn().mockReturnValue({ map })
+    const ambiguousFailure = new Error('Execution context was destroyed after dispatch')
+    const clickHandle = {
+      evaluate: jest.fn().mockRejectedValue(ambiguousFailure),
+      dispose: jest.fn().mockResolvedValue(undefined),
+    }
+    const page = {
+      locator: jest.fn().mockReturnValue({ setVisibility }),
+      $: jest.fn().mockResolvedValue(clickHandle),
+    } as unknown as Page
+    const step: PuppeteerLocatorAction = {
+      description: 'Submit payment',
+      querySelector: 'button[type="submit"]',
+      action: { type: 'click', waitForNavigation: false },
+      delay: 0,
+    }
+
+    await expect(serviceInternals().executeAction(page, { context: page }, step, target, browser)).rejects.toBe(ambiguousFailure)
+    expect(page.$).toHaveBeenCalledTimes(1)
+    expect(clickHandle.evaluate).toHaveBeenCalledTimes(1)
+    expect(clickHandle.dispose).toHaveBeenCalledTimes(1)
   })
 
   it("applies the parent page's timeouts to a popup workflow", async () => {
