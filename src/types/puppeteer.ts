@@ -20,6 +20,7 @@ export type PuppeteerClickAction = {
   type: 'click'
   waitForNavigation: boolean
   waitForResponse?: string | undefined
+  waitForResponseTimeout?: number | undefined
 }
 
 export type PuppeteerInputAction = {

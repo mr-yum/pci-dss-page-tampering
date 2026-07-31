@@ -130,7 +130,7 @@ export class DetectionService implements IDetectionService {
           if (step.delay > 0) {
             await this.sleep(step.delay)
           }
-          const actionTarget = await this.waitForActionTarget(page, step)
+          const actionTarget = index === 0 && navigationUrl !== undefined ? await this.waitForInitialActionTarget(page, step, navigationUrl, target) : await this.waitForActionTarget(page, step)
 
           // Execute action
           await this.executeAction(page, actionTarget, step, target, browser)
@@ -255,15 +255,18 @@ export class DetectionService implements IDetectionService {
           if (action.waitForResponse !== undefined) {
             const responsePattern = new RegExp(action.waitForResponse)
             completionSignals.push(
-              page.waitForResponse(async (response) => {
-                // Ignore CORS preflight: it uses the same URL but is not the
-                // application response that proves the operation occurred.
-                if (response.request().method() === 'OPTIONS' || !responsePattern.test(response.url())) return false
-                // Keep the body read inside Puppeteer's response predicate so
-                // the page timeout bounds the whole completion signal.
-                await response.content()
-                return true
-              }),
+              page.waitForResponse(
+                async (response) => {
+                  // Ignore CORS preflight: it uses the same URL but is not the
+                  // application response that proves the operation occurred.
+                  if (response.request().method() === 'OPTIONS' || !responsePattern.test(response.url())) return false
+                  // Keep the body read inside Puppeteer's response predicate so
+                  // the configured timeout bounds the whole completion signal.
+                  await response.content()
+                  return true
+                },
+                action.waitForResponseTimeout === undefined ? undefined : { timeout: action.waitForResponseTimeout },
+              ),
             )
           }
           completionSignals.push(this.evalClick(actionTarget, step))
@@ -277,10 +280,23 @@ export class DetectionService implements IDetectionService {
             await this.evalClick(actionTarget, step)
             await actionTarget.element.type(action.value)
           } else {
-            // Locators re-resolve the selector if a framework replaces the
-            // element between the visibility wait and the input action.
-            await actionTarget.context.locator(step.querySelector).click()
-            await actionTarget.context.locator(step.querySelector).fill(action.value)
+            // Resolve a fresh element for the DOM click, then let Locator
+            // re-resolve again if the framework replaces it before filling.
+            // Input modals can animate continuously under load, so fill does
+            // not require an identical bounding box across consecutive frames;
+            // Locator still checks visibility and enabled state.
+            await actionTarget.context
+              .locator(step.querySelector)
+              .setVisibility('visible')
+              .map((element) => {
+                const clickable = element as HTMLElement
+                if (!clickable.isConnected) throw new Error('Input element was replaced before it could be clicked')
+                if ((clickable as HTMLInputElement).disabled) throw new Error('Input element is disabled')
+                clickable.click()
+                return true
+              })
+              .wait()
+            await actionTarget.context.locator(step.querySelector).setWaitForStableBoundingBox(false).fill(action.value)
           }
           break
         }
@@ -471,14 +487,14 @@ export class DetectionService implements IDetectionService {
     })
   }
 
-  private async waitForActionTarget(page: Page, step: PuppeteerLocatorAction): Promise<ActionTarget> {
+  private async waitForActionTarget(page: Page, step: PuppeteerLocatorAction, timeout = page.getDefaultTimeout()): Promise<ActionTarget> {
     if (!step.frameUrl) {
-      await page.locator(step.querySelector).wait()
+      await page.locator(step.querySelector).setTimeout(timeout).wait()
       return { context: page }
     }
 
     const matcher = new RegExp(step.frameUrl)
-    const deadline = Date.now() + page.getDefaultTimeout()
+    const deadline = Date.now() + timeout
 
     while (Date.now() < deadline) {
       for (const frame of page.frames().filter((candidate) => candidate !== page.mainFrame() && matcher.test(candidate.url()))) {
@@ -495,6 +511,22 @@ export class DetectionService implements IDetectionService {
 
     const observedFrameUrls = [...new Set(page.frames().map((frame) => this.redactFrameUrl(frame.url())))].join(', ')
     throw new TimeoutError(`Timed out waiting for selector '${step.querySelector}' in a frame URL matching /${step.frameUrl}/. Observed frame URLs: ${observedFrameUrls || '(none)'}`)
+  }
+
+  private async waitForInitialActionTarget(page: Page, step: PuppeteerLocatorAction, navigationUrl: string, target: Target): Promise<ActionTarget> {
+    const attemptTimeouts = [30000, 30000, page.getDefaultTimeout()]
+    for (const [index, timeout] of attemptTimeouts.entries()) {
+      try {
+        return await this.waitForActionTarget(page, step, timeout)
+      } catch (error) {
+        const isFinalAttempt = index === attemptTimeouts.length - 1
+        if (!(error instanceof Error) || error.name !== 'TimeoutError' || isFinalAttempt) throw error
+
+        target.logger.log(`Initial workflow content did not render; reloading (${index + 2}/${attemptTimeouts.length}).`)
+        await this.navigateToTarget(page, navigationUrl, target)
+      }
+    }
+    throw new Error('Initial action target retry loop exhausted unexpectedly')
   }
 
   private async navigateToTarget(page: Page, url: string, target: Target): Promise<void> {

@@ -9,6 +9,8 @@ export type WorkflowActionType = {
   // For click actions, wait for a response whose URL matches this regular
   // expression. Deserialized workflows require an anchored HTTPS origin.
   waitForResponse?: string | undefined
+  // Optional timeout for waitForResponse. Omit to use the page default.
+  waitForResponseTimeout?: number | undefined
   steps?: WorkflowStep[] | undefined
 }
 

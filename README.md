@@ -230,7 +230,8 @@ combined with `waitForNavigation` when both signals are required:
   "waitFor": [{ "type": "button", "identifier": "Submit" }],
   "action": {
     "type": "click",
-    "waitForResponse": "^https://api\\.payments\\.example/v1/validate(?:\\?.*)?$"
+    "waitForResponse": "^https://api\\.payments\\.example/v1/validate(?:\\?.*)?$",
+    "waitForResponseTimeout": 240000
   }
 }
 ```
@@ -238,7 +239,9 @@ combined with `waitForNavigation` when both signals are required:
 The matcher must start with an anchored, exact HTTPS origin; keep its path as
 narrow and as late in the operation as the integration permits. A preliminary
 tokenization response is usually too early when the workflow needs to observe
-subsequent authentication or validation resources.
+subsequent authentication or validation resources. Optional
+`waitForResponseTimeout` sets a bounded 1–300000 ms override for unusually slow
+provider validation; otherwise the page's normal workflow timeout applies.
 
 ### Date Placeholders in Target URLs
 

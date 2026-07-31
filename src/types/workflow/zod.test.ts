@@ -97,7 +97,7 @@ describe('WorkflowStepSchema', () => {
   })
 
   it('accepts an anchored HTTPS response matcher on a click action', () => {
-    const result = WorkflowStepSchema.safeParse(step({ type: 'click', waitForResponse: '^https://api\\.payments\\.example/v1/payment_methods(?:\\?.*)?$' }))
+    const result = WorkflowStepSchema.safeParse(step({ type: 'click', waitForResponse: '^https://api\\.payments\\.example/v1/payment_methods(?:\\?.*)?$', waitForResponseTimeout: 240000 }))
     expect(result.success).toBe(true)
   })
 
@@ -108,6 +108,11 @@ describe('WorkflowStepSchema', () => {
 
   it('rejects a response matcher on a non-click action', () => {
     const result = WorkflowStepSchema.safeParse(step({ type: 'input', value: 'value', waitForResponse: '^https://api\\.payments\\.example/v1/complete$' }))
+    expect(result.success).toBe(false)
+  })
+
+  it('rejects a response timeout without a response matcher', () => {
+    const result = WorkflowStepSchema.safeParse(step({ type: 'click', waitForResponseTimeout: 240000 }))
     expect(result.success).toBe(false)
   })
 })

@@ -49,6 +49,7 @@ describe('collectTotpSeedRefs', () => {
     const responseStep = step({
       type: 'click',
       waitForResponse: '^https://api\\.payments\\.example/v1/payment_methods(?:\\?.*)?$',
+      waitForResponseTimeout: 240000,
     })
 
     expect(stepsToPuppeteerLocatorAction([responseStep])).toEqual([
@@ -60,6 +61,7 @@ describe('collectTotpSeedRefs', () => {
           type: 'click',
           waitForNavigation: false,
           waitForResponse: '^https://api\\.payments\\.example/v1/payment_methods(?:\\?.*)?$',
+          waitForResponseTimeout: 240000,
         },
         delay: 0,
       },
@@ -69,12 +71,28 @@ describe('collectTotpSeedRefs', () => {
   it('rejects response synchronization on a programmatically constructed non-click action', () => {
     const invalidStep = step({ type: 'input', value: 'value', waitForResponse: '^https://api\\.payments\\.example/' })
 
-    expect(() => stepsToPuppeteerLocatorAction([invalidStep])).toThrow("waitForResponse is only supported for workflow actions of type 'click'")
+    expect(() => stepsToPuppeteerLocatorAction([invalidStep])).toThrow("waitForResponse and waitForResponseTimeout are only supported for workflow actions of type 'click'")
   })
 
   it('rejects an untrusted response matcher in a programmatically constructed click action', () => {
     const invalidStep = step({ type: 'click', waitForResponse: '.*' })
 
     expect(() => stepsToPuppeteerLocatorAction([invalidStep])).toThrow('waitForResponse must begin with an anchored, exact HTTPS origin')
+  })
+
+  it('rejects a programmatic response timeout without a response matcher', () => {
+    const invalidStep = step({ type: 'click', waitForResponseTimeout: 240000 })
+
+    expect(() => stepsToPuppeteerLocatorAction([invalidStep])).toThrow('waitForResponseTimeout requires waitForResponse')
+  })
+
+  it.each([0, -1, 1.5, 300001, Number.NaN, Number.POSITIVE_INFINITY])('rejects an invalid programmatic response timeout: %s', (waitForResponseTimeout) => {
+    const invalidStep = step({
+      type: 'click',
+      waitForResponse: '^https://api\\.payments\\.example/v1/payment_methods$',
+      waitForResponseTimeout,
+    })
+
+    expect(() => stepsToPuppeteerLocatorAction([invalidStep])).toThrow()
   })
 })

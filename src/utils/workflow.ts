@@ -1,7 +1,7 @@
 import type { PuppeteerAction, PuppeteerLocatorAction, PuppeteerWorkflow } from '../types/puppeteer.js'
 import type { Target } from '../types/target.js'
 import type { Workflow, WorkflowActionType, WorkflowStep, WorkflowWaitForDefinition } from '../types/workflow.js'
-import { WaitForResponseSchema } from '../types/workflow/zod.js'
+import { WaitForResponseSchema, WaitForResponseTimeoutSchema } from '../types/workflow/zod.js'
 import { WORKFLOW_PATH } from './constants.js'
 import { getWorkflowDefinitionFromFile } from './file.js'
 
@@ -71,8 +71,11 @@ function waitForToQuerySelector(waitFor: WorkflowWaitForDefinition[]): string {
 function actionToPuppeteerAction(action: WorkflowActionType): PuppeteerAction {
   // Deserialized workflows are protected by Zod; retain the same fail-secure
   // behaviour for JavaScript callers or TypeScript casts that bypass it.
-  if (action.type !== 'click' && action.waitForResponse !== undefined) {
-    throw new Error("waitForResponse is only supported for workflow actions of type 'click'")
+  if (action.type !== 'click' && (action.waitForResponse !== undefined || action.waitForResponseTimeout !== undefined)) {
+    throw new Error("waitForResponse and waitForResponseTimeout are only supported for workflow actions of type 'click'")
+  }
+  if (action.type === 'click' && action.waitForResponseTimeout !== undefined && action.waitForResponse === undefined) {
+    throw new Error('waitForResponseTimeout requires waitForResponse')
   }
 
   switch (action.type) {
@@ -81,6 +84,7 @@ function actionToPuppeteerAction(action: WorkflowActionType): PuppeteerAction {
         type: 'click',
         waitForNavigation: action.waitForNavigation ?? false,
         waitForResponse: action.waitForResponse === undefined ? undefined : WaitForResponseSchema.parse(action.waitForResponse),
+        ...(action.waitForResponseTimeout === undefined ? {} : { waitForResponseTimeout: WaitForResponseTimeoutSchema.parse(action.waitForResponseTimeout) }),
       }
     }
     case 'input': {

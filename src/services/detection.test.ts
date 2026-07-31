@@ -12,7 +12,8 @@ type DetectionServiceInternals = {
   executeAction(page: Page, actionTarget: { context: Page | Frame; element?: ElementHandle<Element> }, step: PuppeteerLocatorAction, target: Target, browser: Browser): Promise<void>
   navigateToTarget(page: Page, url: string, target: Target): Promise<void>
   sleep(ms: number): Promise<void>
-  waitForActionTarget(page: Page, step: PuppeteerLocatorAction): Promise<{ context: Page | Frame; element?: ElementHandle<Element> }>
+  waitForActionTarget(page: Page, step: PuppeteerLocatorAction, timeout?: number): Promise<{ context: Page | Frame; element?: ElementHandle<Element> }>
+  waitForInitialActionTarget(page: Page, step: PuppeteerLocatorAction, navigationUrl: string, target: Target): Promise<{ context: Page | Frame; element?: ElementHandle<Element> }>
   redactFrameUrl(url: string): string
 }
 
@@ -59,11 +60,44 @@ describe('DetectionService framed workflow actions', () => {
     expect(service.sleep).toHaveBeenNthCalledWith(2, 2000)
   })
 
-  it('re-resolves a main-page input when the visible element is replaced', async () => {
-    const click = jest.fn().mockResolvedValue(undefined)
-    const fill = jest.fn().mockResolvedValue(undefined)
+  it('reloads when the first workflow selector does not render', async () => {
+    const firstTimeout = Object.assign(new Error('selector did not render'), { name: 'TimeoutError' })
+    const wait = jest.fn().mockRejectedValueOnce(firstTimeout).mockResolvedValue(undefined)
+    const setTimeout = jest.fn().mockReturnValue({ wait })
     const page = {
-      locator: jest.fn().mockReturnValueOnce({ click }).mockReturnValueOnce({ fill }),
+      getDefaultTimeout: jest.fn().mockReturnValue(120000),
+      locator: jest.fn().mockReturnValue({ setTimeout }),
+      goto: jest.fn().mockResolvedValue(null),
+    } as unknown as Page
+    const logger = { log: jest.fn() }
+    const workflowTarget = { logger } as unknown as Target
+    const step: PuppeteerLocatorAction = {
+      description: 'Select booking slot',
+      querySelector: '[data-testid="availability-slot-group"] button:enabled',
+      action: { type: 'click', waitForNavigation: false },
+      delay: 0,
+    }
+
+    await expect(serviceInternals().waitForInitialActionTarget(page, step, 'https://booking.example.com/venue', workflowTarget)).resolves.toEqual({ context: page })
+
+    expect(setTimeout).toHaveBeenNthCalledWith(1, 30000)
+    expect(setTimeout).toHaveBeenNthCalledWith(2, 30000)
+    expect(page.goto).toHaveBeenCalledWith('https://booking.example.com/venue', { waitUntil: 'networkidle2' })
+    expect(logger.log).toHaveBeenCalledWith('Initial workflow content did not render; reloading (2/3).')
+  })
+
+  it('re-resolves a main-page input when the visible element is replaced', async () => {
+    const clickWait = jest.fn().mockResolvedValue(true)
+    let clickMapper: ((element: HTMLElement) => boolean) | undefined
+    const map = jest.fn().mockImplementation((mapper: (element: HTMLElement) => boolean) => {
+      clickMapper = mapper
+      return { wait: clickWait }
+    })
+    const setVisibility = jest.fn().mockReturnValue({ map })
+    const fill = jest.fn().mockResolvedValue(undefined)
+    const fillStableBox = jest.fn().mockReturnValue({ fill })
+    const page = {
+      locator: jest.fn().mockReturnValueOnce({ setVisibility }).mockReturnValueOnce({ setWaitForStableBoundingBox: fillStableBox }),
     } as unknown as Page
     const step: PuppeteerLocatorAction = {
       description: 'Enter guest name',
@@ -75,8 +109,16 @@ describe('DetectionService framed workflow actions', () => {
     await serviceInternals().executeAction(page, { context: page }, step, target, browser)
 
     expect(page.locator).toHaveBeenNthCalledWith(1, step.querySelector)
-    expect(click).toHaveBeenCalledTimes(1)
+    expect(setVisibility).toHaveBeenCalledWith('visible')
+    expect(map).toHaveBeenCalledWith(expect.any(Function))
+    const domClick = jest.fn()
+    expect(() => clickMapper?.({ click: domClick, isConnected: false } as unknown as HTMLElement)).toThrow('Input element was replaced before it could be clicked')
+    expect(() => clickMapper?.({ click: domClick, disabled: true, isConnected: true } as unknown as HTMLElement)).toThrow('Input element is disabled')
+    expect(clickMapper?.({ click: domClick, disabled: false, isConnected: true } as unknown as HTMLElement)).toBe(true)
+    expect(domClick).toHaveBeenCalledTimes(1)
+    expect(clickWait).toHaveBeenCalledTimes(1)
     expect(page.locator).toHaveBeenNthCalledWith(2, step.querySelector)
+    expect(fillStableBox).toHaveBeenCalledWith(false)
     expect(fill).toHaveBeenCalledWith('PCI Monitor')
   })
 
@@ -195,6 +237,7 @@ describe('DetectionService framed workflow actions', () => {
         type: 'click',
         waitForNavigation: false,
         waitForResponse: '^https://api\\.payments\\.example/v1/payment_methods(?:\\?.*)?$',
+        waitForResponseTimeout: 240000,
       },
       delay: 0,
     }
@@ -202,6 +245,7 @@ describe('DetectionService framed workflow actions', () => {
     await serviceInternals().executeAction(page, { context: page, element }, step, target, browser)
 
     expect(page.waitForResponse).toHaveBeenCalledTimes(1)
+    expect(page.waitForResponse).toHaveBeenCalledWith(expect.any(Function), { timeout: 240000 })
     expect(matchingResponse.content).toHaveBeenCalledTimes(1)
     expect(callOrder).toEqual(['wait', 'click', 'body'])
   })
