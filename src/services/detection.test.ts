@@ -200,7 +200,7 @@ describe('DetectionService framed workflow actions', () => {
       status: () => 402,
       content: jest.fn().mockImplementation(async () => {
         callOrder.push('body')
-        return new Uint8Array()
+        return new TextEncoder().encode('{"error":{"code":"card_declined"}}')
       }),
     }
     const page = {
@@ -238,6 +238,14 @@ describe('DetectionService framed workflow actions', () => {
             content: jest.fn().mockResolvedValue(new Uint8Array()),
           }),
         ).toBe(false)
+        const wrongBodyResponse = {
+          url: matchingResponse.url,
+          request: () => ({ method: () => 'POST' }),
+          status: () => 402,
+          content: jest.fn().mockResolvedValue(new TextEncoder().encode('{"error":{"code":"rate_limit"}}')),
+        }
+        expect(await predicate(wrongBodyResponse)).toBe(false)
+        expect(wrongBodyResponse.content).toHaveBeenCalledTimes(1)
         expect(await predicate(matchingResponse)).toBe(true)
         return matchingResponse
       }),
@@ -259,6 +267,7 @@ describe('DetectionService framed workflow actions', () => {
         waitForResponseTimeout: 240000,
         waitForResponseMethod: 'POST',
         waitForResponseStatuses: [200, 402],
+        waitForResponseBody: '"code"\\s*:\\s*"card_declined"',
       },
       delay: 0,
       postActionDelay: 2500,

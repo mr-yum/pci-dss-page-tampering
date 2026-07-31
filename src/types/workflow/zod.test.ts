@@ -104,6 +104,7 @@ describe('WorkflowStepSchema', () => {
         waitForResponseTimeout: 240000,
         waitForResponseMethod: 'POST',
         waitForResponseStatuses: [200, 402],
+        waitForResponseBody: '"code"\\s*:\\s*"card_declined"',
         postActionDelay: 2500,
       }),
     )
@@ -125,7 +126,7 @@ describe('WorkflowStepSchema', () => {
     expect(result.success).toBe(false)
   })
 
-  it.each([{ waitForResponseMethod: 'POST' }, { waitForResponseStatuses: [200] }])('rejects response constraints without a response matcher', (responseConstraint) => {
+  it.each([{ waitForResponseMethod: 'POST' }, { waitForResponseStatuses: [200] }, { waitForResponseBody: '"code"' }])('rejects response constraints without a response matcher', (responseConstraint) => {
     const result = WorkflowStepSchema.safeParse(step({ type: 'click', ...responseConstraint }))
     expect(result.success).toBe(false)
   })
@@ -147,6 +148,17 @@ describe('WorkflowStepSchema', () => {
         type: 'click',
         waitForResponse: '^https://api\\.payments\\.example/v1/payment_methods$',
         waitForResponseMethod: 'TRACE',
+      }),
+    )
+    expect(result.success).toBe(false)
+  })
+
+  it('rejects an invalid response body matcher', () => {
+    const result = WorkflowStepSchema.safeParse(
+      step({
+        type: 'click',
+        waitForResponse: '^https://api\\.payments\\.example/v1/payment_methods$',
+        waitForResponseBody: '[',
       }),
     )
     expect(result.success).toBe(false)

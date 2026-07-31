@@ -254,6 +254,7 @@ export class DetectionService implements IDetectionService {
           if (action.waitForNavigation) completionSignals.push(this.waitForActionNavigation(page, actionTarget.context))
           if (action.waitForResponse !== undefined) {
             const responsePattern = new RegExp(action.waitForResponse)
+            const responseBodyPattern = action.waitForResponseBody === undefined ? undefined : new RegExp(action.waitForResponseBody)
             completionSignals.push(
               page.waitForResponse(
                 async (response) => {
@@ -265,7 +266,8 @@ export class DetectionService implements IDetectionService {
                   if (action.waitForResponseStatuses !== undefined && !action.waitForResponseStatuses.includes(response.status())) return false
                   // Keep the body read inside Puppeteer's response predicate so
                   // the configured timeout bounds the whole completion signal.
-                  await response.content()
+                  const body = await response.content()
+                  if (responseBodyPattern !== undefined && !responseBodyPattern.test(new TextDecoder().decode(body))) return false
                   return true
                 },
                 action.waitForResponseTimeout === undefined ? undefined : { timeout: action.waitForResponseTimeout },

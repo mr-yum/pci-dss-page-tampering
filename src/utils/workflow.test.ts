@@ -52,6 +52,7 @@ describe('collectTotpSeedRefs', () => {
       waitForResponseTimeout: 240000,
       waitForResponseMethod: 'POST',
       waitForResponseStatuses: [200, 402],
+      waitForResponseBody: '"code"\\s*:\\s*"card_declined"',
       postActionDelay: 2500,
     })
 
@@ -67,6 +68,7 @@ describe('collectTotpSeedRefs', () => {
           waitForResponseTimeout: 240000,
           waitForResponseMethod: 'POST',
           waitForResponseStatuses: [200, 402],
+          waitForResponseBody: '"code"\\s*:\\s*"card_declined"',
         },
         delay: 0,
         postActionDelay: 2500,
@@ -120,6 +122,16 @@ describe('collectTotpSeedRefs', () => {
     } as unknown as WorkflowStep['action'])
 
     expect(() => stepsToPuppeteerLocatorAction([invalidStep])).toThrow()
+  })
+
+  it('rejects an invalid programmatic response body matcher', () => {
+    const invalidStep = step({
+      type: 'click',
+      waitForResponse: '^https://api\\.payments\\.example/v1/payment_methods$',
+      waitForResponseBody: '[',
+    })
+
+    expect(() => stepsToPuppeteerLocatorAction([invalidStep])).toThrow('waitForResponseBody must be a valid regular expression')
   })
 
   it.each([0, -1, 1.5, 300001, Number.NaN, Number.POSITIVE_INFINITY])('rejects an invalid programmatic post-action delay: %s', (postActionDelay) => {

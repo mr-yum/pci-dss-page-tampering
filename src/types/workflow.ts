@@ -14,6 +14,8 @@ export type WorkflowActionType = {
   // Optional request method and response statuses that must also match.
   waitForResponseMethod?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | undefined
   waitForResponseStatuses?: number[] | undefined
+  // Optional regular expression that must match the completed response body.
+  waitForResponseBody?: string | undefined
   // Optional bounded settling time after the action and its completion signals.
   postActionDelay?: number | undefined
   steps?: WorkflowStep[] | undefined

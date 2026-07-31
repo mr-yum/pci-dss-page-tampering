@@ -234,6 +234,7 @@ combined with `waitForNavigation` when both signals are required:
     "waitForResponseTimeout": 240000,
     "waitForResponseMethod": "POST",
     "waitForResponseStatuses": [200, 402],
+    "waitForResponseBody": "\"code\"\\s*:\\s*\"card_declined\"",
     "postActionDelay": 2500
   }
 }
@@ -245,11 +246,13 @@ tokenization response is usually too early when the workflow needs to observe
 subsequent authentication or validation resources. Optional
 `waitForResponseTimeout` sets a bounded 1–300000 ms override for unusually slow
 provider validation; otherwise the page's normal workflow timeout applies.
-`waitForResponseMethod` and `waitForResponseStatuses` optionally constrain the
-completion signal so blocked or failed requests cannot satisfy a successful
-workflow accidentally. `postActionDelay` adds a bounded 1–300000 ms settling
-window after all action completion signals, before the monitor performs its
-next script scan.
+`waitForResponseMethod`, `waitForResponseStatuses`, and
+`waitForResponseBody` optionally constrain the completion signal so blocked,
+failed, or semantically different responses cannot satisfy a successful
+workflow accidentally. The body option is a regular expression tested against
+the completed response bytes decoded as UTF-8. `postActionDelay` adds a bounded
+1–300000 ms settling window after all action completion signals, before the
+monitor performs its next script scan.
 
 ### Date Placeholders in Target URLs
 

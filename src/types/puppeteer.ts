@@ -24,6 +24,7 @@ export type PuppeteerClickAction = {
   waitForResponseTimeout?: number | undefined
   waitForResponseMethod?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | undefined
   waitForResponseStatuses?: number[] | undefined
+  waitForResponseBody?: string | undefined
 }
 
 export type PuppeteerInputAction = {
