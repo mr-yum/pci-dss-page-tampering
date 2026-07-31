@@ -197,17 +197,19 @@ describe('DetectionService framed workflow actions', () => {
     const matchingResponse = {
       url: () => 'https://api.payments.example/v1/payment_methods?client=browser',
       request: () => ({ method: () => 'POST' }),
+      status: () => 402,
       content: jest.fn().mockImplementation(async () => {
         callOrder.push('body')
         return new Uint8Array()
       }),
     }
     const page = {
-      waitForResponse: jest.fn().mockImplementation(async (predicate: (response: { url(): string; request(): { method(): string }; content(): Promise<Uint8Array> }) => Promise<boolean>) => {
+      waitForResponse: jest.fn().mockImplementation(async (predicate: (response: { url(): string; request(): { method(): string }; status(): number; content(): Promise<Uint8Array> }) => Promise<boolean>) => {
         callOrder.push('wait')
         const preflightResponse = {
           url: matchingResponse.url,
           request: () => ({ method: () => 'OPTIONS' }),
+          status: () => 204,
           content: jest.fn().mockResolvedValue(new Uint8Array()),
         }
         expect(await predicate(preflightResponse)).toBe(false)
@@ -216,6 +218,23 @@ describe('DetectionService framed workflow actions', () => {
           await predicate({
             url: () => 'https://api.payments.example/v1/other',
             request: () => ({ method: () => 'POST' }),
+            status: () => 402,
+            content: jest.fn().mockResolvedValue(new Uint8Array()),
+          }),
+        ).toBe(false)
+        expect(
+          await predicate({
+            url: matchingResponse.url,
+            request: () => ({ method: () => 'GET' }),
+            status: () => 402,
+            content: jest.fn().mockResolvedValue(new Uint8Array()),
+          }),
+        ).toBe(false)
+        expect(
+          await predicate({
+            url: matchingResponse.url,
+            request: () => ({ method: () => 'POST' }),
+            status: () => 500,
             content: jest.fn().mockResolvedValue(new Uint8Array()),
           }),
         ).toBe(false)
@@ -238,16 +257,24 @@ describe('DetectionService framed workflow actions', () => {
         waitForNavigation: false,
         waitForResponse: '^https://api\\.payments\\.example/v1/payment_methods(?:\\?.*)?$',
         waitForResponseTimeout: 240000,
+        waitForResponseMethod: 'POST',
+        waitForResponseStatuses: [200, 402],
       },
       delay: 0,
+      postActionDelay: 2500,
     }
 
-    await serviceInternals().executeAction(page, { context: page, element }, step, target, browser)
+    const service = serviceInternals()
+    service.sleep = jest.fn().mockImplementation(async () => {
+      callOrder.push('settle')
+    })
+    await service.executeAction(page, { context: page, element }, step, target, browser)
 
     expect(page.waitForResponse).toHaveBeenCalledTimes(1)
     expect(page.waitForResponse).toHaveBeenCalledWith(expect.any(Function), { timeout: 240000 })
     expect(matchingResponse.content).toHaveBeenCalledTimes(1)
-    expect(callOrder).toEqual(['wait', 'click', 'body'])
+    expect(service.sleep).toHaveBeenCalledWith(2500)
+    expect(callOrder).toEqual(['wait', 'click', 'body', 'settle'])
   })
 
   it('accepts a parent navigation triggered from a selected frame', async () => {

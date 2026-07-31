@@ -231,7 +231,10 @@ combined with `waitForNavigation` when both signals are required:
   "action": {
     "type": "click",
     "waitForResponse": "^https://api\\.payments\\.example/v1/validate(?:\\?.*)?$",
-    "waitForResponseTimeout": 240000
+    "waitForResponseTimeout": 240000,
+    "waitForResponseMethod": "POST",
+    "waitForResponseStatuses": [200, 402],
+    "postActionDelay": 2500
   }
 }
 ```
@@ -242,6 +245,11 @@ tokenization response is usually too early when the workflow needs to observe
 subsequent authentication or validation resources. Optional
 `waitForResponseTimeout` sets a bounded 1–300000 ms override for unusually slow
 provider validation; otherwise the page's normal workflow timeout applies.
+`waitForResponseMethod` and `waitForResponseStatuses` optionally constrain the
+completion signal so blocked or failed requests cannot satisfy a successful
+workflow accidentally. `postActionDelay` adds a bounded 1–300000 ms settling
+window after all action completion signals, before the monitor performs its
+next script scan.
 
 ### Date Placeholders in Target URLs
 

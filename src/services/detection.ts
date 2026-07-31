@@ -259,7 +259,10 @@ export class DetectionService implements IDetectionService {
                 async (response) => {
                   // Ignore CORS preflight: it uses the same URL but is not the
                   // application response that proves the operation occurred.
-                  if (response.request().method() === 'OPTIONS' || !responsePattern.test(response.url())) return false
+                  const method = response.request().method()
+                  if (method === 'OPTIONS' || !responsePattern.test(response.url())) return false
+                  if (action.waitForResponseMethod !== undefined && method !== action.waitForResponseMethod) return false
+                  if (action.waitForResponseStatuses !== undefined && !action.waitForResponseStatuses.includes(response.status())) return false
                   // Keep the body read inside Puppeteer's response predicate so
                   // the configured timeout bounds the whole completion signal.
                   await response.content()
@@ -421,6 +424,9 @@ export class DetectionService implements IDetectionService {
 
           break
         }
+      }
+      if (step.postActionDelay !== undefined) {
+        await this.sleep(step.postActionDelay)
       }
     } finally {
       await actionTarget.element?.dispose().catch(() => undefined)

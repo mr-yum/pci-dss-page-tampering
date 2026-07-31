@@ -97,7 +97,16 @@ describe('WorkflowStepSchema', () => {
   })
 
   it('accepts an anchored HTTPS response matcher on a click action', () => {
-    const result = WorkflowStepSchema.safeParse(step({ type: 'click', waitForResponse: '^https://api\\.payments\\.example/v1/payment_methods(?:\\?.*)?$', waitForResponseTimeout: 240000 }))
+    const result = WorkflowStepSchema.safeParse(
+      step({
+        type: 'click',
+        waitForResponse: '^https://api\\.payments\\.example/v1/payment_methods(?:\\?.*)?$',
+        waitForResponseTimeout: 240000,
+        waitForResponseMethod: 'POST',
+        waitForResponseStatuses: [200, 402],
+        postActionDelay: 2500,
+      }),
+    )
     expect(result.success).toBe(true)
   })
 
@@ -113,6 +122,38 @@ describe('WorkflowStepSchema', () => {
 
   it('rejects a response timeout without a response matcher', () => {
     const result = WorkflowStepSchema.safeParse(step({ type: 'click', waitForResponseTimeout: 240000 }))
+    expect(result.success).toBe(false)
+  })
+
+  it.each([{ waitForResponseMethod: 'POST' }, { waitForResponseStatuses: [200] }])('rejects response constraints without a response matcher', (responseConstraint) => {
+    const result = WorkflowStepSchema.safeParse(step({ type: 'click', ...responseConstraint }))
+    expect(result.success).toBe(false)
+  })
+
+  it.each([{ statuses: [] }, { statuses: [99] }, { statuses: [600] }, { statuses: [200.5] }])('rejects invalid response statuses: $statuses', ({ statuses: waitForResponseStatuses }) => {
+    const result = WorkflowStepSchema.safeParse(
+      step({
+        type: 'click',
+        waitForResponse: '^https://api\\.payments\\.example/v1/payment_methods$',
+        waitForResponseStatuses,
+      }),
+    )
+    expect(result.success).toBe(false)
+  })
+
+  it('rejects an invalid response method', () => {
+    const result = WorkflowStepSchema.safeParse(
+      step({
+        type: 'click',
+        waitForResponse: '^https://api\\.payments\\.example/v1/payment_methods$',
+        waitForResponseMethod: 'TRACE',
+      }),
+    )
+    expect(result.success).toBe(false)
+  })
+
+  it.each([0, -1, 1.5, 300001])('rejects an invalid post-action delay: %s', (postActionDelay) => {
+    const result = WorkflowStepSchema.safeParse(step({ type: 'click', postActionDelay }))
     expect(result.success).toBe(false)
   })
 })

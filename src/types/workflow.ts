@@ -11,6 +11,11 @@ export type WorkflowActionType = {
   waitForResponse?: string | undefined
   // Optional timeout for waitForResponse. Omit to use the page default.
   waitForResponseTimeout?: number | undefined
+  // Optional request method and response statuses that must also match.
+  waitForResponseMethod?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | undefined
+  waitForResponseStatuses?: number[] | undefined
+  // Optional bounded settling time after the action and its completion signals.
+  postActionDelay?: number | undefined
   steps?: WorkflowStep[] | undefined
 }
 

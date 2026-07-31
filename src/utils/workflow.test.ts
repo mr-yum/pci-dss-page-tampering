@@ -50,6 +50,9 @@ describe('collectTotpSeedRefs', () => {
       type: 'click',
       waitForResponse: '^https://api\\.payments\\.example/v1/payment_methods(?:\\?.*)?$',
       waitForResponseTimeout: 240000,
+      waitForResponseMethod: 'POST',
+      waitForResponseStatuses: [200, 402],
+      postActionDelay: 2500,
     })
 
     expect(stepsToPuppeteerLocatorAction([responseStep])).toEqual([
@@ -62,8 +65,11 @@ describe('collectTotpSeedRefs', () => {
           waitForNavigation: false,
           waitForResponse: '^https://api\\.payments\\.example/v1/payment_methods(?:\\?.*)?$',
           waitForResponseTimeout: 240000,
+          waitForResponseMethod: 'POST',
+          waitForResponseStatuses: [200, 402],
         },
         delay: 0,
+        postActionDelay: 2500,
       },
     ])
   })
@@ -71,7 +77,7 @@ describe('collectTotpSeedRefs', () => {
   it('rejects response synchronization on a programmatically constructed non-click action', () => {
     const invalidStep = step({ type: 'input', value: 'value', waitForResponse: '^https://api\\.payments\\.example/' })
 
-    expect(() => stepsToPuppeteerLocatorAction([invalidStep])).toThrow("waitForResponse and waitForResponseTimeout are only supported for workflow actions of type 'click'")
+    expect(() => stepsToPuppeteerLocatorAction([invalidStep])).toThrow("Response waiting options are only supported for workflow actions of type 'click'")
   })
 
   it('rejects an untrusted response matcher in a programmatically constructed click action', () => {
@@ -83,7 +89,7 @@ describe('collectTotpSeedRefs', () => {
   it('rejects a programmatic response timeout without a response matcher', () => {
     const invalidStep = step({ type: 'click', waitForResponseTimeout: 240000 })
 
-    expect(() => stepsToPuppeteerLocatorAction([invalidStep])).toThrow('waitForResponseTimeout requires waitForResponse')
+    expect(() => stepsToPuppeteerLocatorAction([invalidStep])).toThrow('Response waiting options require waitForResponse')
   })
 
   it.each([0, -1, 1.5, 300001, Number.NaN, Number.POSITIVE_INFINITY])('rejects an invalid programmatic response timeout: %s', (waitForResponseTimeout) => {
@@ -92,6 +98,32 @@ describe('collectTotpSeedRefs', () => {
       waitForResponse: '^https://api\\.payments\\.example/v1/payment_methods$',
       waitForResponseTimeout,
     })
+
+    expect(() => stepsToPuppeteerLocatorAction([invalidStep])).toThrow()
+  })
+
+  it.each([{ statuses: [] }, { statuses: [99] }, { statuses: [600] }, { statuses: [200.5] }])('rejects invalid programmatic response statuses: $statuses', ({ statuses: waitForResponseStatuses }) => {
+    const invalidStep = step({
+      type: 'click',
+      waitForResponse: '^https://api\\.payments\\.example/v1/payment_methods$',
+      waitForResponseStatuses,
+    })
+
+    expect(() => stepsToPuppeteerLocatorAction([invalidStep])).toThrow()
+  })
+
+  it('rejects an invalid programmatic response method', () => {
+    const invalidStep = step({
+      type: 'click',
+      waitForResponse: '^https://api\\.payments\\.example/v1/payment_methods$',
+      waitForResponseMethod: 'TRACE',
+    } as unknown as WorkflowStep['action'])
+
+    expect(() => stepsToPuppeteerLocatorAction([invalidStep])).toThrow()
+  })
+
+  it.each([0, -1, 1.5, 300001, Number.NaN, Number.POSITIVE_INFINITY])('rejects an invalid programmatic post-action delay: %s', (postActionDelay) => {
+    const invalidStep = step({ type: 'click', postActionDelay })
 
     expect(() => stepsToPuppeteerLocatorAction([invalidStep])).toThrow()
   })

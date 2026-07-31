@@ -71,6 +71,9 @@ function trustedHttpsPatternSchema(fieldName: 'frameUrl' | 'waitForResponse') {
 const FrameUrlSchema = trustedHttpsPatternSchema('frameUrl')
 export const WaitForResponseSchema = trustedHttpsPatternSchema('waitForResponse')
 export const WaitForResponseTimeoutSchema = z.number().int().positive().max(300000)
+export const WaitForResponseMethodSchema = z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD'])
+export const WaitForResponseStatusesSchema = z.array(z.number().int().min(100).max(599)).min(1)
+export const PostActionDelaySchema = z.number().int().positive().max(300000)
 
 // We must use z.lazy() because WorkflowStep and WorkflowActionType refer to each other.
 export const WorkflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() =>
@@ -87,6 +90,9 @@ export const WorkflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() =>
         waitForNavigation: z.literal(true).optional(),
         waitForResponse: WaitForResponseSchema.optional(),
         waitForResponseTimeout: WaitForResponseTimeoutSchema.optional(),
+        waitForResponseMethod: WaitForResponseMethodSchema.optional(),
+        waitForResponseStatuses: WaitForResponseStatusesSchema.optional(),
+        postActionDelay: PostActionDelaySchema.optional(),
         // This is the recursive part, referring back to workflowStepSchema
         steps: z.array(WorkflowStepSchema).optional(),
       })
@@ -100,24 +106,19 @@ export const WorkflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() =>
             message: "Workflow actions of type 'totp' require a non-empty seedRef naming a seed passed via --totp-seed",
           })
         }
-        if (action.waitForResponse !== undefined && action.type !== 'click') {
+        const hasResponseOptions = action.waitForResponse !== undefined || action.waitForResponseTimeout !== undefined || action.waitForResponseMethod !== undefined || action.waitForResponseStatuses !== undefined
+        if (hasResponseOptions && action.type !== 'click') {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             path: ['waitForResponse'],
-            message: "waitForResponse is only supported for workflow actions of type 'click'",
+            message: "Response waiting options are only supported for workflow actions of type 'click'",
           })
         }
-        if (action.waitForResponseTimeout !== undefined && action.type !== 'click') {
+        if (action.waitForResponse === undefined && (action.waitForResponseTimeout !== undefined || action.waitForResponseMethod !== undefined || action.waitForResponseStatuses !== undefined)) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            path: ['waitForResponseTimeout'],
-            message: "waitForResponseTimeout is only supported for workflow actions of type 'click'",
-          })
-        } else if (action.waitForResponseTimeout !== undefined && action.waitForResponse === undefined) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ['waitForResponseTimeout'],
-            message: 'waitForResponseTimeout requires waitForResponse',
+            path: ['waitForResponse'],
+            message: 'Response waiting options require waitForResponse',
           })
         }
       }) satisfies z.ZodType<WorkflowActionType>, // Ensures this object matches the Action type

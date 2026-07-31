@@ -12,6 +12,7 @@ export type PuppeteerLocatorAction = {
   frameUrl?: string | undefined
   action: PuppeteerAction
   delay: number
+  postActionDelay?: number | undefined
 }
 
 export type PuppeteerAction = PuppeteerClickAction | PuppeteerInputAction | PuppeteerTotpAction | PuppeteerEscapeAction | PuppeteerNavigateAction | PuppeteerClickPopupAction
@@ -21,6 +22,8 @@ export type PuppeteerClickAction = {
   waitForNavigation: boolean
   waitForResponse?: string | undefined
   waitForResponseTimeout?: number | undefined
+  waitForResponseMethod?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | undefined
+  waitForResponseStatuses?: number[] | undefined
 }
 
 export type PuppeteerInputAction = {

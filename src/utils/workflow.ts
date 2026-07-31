@@ -1,7 +1,7 @@
 import type { PuppeteerAction, PuppeteerLocatorAction, PuppeteerWorkflow } from '../types/puppeteer.js'
 import type { Target } from '../types/target.js'
 import type { Workflow, WorkflowActionType, WorkflowStep, WorkflowWaitForDefinition } from '../types/workflow.js'
-import { WaitForResponseSchema, WaitForResponseTimeoutSchema } from '../types/workflow/zod.js'
+import { PostActionDelaySchema, WaitForResponseMethodSchema, WaitForResponseSchema, WaitForResponseStatusesSchema, WaitForResponseTimeoutSchema } from '../types/workflow/zod.js'
 import { WORKFLOW_PATH } from './constants.js'
 import { getWorkflowDefinitionFromFile } from './file.js'
 
@@ -71,11 +71,12 @@ function waitForToQuerySelector(waitFor: WorkflowWaitForDefinition[]): string {
 function actionToPuppeteerAction(action: WorkflowActionType): PuppeteerAction {
   // Deserialized workflows are protected by Zod; retain the same fail-secure
   // behaviour for JavaScript callers or TypeScript casts that bypass it.
-  if (action.type !== 'click' && (action.waitForResponse !== undefined || action.waitForResponseTimeout !== undefined)) {
-    throw new Error("waitForResponse and waitForResponseTimeout are only supported for workflow actions of type 'click'")
+  const hasResponseOptions = action.waitForResponse !== undefined || action.waitForResponseTimeout !== undefined || action.waitForResponseMethod !== undefined || action.waitForResponseStatuses !== undefined
+  if (action.type !== 'click' && hasResponseOptions) {
+    throw new Error("Response waiting options are only supported for workflow actions of type 'click'")
   }
-  if (action.type === 'click' && action.waitForResponseTimeout !== undefined && action.waitForResponse === undefined) {
-    throw new Error('waitForResponseTimeout requires waitForResponse')
+  if (action.type === 'click' && action.waitForResponse === undefined && (action.waitForResponseTimeout !== undefined || action.waitForResponseMethod !== undefined || action.waitForResponseStatuses !== undefined)) {
+    throw new Error('Response waiting options require waitForResponse')
   }
 
   switch (action.type) {
@@ -85,6 +86,8 @@ function actionToPuppeteerAction(action: WorkflowActionType): PuppeteerAction {
         waitForNavigation: action.waitForNavigation ?? false,
         waitForResponse: action.waitForResponse === undefined ? undefined : WaitForResponseSchema.parse(action.waitForResponse),
         ...(action.waitForResponseTimeout === undefined ? {} : { waitForResponseTimeout: WaitForResponseTimeoutSchema.parse(action.waitForResponseTimeout) }),
+        ...(action.waitForResponseMethod === undefined ? {} : { waitForResponseMethod: WaitForResponseMethodSchema.parse(action.waitForResponseMethod) }),
+        ...(action.waitForResponseStatuses === undefined ? {} : { waitForResponseStatuses: WaitForResponseStatusesSchema.parse(action.waitForResponseStatuses) }),
       }
     }
     case 'input': {
@@ -138,6 +141,7 @@ export function stepsToPuppeteerLocatorAction(steps: WorkflowStep[]): PuppeteerL
       frameUrl: step.frameUrl,
       action: actionToPuppeteerAction(step.action),
       delay: step.action.delay ?? 0,
+      ...(step.action.postActionDelay === undefined ? {} : { postActionDelay: PostActionDelaySchema.parse(step.action.postActionDelay) }),
     }
   })
 }
