@@ -118,7 +118,7 @@ value of `target`, not a complete inventory file:
 
 Inventory mode runs every `inventory` member and combines all observations
 before calculating one update. Detection mode runs every matching `detection`
-member against that same reviewed inventory. Variations from one inventory run
+member against that same reviewed inventory. Variations in one inventory execute
 serially so they do not contend for the same application or payment-provider
 resources. Inventory files also run serially because their hosted payment
 frames share one browser process. The legacy `target.inventory` /

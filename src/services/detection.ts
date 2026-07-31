@@ -275,10 +275,17 @@ export class DetectionService implements IDetectionService {
                   if (action.waitForResponseMethod !== undefined && method !== action.waitForResponseMethod) return false
                   if (action.waitForResponseStatuses !== undefined && !action.waitForResponseStatuses.includes(response.status())) return false
                   // Keep the body read inside Puppeteer's response predicate so
-                  // the configured timeout bounds the whole completion signal.
-                  const body = await response.content()
-                  if (responseBodyPattern !== undefined && !responseBodyPattern.test(new TextDecoder().decode(body))) return false
-                  return true
+                  // the configured timeout bounds the whole completion signal
+                  // and bodyless matchers still wait for the response to finish.
+                  try {
+                    const body = await response.content()
+                    return responseBodyPattern === undefined || responseBodyPattern.test(new TextDecoder().decode(body))
+                  } catch {
+                    // Chrome can discard bodies during navigation or redirects.
+                    // URL/method/status-only waits do not depend on the bytes;
+                    // body-constrained waits must keep looking for proof.
+                    return responseBodyPattern === undefined
+                  }
                 },
                 action.waitForResponseTimeout === undefined ? undefined : { timeout: action.waitForResponseTimeout },
               ),

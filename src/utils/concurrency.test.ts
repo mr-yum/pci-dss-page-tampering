@@ -79,7 +79,16 @@ describe('mapGroupsSequentially', () => {
       },
     )
 
-    await expect(execution).rejects.toEqual(new AggregateError([firstError, secondError], '2 sequential workflow execution(s) failed'))
+    let aggregateError: AggregateError | undefined
+    try {
+      await execution
+    } catch (error) {
+      aggregateError = error as AggregateError
+    }
+
+    expect(aggregateError).toBeInstanceOf(AggregateError)
+    expect(aggregateError?.message).toBe('2 sequential workflow execution(s) failed')
+    expect(aggregateError?.errors).toEqual([firstError, secondError])
     expect(started).toEqual(['a-1', 'a-2', 'b-1', 'b-2'])
   })
 })

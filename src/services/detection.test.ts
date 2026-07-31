@@ -504,6 +504,14 @@ describe('DetectionService framed workflow actions', () => {
         }
         expect(await predicate(wrongBodyResponse)).toBe(false)
         expect(wrongBodyResponse.content).toHaveBeenCalledTimes(1)
+        const unavailableBodyResponse = {
+          url: matchingResponse.url,
+          request: () => ({ method: () => 'POST' }),
+          status: () => 402,
+          content: jest.fn().mockRejectedValue(new Error('Response body is unavailable')),
+        }
+        expect(await predicate(unavailableBodyResponse)).toBe(false)
+        expect(unavailableBodyResponse.content).toHaveBeenCalledTimes(1)
         expect(await predicate(matchingResponse)).toBe(true)
         return matchingResponse
       }),
@@ -542,6 +550,41 @@ describe('DetectionService framed workflow actions', () => {
     expect(matchingResponse.content).toHaveBeenCalledTimes(1)
     expect(service.sleep).toHaveBeenCalledWith(2500)
     expect(callOrder).toEqual(['wait', 'click', 'body', 'settle'])
+  })
+
+  it('accepts an unavailable response body when no body matcher is configured', async () => {
+    const response = {
+      url: () => 'https://api.payments.example/v1/payment_methods',
+      request: () => ({ method: () => 'POST' }),
+      status: () => 200,
+      content: jest.fn().mockRejectedValue(new Error('Response body is unavailable')),
+    }
+    const page = {
+      waitForResponse: jest.fn().mockImplementation(async (predicate: (candidate: typeof response) => Promise<boolean>) => {
+        expect(await predicate(response)).toBe(true)
+        return response
+      }),
+    } as unknown as Page
+    const element = {
+      evaluate: jest.fn().mockResolvedValue(undefined),
+      dispose: jest.fn().mockResolvedValue(undefined),
+    } as unknown as ElementHandle<Element>
+    const step: PuppeteerLocatorAction = {
+      description: 'Submit payment details',
+      querySelector: 'button[type="submit"]',
+      action: {
+        type: 'click',
+        waitForNavigation: false,
+        waitForResponse: '^https://api\\.payments\\.example/v1/payment_methods$',
+        waitForResponseMethod: 'POST',
+        waitForResponseStatuses: [200],
+      },
+      delay: 0,
+    }
+
+    await serviceInternals().executeAction(page, { context: page, element }, step, target, browser)
+
+    expect(response.content).toHaveBeenCalledTimes(1)
   })
 
   it('accepts a parent navigation triggered from a selected frame', async () => {
