@@ -208,6 +208,45 @@ shared budget. If the first actionable element cannot be prepared in time, the
 target fails with `Timed out preparing initial workflow content`; later steps
 use their normal workflow or explicitly configured response timeout.
 
+### Recovering a Transient Workflow Attempt
+
+Workflows opt in to whole-workflow recovery by setting `retry.maxAttempts`
+above one. Legacy workflows and definitions that omit the retry policy run
+once, so missing boundary metadata can never enable unsafe replay. A retry
+creates a new browser context and discards every script, header, cookie, and
+storage value captured by the failed attempt. Only transient browser failures
+such as timeouts, detached frames/contexts, and selected network resets are
+retried. Configuration and trust failures still fail immediately.
+
+Retries are allowed only before the workflow crosses a side-effect boundary.
+A `click` with `waitForResponse` is a boundary automatically, because a failure
+after dispatch cannot prove whether the remote operation occurred. Mark any
+other potentially irreversible action explicitly on the step:
+
+```json
+{
+  "description": "Confirm the external operation",
+  "retryBoundary": true,
+  "waitFor": [{ "type": "button", "identifier": "Confirm" }],
+  "action": { "type": "click" }
+}
+```
+
+The boundary is crossed immediately before action dispatch; a timeout while
+waiting for its selector remains retryable. Nested popup steps use the same
+rule. The workflow-level policy is optional:
+
+```json
+{
+  "retry": { "maxAttempts": 3, "backoffMs": 2000 },
+  "steps": []
+}
+```
+
+`maxAttempts` includes the first attempt and is bounded to 1–3. `backoffMs` is
+bounded to 0–30000 ms and receives a linear multiplier before later attempts.
+Before opting in, audit every externally visible action and mark its boundary.
+
 ### Interacting with Embedded Payment Frames
 
 Payment providers commonly isolate card fields in cross-origin iframes. Add a
@@ -309,6 +348,10 @@ The system uses different branches for different purposes:
    - Runs against staging/inventory URLs
    - Adds new scripts/headers as they're discovered
    - Creates alerts for resources needing manual authorization
+   - Reuses the update branch only while its pull request remains open; a
+     branch with no open pull request is restarted from the current detection
+     branch (`main` by default), and a replacement push is protected by
+     `--force-with-lease`
 
 2. **Detection workflow** → `main` branch
    - Runs against production/detection URLs

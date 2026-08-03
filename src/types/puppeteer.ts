@@ -4,6 +4,10 @@ import type { WorkflowStep } from './workflow.js'
 export type PuppeteerWorkflow = {
   target: Target
   locatorActions: PuppeteerLocatorAction[]
+  retry: {
+    maxAttempts: number
+    backoffMs: number
+  }
 }
 
 export type PuppeteerLocatorAction = {
@@ -12,6 +16,7 @@ export type PuppeteerLocatorAction = {
   frameUrl?: string | undefined
   action: PuppeteerAction
   delay: number
+  retryBoundary?: boolean | undefined
   postActionDelay?: number | undefined
   reloadOnMissingTarget?: boolean | undefined
 }

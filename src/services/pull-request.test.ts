@@ -108,3 +108,24 @@ describe('PullRequestService.ensurePullRequest', () => {
     expect(getUrl).toContain('base=release%2Fv2.0')
   })
 })
+
+describe('PullRequestService.findOpenPullRequest', () => {
+  beforeEach(() => jest.clearAllMocks())
+
+  it('distinguishes an unsupported repository from a supported repo with no open PR', async () => {
+    const service = new PullRequestService()
+
+    await expect(service.findOpenPullRequest({ ...baseArgs, repoUrl: 'file:///tmp/inventory' })).resolves.toBeNull()
+    mockedAxios.get.mockResolvedValueOnce({ data: [] })
+    await expect(service.findOpenPullRequest(baseArgs)).resolves.toEqual({ url: null })
+  })
+
+  it('returns the canonical URL for an active update branch', async () => {
+    mockedAxios.get.mockResolvedValueOnce({ data: [{ html_url: 'https://github.com/org/inventory/pull/42' }] })
+
+    await expect(new PullRequestService().findOpenPullRequest(baseArgs)).resolves.toEqual({ url: 'https://github.com/org/inventory/pull/42' })
+    const [getUrl] = mockedAxios.get.mock.calls[0]!
+    expect(getUrl).toContain('head=org:inventory-updates')
+    expect(getUrl).not.toContain('&base=')
+  })
+})

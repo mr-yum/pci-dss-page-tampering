@@ -13,6 +13,7 @@ import { HeaderComparisonService } from './services/comparison/header.js'
 import { ScriptComparisonService } from './services/comparison/script.js'
 import { DetectionService } from './services/detection.js'
 import { ScriptInventoryService } from './services/inventory.js'
+import { assertInventoryBranchReplacementSafe, prepareInventoryBranch } from './services/inventory-branch-coordinator.js'
 import { ensureInventoryPullRequest } from './services/inventory-pr-coordinator.js'
 import { PullRequestService } from './services/pull-request.js'
 import { GitInventoryStore } from './stores/inventory/git.js'
@@ -94,13 +95,28 @@ async function main() {
 async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
   // T020: Track execution start time for calculating execution duration
   const executionStartTime = Date.now()
+  const log = (message: string): void => {
+    console.log(`[Main]: ${message}`)
+  }
 
   // Initialize services with configuration (T020: Use config, not hardcoded URL)
+  const pullRequestService = new PullRequestService()
   const gitInventoryStore = new GitInventoryStore({
     gitClient: simpleGit(),
     repositoryTarget: config.authentication.repositoryTarget,
     gitUserName: config.authentication.gitUserName,
     gitUserEmail: config.authentication.gitUserEmail,
+    verifyBranchReplacement: async (branchName) =>
+      assertInventoryBranchReplacementSafe(
+        {
+          pullRequestService,
+          repository: config.repository,
+          branches: config.branches,
+          gitToken: config.authentication.gitToken,
+          log,
+        },
+        branchName,
+      ),
   })
   const scriptInventoryRepository = new ScriptInventoryRepository({ inventoryStore: gitInventoryStore })
   const scriptInventoryService = new ScriptInventoryService({ inventoryRepository: scriptInventoryRepository })
@@ -111,12 +127,6 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
   // T042: Initialize alert service based on configuration
   // Use ConsoleAlertService for local development/testing when --slack-token is omitted
   const alertService: IAlertService = config.alerting.slackToken ? new SlackAlertService(config.alerting.slackToken, config.repository.url, config.branches.inventory) : new ConsoleAlertService()
-
-  const pullRequestService = new PullRequestService()
-
-  const log = (message: string): void => {
-    console.log(`[Main]: ${message}`)
-  }
 
   // T009: Track execution context for success notification
   let totalResourceCount = 0
@@ -226,7 +236,14 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
     if (config.executionMode === ExecutionMode.Inventory || config.executionMode === ExecutionMode.All) {
       // Run inventory workflow
       log('Preparing to pull inventory.')
-      const inventory = await scriptInventoryService.pull(PullTarget.Inventory, config.branches.inventory)
+      const inventoryPullOptions = await prepareInventoryBranch({
+        pullRequestService,
+        repository: config.repository,
+        branches: config.branches,
+        gitToken: config.authentication.gitToken,
+        log,
+      })
+      const inventory = await scriptInventoryService.pull(PullTarget.Inventory, config.branches.inventory, inventoryPullOptions)
 
       // T018, T024: Filter to specific target if requested
       const filteredInventory = filterInventoryByTarget(inventory, config.targetFilter.targetName)

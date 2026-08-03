@@ -1,4 +1,4 @@
-import type { IInventoryService, InventoryPushResult, IScriptInventoryRepository } from '../interfaces/inventory.js'
+import type { IInventoryService, InventoryPullOptions, InventoryPushResult, IScriptInventoryRepository } from '../interfaces/inventory.js'
 import type { ComparisonResultType, KnownScriptWithUnauthorisedContentFound, UnknownScriptFound } from '../types/comparison.js'
 import type { KnownHeaderWithUnauthorisedContentFound } from '../types/comparison/known-header-unauthorised-content-found.js'
 import type { UnknownHeaderFound } from '../types/comparison/unknown-header-found.js'
@@ -21,9 +21,9 @@ export class ScriptInventoryService implements IInventoryService {
     this._repository = args.inventoryRepository
   }
 
-  async pull(target: PullTarget, branchName?: string): Promise<Inventory[]> {
+  async pull(target: PullTarget, branchName?: string, options?: InventoryPullOptions): Promise<Inventory[]> {
     console.log('[Inventory → Service] Pulling inventory from store.')
-    return await this._repository.pull(target, branchName)
+    return await this._repository.pull(target, branchName, options)
   }
 
   diff(inventory: Inventory, comparisonResults: ComparisonResultType[]): Promise<InventoryDifferenceResult> {
