@@ -11,6 +11,7 @@ export type GitInventoryStoreProps = {
   repositoryTarget: string
   gitUserName: string
   gitUserEmail: string
+  verifyBranchReplacement?: ((branchName: string) => Promise<void>) | undefined
 }
 
 export type InventoryRepositoryProps = {

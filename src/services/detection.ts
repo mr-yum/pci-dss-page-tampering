@@ -47,6 +47,16 @@ type ActionTarget = {
   element?: ElementHandle<Element>
 }
 
+class WorkflowAttemptError extends Error {
+  constructor(
+    readonly originalError: unknown,
+    readonly retryBoundaryCrossed: boolean,
+  ) {
+    super(originalError instanceof Error ? originalError.message : String(originalError), { cause: originalError })
+    this.name = 'WorkflowAttemptError'
+  }
+}
+
 export class DetectionService implements IDetectionService {
   private readonly totpSeeds: ReadonlyMap<string, string>
 
@@ -54,6 +64,29 @@ export class DetectionService implements IDetectionService {
     this.totpSeeds = options.totpSeeds ?? new Map()
   }
   async detect(browser: Browser, target: Target, scriptContentMatchers: ScriptMatcher[], inventoryHeaders: readonly InventoryHeaderInfo[] = []): Promise<DetectionSummary> {
+    const retry = getPuppeteerWorkflowFromTarget(target).retry
+
+    for (let attempt = 1; ; attempt++) {
+      try {
+        const summary = await this.detectAttempt(browser, target, scriptContentMatchers, inventoryHeaders)
+        if (attempt > 1) {
+          target.logger.log(`Workflow recovered successfully on attempt ${attempt}/${retry.maxAttempts}.`)
+        }
+        return summary
+      } catch (error) {
+        const attemptError = error instanceof WorkflowAttemptError ? error : new WorkflowAttemptError(error, false)
+        const isFinalAttempt = attempt >= retry.maxAttempts
+        if (attemptError.retryBoundaryCrossed || isFinalAttempt || !this.isRetryableWorkflowError(attemptError.originalError)) {
+          throw attemptError.originalError
+        }
+
+        target.logger.log(`Transient workflow failure before retry boundary; starting a fresh browser context (${attempt + 1}/${retry.maxAttempts}).`)
+        await this.sleep(retry.backoffMs * attempt)
+      }
+    }
+  }
+
+  private async detectAttempt(browser: Browser, target: Target, scriptContentMatchers: ScriptMatcher[], inventoryHeaders: readonly InventoryHeaderInfo[] = []): Promise<DetectionSummary> {
     const externalScripts: ScriptInfo[] = []
     const internalScripts: ScriptInfo[] = []
     const headers = new Map<HeaderName, Map<string, Set<HeaderUrl>>>()
@@ -75,6 +108,7 @@ export class DetectionService implements IDetectionService {
       throw error
     }
     let puppeteerWorkflow: any
+    let retryBoundaryCrossed = false
     // Resolved from the target's template URL before navigation; hoisted so
     // every error path can log the URL that was actually navigated.
     let navigationUrl: string | undefined
@@ -143,7 +177,9 @@ export class DetectionService implements IDetectionService {
           const actionTarget = index === 0 && navigationUrl !== undefined ? await this.waitForInitialActionTarget(page, step, navigationUrl, target, initialWorkflowDeadline) : await this.waitForRecoverableActionTarget(page, step, target)
 
           // Execute action
-          await this.executeAction(page, actionTarget, step, target, browser)
+          await this.executeAction(page, actionTarget, step, target, browser, () => {
+            retryBoundaryCrossed = true
+          })
 
           // Detect and add new inline scripts on each workflow action
           const newInlineScripts = await this.detectNewInlineScripts(page, internalScripts, scriptContentMatchers)
@@ -193,7 +229,7 @@ export class DetectionService implements IDetectionService {
           target.logger.error(`Stack trace:`, e.stack)
         }
       }
-      throw e // Re-throw the error to ensure it's propagated
+      throw new WorkflowAttemptError(e, retryBoundaryCrossed)
     } finally {
       // Closes the page and discards cookies/storage. Log-and-continue on
       // failure so cleanup can never mask a workflow error.
@@ -254,8 +290,15 @@ export class DetectionService implements IDetectionService {
     target.logger.error(details.join(' '))
   }
 
-  private async executeAction(page: Page, actionTarget: ActionTarget, step: PuppeteerLocatorAction, target: Target, browser: Browser): Promise<void> {
+  private async executeAction(page: Page, actionTarget: ActionTarget, step: PuppeteerLocatorAction, target: Target, browser: Browser, markRetryBoundary: () => void = () => undefined): Promise<void> {
     try {
+      // The target has already been resolved at this point, so mark the
+      // boundary immediately before dispatching the potentially side-effecting
+      // action. A timeout while locating the action remains safe to retry.
+      if (step.retryBoundary === true || (step.action.type === 'click' && step.action.waitForResponse !== undefined)) {
+        markRetryBoundary()
+      }
+
       // Execute action
       switch (step.action.type) {
         case 'click': {
@@ -394,7 +437,7 @@ export class DetectionService implements IDetectionService {
                   await this.sleep(innerStep.delay)
                 }
                 const innerActionTarget = await this.waitForRecoverableActionTarget(popupPage, innerStep, target)
-                await this.executeAction(popupPage, innerActionTarget, innerStep, target, browser)
+                await this.executeAction(popupPage, innerActionTarget, innerStep, target, browser, markRetryBoundary)
               } catch (popupStepError) {
                 if (popupStepError instanceof Error && popupStepError.name === 'TimeoutError') {
                   target.logger.error(`POPUP TIMEOUT ERROR in step ${popupStepNumber}/${innerSteps.length}`)
@@ -663,6 +706,25 @@ export class DetectionService implements IDetectionService {
   private isRetryableNavigationError(error: unknown): boolean {
     if (!(error instanceof Error)) return false
     return error.name === 'TimeoutError' || error.message.includes('Navigating frame was detached') || error.message.includes('net::ERR_NETWORK_CHANGED')
+  }
+
+  private isRetryableWorkflowError(error: unknown): boolean {
+    if (!(error instanceof Error)) return false
+    if (error.name === 'TimeoutError') return true
+
+    const message = error.message.toLowerCase()
+    return [
+      'navigating frame was detached',
+      'frame was detached',
+      'execution context was destroyed',
+      'cannot find context with specified id',
+      'node is detached',
+      'target closed',
+      'net::err_network_changed',
+      'net::err_connection_reset',
+      'net::err_connection_closed',
+      'net::err_timed_out',
+    ].some((fragment) => message.includes(fragment))
   }
 
   private redactFrameUrl(url: string): string {

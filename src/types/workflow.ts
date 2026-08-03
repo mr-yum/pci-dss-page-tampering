@@ -31,6 +31,10 @@ export type WorkflowWaitForDefinition = {
 
 export type WorkflowStep = {
   description: string
+  // Once this step begins, a failed workflow attempt is no longer safe to
+  // replay from the start. Clicks that waitForResponse are boundaries
+  // automatically; use this for other side-effecting actions.
+  retryBoundary?: true | undefined
   // When set, resolve the step inside the first child frame whose URL matches
   // this regular expression. Omit it to act on the top-level page.
   frameUrl?: string | undefined
@@ -38,8 +42,17 @@ export type WorkflowStep = {
   action: WorkflowActionType
 }
 
+export type WorkflowRetryPolicy = {
+  // Total attempts, including the first one. Legacy workflows default to one
+  // attempt so missing boundary metadata cannot enable unsafe replay.
+  maxAttempts?: number | undefined
+  // Delay before the second attempt; later delays use linear backoff.
+  backoffMs?: number | undefined
+}
+
 export type WorkflowDefinition = {
   steps: WorkflowStep[]
+  retry?: WorkflowRetryPolicy | undefined
 }
 
 export type Workflow = {

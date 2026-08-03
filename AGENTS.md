@@ -331,6 +331,7 @@ Workflows are defined as step-by-step instructions for Puppeteer in `src/workflo
 - Target URLs may embed `{{date}}` / `{{date+Nd}}` placeholders (`src/utils/date-template.ts`), resolved to a UTC `YYYY-MM-DD` at navigation time — for booking-style targets whose availability requires a future date
 - Steps are converted to PuppeteerLocatorActions for execution
 - Support for popup handling and complex user flows
+- Whole-workflow recovery is bounded and fail-secure: retry only recognised transient browser failures in a fresh context, discard observations from the failed attempt, and never replay after a side-effect boundary. A click with `waitForResponse` is a boundary automatically; add `retryBoundary: true` to any other step whose dispatch may have an irreversible or externally visible effect. Keep `maxAttempts` between 1 and 3.
 - `totp` actions type an RFC 6238 one-time code (6 digits / 30s, `src/utils/totp.ts`) generated at step-execution time. The step carries only a `seedRef` name; the base32 seed is supplied at runtime via the repeatable `--totp-seed <name>=<seed>` parameter and must never be committed to the inventory repo, logged, or included in alerts. If fewer than 5 seconds remain in the current window, execution waits for the next window before generating the code.
 
 ### Module Organization

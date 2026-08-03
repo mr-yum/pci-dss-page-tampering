@@ -1,5 +1,6 @@
 import type { Browser, ElementHandle, Frame, Page } from 'puppeteer'
 
+import type { DetectionSummary } from '../types/detection.js'
 import type { PuppeteerLocatorAction } from '../types/puppeteer.js'
 import type { Target } from '../types/target.js'
 import { DetectionService } from './detection.js'
@@ -9,7 +10,9 @@ jest.mock('puppeteer', () => ({
 }))
 
 type DetectionServiceInternals = {
-  executeAction(page: Page, actionTarget: { context: Page | Frame; element?: ElementHandle<Element> }, step: PuppeteerLocatorAction, target: Target, browser: Browser): Promise<void>
+  applyRealisticUserAgent(page: Page, browser: Browser): Promise<void>
+  detectAttempt(browser: Browser, target: Target): Promise<DetectionSummary>
+  executeAction(page: Page, actionTarget: { context: Page | Frame; element?: ElementHandle<Element> }, step: PuppeteerLocatorAction, target: Target, browser: Browser, markRetryBoundary?: () => void): Promise<void>
   navigateToTarget(page: Page, url: string, target: Target, deadline?: number): Promise<void>
   sleep(ms: number): Promise<void>
   waitForActionTarget(page: Page, step: PuppeteerLocatorAction, timeout?: number): Promise<{ context: Page | Frame; element?: ElementHandle<Element> }>
@@ -28,6 +31,102 @@ function serviceInternals(): DetectionServiceInternals {
 
 describe('DetectionService framed workflow actions', () => {
   afterEach(() => jest.restoreAllMocks())
+
+  it('retries a transient workflow failure in a fresh attempt and discards the failed result', async () => {
+    const timeoutError = Object.assign(new Error('payment frame did not render'), { name: 'TimeoutError' })
+    const summary = { target: {} } as DetectionSummary
+    const logger = { log: jest.fn() }
+    const workflowTarget = { workflow: { definition: { retry: { maxAttempts: 2 }, steps: [] } }, logger } as unknown as Target
+    const service = serviceInternals()
+    service.detectAttempt = jest.fn().mockRejectedValueOnce(timeoutError).mockResolvedValueOnce(summary)
+    service.sleep = jest.fn().mockResolvedValue(undefined)
+
+    await expect((service as unknown as DetectionService).detect(browser, workflowTarget, [])).resolves.toBe(summary)
+
+    expect(service.detectAttempt).toHaveBeenCalledTimes(2)
+    expect(service.sleep).toHaveBeenCalledWith(1000)
+    expect(logger.log).toHaveBeenCalledWith('Transient workflow failure before retry boundary; starting a fresh browser context (2/2).')
+    expect(logger.log).toHaveBeenCalledWith('Workflow recovered successfully on attempt 2/2.')
+  })
+
+  it('does not replay a non-transient workflow failure', async () => {
+    const validationError = new Error('Untrusted frame origin')
+    const workflowTarget = { workflow: { definition: { steps: [] } }, logger: { log: jest.fn() } } as unknown as Target
+    const service = serviceInternals()
+    service.detectAttempt = jest.fn().mockRejectedValue(validationError)
+    service.sleep = jest.fn().mockResolvedValue(undefined)
+
+    await expect((service as unknown as DetectionService).detect(browser, workflowTarget, [])).rejects.toBe(validationError)
+    expect(service.detectAttempt).toHaveBeenCalledTimes(1)
+    expect(service.sleep).not.toHaveBeenCalled()
+  })
+
+  it('marks a response-synchronized click as a retry boundary immediately before dispatch', async () => {
+    const callOrder: string[] = []
+    const page = {
+      waitForResponse: jest.fn().mockResolvedValue({}),
+    } as unknown as Page
+    const element = {
+      evaluate: jest.fn().mockImplementation(async () => {
+        callOrder.push('click')
+      }),
+      dispose: jest.fn().mockResolvedValue(undefined),
+    } as unknown as ElementHandle<Element>
+    const step: PuppeteerLocatorAction = {
+      description: 'Submit payment',
+      querySelector: 'button[type="submit"]',
+      action: { type: 'click', waitForNavigation: false, waitForResponse: '^https://api\\.payments\\.example/submit$' },
+      delay: 0,
+    }
+
+    await serviceInternals().executeAction(page, { context: page, element }, step, target, browser, () => callOrder.push('boundary'))
+
+    expect(callOrder).toEqual(['boundary', 'click'])
+  })
+
+  it('does not retry a transient failure after an action crosses the retry boundary', async () => {
+    const timeoutError = Object.assign(new Error('payment response timed out'), { name: 'TimeoutError' })
+    const page = {
+      setDefaultTimeout: jest.fn(),
+      setDefaultNavigationTimeout: jest.fn(),
+      evaluateOnNewDocument: jest.fn().mockResolvedValue(undefined),
+      on: jest.fn().mockReturnThis(),
+      url: jest.fn().mockReturnValue('https://checkout.example.test/pay'),
+    } as unknown as Page
+    const context = {
+      newPage: jest.fn().mockResolvedValue(page),
+      close: jest.fn().mockResolvedValue(undefined),
+    }
+    const workflowBrowser = {
+      createBrowserContext: jest.fn().mockResolvedValue(context),
+    } as unknown as Browser
+    const workflowTarget = {
+      url: 'https://checkout.example.test/pay',
+      workflowId: 'default',
+      workflow: {
+        definition: {
+          retry: { maxAttempts: 2 },
+          steps: [{ description: 'Submit payment', waitFor: [{ type: 'button', identifier: 'Submit' }], action: { type: 'click', waitForResponse: '^https://api\\.example\\.test/pay$' } }],
+        },
+      },
+      logger: { log: jest.fn(), error: jest.fn() },
+    } as unknown as Target
+    const service = serviceInternals()
+    service.applyRealisticUserAgent = jest.fn().mockResolvedValue(undefined)
+    service.navigateToTarget = jest.fn().mockResolvedValue(undefined)
+    service.waitForInitialActionTarget = jest.fn().mockResolvedValue({ context: page })
+    service.executeAction = jest.fn().mockImplementation(async (_page, _actionTarget, _step, _target, _browser, markRetryBoundary) => {
+      markRetryBoundary?.()
+      throw timeoutError
+    })
+    service.sleep = jest.fn().mockResolvedValue(undefined)
+
+    await expect((service as unknown as DetectionService).detect(workflowBrowser, workflowTarget, [])).rejects.toBe(timeoutError)
+
+    expect(workflowBrowser.createBrowserContext).toHaveBeenCalledTimes(1)
+    expect(context.close).toHaveBeenCalledTimes(1)
+    expect(service.sleep).not.toHaveBeenCalled()
+  })
 
   it('retries a transient initial navigation failure', async () => {
     const page = {

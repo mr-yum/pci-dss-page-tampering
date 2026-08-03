@@ -88,12 +88,15 @@ export const WaitForResponseBodySchema = z
     { message: 'waitForResponseBody must be a valid regular expression' },
   )
 export const PostActionDelaySchema = z.number().int().positive().max(300000)
+export const WorkflowRetryMaxAttemptsSchema = z.number().int().min(1).max(3)
+export const WorkflowRetryBackoffSchema = z.number().int().nonnegative().max(30000)
 
 // We must use z.lazy() because WorkflowStep and WorkflowActionType refer to each other.
 export const WorkflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() =>
   z
     .object({
       description: z.string(),
+      retryBoundary: z.literal(true).optional(),
       frameUrl: FrameUrlSchema.optional(),
       waitFor: z.array(WorkflowWaitForDefinitionSchema),
       action: z
@@ -155,4 +158,10 @@ export const WorkflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() =>
 // Schema for WorkflowDefinition
 export const WorkflowDefinitionSchema: z.ZodType<WorkflowDefinition> = z.object({
   steps: z.array(WorkflowStepSchema),
+  retry: z
+    .object({
+      maxAttempts: WorkflowRetryMaxAttemptsSchema.optional(),
+      backoffMs: WorkflowRetryBackoffSchema.optional(),
+    })
+    .optional(),
 })

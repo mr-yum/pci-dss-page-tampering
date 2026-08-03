@@ -302,6 +302,14 @@ has a `description`, a `waitFor` selector list (`button`, `input`, `href`,
 The detection service executes each step, then scans for newly-inserted inline
 scripts after every action so dynamically-added scripts are captured.
 
+Recognised transient browser failures may restart the complete workflow in a
+fresh browser context, with the failed attempt's observations discarded. The
+default is one attempt until a workflow explicitly opts in to a maximum of two
+or three. Recovery is permitted only before a side-effect boundary:
+response-synchronised clicks are boundaries automatically, and workflow
+authors mark any other irreversible step with `retryBoundary: true`. A failure
+after dispatch remains ambiguous and is never replayed.
+
 ## Alerting
 
 A single `IAlertService` (Slack or console) handles all output:

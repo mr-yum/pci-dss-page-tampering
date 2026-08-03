@@ -1,5 +1,6 @@
+import type { Target } from '../types/target.js'
 import type { WorkflowStep } from '../types/workflow.js'
-import { collectTotpSeedRefs, stepsToPuppeteerLocatorAction } from './workflow.js'
+import { collectTotpSeedRefs, getPuppeteerWorkflowFromTarget, stepsToPuppeteerLocatorAction } from './workflow.js'
 
 describe('collectTotpSeedRefs', () => {
   const step = (action: WorkflowStep['action']): WorkflowStep => ({
@@ -148,5 +149,28 @@ describe('collectTotpSeedRefs', () => {
     const invalidStep = step({ type: 'click', postActionDelay })
 
     expect(() => stepsToPuppeteerLocatorAction([invalidStep])).toThrow()
+  })
+})
+
+describe('workflow retry conversion', () => {
+  it('does not retry a legacy workflow that has not opted in', () => {
+    const target = { workflow: { definition: { steps: [] } } } as unknown as Target
+
+    expect(getPuppeteerWorkflowFromTarget(target).retry).toEqual({ maxAttempts: 1, backoffMs: 1000 })
+  })
+
+  it('preserves explicit retry policy and step boundary configuration', () => {
+    const target = {
+      workflow: {
+        definition: {
+          retry: { maxAttempts: 3, backoffMs: 2500 },
+          steps: [{ description: 'Confirm irreversible action', retryBoundary: true, waitFor: [{ type: 'button', identifier: 'Confirm' }], action: { type: 'click' } }],
+        },
+      },
+    } as unknown as Target
+
+    const workflow = getPuppeteerWorkflowFromTarget(target)
+    expect(workflow.retry).toEqual({ maxAttempts: 3, backoffMs: 2500 })
+    expect(workflow.locatorActions[0]).toEqual(expect.objectContaining({ retryBoundary: true }))
   })
 })

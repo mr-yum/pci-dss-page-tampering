@@ -2,7 +2,7 @@ import { readdir } from 'fs/promises'
 import type { SimpleGit } from 'simple-git'
 import { simpleGit } from 'simple-git'
 
-import type { IInventoryStore } from '../../interfaces/inventory.js'
+import type { IInventoryStore, InventoryPullOptions } from '../../interfaces/inventory.js'
 import type { Inventory, InventoryPullResult } from '../../types/inventory/model.js'
 import type { GitInventoryStoreProps } from '../../types/inventory/props.js'
 import { PullTarget } from '../../types/target.js'
@@ -16,7 +16,9 @@ export class GitInventoryStore implements IInventoryStore {
   private readonly displayRepositoryTarget: string
   private readonly gitUserName: string
   private readonly gitUserEmail: string
+  private readonly verifyBranchReplacement: ((branchName: string) => Promise<void>) | undefined
   private repositoryGitClient: SimpleGit | undefined
+  private pushWithLease = false
 
   constructor(args: GitInventoryStoreProps) {
     this.initialGitClient = args.gitClient
@@ -24,9 +26,10 @@ export class GitInventoryStore implements IInventoryStore {
     this.displayRepositoryTarget = redactRepositoryTarget(args.repositoryTarget)
     this.gitUserName = args.gitUserName
     this.gitUserEmail = args.gitUserEmail
+    this.verifyBranchReplacement = args.verifyBranchReplacement
   }
 
-  async pull(target: PullTarget, branchName?: string): Promise<InventoryPullResult> {
+  async pull(target: PullTarget, branchName?: string, options: InventoryPullOptions = {}): Promise<InventoryPullResult> {
     // Clone repository
     console.log(`[Inventory → Store] Cloning repository '${this.displayRepositoryTarget}' to path '${GIT_CLONE_PATH}'.`)
     try {
@@ -47,7 +50,7 @@ export class GitInventoryStore implements IInventoryStore {
 
     // Checkout branch (use provided branchName or fall back to constants)
     const targetBranch = branchName ?? (target === PullTarget.Inventory ? GIT_UPDATED_SCRIPTS_BRANCH_NAME : GIT_DETECTION_SCRIPTS_BRANCH_NAME)
-    await this.switchBranch(this.repositoryGitClient, targetBranch)
+    await this.switchBranch(this.repositoryGitClient, targetBranch, options)
 
     // Get and return raw inventory from files
     console.log(`[Inventory → Store] Reading and returning raw inventory.`)
@@ -92,7 +95,18 @@ export class GitInventoryStore implements IInventoryStore {
     const targetBranch = branchName ?? GIT_UPDATED_SCRIPTS_BRANCH_NAME
     console.log(`[Inventory → Store] Pushing changes to branch '${targetBranch}'`)
     try {
-      await this.repositoryGitClient?.push('origin', targetBranch)
+      if (this.pushWithLease) {
+        // PR state may have changed during a long browser run. Revalidate as
+        // close to the force-with-lease push as possible so a newly reviewed
+        // branch is not replaced merely because its Git ref is unchanged.
+        if (!this.verifyBranchReplacement) {
+          throw new Error(`Refusing to replace branch '${targetBranch}' without a branch-review state verifier`)
+        }
+        await this.verifyBranchReplacement(targetBranch)
+        await this.repositoryGitClient?.push('origin', targetBranch, ['--force-with-lease'])
+      } else {
+        await this.repositoryGitClient?.push('origin', targetBranch)
+      }
     } catch (error) {
       throw this.sanitizedGitError(`Failed to push repository '${this.displayRepositoryTarget}'`, error)
     }
@@ -105,8 +119,9 @@ export class GitInventoryStore implements IInventoryStore {
     return folders.some((name) => name === WORKFLOW_DIRECTORY_NAME) && folders.some((name) => name === TARGET_DIRECTORY_NAME)
   }
 
-  private async switchBranch(gitClient: SimpleGit, branchName: string): Promise<void> {
+  private async switchBranch(gitClient: SimpleGit, branchName: string, options: InventoryPullOptions): Promise<void> {
     try {
+      this.pushWithLease = false
       // Fetch to make sure we have the latest remote information
       console.log(`[Inventory → Store] Fetching from repository '${this.displayRepositoryTarget}'.`)
       await gitClient.fetch()
@@ -116,6 +131,18 @@ export class GitInventoryStore implements IInventoryStore {
 
       // Check if the branch exists on the remote 'origin'
       const remoteBranch = `remotes/origin/${branchName}`
+
+      if (options.resetToBase === true) {
+        const baseBranchName = options.baseBranchName
+        if (!baseBranchName) throw new Error(`Cannot reset branch '${branchName}' without a base branch`)
+        const remoteBaseBranch = `remotes/origin/${baseBranchName}`
+        if (!branches.all.includes(remoteBaseBranch)) throw new Error(`Base branch '${baseBranchName}' was not found on remote 'origin'`)
+
+        console.log(`[Inventory → Store] Starting branch '${branchName}' from current base branch '${baseBranchName}'.`)
+        this.pushWithLease = branches.all.includes(remoteBranch)
+        await gitClient.checkout(['-B', branchName, `origin/${baseBranchName}`])
+        return
+      }
 
       // Switch to remote branch if exists
       if (branches.all.includes(remoteBranch)) {
@@ -130,10 +157,11 @@ export class GitInventoryStore implements IInventoryStore {
       // Create and switch to new branch if neither exist
       else {
         console.log(`[Inventory → Store] Branch '${branchName}' not found locally or on remote, checkout out to new branch.`)
-        await gitClient.checkoutBranch(branchName, 'origin/main')
+        const baseBranchName = options.baseBranchName ?? 'main'
+        await gitClient.checkoutBranch(branchName, `origin/${baseBranchName}`)
       }
     } catch (error) {
-      console.error('[Inventory → Store] An error occurred: ', this.sanitizeGitErrorMessage(error))
+      throw this.sanitizedGitError(`Failed to switch to branch '${branchName}'`, error)
     }
   }
 
