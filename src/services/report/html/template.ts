@@ -96,7 +96,7 @@ function formatProvenanceNode(node: ProvenanceNode): RawHtml {
   </li>`
 }
 
-function formatRow(row: ReportResourceRow): RawHtml {
+function formatRow(row: ReportResourceRow, targetKey: string): RawHtml {
   const provenance = row.inventoryEntry?.provenance ?? null
   const authorisingSource = provenance?.authorisedBy ?? null
   const justification = row.authorisation.effective
@@ -104,7 +104,7 @@ function formatRow(row: ReportResourceRow): RawHtml {
   // script URL is exactly the artefact of an attack this report documents.
   const search = [row.name, row.value ?? '', row.origin.host ?? '', row.status, row.kind, row.observed.hash ?? '', justification?.description ?? ''].join(' ').toLowerCase()
 
-  return html`<tr data-row data-status="${row.status}" data-kind="${row.kind}" data-search="${search}" id="row-${row.rowId}">
+  return html`<tr data-row data-target="${targetKey}" data-status="${row.status}" data-kind="${row.kind}" data-search="${search}" id="row-${row.rowId}">
     <td>
       ${badge(row.status)}
       <div class="muted kind">${KIND_LABELS[row.kind] ?? row.kind}</div>
@@ -176,7 +176,7 @@ function formatRow(row: ReportResourceRow): RawHtml {
 
 const ROW_HEADERS = ['Status', 'Resource', 'What it is', 'Integrity', 'Inventory source']
 
-function formatTable(caption: string, rows: readonly ReportResourceRow[]): RawHtml {
+function formatTable(caption: string, rows: readonly ReportResourceRow[], targetKey: string): RawHtml {
   if (rows.length === 0) return html`<p class="muted">No ${caption.toLowerCase()} observed.</p>`
 
   return html`<div class="table-wrap">
@@ -190,7 +190,7 @@ function formatTable(caption: string, rows: readonly ReportResourceRow[]): RawHt
         </tr>
       </thead>
       <tbody>
-        ${join(rows.map(formatRow))}
+        ${join(rows.map((row) => formatRow(row, targetKey)))}
       </tbody>
     </table>
   </div>`
@@ -244,11 +244,11 @@ function formatCounts(counts: ReportStatusCounts): RawHtml {
 function formatTarget(target: ReportTargetSection): RawHtml {
   const id = `target-${slug(target.targetKey)}`
 
-  return html`<section data-target id="${id}">
+  return html`<section data-target="${target.targetKey}" id="${id}">
     <h2>${target.targetName} <span class="badge badge-${target.status}">${target.status}</span></h2>
     <p class="sub"><span class="mono">${target.url}</span> · inventory <span class="mono">${target.inventoryFile}</span> · workflow <span class="mono">${target.workflowId}</span> (<span class="mono">${target.workflowFile}</span>)</p>
-    ${target.error === null ? '' : html`<p class="banner banner-warn">This target failed: ${target.error}</p>`} ${formatCounts(target.counts)} ${formatTable('Scripts', target.scripts)} ${formatTable('Headers', target.headers)}
-    ${formatUnmatched(target.unmatchedInventoryEntries)}
+    ${target.error === null ? '' : html`<p class="banner banner-warn">This target failed: ${target.error}</p>`} ${formatCounts(target.counts)} ${formatTable('Scripts', target.scripts, target.targetKey)}
+    ${formatTable('Headers', target.headers, target.targetKey)} ${formatUnmatched(target.unmatchedInventoryEntries)}
   </section>`
 }
 
@@ -293,6 +293,11 @@ export function renderReportHtml(report: AuditorReport): string {
 
     <div class="toolbar" role="search">
       <div class="toolbar-row">
+        <label for="report-target">Target</label>
+        <select id="report-target">
+          <option value="">All targets (${report.targets.length})</option>
+          ${join(report.targets.map((target) => html`<option value="${target.targetKey}">${target.targetName} — ${target.counts.total}</option>`))}
+        </select>
         <label for="report-search">Search</label>
         <input type="search" id="report-search" placeholder="URL, header, hash, justification…" />
         <label><input type="checkbox" id="report-findings-only" />Findings only</label>

@@ -22,6 +22,7 @@ export const REPORT_SCRIPT = `
   var rows = Array.prototype.slice.call(document.querySelectorAll('tr[data-row]'));
   var statusBoxes = Array.prototype.slice.call(document.querySelectorAll('input[data-status]'));
   var kindBoxes = Array.prototype.slice.call(document.querySelectorAll('input[data-kind]'));
+  var targetSelect = document.getElementById('report-target');
   var search = document.getElementById('report-search');
   var findingsOnly = document.getElementById('report-findings-only');
   var expandAll = document.getElementById('report-expand-all');
@@ -37,6 +38,8 @@ export const REPORT_SCRIPT = `
   function apply() {
     var activeStatuses = checkedValues(statusBoxes, 'data-status');
     var activeKinds = checkedValues(kindBoxes, 'data-kind');
+    // Empty value means every target; otherwise scope to the chosen one.
+    var activeTarget = targetSelect ? targetSelect.value : '';
     var term = search && search.value ? search.value.toLowerCase().trim() : '';
     var onlyFindings = findingsOnly && findingsOnly.checked;
     var shown = 0;
@@ -45,6 +48,7 @@ export const REPORT_SCRIPT = `
       var status = row.getAttribute('data-status');
       var haystack = row.getAttribute('data-search') || '';
       var visible = !!activeStatuses[status] && !!activeKinds[row.getAttribute('data-kind')];
+      if (visible && activeTarget && row.getAttribute('data-target') !== activeTarget) visible = false;
       if (visible && onlyFindings && status === 'authorised') visible = false;
       if (visible && term && haystack.indexOf(term) === -1) visible = false;
       row.hidden = !visible;
@@ -52,6 +56,10 @@ export const REPORT_SCRIPT = `
     });
 
     document.querySelectorAll('section[data-target]').forEach(function (section) {
+      // Hide a whole target section when the switcher has scoped elsewhere, so
+      // its heading and counts do not sit above an empty table.
+      section.hidden = !!activeTarget && section.getAttribute('data-target') !== activeTarget;
+
       var any = Array.prototype.some.call(section.querySelectorAll('tr[data-row]'), function (row) { return !row.hidden; });
       section.querySelectorAll('table').forEach(function (table) {
         var bodyRows = Array.prototype.slice.call(table.querySelectorAll('tr[data-row]'));
@@ -66,6 +74,18 @@ export const REPORT_SCRIPT = `
   }
 
   statusBoxes.concat(kindBoxes).forEach(function (box) { box.addEventListener('change', apply); });
+  if (targetSelect) targetSelect.addEventListener('change', function () {
+    apply();
+    // Jump to the chosen target so the switch is visible immediately, even when
+    // the previous target's rows filled the viewport. Matched by comparing the
+    // attribute rather than building a selector string: a target key comes from
+    // the inventory repo and need not be selector-safe.
+    if (targetSelect.value) {
+      Array.prototype.forEach.call(document.querySelectorAll('section[data-target]'), function (section) {
+        if (section.getAttribute('data-target') === targetSelect.value) section.scrollIntoView();
+      });
+    }
+  });
   if (search) search.addEventListener('input', apply);
   if (findingsOnly) findingsOnly.addEventListener('change', apply);
   if (expandAll) expandAll.addEventListener('click', function () {

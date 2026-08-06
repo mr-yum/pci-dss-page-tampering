@@ -55,6 +55,7 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Conso
 .toolbar label { display: inline-flex; align-items: center; gap: 0.35rem; white-space: nowrap; }
 .group-label { color: var(--muted); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.03em; }
 .toolbar input[type="search"] { padding: 0.4rem 0.6rem; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--fg); min-width: 16rem; }
+.toolbar select { padding: 0.4rem 0.6rem; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--fg); max-width: 24rem; }
 .toolbar button { padding: 0.4rem 0.8rem; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--fg); cursor: pointer; }
 .toolbar button:hover { border-color: var(--accent); }
 .count { color: var(--muted); }
