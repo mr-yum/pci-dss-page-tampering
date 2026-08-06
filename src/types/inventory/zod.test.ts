@@ -516,7 +516,7 @@ describe('RawInventoryScriptInfoSchema', () => {
         const invalidSchema = {
           identifyWith: { nameMatcher: '^https://example\\.com/.*$' },
           authoriseWith: {
-            // No nameMatcher/contentMatcher/hashes/headerNameMatcher
+            // No nameMatcher/contentMatcher/hashes/hostMatcher
             authorisationInfo: {
               description: 'Test script',
               authorised: true,
@@ -797,7 +797,7 @@ describe('RawInventoryScriptInfoSchema', () => {
     describe('Nested OR containing AND', () => {
       it('should accept deeply nested OR containing AND matchers', () => {
         const nestedSchema = {
-          identifyWith: { headerNameMatcher: '^content-security-policy$' },
+          identifyWith: { hostMatcher: '^content-security-policy$' },
           authoriseWith: {
             orMatcher: [
               {
@@ -831,7 +831,7 @@ describe('RawInventoryScriptInfoSchema', () => {
 
       it('should reject nested OR with empty AND matcher array', () => {
         const invalidSchema = {
-          identifyWith: { headerNameMatcher: '^content-security-policy$' },
+          identifyWith: { hostMatcher: '^content-security-policy$' },
           authoriseWith: {
             orMatcher: [
               {
@@ -862,7 +862,7 @@ describe('RawInventoryScriptInfoSchema', () => {
     describe('Nested AND containing OR', () => {
       it('should accept deeply nested AND containing OR matchers', () => {
         const nestedSchema = {
-          identifyWith: { headerNameMatcher: '^content-security-policy$' },
+          identifyWith: { hostMatcher: '^content-security-policy$' },
           authoriseWith: {
             andMatcher: [
               {
@@ -889,7 +889,7 @@ describe('RawInventoryScriptInfoSchema', () => {
 
       it('should reject nested AND with empty OR matcher array', () => {
         const invalidSchema = {
-          identifyWith: { headerNameMatcher: '^content-security-policy$' },
+          identifyWith: { hostMatcher: '^content-security-policy$' },
           authoriseWith: {
             andMatcher: [
               {
@@ -920,7 +920,7 @@ describe('RawInventoryScriptInfoSchema', () => {
     describe('Deep nesting (5+ levels)', () => {
       it('should accept 5 levels of nested composite matchers', () => {
         const deeplyNestedSchema = {
-          identifyWith: { headerNameMatcher: '^content-security-policy$' },
+          identifyWith: { hostMatcher: '^content-security-policy$' },
           authoriseWith: {
             orMatcher: [
               {
@@ -989,7 +989,7 @@ describe('RawInventoryScriptInfoSchema', () => {
         }
 
         const deepSchema = {
-          identifyWith: { headerNameMatcher: '^test-header$' },
+          identifyWith: { hostMatcher: '^test-header$' },
           authoriseWith: currentLevel,
         }
 
@@ -1001,7 +1001,7 @@ describe('RawInventoryScriptInfoSchema', () => {
     describe('Validation of recursive structures', () => {
       it('should validate authorisationInfo at all nesting levels', () => {
         const schemaWithInvalidNestedAuth = {
-          identifyWith: { headerNameMatcher: '^content-security-policy$' },
+          identifyWith: { hostMatcher: '^content-security-policy$' },
           authoriseWith: {
             orMatcher: [
               {
@@ -1030,7 +1030,7 @@ describe('RawInventoryScriptInfoSchema', () => {
 
       it('should reject invalid matcher types within nested structures', () => {
         const schemaWithInvalidMatcher = {
-          identifyWith: { headerNameMatcher: '^content-security-policy$' },
+          identifyWith: { hostMatcher: '^content-security-policy$' },
           authoriseWith: {
             orMatcher: [
               {
@@ -1058,7 +1058,7 @@ describe('RawInventoryScriptInfoSchema', () => {
 
       it('should accept mixing all matcher types within nested composites', () => {
         const mixedSchema = {
-          identifyWith: { headerNameMatcher: '^content-security-policy$' },
+          identifyWith: { hostMatcher: '^content-security-policy$' },
           authoriseWith: {
             orMatcher: [
               { nameMatcher: '^https://cdn.example.com/.*' },

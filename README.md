@@ -416,7 +416,7 @@ The provenance is specific, not approximate: for an entry authorised by one of s
 
 ### Output layout
 
-```
+```text
 <report-dir>/index.html                    links both passes
 <report-dir>/inventory/report.{json,html}
 <report-dir>/detection/report.{json,html}
@@ -756,7 +756,7 @@ For complex authorization policies, `authoriseWith` supports composite matchers:
 
 ### CspDirectiveMatcher (Content-Security-Policy)
 
-CSP header values are split per directive before matching, so each directive is authorised on its own. Authorising one with an anchored `contentMatcher` is brittle: the sources in a directive are an unordered set, so reordering them — or dropping one — produces a semantically identical or strictly safer policy that nonetheless fails to match. Every such change mints another authorised alternative, and real entries end up carrying a dozen or more near-duplicates.
+CSP header values are split per directive before matching, so each directive is authorised on its own. Authorising one with an anchored `contentMatcher` is brittle: the sources in a directive are an unordered set, so merely reordering them produces a semantically identical policy that nonetheless fails to match — and every reorder mints another authorised alternative, until real entries carry a dozen or more near-duplicates. (Dropping a source is a different matter: as the table below shows, a removal can genuinely widen a policy, which is why it is flagged rather than tolerated.)
 
 `cspDirectiveMatcher` compares sets instead:
 

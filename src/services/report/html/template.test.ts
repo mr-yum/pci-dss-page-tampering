@@ -21,10 +21,14 @@ import { renderReportHtml } from './template.js'
 describe('renderReportHtml', () => {
   const timestamp = new Date('2026-01-01T00:00:00.000Z')
 
-  const build = (results = everyResultType(buildInventory()), inventory = buildInventory()): AuditorReport => {
+  const build = (results?: ReturnType<typeof everyResultType>, inventory?: ReturnType<typeof buildInventory>): AuditorReport => {
+    // One inventory serves both defaults: results built from a different
+    // instance would fail entry-identity lookups and quietly test rows with
+    // null provenance.
+    const owner = inventory ?? buildInventory()
     const collector = new ReportCollector()
 
-    collector.recordTargetRun({ inventory, target: detectionTarget, comparisonResults: results })
+    collector.recordTargetRun({ inventory: owner, target: detectionTarget, comparisonResults: results ?? everyResultType(owner) })
 
     return collector.build('detection', runContext())!
   }

@@ -21,8 +21,8 @@ describe('newHeaderValueMatcherConfig', () => {
   it('emits a set-based matcher for a CSP directive rather than an anchored regex', () => {
     // An exact-value regex mints a fresh alternative every time the app
     // reorders its sources, which is how entries grow a dozen near-duplicates.
-    expect(matcherFor('content-security-policy', "frame-src 'self' https://js.stripe.com").getType()).toBe('csp-directive')
-    expect(authorises('content-security-policy', "frame-src 'self' https://js.stripe.com", "frame-src https://js.stripe.com 'self'")).toBe(true)
+    expect(matcherFor('content-security-policy', "frame-src 'self' https://payments.example.com").getType()).toBe('csp-directive')
+    expect(authorises('content-security-policy', "frame-src 'self' https://payments.example.com", "frame-src https://payments.example.com 'self'")).toBe(true)
   })
 
   it('still flags an added source', () => {

@@ -123,6 +123,8 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; }
 @media print {
   .toolbar, .nav { display: none; }
   th { position: static; }
+  /* Best-effort only: closed details content is not laid out in most engines,
+     so the inline script also force-opens them on beforeprint. */
   details > *:not(summary) { display: block !important; }
   details { break-inside: avoid; }
   body { padding: 0; }

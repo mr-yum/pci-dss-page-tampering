@@ -166,8 +166,8 @@ describe('auditor report end to end', () => {
       const html = await readFile(paths.htmlPath, 'utf8')
 
       // The label must state what is actually shown, not the default limit.
-      expect(html).not.toContain('first 512 of')
-      expect(html).toContain('first 128 of')
+      expect(html).not.toContain('512 chars shown')
+      expect(html).toContain('(128 chars shown; original 4000 chars)')
       // Two full renders (measure, then re-render smaller) on a deliberately
       // oversized fixture — slower than the default 5s budget.
     }, 30000)

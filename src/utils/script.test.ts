@@ -27,22 +27,23 @@ describe('inventoryScriptInfoToRawInventoryScriptInfo', () => {
 
   it('round-trips a cspDirectiveMatcher through schema and serialiser', () => {
     const raw = {
-      identifyWith: { headerNameMatcher: '^content-security-policy$' },
-      authoriseWith: { cspDirectiveMatcher: { directive: 'frame-src', allow: ["'self'", 'https://js.stripe.com'] }, authorisationInfo },
+      identifyWith: { nameMatcher: '^https://payments\\.example\\.com/sdk\\.js$' },
+      authoriseWith: { cspDirectiveMatcher: { directive: 'frame-src', allow: ["'self'", 'https://payments.example.com'] }, authorisationInfo },
     }
 
-    expect(roundTrip(raw).authoriseWith).toEqual({ cspDirectiveMatcher: { directive: 'frame-src', allow: ["'self'", 'https://js.stripe.com'] }, authorisationInfo })
+    expect(roundTrip(raw).authoriseWith).toEqual({ cspDirectiveMatcher: { directive: 'frame-src', allow: ["'self'", 'https://payments.example.com'] }, authorisationInfo })
   })
 
-  it('serialises a script entry identified by a header-name matcher', () => {
-    // MatcherConfigSchema is shared between scripts and headers, so this
-    // validates and loads. Before this case existed the serialiser threw
-    // "Unknown matcher type: header-name" — which the auditor report now
-    // reaches on the detection path, where a throw would cost that target its
-    // tamper alerts.
-    const raw = { identifyWith: { headerNameMatcher: '^x-legacy$' }, authoriseWith: { contentMatcher: 'analytics', authorisationInfo } }
+  it('rejects a script entry identified by a header-name matcher', () => {
+    // HeaderNameMatcher is case-insensitive; script URLs are not. A
+    // case-variant URL could otherwise reach the entry's authorisation
+    // matcher, so the schema rejects the combination outright — including
+    // nested inside composites. (The serialiser retains a defensive
+    // 'header-name' case for any in-memory shape that slips past.)
+    const flat = { identifyWith: { headerNameMatcher: '^x-legacy$' }, authoriseWith: { contentMatcher: 'analytics', authorisationInfo } }
+    const nested = { identifyWith: { orMatcher: [{ nameMatcher: '^a$' }, { headerNameMatcher: '^x-legacy$' }] }, authoriseWith: { contentMatcher: 'analytics', authorisationInfo } }
 
-    expect(() => roundTrip(raw)).not.toThrow()
-    expect(roundTrip(raw).identifyWith).toEqual({ headerNameMatcher: '^x-legacy$' })
+    expect(() => RawInventoryScriptInfoSchema.parse(flat)).toThrow(/headerNameMatcher is not valid in a script entry/u)
+    expect(() => RawInventoryScriptInfoSchema.parse(nested)).toThrow(/headerNameMatcher is not valid in a script entry/u)
   })
 })

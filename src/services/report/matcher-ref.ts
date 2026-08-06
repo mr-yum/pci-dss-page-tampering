@@ -9,6 +9,7 @@
  */
 
 import type { InventoryScriptHashInfo } from '../../types/inventory/model.js'
+import { CspDirectiveMatcher } from '../../types/matcher/csp-directive-matcher.js'
 import type { AuthorisationInfo, Matchable, Matcher } from '../../types/matcher/matcher.interface.js'
 import type { ReportAuthorisationInfo, ReportMatcherPattern, ReportMatcherRef } from '../../types/report.js'
 
@@ -40,10 +41,10 @@ function toPattern(matcher: Matcher<never>, depth: number): ReportMatcherPattern
 
   // A CSP directive matcher approves a set, not a regex. Reporting it as one
   // would hide the very thing an assessor reads: which origins are allowed.
-  if (matcher.getType() === 'csp-directive') {
-    const csp = matcher as unknown as { getDirective(): string; getAllowedSources(): readonly string[] }
-
-    return { kind: 'csp-directive', directive: csp.getDirective(), allow: [...csp.getAllowedSources()] }
+  // instanceof rather than a structural cast, so a method rename fails at
+  // compile time instead of during report generation.
+  if (matcher instanceof CspDirectiveMatcher) {
+    return { kind: 'csp-directive', directive: matcher.getDirective(), allow: [...matcher.getAllowedSources()] }
   }
 
   if (isMatcherArray(pattern)) return { kind: 'composite', children: pattern.map((child) => toReportMatcherRef(child, depth + 1)) }

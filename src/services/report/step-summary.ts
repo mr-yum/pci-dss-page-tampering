@@ -48,7 +48,9 @@ export function buildStepSummary(report: AuditorReport): string {
   const lines = [
     `## Auditor report — ${run.pass}`,
     '',
-    `Inventory \`${run.inventoryRef.branch}\`${run.inventoryRef.commitSha === null ? '' : ` at \`${run.inventoryRef.commitSha.slice(0, 12)}\``} · run status **${run.status}** · ${summary.targets} target(s)`,
+    // Branch names and shas come from CLI arguments and git output — cell()
+    // fences them so backticks or pipes cannot restructure the markdown.
+    `Inventory ${cell(run.inventoryRef.branch)}${run.inventoryRef.commitSha === null ? '' : ` at ${cell(run.inventoryRef.commitSha.slice(0, 12))}`} · run status **${run.status}** · ${summary.targets} target(s)`,
     '',
     '| Authorised | Unauthorised | Unknown | Missing required | Total |',
     '| ---: | ---: | ---: | ---: | ---: |',
@@ -56,7 +58,7 @@ export function buildStepSummary(report: AuditorReport): string {
     '',
   ]
 
-  if (run.targetFilter !== null) lines.push(`> **Partial census** — filtered to target \`${run.targetFilter}\`.`, '')
+  if (run.targetFilter !== null) lines.push(`> **Partial census** — filtered to target ${cell(run.targetFilter)}.`, '')
   if (run.status === 'partial') lines.push(`> **Partial run** — ${run.failures.length} target(s) failed.`, '')
 
   if (findings.length === 0) {
@@ -77,7 +79,17 @@ export function buildStepSummary(report: AuditorReport): string {
 
   const markdown = lines.join('\n')
 
-  return Buffer.byteLength(markdown, 'utf8') > MAX_SUMMARY_BYTES ? `${markdown.slice(0, MAX_SUMMARY_BYTES)}\n\n_(summary truncated — see the artefact)_\n` : markdown
+  if (Buffer.byteLength(markdown, 'utf8') <= MAX_SUMMARY_BYTES) return markdown
+
+  // Truncate in BYTES, matching how the cap is measured: slicing by UTF-16
+  // code units would overshoot on multibyte content. A codepoint split at the
+  // boundary decodes to replacement characters; strip them.
+  const clipped = Buffer.from(markdown, 'utf8')
+    .subarray(0, MAX_SUMMARY_BYTES)
+    .toString('utf8')
+    .replace(/\uFFFD+$/u, '')
+
+  return `${clipped}\n\n_(summary truncated — see the artefact)_\n`
 }
 
 /**

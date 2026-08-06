@@ -81,6 +81,14 @@ type TargetSectionState = {
   status: 'completed' | 'failed'
   error: string | null
   rows: Map<string, ReportResourceRow>
+  /**
+   * Accumulated across every recordTargetRun call that lands in this section —
+   * rows accumulate, so the matched sets must too, or a second call would
+   * recompute `unmatched` from its own matches alone and report entries the
+   * first call matched as "not observed".
+   */
+  matchedScripts: Set<InventoryScriptInfo>
+  matchedHeaders: Set<InventoryHeaderInfo>
   unmatched: ReportUnmatchedEntry[]
 }
 
@@ -97,9 +105,6 @@ export class ReportCollector implements IReportCollector {
     const resolveProvenance: ProvenanceResolver | null = createProvenanceResolver(inventory)
     const workflowId = target.workflowId ?? 'default'
 
-    const matchedScripts = new Set<InventoryScriptInfo>()
-    const matchedHeaders = new Set<InventoryHeaderInfo>()
-
     for (const result of comparisonResults) {
       const row = toReportRow(result, inventory, workflowId, resolveProvenance)
       const existing = section.rows.get(row.rowId)
@@ -110,12 +115,12 @@ export class ReportCollector implements IReportCollector {
       else section.rows.set(row.rowId, row)
 
       if ('inventoryEntry' in result) {
-        if (result.type === 'authorized_script' || result.type === 'known_script_unauthorised_content') matchedScripts.add(result.inventoryEntry)
-        else matchedHeaders.add(result.inventoryEntry)
+        if (result.type === 'authorized_script' || result.type === 'known_script_unauthorised_content') section.matchedScripts.add(result.inventoryEntry)
+        else section.matchedHeaders.add(result.inventoryEntry)
       }
     }
 
-    section.unmatched = this.collectUnmatched(inventory, matchedScripts, matchedHeaders)
+    section.unmatched = this.collectUnmatched(inventory, section.matchedScripts, section.matchedHeaders)
   }
 
   recordTargetFailure(input: { inventory: Inventory; target: Target; error: unknown }): void {
@@ -252,6 +257,8 @@ export class ReportCollector implements IReportCollector {
         status: 'completed',
         error: null,
         rows: new Map(),
+        matchedScripts: new Set(),
+        matchedHeaders: new Set(),
         unmatched: [],
       }
       sections.set(targetKey, section)

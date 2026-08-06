@@ -116,7 +116,12 @@ const STATUS_BY_RESULT_TYPE: Record<string, ReportRowStatus> = {
  * it from every diff.
  */
 export function buildRowId(parts: readonly (string | null)[]): string {
-  return createSha256Hash(parts.map((part) => part ?? '').join('\u0000')).value.slice(0, 16)
+  // JSON.stringify each part before joining: it distinguishes null from '' and
+  // never emits a raw NUL (strings escape it), so distinct part lists cannot
+  // collide by concatenation. Distinctness matters — a MissingRequiredHeader
+  // (value null) and an empty-valued header at the same URL are two different
+  // findings and must be two rows.
+  return createSha256Hash(parts.map((part) => JSON.stringify(part)).join(' ')).value.slice(0, 16)
 }
 
 function toAuthorisation(result: ComparisonResultType): ReportAuthorisation {
@@ -169,8 +174,11 @@ function describeResource(result: ComparisonResultType): { kind: ReportResourceK
     case 'known_script_unauthorised_content':
     case 'unknown_script_found': {
       const script = result.script
-      // An inline script's name is the generated id, not a URL.
-      const isExternal = script.name.startsWith('http://') || script.name.startsWith('https://')
+      // Inline scripts are named by their generated `inline_script/` id —
+      // classify on that, not on URL shape: an external script may legally use
+      // a non-HTTP scheme (blob:), and an inline script carries provenance in
+      // `url`, so neither is a reliable discriminator.
+      const isExternal = !script.name.startsWith('inline_script/')
 
       return {
         kind: isExternal ? 'external_script' : 'inline_script',

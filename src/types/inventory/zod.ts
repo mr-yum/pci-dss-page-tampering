@@ -137,10 +137,42 @@ export const RawAuthorizeWithConfigSchema = z.union([
  * - authoriseWith uses RawAuthorizeWithConfigSchema (matcher config + authorization metadata)
  * - Old schema format is rejected (no backward compatibility per clarification Q4)
  */
-export const RawInventoryScriptInfoSchema: z.ZodType<RawInventoryScriptInfo> = z.object({
-  identifyWith: MatcherConfigSchema,
-  authoriseWith: RawAuthorizeWithConfigSchema,
-})
+/** True when a matcher config (or any nested composite child) is a headerNameMatcher. */
+function containsHeaderNameMatcher(config: unknown): boolean {
+  if (typeof config !== 'object' || config === null) return false
+  if (Array.isArray(config)) return config.some(containsHeaderNameMatcher)
+
+  const node = config as Record<string, unknown>
+
+  if ('headerNameMatcher' in node) return true
+
+  return containsHeaderNameMatcher(node['orMatcher']) || containsHeaderNameMatcher(node['andMatcher'])
+}
+
+export const RawInventoryScriptInfoSchema: z.ZodType<RawInventoryScriptInfo> = z
+  .object({
+    identifyWith: MatcherConfigSchema,
+    authoriseWith: RawAuthorizeWithConfigSchema,
+  })
+  .superRefine((entry, ctx) => {
+    // HeaderNameMatcher matches case-insensitively (RFC 7230 header names).
+    // Script names are URLs, where case is significant — identifying a script
+    // entry case-insensitively would let a case-variant URL reach the entry's
+    // authorisation matcher. Reject at the boundary rather than trusting every
+    // downstream consumer to remember the distinction.
+    for (const [field, config] of [
+      ['identifyWith', entry.identifyWith],
+      ['authoriseWith', entry.authoriseWith],
+    ] as const) {
+      if (containsHeaderNameMatcher(config)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [field],
+          message: 'headerNameMatcher is not valid in a script entry: header names match case-insensitively, but script URLs are case-sensitive. Use nameMatcher.',
+        })
+      }
+    }
+  })
 
 /**
  * Schema for the inventory target, including its workflow.

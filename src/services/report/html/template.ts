@@ -124,7 +124,7 @@ function formatRow(row: ReportResourceRow, targetKey: string): RawHtml {
         row.observed.contentExcerpt === null || row.kind === 'header'
           ? ''
           : html`<details>
-              <summary>Content excerpt${row.observed.contentTruncated ? html` (first ${row.observed.contentExcerpt.length} of ${row.observed.contentLength} chars)` : ''}</summary>
+              <summary>Content excerpt${row.observed.contentTruncated ? html` (${row.observed.contentExcerpt.length} chars shown; original ${row.observed.contentLength} chars)` : ''}</summary>
               <pre>${row.observed.contentExcerpt}</pre>
             </details>`
       }

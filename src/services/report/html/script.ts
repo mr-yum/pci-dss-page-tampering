@@ -73,6 +73,19 @@ export const REPORT_SCRIPT = `
     if (counter) counter.textContent = 'Showing ' + shown + ' of ' + rows.length + ' rows';
   }
 
+  // CSS cannot reliably render the contents of a closed <details> for print,
+  // so open them all before printing and restore afterwards. With JS disabled
+  // the reader uses Expand all, or prints after expanding manually.
+  var printOpened = [];
+  window.addEventListener('beforeprint', function () {
+    printOpened = [];
+    document.querySelectorAll('details:not([open])').forEach(function (node) { printOpened.push(node); node.open = true; });
+  });
+  window.addEventListener('afterprint', function () {
+    printOpened.forEach(function (node) { node.open = false; });
+    printOpened = [];
+  });
+
   statusBoxes.concat(kindBoxes).forEach(function (box) { box.addEventListener('change', apply); });
   if (targetSelect) targetSelect.addEventListener('change', function () {
     apply();

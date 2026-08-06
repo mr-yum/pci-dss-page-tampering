@@ -114,8 +114,14 @@ describe('buildRowId', () => {
     expect(buildRowId(['header', 'csp', null])).not.toBe(buildRowId(['header', 'csp', 'x']))
   })
 
-  it('treats null and empty string parts consistently', () => {
-    expect(buildRowId([null])).toBe(buildRowId(['']))
+  it('distinguishes null from an empty string', () => {
+    // A MissingRequiredHeader (value null) and an empty-valued header at the
+    // same URL are two different findings and must be two rows.
+    expect(buildRowId([null])).not.toBe(buildRowId(['']))
+  })
+
+  it('cannot collide across part boundaries', () => {
+    expect(buildRowId(['a b', 'c'])).not.toBe(buildRowId(['a', 'b c']))
   })
 
   it('is short enough to use as a DOM id', () => {
