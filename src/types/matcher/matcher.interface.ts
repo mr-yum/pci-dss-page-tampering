@@ -11,6 +11,7 @@
 import type { SHA256Hash } from '../hash.js'
 import type { InventoryScriptHashInfo } from '../inventory/model.js'
 import type { AuthorizationResult } from './authorization-result.js'
+import type { AuthorizeOptions } from './authorization-trace.js'
 
 /**
  * Authorization metadata for matchers.
@@ -183,8 +184,14 @@ export interface Matcher<T extends Matchable = Matchable> {
    * Edge cases:
    * - Null/empty resource.content: returns { authorized: false, reason: "content is null or empty" }
    * - Top-level authorisationInfo.authorised: false always denies regardless of matcher result
+   *
+   * @param options - Opt-in extras. `{ collectTrace: true }` additionally
+   *   populates `AuthorizationResult.trace` with the child slots visited, which
+   *   the auditor report turns into a JSON pointer into the inventory file.
+   *   Tracing never affects the decision. Leaf matchers ignore this entirely —
+   *   an implementation may declare fewer parameters.
    */
-  authorize(resource: T): AuthorizationResult
+  authorize(resource: T, options?: AuthorizeOptions): AuthorizationResult
 }
 
 /**

@@ -9,6 +9,7 @@
 
 import type { InventoryScriptHashInfo } from '../inventory/model.js'
 import type { AuthorizationResult } from './authorization-result.js'
+import type { AuthorizationTraceStep, AuthorizeOptions } from './authorization-trace.js'
 import type { AuthorisationInfo, AuthorisationMatcher, Matchable } from './matcher.interface.js'
 
 /**
@@ -113,32 +114,52 @@ export class HashMatcher implements AuthorisationMatcher<Matchable> {
    * @param script - The detected script with pre-computed hash
    * @returns AuthorizationResult with authorized=true if hash matches any authorized hash, authorized=false with reason otherwise
    */
-  authorize(script: Matchable): AuthorizationResult {
+  authorize(script: Matchable, options?: AuthorizeOptions): AuthorizationResult {
+    // Descriptive only — `withTrace` never changes a decision, and returns the
+    // result untouched unless the caller opted in.
+    const withTrace = (result: AuthorizationResult, consulted: readonly AuthorizationTraceStep[]): AuthorizationResult => {
+      if (!options?.collectTrace) return result
+
+      return { ...result, trace: { type: 'hash', consulted } }
+    }
+
     if (!script.content || script.content.trim() === '') {
-      return {
-        authorized: false,
-        reason: 'content is null or empty',
-      }
+      return withTrace(
+        {
+          authorized: false,
+          reason: 'content is null or empty',
+        },
+        [],
+      )
     }
 
     const hash = script.hash
     if (!hash) {
-      return {
-        authorized: false,
-        reason: 'hash is missing',
-      }
+      return withTrace(
+        {
+          authorized: false,
+          reason: 'hash is missing',
+        },
+        [],
+      )
     }
 
     if (this.authorisationInfo?.authorised === false) {
-      return {
-        authorized: false,
-        reason: `Top-level authorization denied: ${this.authorisationInfo.description}`,
-        metadataPath: [this.authorisationInfo],
-      }
+      return withTrace(
+        {
+          authorized: false,
+          reason: `Top-level authorization denied: ${this.authorisationInfo.description}`,
+          metadataPath: [this.authorisationInfo],
+        },
+        [],
+      )
     }
 
-    // Check if the script's computed hash matches any authorized hash
-    const isAuthorized = this.authorizedHashes.some((authorizedHashInfo) => authorizedHashInfo.hash.value === hash.value)
+    // Check if the script's computed hash matches any authorized hash.
+    // findIndex rather than some: same single pass, but the position is what the
+    // auditor report cites as `.../hashes/<n>`.
+    const matchingHashIndex = this.authorizedHashes.findIndex((authorizedHashInfo) => authorizedHashInfo.hash.value === hash.value)
+    const isAuthorized = matchingHashIndex !== -1
 
     const result: AuthorizationResult = isAuthorized
       ? { authorized: true }
@@ -152,6 +173,6 @@ export class HashMatcher implements AuthorisationMatcher<Matchable> {
       result.metadataPath = [this.authorisationInfo]
     }
 
-    return result
+    return withTrace(result, isAuthorized ? [{ slot: 'hashes', index: matchingHashIndex }] : [])
   }
 }
