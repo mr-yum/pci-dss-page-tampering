@@ -8,7 +8,7 @@
  * @see ./csp-directive-matcher.ts
  */
 
-import { CspDirectiveMatcher } from './csp-directive-matcher.js'
+import { CSP_ANY_NONCE, CspDirectiveMatcher } from './csp-directive-matcher.js'
 import type { AuthorisationInfo, Matchable } from './matcher.interface.js'
 
 describe('CspDirectiveMatcher', () => {
@@ -128,6 +128,37 @@ describe('CspDirectiveMatcher', () => {
       const info: AuthorisationInfo = { description: 'Stripe payment frames', authorised: true, date: new Date('2026-01-01T00:00:00.000Z') }
 
       expect(matcher(ALLOW, info).authorize(value("frame-src 'self'")).metadataPath).toEqual([info])
+    })
+  })
+
+  describe("the 'nonce-*' wildcard", () => {
+    const withNonce = new CspDirectiveMatcher('script-src', ["'self'", CSP_ANY_NONCE, 'https://js.stripe.com'])
+
+    it('authorises any per-response nonce', () => {
+      // A nonce is regenerated every response, so pinning one would fail on the
+      // next request. This is the only wildcard the matcher understands.
+      expect(withNonce.authorize(value("script-src 'self' 'nonce-8i04cnq3xfOdYNQwZyf+Ng=='")).authorized).toBe(true)
+      expect(withNonce.authorize(value("script-src 'self' 'nonce-TgM16Gc9JJRcMFc2lCacwg=='")).authorized).toBe(true)
+      expect(withNonce.authorize(value("script-src 'nonce-sfBVKZu3LcjNmuHZK52PM5'")).authorized).toBe(true)
+    })
+
+    it('still refuses any other added source alongside a nonce', () => {
+      // The point of wildcarding only the nonce: a downgrade or an added origin
+      // must still re-alert.
+      const result = withNonce.authorize(value("script-src 'self' 'nonce-abc123' 'unsafe-inline'"))
+
+      expect(result.authorized).toBe(false)
+      expect(result.reason).toContain("'unsafe-inline'")
+      expect(result.reason).not.toContain('nonce')
+    })
+
+    it('does not authorise a nonce unless the wildcard was approved', () => {
+      expect(new CspDirectiveMatcher('script-src', ["'self'"]).authorize(value("script-src 'nonce-abc123'")).authorized).toBe(false)
+    })
+
+    it('does not treat a malformed nonce-like token as a nonce', () => {
+      expect(withNonce.authorize(value("script-src 'nonce-'")).authorized).toBe(false)
+      expect(withNonce.authorize(value("script-src 'nonce-has spaces'")).authorized).toBe(false)
     })
   })
 

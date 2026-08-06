@@ -1,6 +1,12 @@
 import type { AuthorizationResult } from './authorization-result.js'
 import type { AuthorisationInfo, AuthorisationMatcher, Matchable } from './matcher.interface.js'
 
+/** The one wildcard `allow` understands. @see CspDirectiveMatcher */
+export const CSP_ANY_NONCE = "'nonce-*'"
+
+/** A single-response nonce source expression, per CSP's base64-value grammar. */
+const NONCE_SOURCE = /^'nonce-[A-Za-z0-9+/\-_]+={0,2}'$/u
+
 /**
  * Matches one Content-Security-Policy directive by its set of source
  * expressions, rather than by the literal text of the header value.
@@ -20,11 +26,18 @@ import type { AuthorisationInfo, AuthorisationMatcher, Matchable } from './match
  *   failure reason names it. That is the direction an attacker moves in, and
  *   the one an assessor cares about.
  *
- * Source expressions are compared **exactly**. Wildcards are not expanded: the
- * subject is the policy text, so `https://*.example.com` and
- * `https://a.example.com` are different assertions and a change between them is
- * a change worth reporting. Directive names are compared case-insensitively,
- * as CSP defines them.
+ * Source expressions are compared **exactly**, with exactly one exception:
+ * `'nonce-*'` in `allow` matches any single-response nonce. A nonce is
+ * regenerated per response, so pinning one would fail on every request; this
+ * mirrors what the inventory already expresses by hand as
+ * `'nonce-[A-Za-z0-9+/=]+'`, and nothing else is wildcarded, so an added source
+ * or a downgrade still re-alerts.
+ *
+ * Host wildcards are **not** expanded: the subject is the policy text, so
+ * `https://*.example.com` and `https://a.example.com` are different assertions
+ * and a change between them is worth reporting. Directive names are compared
+ * case-insensitively, as CSP defines them; source expressions are
+ * case-sensitive, so a nonce cannot be matched by a differently-cased one.
  *
  * @see ../../services/comparison/header.ts for how header values reach a matcher
  */
@@ -32,6 +45,7 @@ export class CspDirectiveMatcher implements AuthorisationMatcher {
   private readonly directive: string
   private readonly allow: ReadonlySet<string>
   private readonly allowOrdered: readonly string[]
+  private readonly allowAnyNonce: boolean
   private readonly authorisationInfo: AuthorisationInfo | undefined
 
   constructor(directive: string, allow: readonly string[], authorisationInfo: AuthorisationInfo | undefined = undefined) {
@@ -42,6 +56,7 @@ export class CspDirectiveMatcher implements AuthorisationMatcher {
     this.directive = normalisedDirective
     this.allowOrdered = [...allow]
     this.allow = new Set(allow)
+    this.allowAnyNonce = this.allow.has(CSP_ANY_NONCE)
     this.authorisationInfo = authorisationInfo
   }
 
@@ -94,7 +109,7 @@ export class CspDirectiveMatcher implements AuthorisationMatcher {
     }
 
     // Subset semantics: only sources absent from `allow` are a problem.
-    const unapproved = parsed.sources.filter((source) => !this.allow.has(source))
+    const unapproved = parsed.sources.filter((source) => !this.isApproved(source))
 
     const result: AuthorizationResult =
       unapproved.length === 0
@@ -107,6 +122,12 @@ export class CspDirectiveMatcher implements AuthorisationMatcher {
     if (this.authorisationInfo) result.metadataPath = [this.authorisationInfo]
 
     return result
+  }
+
+  private isApproved(source: string): boolean {
+    if (this.allow.has(source)) return true
+
+    return this.allowAnyNonce && NONCE_SOURCE.test(source)
   }
 
   /**

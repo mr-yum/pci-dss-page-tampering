@@ -23,6 +23,17 @@ describe('unauthorisedHeadersToInventoryHeaderInfo', () => {
     expect(entry!.authoriseWith.matcher.authorize({ name: 'content-security-policy', content: "frame-src 'self' https://evil.example.test" }).authorized).toBe(false)
   })
 
+  it('wildcards a per-response nonce instead of pinning the observed one', () => {
+    // Pinning the nonce observed during an inventory run would fail on the very
+    // next response, and would churn a new alternative every single run.
+    const [entry] = build('content-security-policy', "script-src 'self' 'nonce-8i04cnq3xfOdYNQwZyf+Ng=='")
+    const matcher = entry!.authoriseWith.matcher
+
+    expect(matcher.getPattern()).toBe("script-src 'self' 'nonce-*'")
+    expect(matcher.authorize({ name: 'content-security-policy', content: "script-src 'self' 'nonce-TotallyDifferent+Ng=='" }).authorized).toBe(true)
+    expect(matcher.authorize({ name: 'content-security-policy', content: "script-src 'self' 'unsafe-inline'" }).authorized).toBe(false)
+  })
+
   it('covers report-only CSP too', () => {
     expect(build('content-security-policy-report-only', "default-src 'self'")[0]!.authoriseWith.matcher.getType()).toBe('csp-directive')
   })

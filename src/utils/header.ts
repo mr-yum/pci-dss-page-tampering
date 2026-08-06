@@ -1,5 +1,6 @@
 import type { DetectedHeader, HeaderName, HeaderValues } from '../types/header.js'
 import type { InventoryHeaderInfo } from '../types/inventory/model.js'
+import { CSP_ANY_NONCE } from '../types/matcher/csp-directive-matcher.js'
 import type { Matchable } from '../types/matcher/matcher.interface.js'
 import { createMatcher, type MatcherConfig } from '../types/matcher/matcher-factory.js'
 import type { Target } from '../types/target.js'
@@ -26,6 +27,9 @@ export function detectedHeaderToMatchable(header: DetectedHeader, target: Target
   }
 }
 
+/** A per-response nonce, which must never be pinned into the inventory. */
+const OBSERVED_NONCE = /^'nonce-[A-Za-z0-9+/\-_]+={0,2}'$/u
+
 /** Header names whose values are a CSP, and so are a set of directives. */
 const CSP_HEADER_NAMES = new Set(['content-security-policy', 'content-security-policy-report-only'])
 
@@ -49,7 +53,11 @@ function newHeaderValueMatcherConfig(headerName: string, headerValue: string): M
   const directive = tokens[0]
 
   if (CSP_HEADER_NAMES.has(headerName.toLowerCase()) && directive !== undefined && /^[A-Za-z][A-Za-z0-9-]*$/u.test(directive)) {
-    return { cspDirectiveMatcher: { directive: directive.toLowerCase(), allow: tokens.slice(1) } }
+    // Collapse the per-response nonce to the wildcard, and de-duplicate: pinning
+    // an observed nonce would fail on the very next response.
+    const allow = [...new Set(tokens.slice(1).map((token) => (OBSERVED_NONCE.test(token) ? CSP_ANY_NONCE : token)))]
+
+    return { cspDirectiveMatcher: { directive: directive.toLowerCase(), allow } }
   }
 
   return { contentMatcher: `^${escapeRegex(headerValue)}$` }
