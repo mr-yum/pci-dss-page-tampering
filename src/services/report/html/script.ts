@@ -21,20 +21,22 @@ export const REPORT_SCRIPT = `
   'use strict';
   var rows = Array.prototype.slice.call(document.querySelectorAll('tr[data-row]'));
   var statusBoxes = Array.prototype.slice.call(document.querySelectorAll('input[data-status]'));
+  var kindBoxes = Array.prototype.slice.call(document.querySelectorAll('input[data-kind]'));
   var search = document.getElementById('report-search');
   var findingsOnly = document.getElementById('report-findings-only');
   var expandAll = document.getElementById('report-expand-all');
   var collapseAll = document.getElementById('report-collapse-all');
   var counter = document.getElementById('report-count');
 
-  function activeStatuses() {
+  function checkedValues(boxes, attribute) {
     var active = {};
-    statusBoxes.forEach(function (box) { if (box.checked) active[box.getAttribute('data-status')] = true; });
+    boxes.forEach(function (box) { if (box.checked) active[box.getAttribute(attribute)] = true; });
     return active;
   }
 
   function apply() {
-    var active = activeStatuses();
+    var activeStatuses = checkedValues(statusBoxes, 'data-status');
+    var activeKinds = checkedValues(kindBoxes, 'data-kind');
     var term = search && search.value ? search.value.toLowerCase().trim() : '';
     var onlyFindings = findingsOnly && findingsOnly.checked;
     var shown = 0;
@@ -42,7 +44,7 @@ export const REPORT_SCRIPT = `
     rows.forEach(function (row) {
       var status = row.getAttribute('data-status');
       var haystack = row.getAttribute('data-search') || '';
-      var visible = !!active[status];
+      var visible = !!activeStatuses[status] && !!activeKinds[row.getAttribute('data-kind')];
       if (visible && onlyFindings && status === 'authorised') visible = false;
       if (visible && term && haystack.indexOf(term) === -1) visible = false;
       row.hidden = !visible;
@@ -63,7 +65,7 @@ export const REPORT_SCRIPT = `
     if (counter) counter.textContent = 'Showing ' + shown + ' of ' + rows.length + ' rows';
   }
 
-  statusBoxes.forEach(function (box) { box.addEventListener('change', apply); });
+  statusBoxes.concat(kindBoxes).forEach(function (box) { box.addEventListener('change', apply); });
   if (search) search.addEventListener('input', apply);
   if (findingsOnly) findingsOnly.addEventListener('change', apply);
   if (expandAll) expandAll.addEventListener('click', function () {

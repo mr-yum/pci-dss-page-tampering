@@ -91,6 +91,40 @@ describe('renderReportHtml', () => {
       }
     })
 
+    it('offers a type filter alongside the status filter', () => {
+      const html = renderReportHtml(build())
+
+      for (const kind of ['external_script', 'inline_script', 'header']) {
+        expect(html).toContain(`data-kind="${kind}"`)
+      }
+
+      // Every row must be filterable, or the checkbox silently does nothing.
+      expect(html.match(/<tr data-row[^>]*data-kind="/gu)).toHaveLength(7)
+    })
+
+    it('leads each row with the human-readable justification', () => {
+      // "What is this script and why is it here" is the question an assessor
+      // opens the report to answer; it gets its own column, not a footnote.
+      const html = renderReportHtml(build())
+      const headings = [...html.matchAll(/<th scope="col">([^<]*)<\/th>/gu)].map((match) => match[1]!.trim())
+
+      expect(headings.slice(0, 5)).toEqual(['Status', 'Resource', 'What it is', 'Integrity', 'Inventory source'])
+      expect(html).toContain('Analytics, approved by security')
+    })
+
+    it('does not repeat a header value as a content excerpt', () => {
+      // For a header the excerpt IS the value, already shown in the row.
+      const html = renderReportHtml(build())
+      const headerRows = [...html.matchAll(/<tr data-row[^>]*data-kind="header"[\s\S]*?<\/tr>/gu)].map((match) => match[0])
+
+      expect(headerRows.length).toBeGreaterThan(0)
+      for (const row of headerRows) expect(row).not.toContain('Content excerpt')
+    })
+
+    it('pins the column headers so they survive a long table', () => {
+      expect(renderReportHtml(build())).toMatch(/th \{[^}]*position: sticky/u)
+    })
+
     it('renders every row of the census', () => {
       const html = renderReportHtml(build())
 

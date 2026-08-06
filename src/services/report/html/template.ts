@@ -99,17 +99,24 @@ function formatProvenanceNode(node: ProvenanceNode): RawHtml {
 function formatRow(row: ReportResourceRow): RawHtml {
   const provenance = row.inventoryEntry?.provenance ?? null
   const authorisingSource = provenance?.authorisedBy ?? null
+  const justification = row.authorisation.effective
   // Detected values are rendered as text only, never as a link: a `javascript:`
   // script URL is exactly the artefact of an attack this report documents.
-  const search = [row.name, row.value ?? '', row.origin.host ?? '', row.status, row.kind, row.observed.hash ?? '', row.authorisation.effective?.description ?? ''].join(' ').toLowerCase()
+  const search = [row.name, row.value ?? '', row.origin.host ?? '', row.status, row.kind, row.observed.hash ?? '', justification?.description ?? ''].join(' ').toLowerCase()
 
-  return html`<tr data-row data-status="${row.status}" data-search="${search}" id="row-${row.rowId}">
-    <td>${badge(row.status)}</td>
+  return html`<tr data-row data-status="${row.status}" data-kind="${row.kind}" data-search="${search}" id="row-${row.rowId}">
+    <td>
+      ${badge(row.status)}
+      <div class="muted kind">${KIND_LABELS[row.kind] ?? row.kind}</div>
+    </td>
     <td class="name">
-      <div class="mono">${row.name}</div>
-      ${row.value === null ? '' : html`<div class="muted mono">${row.value}</div>`} ${row.occurrences > 1 ? html`<div class="muted">observed ${row.occurrences}×</div>` : ''}
+      <div class="mono resource-name">${row.name}</div>
+      ${row.value === null ? '' : html`<div class="mono resource-value">${row.value}</div>`}
+      <div class="muted row-meta">${row.origin.host ?? '—'} · ${row.workflowId}${row.occurrences > 1 ? html` · observed ${row.occurrences}×` : ''}</div>
       ${
-        row.observed.contentExcerpt === null
+        // A header's excerpt is its value, already shown above — repeating it
+        // as a disclosure adds a row of noise per header and nothing else.
+        row.observed.contentExcerpt === null || row.kind === 'header'
           ? ''
           : html`<details>
               <summary>Content excerpt${row.observed.contentTruncated ? html` (first ${row.observed.contentExcerpt.length} of ${row.observed.contentLength} chars)` : ''}</summary>
@@ -117,16 +124,13 @@ function formatRow(row: ReportResourceRow): RawHtml {
             </details>`
       }
     </td>
-    <td>
-      <div>${KIND_LABELS[row.kind] ?? row.kind}</div>
-      <div class="muted mono">${row.origin.host ?? '—'}</div>
-      <div class="muted">${row.workflowId}</div>
-    </td>
-    <td class="mono">${row.observed.hash === null ? html`<span class="muted">—</span>` : html`${row.observed.hash.slice(0, 16)}…`}</td>
-    <td>${formatMatcher(row.identification)}</td>
-    <td>${formatMatcher(row.authorisation.matcher)} ${row.authorisation.failureReason === null ? '' : html`<div class="muted">${row.authorisation.failureReason}</div>`}</td>
-    <td>
-      ${formatAuthorisationInfo(row.authorisation.effective)}
+    <td class="what">
+      ${
+        justification === null
+          ? html`<span class="muted">No justification recorded</span>`
+          : html`<div class="justification">${justification.description}</div>
+              <div class="muted row-meta">${justification.authorised ? 'authorised' : 'NOT authorised'} · ${justification.date}</div>`
+      }
       ${
         row.authorisation.metadataPath.length > 1
           ? html`<details>
@@ -137,6 +141,20 @@ function formatRow(row: ReportResourceRow): RawHtml {
             </details>`
           : ''
       }
+    </td>
+    <td class="integrity">
+      <div class="mono">${row.observed.hash === null ? html`<span class="muted">no hash</span>` : html`${row.observed.hash.slice(0, 12)}…`}</div>
+      <div class="muted row-meta">${row.authorisation.matcher === null ? 'not identified' : html`matched by ${row.authorisation.matcher.type}`}</div>
+      ${row.authorisation.failureReason === null ? '' : html`<div class="failure">${row.authorisation.failureReason}</div>`}
+      <details>
+        <summary>Matchers</summary>
+        <dl class="kv">
+          <dt>Identified by</dt>
+          <dd>${formatMatcher(row.identification)}</dd>
+          <dt>Authorised by</dt>
+          <dd>${formatMatcher(row.authorisation.matcher)}</dd>
+        </dl>
+      </details>
     </td>
     <td class="src">
       ${formatSource(provenance?.entry)}
@@ -156,7 +174,7 @@ function formatRow(row: ReportResourceRow): RawHtml {
   </tr>`
 }
 
-const ROW_HEADERS = ['Status', 'Resource', 'Kind / origin', 'SHA-256', 'Identified by', 'Authorised by (matcher)', 'Justification', 'Inventory source']
+const ROW_HEADERS = ['Status', 'Resource', 'What it is', 'Integrity', 'Inventory source']
 
 function formatTable(caption: string, rows: readonly ReportResourceRow[]): RawHtml {
   if (rows.length === 0) return html`<p class="muted">No ${caption.toLowerCase()} observed.</p>`
@@ -274,13 +292,20 @@ export function renderReportHtml(report: AuditorReport): string {
     </nav>
 
     <div class="toolbar" role="search">
-      <label for="report-search">Search</label>
-      <input type="search" id="report-search" placeholder="URL, header, hash, justification…" />
-      ${join(Object.keys(STATUS_LABELS).map((status) => html`<label><input type="checkbox" data-status="${status}" checked />${STATUS_LABELS[status]}</label>`))}
-      <label><input type="checkbox" id="report-findings-only" />Findings only</label>
-      <button type="button" id="report-expand-all">Expand all</button>
-      <button type="button" id="report-collapse-all">Collapse all</button>
-      <span class="count" id="report-count" aria-live="polite"></span>
+      <div class="toolbar-row">
+        <label for="report-search">Search</label>
+        <input type="search" id="report-search" placeholder="URL, header, hash, justification…" />
+        <label><input type="checkbox" id="report-findings-only" />Findings only</label>
+        <button type="button" id="report-expand-all">Expand all</button>
+        <button type="button" id="report-collapse-all">Collapse all</button>
+        <span class="count" id="report-count" aria-live="polite"></span>
+      </div>
+      <div class="toolbar-row">
+        <span class="group-label">Type</span>
+        ${join(Object.keys(KIND_LABELS).map((kind) => html`<label><input type="checkbox" data-kind="${kind}" checked />${KIND_LABELS[kind]}</label>`))}
+        <span class="group-label">Status</span>
+        ${join(Object.keys(STATUS_LABELS).map((status) => html`<label><input type="checkbox" data-status="${status}" checked />${STATUS_LABELS[status]}</label>`))}
+      </div>
     </div>
 
     ${join(report.targets.map(formatTarget))}
