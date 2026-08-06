@@ -38,6 +38,14 @@ function isHashArray(pattern: unknown): pattern is InventoryScriptHashInfo[] {
 function toPattern(matcher: Matcher<never>, depth: number): ReportMatcherPattern {
   const pattern = matcher.getPattern()
 
+  // A CSP directive matcher approves a set, not a regex. Reporting it as one
+  // would hide the very thing an assessor reads: which origins are allowed.
+  if (matcher.getType() === 'csp-directive') {
+    const csp = matcher as unknown as { getDirective(): string; getAllowedSources(): readonly string[] }
+
+    return { kind: 'csp-directive', directive: csp.getDirective(), allow: [...csp.getAllowedSources()] }
+  }
+
   if (isMatcherArray(pattern)) return { kind: 'composite', children: pattern.map((child) => toReportMatcherRef(child, depth + 1)) }
 
   if (isHashArray(pattern)) {

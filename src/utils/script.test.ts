@@ -18,6 +18,15 @@ describe('inventoryScriptInfoToRawInventoryScriptInfo', () => {
     expect(result.authoriseWith).toMatchObject({ contentMatcher: 'analytics', authorisationInfo })
   })
 
+  it('round-trips a cspDirectiveMatcher through schema and serialiser', () => {
+    const raw = {
+      identifyWith: { headerNameMatcher: '^content-security-policy$' },
+      authoriseWith: { cspDirectiveMatcher: { directive: 'frame-src', allow: ["'self'", 'https://js.stripe.com'] }, authorisationInfo },
+    }
+
+    expect(roundTrip(raw).authoriseWith).toEqual({ cspDirectiveMatcher: { directive: 'frame-src', allow: ["'self'", 'https://js.stripe.com'] }, authorisationInfo })
+  })
+
   it('serialises a script entry identified by a header-name matcher', () => {
     // MatcherConfigSchema is shared between scripts and headers, so this
     // validates and loads. Before this case existed the serialiser threw

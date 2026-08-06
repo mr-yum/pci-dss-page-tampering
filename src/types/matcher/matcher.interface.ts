@@ -120,7 +120,7 @@ export interface Matcher<T extends Matchable = Matchable> {
    * Returns the matcher type discriminator.
    * Used for logging, debugging, and type narrowing.
    */
-  getType(): 'name' | 'header-name' | 'content' | 'hash' | 'host' | 'url' | 'workflow' | 'or' | 'and'
+  getType(): 'name' | 'header-name' | 'content' | 'hash' | 'host' | 'url' | 'workflow' | 'csp-directive' | 'or' | 'and'
 
   /**
    * Returns the pattern, hashes, or child matchers used by this matcher.

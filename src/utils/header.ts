@@ -1,7 +1,7 @@
 import type { DetectedHeader, HeaderName, HeaderValues } from '../types/header.js'
 import type { InventoryHeaderInfo } from '../types/inventory/model.js'
 import type { Matchable } from '../types/matcher/matcher.interface.js'
-import { createMatcher } from '../types/matcher/matcher-factory.js'
+import { createMatcher, type MatcherConfig } from '../types/matcher/matcher-factory.js'
 import type { Target } from '../types/target.js'
 import { escapeRegex } from './string.js'
 
@@ -26,6 +26,35 @@ export function detectedHeaderToMatchable(header: DetectedHeader, target: Target
   }
 }
 
+/** Header names whose values are a CSP, and so are a set of directives. */
+const CSP_HEADER_NAMES = new Set(['content-security-policy', 'content-security-policy-report-only'])
+
+/**
+ * Choose how to authorise a newly discovered header value.
+ *
+ * A CSP directive gets a set-based matcher rather than an anchored regex.
+ * Directives are order-insensitive by definition, so a literal pattern mints a
+ * fresh near-duplicate alternative every time the application reorders its
+ * sources or drops one — real entries accumulate a dozen-plus that way. The set
+ * form stays strict about *added* sources, which is the direction that matters.
+ *
+ * Everything else keeps the exact-value regex: for an ordinary header the whole
+ * value is the assertion.
+ */
+function newHeaderValueMatcherConfig(headerName: string, headerValue: string): MatcherConfig {
+  const tokens = headerValue
+    .trim()
+    .split(/\s+/u)
+    .filter((token) => token !== '')
+  const directive = tokens[0]
+
+  if (CSP_HEADER_NAMES.has(headerName.toLowerCase()) && directive !== undefined && /^[A-Za-z][A-Za-z0-9-]*$/u.test(directive)) {
+    return { cspDirectiveMatcher: { directive: directive.toLowerCase(), allow: tokens.slice(1) } }
+  }
+
+  return { contentMatcher: `^${escapeRegex(headerValue)}$` }
+}
+
 /**
  * Converts unauthorized headers to InventoryHeaderInfo entries for new header discovery.
  *
@@ -40,12 +69,11 @@ export function unauthorisedHeadersToInventoryHeaderInfo(headers: Map<HeaderName
     return headerValuesArray.map<InventoryHeaderInfo>((headerValue) => {
       // Use lowercase for header name pattern (HeaderNameMatcher normalizes to lowercase anyway)
       const headerNamePattern = `^${headerName.toLowerCase()}$`
-      const headerValuePattern = `^${escapeRegex(headerValue)}$`
 
       return {
         identifyWith: createMatcher({ headerNameMatcher: headerNamePattern }),
         authoriseWith: {
-          matcher: createMatcher({ contentMatcher: headerValuePattern }),
+          matcher: createMatcher(newHeaderValueMatcherConfig(headerName, headerValue)),
           authorisationInfo: {
             description: 'NO_DESCRIPTION',
             authorised: false,

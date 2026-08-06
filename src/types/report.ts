@@ -29,7 +29,7 @@ import type { ResponseResourceType } from './header.js'
  * change in what an existing value means. Consumers should gate on the major
  * and tolerate unknown fields.
  */
-export const REPORT_SCHEMA_VERSION = '1.0.0'
+export const REPORT_SCHEMA_VERSION = '1.1.0'
 
 /** Which half of the system produced this document. */
 export type ReportPass = 'inventory' | 'detection'
@@ -38,7 +38,7 @@ export type ReportRowStatus = 'authorised' | 'unauthorised_content' | 'unknown' 
 
 export type ReportResourceKind = 'external_script' | 'inline_script' | 'header'
 
-export type ReportMatcherType = 'name' | 'header-name' | 'content' | 'hash' | 'host' | 'url' | 'workflow' | 'or' | 'and'
+export type ReportMatcherType = 'name' | 'header-name' | 'content' | 'hash' | 'host' | 'url' | 'workflow' | 'csp-directive' | 'or' | 'and'
 
 /** Authorisation metadata, with dates rendered as ISO-8601 UTC strings. */
 export type ReportAuthorisationInfo = {
@@ -47,7 +47,8 @@ export type ReportAuthorisationInfo = {
   date: string
 }
 
-export type ReportMatcherPattern = { kind: 'regex'; value: string } | { kind: 'hashes'; hashes: { value: string; timestamp: string }[] } | { kind: 'composite'; children: ReportMatcherRef[] }
+export type ReportMatcherPattern =
+  { kind: 'regex'; value: string } | { kind: 'hashes'; hashes: { value: string; timestamp: string }[] } | { kind: 'csp-directive'; directive: string; allow: string[] } | { kind: 'composite'; children: ReportMatcherRef[] }
 
 /** A matcher as an auditor sees it: what kind, what it matches, and why it is allowed. */
 export type ReportMatcherRef = {

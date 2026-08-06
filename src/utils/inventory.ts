@@ -113,6 +113,15 @@ export function inventoryHeaderInfoToRawInventoryHeaderInfo(headerInfo: Inventor
         }
         return config
       }
+      case 'csp-directive': {
+        const csp = matcher as unknown as { getDirective(): string; getAllowedSources(): readonly string[] }
+        const config: any = { cspDirectiveMatcher: { directive: csp.getDirective(), allow: [...csp.getAllowedSources()] } }
+        const authInfo = (matcher as any).getAuthorisationInfo?.()
+        if (authInfo) {
+          config.authorisationInfo = serializeAuthorisationInfo(authInfo)
+        }
+        return config
+      }
       case 'content': {
         const config: any = { contentMatcher: pattern as string }
         const authInfo = (matcher as any).getAuthorisationInfo?.()

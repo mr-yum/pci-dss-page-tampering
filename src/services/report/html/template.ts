@@ -63,6 +63,11 @@ function formatPattern(matcher: ReportMatcherRef): RawHtml {
       return html`<code>${matcher.pattern.value}</code>`
     case 'hashes':
       return join(matcher.pattern.hashes.map((entry) => html`<div class="mono">${entry.value} <span class="muted">(${entry.timestamp})</span></div>`))
+    case 'csp-directive':
+      return html`<div><span class="mono">${matcher.pattern.directive}</span> — any ordering of these ${matcher.pattern.allow.length} source(s), and no others:</div>
+        <ul>
+          ${join(matcher.pattern.allow.map((source) => html`<li class="mono">${source}</li>`))}
+        </ul>`
     case 'composite':
       return html`<ul>
         ${join(matcher.pattern.children.map((child) => html`<li>${child.description} ${formatPattern(child)}</li>`))}

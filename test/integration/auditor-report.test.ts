@@ -20,7 +20,7 @@ import { buildStepSummary } from '../../src/services/report/step-summary.js'
 import { buildInventory, detectionTarget, everyResultType, inventoryTarget, makeScript, runContext } from '../../src/services/report/test-fixtures.js'
 import { FileReportWriter } from '../../src/services/report/writer.js'
 import { UnknownScriptFound } from '../../src/types/comparison/unknown-script-found.js'
-import type { AuditorReport } from '../../src/types/report.js'
+import { type AuditorReport, REPORT_SCHEMA_VERSION } from '../../src/types/report.js'
 
 describe('auditor report end to end', () => {
   let reportDir: string
@@ -78,7 +78,10 @@ describe('auditor report end to end', () => {
 
       const json = JSON.parse(await readFile(paths.jsonPath, 'utf8'))
 
-      expect(json.schemaVersion).toBe('1.0.0')
+      // Pinned to the exported constant, not a literal: additive fields bump the
+      // minor legitimately. The major is what consumers gate on.
+      expect(json.schemaVersion).toBe(REPORT_SCHEMA_VERSION)
+      expect(json.schemaVersion).toMatch(/^1\./u)
       expect(json.run.pass).toBe('detection')
     })
 

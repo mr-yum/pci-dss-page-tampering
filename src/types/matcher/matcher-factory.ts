@@ -10,6 +10,7 @@
 import type { InventoryScriptHashInfo } from '../inventory/model.js'
 import { AndMatcher } from './and-matcher.js'
 import { ContentMatcher } from './content-matcher.js'
+import { CspDirectiveMatcher } from './csp-directive-matcher.js'
 import { HashMatcher } from './hash-matcher.js'
 import { HeaderNameMatcher } from './header-name-matcher.js'
 import { HostMatcher } from './host-matcher.js'
@@ -64,6 +65,7 @@ export type MatcherConfig =
   | { hostMatcher: string; authorisationInfo?: RawAuthorisationInfo }
   | { urlMatcher: string; authorisationInfo?: RawAuthorisationInfo }
   | { workflowMatcher: string; authorisationInfo?: RawAuthorisationInfo }
+  | { cspDirectiveMatcher: { directive: string; allow: string[] }; authorisationInfo?: RawAuthorisationInfo }
   | { hashes: InventoryScriptHashInfo[]; authorisationInfo?: RawAuthorisationInfo }
   | { orMatcher: MatcherConfig[]; authorisationInfo?: RawAuthorisationInfo }
   | { andMatcher: MatcherConfig[]; authorisationInfo?: RawAuthorisationInfo }
@@ -127,6 +129,10 @@ export function createMatcher(config: MatcherConfig): Matcher {
 
   if ('workflowMatcher' in config) {
     return new WorkflowMatcher(config.workflowMatcher, convertAuthorisationInfo(config.authorisationInfo))
+  }
+
+  if ('cspDirectiveMatcher' in config) {
+    return new CspDirectiveMatcher(config.cspDirectiveMatcher.directive, config.cspDirectiveMatcher.allow, convertAuthorisationInfo(config.authorisationInfo))
   }
 
   if ('hashes' in config) {

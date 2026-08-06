@@ -754,6 +754,44 @@ For complex authorization policies, `authoriseWith` supports composite matchers:
 }
 ```
 
+### CspDirectiveMatcher (Content-Security-Policy)
+
+CSP header values are split per directive before matching, so each directive is authorised on its own. Authorising one with an anchored `contentMatcher` is brittle: the sources in a directive are an unordered set, so reordering them — or dropping one — produces a semantically identical or strictly safer policy that nonetheless fails to match. Every such change mints another authorised alternative, and real entries end up carrying a dozen or more near-duplicates.
+
+`cspDirectiveMatcher` compares sets instead:
+
+```json
+{
+  "identifyWith": {
+    "andMatcher": [{ "headerNameMatcher": "^content-security-policy$" }, { "hostMatcher": "^checkout\\.example\\.com$" }]
+  },
+  "authoriseWith": {
+    "cspDirectiveMatcher": {
+      "directive": "frame-src",
+      "allow": ["'self'", "https://js.stripe.com", "https://hooks.stripe.com", "https://m.stripe.network"]
+    },
+    "authorisationInfo": {
+      "description": "Payment provider frames on the checkout page",
+      "authorised": true,
+      "date": "2026-08-06T00:00:00.000Z"
+    }
+  }
+}
+```
+
+| Change to the observed policy | Result      | Why                                                      |
+| ----------------------------- | ----------- | -------------------------------------------------------- |
+| Sources reordered             | authorised  | A permutation is the same policy                         |
+| A source removed              | authorised  | Allowing fewer origins is strictly safer                 |
+| A source added                | **flagged** | The direction an attacker moves in — the reason names it |
+| A different directive         | **flagged** | Wrong assertion entirely                                 |
+
+Notes:
+
+- Source expressions are compared **exactly**, and wildcards are not expanded. `https://*.js.stripe.com` and `https://a.js.stripe.com` are different assertions, and a change between them is reported. The subject is the policy text, not the set of origins it resolves to.
+- Directive names are matched case-insensitively, as CSP defines them; source expressions are case-sensitive, so a `'nonce-…'` cannot be matched by a differently-cased one.
+- The inventory workflow emits this form automatically when it discovers a new `content-security-policy` or `content-security-policy-report-only` value. Other headers keep the exact-value `contentMatcher`, because for those the whole value is the assertion.
+
 ### HostMatcher / UrlMatcher (provenance)
 
 Every detected resource carries a single `url` field that captures where it
