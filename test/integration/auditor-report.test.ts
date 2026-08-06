@@ -118,7 +118,22 @@ describe('auditor report end to end', () => {
     })
 
     it('ties both passes of one invocation together by correlation id', () => {
-      expect(buildReport('inventory').run.correlationId).toBe(buildReport('detection').run.correlationId)
+      // The fixture supplies the id, so comparing two fixture-built reports
+      // would compare a constant with itself. Assert instead that build()
+      // propagates whatever the caller passed, distinctly per invocation —
+      // main.ts generates one randomUUID per process and shares it across passes.
+      const inventory = buildInventory()
+      const collector = new ReportCollector()
+
+      collector.recordTargetRun({ inventory, target: inventoryTarget, comparisonResults: [] })
+      collector.recordTargetRun({ inventory, target: detectionTarget, comparisonResults: [] })
+
+      const first = collector.build('inventory', runContext({ correlationId: 'run-A' }))!
+      const second = collector.build('detection', runContext({ correlationId: 'run-A' }))!
+      const other = collector.build('detection', runContext({ correlationId: 'run-B' }))!
+
+      expect(first.run.correlationId).toBe(second.run.correlationId)
+      expect(other.run.correlationId).not.toBe(first.run.correlationId)
     })
   })
 

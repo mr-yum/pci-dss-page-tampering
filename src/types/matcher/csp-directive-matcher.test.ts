@@ -1,9 +1,10 @@
 /**
  * Unit tests for the set-based CSP directive matcher.
  *
- * The security contract is asymmetric and worth stating plainly: reordering and
- * removing sources must pass, adding one must fail. These tests exist to keep
- * that asymmetry from drifting.
+ * The contract is worth stating plainly: reordering passes, any change in set
+ * membership fails. Removals are deliberately NOT tolerated — some CSP sources
+ * only suppress others while present, so dropping one can widen the policy.
+ * These tests exist to keep that from drifting back to "a subset is safer".
  *
  * @see ./csp-directive-matcher.ts
  */
@@ -61,32 +62,67 @@ describe('CspDirectiveMatcher', () => {
       expect(matcher().authorize(value(`frame-src ${shuffled.join(' ')}`)).authorized).toBe(true)
     })
 
-    it('authorises a subset, because allowing fewer origins is strictly safer', () => {
-      expect(matcher().authorize(value("frame-src 'self'")).authorized).toBe(true)
-      expect(matcher().authorize(value('frame-src')).authorized).toBe(true)
+    it('flags a removed source, naming it', () => {
+      const result = matcher().authorize(value("frame-src 'self' https://js.stripe.com https://hooks.stripe.com"))
+
+      expect(result.authorized).toBe(false)
+      expect(result.reason).toContain('no longer present')
+      expect(result.reason).toContain('https://m.stripe.network')
+    })
+
+    it('flags a directive stripped to nothing', () => {
+      expect(matcher().authorize(value('frame-src')).authorized).toBe(false)
+    })
+
+    describe('removals that would widen the policy', () => {
+      // The reason subset tolerance was removed: each of these is a real
+      // weakening that a "fewer sources is safer" rule would wave through.
+      it("flags a dropped nonce, which makes an approved 'unsafe-inline' live", () => {
+        const withInline = new CspDirectiveMatcher('script-src', ["'self'", "'unsafe-inline'", CSP_ANY_NONCE])
+
+        expect(withInline.authorize(value("script-src 'self' 'unsafe-inline'")).authorized).toBe(false)
+      })
+
+      it("flags a dropped 'strict-dynamic', which makes a scheme-source match every origin", () => {
+        const strictDynamic = new CspDirectiveMatcher('script-src', ["'strict-dynamic'", CSP_ANY_NONCE, 'https:'])
+
+        expect(strictDynamic.authorize(value('script-src https:')).authorized).toBe(false)
+      })
+
+      it('flags trusted-types enforcement being switched off', () => {
+        const trustedTypes = new CspDirectiveMatcher('require-trusted-types-for', ["'script'"])
+
+        expect(trustedTypes.authorize(value('require-trusted-types-for')).authorized).toBe(false)
+      })
     })
 
     it('tolerates irregular whitespace and a trailing semicolon', () => {
-      expect(matcher().authorize(value("  frame-src    'self'\thttps://js.stripe.com ;  ")).authorized).toBe(true)
+      expect(matcher().authorize(value(`  frame-src    ${ALLOW.join('\t')} ;  `)).authorized).toBe(true)
     })
 
-    it('refuses a source that is not approved, and names it', () => {
-      const result = matcher().authorize(value("frame-src 'self' https://evil.example.test"))
+    it('refuses a source that is not approved, and names it as added', () => {
+      const result = matcher().authorize(value(`frame-src ${ALLOW.join(' ')} https://evil.example.test`))
 
       expect(result.authorized).toBe(false)
+      expect(result.reason).toContain('added')
       expect(result.reason).toContain('https://evil.example.test')
-      // The approved sources are not the finding; only the additions are.
-      expect(result.reason).not.toContain('https://js.stripe.com')
     })
 
     it('names every unapproved source, not just the first', () => {
-      const result = matcher().authorize(value("frame-src 'self' https://a.example.test https://b.example.test"))
+      const result = matcher().authorize(value(`frame-src ${ALLOW.join(' ')} https://a.example.test https://b.example.test`))
 
       expect(result.reason).toContain('https://a.example.test')
       expect(result.reason).toContain('https://b.example.test')
     })
 
-    it('does not expand wildcards, because the policy text is the subject', () => {
+    it('reports additions and removals separately, so the direction is clear', () => {
+      const result = matcher().authorize(value("frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://new.example.test"))
+
+      expect(result.reason).toContain('added')
+      expect(result.reason).toContain('no longer present')
+    })
+
+    it('does not expand host wildcards, because the policy text is the subject', () => {
       // Approving `*.js.stripe.com` is a different assertion from approving a
       // specific host, and a change between them must be reported.
       const wildcard = new CspDirectiveMatcher('frame-src', ['https://*.js.stripe.com'])
@@ -95,11 +131,11 @@ describe('CspDirectiveMatcher', () => {
       expect(wildcard.authorize(value('frame-src https://*.js.stripe.com')).authorized).toBe(true)
     })
 
-    it('compares sources case-sensitively so a nonce cannot be spoofed by case', () => {
-      const nonce = new CspDirectiveMatcher('script-src', ["'nonce-AbC123'"])
+    it('compares sources case-sensitively', () => {
+      const host = new CspDirectiveMatcher('frame-src', ['https://Example.test'])
 
-      expect(nonce.authorize(value("script-src 'nonce-AbC123'")).authorized).toBe(true)
-      expect(nonce.authorize(value("script-src 'nonce-abc123'")).authorized).toBe(false)
+      expect(host.authorize(value('frame-src https://Example.test')).authorized).toBe(true)
+      expect(host.authorize(value('frame-src https://example.test')).authorized).toBe(false)
     })
 
     it('refuses a value for a different directive', () => {
@@ -134,31 +170,44 @@ describe('CspDirectiveMatcher', () => {
   describe("the 'nonce-*' wildcard", () => {
     const withNonce = new CspDirectiveMatcher('script-src', ["'self'", CSP_ANY_NONCE, 'https://js.stripe.com'])
 
-    it('authorises any per-response nonce', () => {
+    const full = (nonces: string) => `script-src 'self' ${nonces} https://js.stripe.com`
+
+    it('authorises any per-response nonce value', () => {
       // A nonce is regenerated every response, so pinning one would fail on the
       // next request. This is the only wildcard the matcher understands.
-      expect(withNonce.authorize(value("script-src 'self' 'nonce-8i04cnq3xfOdYNQwZyf+Ng=='")).authorized).toBe(true)
-      expect(withNonce.authorize(value("script-src 'self' 'nonce-TgM16Gc9JJRcMFc2lCacwg=='")).authorized).toBe(true)
-      expect(withNonce.authorize(value("script-src 'nonce-sfBVKZu3LcjNmuHZK52PM5'")).authorized).toBe(true)
+      expect(withNonce.authorize(value(full("'nonce-8i04cnq3xfOdYNQwZyf+Ng=='"))).authorized).toBe(true)
+      expect(withNonce.authorize(value(full("'nonce-TgM16Gc9JJRcMFc2lCacwg=='"))).authorized).toBe(true)
+      expect(withNonce.authorize(value(full("'nonce-sfBVKZu3LcjNmuHZK52PM5'"))).authorized).toBe(true)
+    })
+
+    it('is a placeholder for exactly one nonce, not a quantifier', () => {
+      // An extra nonce is an extra script-execution channel.
+      const result = withNonce.authorize(value(full("'nonce-aaa' 'nonce-bbb'")))
+
+      expect(result.authorized).toBe(false)
+      expect(result.reason).toContain('expected 1 nonce source but found 2')
+    })
+
+    it('flags a missing nonce', () => {
+      const result = withNonce.authorize(value(full('')))
+
+      expect(result.authorized).toBe(false)
+      expect(result.reason).toContain('expected 1 nonce source but found 0')
     })
 
     it('still refuses any other added source alongside a nonce', () => {
-      // The point of wildcarding only the nonce: a downgrade or an added origin
-      // must still re-alert.
-      const result = withNonce.authorize(value("script-src 'self' 'nonce-abc123' 'unsafe-inline'"))
+      const result = withNonce.authorize(value(`${full("'nonce-abc123'")} 'unsafe-inline'`))
 
       expect(result.authorized).toBe(false)
       expect(result.reason).toContain("'unsafe-inline'")
-      expect(result.reason).not.toContain('nonce')
     })
 
     it('does not authorise a nonce unless the wildcard was approved', () => {
-      expect(new CspDirectiveMatcher('script-src', ["'self'"]).authorize(value("script-src 'nonce-abc123'")).authorized).toBe(false)
+      expect(new CspDirectiveMatcher('script-src', ["'self'"]).authorize(value("script-src 'self' 'nonce-abc123'")).authorized).toBe(false)
     })
 
     it('does not treat a malformed nonce-like token as a nonce', () => {
-      expect(withNonce.authorize(value("script-src 'nonce-'")).authorized).toBe(false)
-      expect(withNonce.authorize(value("script-src 'nonce-has spaces'")).authorized).toBe(false)
+      expect(withNonce.authorize(value(full("'nonce-'"))).authorized).toBe(false)
     })
   })
 

@@ -10,6 +10,7 @@ import { createMatcher } from '../types/matcher/matcher-factory.js'
 import { OrMatcher } from '../types/matcher/or-matcher.js'
 import type { PullTarget } from '../types/target.js'
 import { buildInventoryCommitMessage } from '../utils/commit-message.js'
+import { newHeaderValueMatcherConfig } from '../utils/header.js'
 import { copyInventory, inventoryHeaderInfoToRawInventoryHeaderInfo, rawInventoryHeaderInfoToInventoryHeaderInfo } from '../utils/inventory.js'
 import { inventoryScriptInfoToRawInventoryScriptInfo, rawInventoryScriptInfoToInventoryScriptInfo } from '../utils/script.js'
 import { UNIDENTIFIED_INLINE_SCRIPT_ID } from '../utils/script/inline.js'
@@ -346,7 +347,6 @@ export class ScriptInventoryService implements IInventoryService {
    */
   private addNewHeader(result: UnknownHeaderFound, inventory: Inventory, updateDate: Date): Inventory {
     const headerNamePattern = `^${result.header.name.toLowerCase()}$`
-    const headerValuePattern = `^${this.escapeRegex(result.header.value)}$`
     const identifyChildren: any[] = [{ headerNameMatcher: headerNamePattern }]
     if (result.target.workflowId !== undefined) identifyChildren.push({ workflowMatcher: `^${this.escapeRegex(result.target.workflowId)}$` })
 
@@ -368,7 +368,7 @@ export class ScriptInventoryService implements IInventoryService {
     const newHeader: InventoryHeaderInfo = {
       identifyWith: createMatcher(identifyChildren.length === 1 ? identifyChildren[0] : { andMatcher: identifyChildren }),
       authoriseWith: {
-        matcher: createMatcher({ contentMatcher: headerValuePattern }),
+        matcher: createMatcher(newHeaderValueMatcherConfig(result.header.name, result.header.value)),
         authorisationInfo: {
           description: 'NO_DESCRIPTION',
           authorised: false,
@@ -415,7 +415,7 @@ export class ScriptInventoryService implements IInventoryService {
   private appendPendingHeaderValue(entry: InventoryHeaderInfo, result: UnknownHeaderFound, updateDate: Date): InventoryHeaderInfo {
     const rawEntry = inventoryHeaderInfoToRawInventoryHeaderInfo(entry)
     const matcherConfig = {
-      contentMatcher: `^${this.escapeRegex(result.header.value)}$`,
+      ...newHeaderValueMatcherConfig(result.header.name, result.header.value),
       authorisationInfo: {
         description: 'NO_DESCRIPTION',
         authorised: false,
@@ -447,10 +447,8 @@ export class ScriptInventoryService implements IInventoryService {
     const applied: KnownHeaderWithUnauthorisedContentFound[] = []
 
     for (const result of results) {
-      const headerValuePattern = `^${this.escapeRegex(result.header.value)}$`
-
       const newMatcherConfig = {
-        contentMatcher: headerValuePattern,
+        ...newHeaderValueMatcherConfig(result.header.name, result.header.value),
         authorisationInfo: {
           description: `Header value detected during inventory run ${updateDate.toISOString()}`,
           authorised: true,
@@ -462,7 +460,9 @@ export class ScriptInventoryService implements IInventoryService {
         const matchable = { name: result.header.name, content: result.header.value, workflowId: result.target.workflowId ?? 'default', ...(result.header.url !== undefined ? { url: result.header.url } : {}) }
         const patternAlreadyExists = rawInventoryHeader.authoriseWith.some((m: any) => createMatcher(m).authorize(matchable).authorized)
         if (!patternAlreadyExists) {
-          rawInventoryHeader.authoriseWith.push(this.scopeNewAuthorisationAlternative({ contentMatcher: headerValuePattern }, result.target.workflowId, newMatcherConfig.authorisationInfo.description, updateDate))
+          rawInventoryHeader.authoriseWith.push(
+            this.scopeNewAuthorisationAlternative(newHeaderValueMatcherConfig(result.header.name, result.header.value), result.target.workflowId, newMatcherConfig.authorisationInfo.description, updateDate),
+          )
           applied.push(result)
         }
       } else if ('orMatcher' in rawInventoryHeader.authoriseWith) {
@@ -470,15 +470,24 @@ export class ScriptInventoryService implements IInventoryService {
         const matchable = { name: result.header.name, content: result.header.value, workflowId: result.target.workflowId ?? 'default', ...(result.header.url !== undefined ? { url: result.header.url } : {}) }
         const patternAlreadyExists = orChildren.some((m: any) => createMatcher(m).authorize(matchable).authorized)
         if (!patternAlreadyExists) {
-          orChildren.push(this.scopeNewAuthorisationAlternative({ contentMatcher: headerValuePattern }, result.target.workflowId, newMatcherConfig.authorisationInfo.description, updateDate))
+          orChildren.push(this.scopeNewAuthorisationAlternative(newHeaderValueMatcherConfig(result.header.name, result.header.value), result.target.workflowId, newMatcherConfig.authorisationInfo.description, updateDate))
           applied.push(result)
         }
       } else if ('contentMatcher' in rawInventoryHeader.authoriseWith) {
         // Single ContentMatcher: promote to array syntax with the new value
-        // OR'd in. Skip if the pattern is already exactly the existing one.
-        if (rawInventoryHeader.authoriseWith.contentMatcher !== newMatcherConfig.contentMatcher) {
+        // OR'd in. Skip if the existing single matcher already authorises it.
+        const existingAuthorises = createMatcher(rawInventoryHeader.authoriseWith).authorize({
+          name: result.header.name,
+          content: result.header.value,
+          workflowId: result.target.workflowId ?? 'default',
+          ...(result.header.url !== undefined ? { url: result.header.url } : {}),
+        }).authorized
+
+        if (!existingAuthorises) {
           const newAlternative =
-            result.target.workflowId === undefined ? newMatcherConfig : this.scopeNewAuthorisationAlternative({ contentMatcher: headerValuePattern }, result.target.workflowId, newMatcherConfig.authorisationInfo.description, updateDate)
+            result.target.workflowId === undefined
+              ? newMatcherConfig
+              : this.scopeNewAuthorisationAlternative(newHeaderValueMatcherConfig(result.header.name, result.header.value), result.target.workflowId, newMatcherConfig.authorisationInfo.description, updateDate)
           rawInventoryHeader.authoriseWith = [rawInventoryHeader.authoriseWith, newAlternative]
           applied.push(result)
         }

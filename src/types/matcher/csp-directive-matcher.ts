@@ -17,21 +17,30 @@ const NONCE_SOURCE = /^'nonce-[A-Za-z0-9+/\-_]+={0,2}'$/u
  * alternative. Real inventory entries accumulate a dozen-plus near-duplicate
  * regexes as a result.
  *
- * This compares sets instead:
+ * This compares the two source **sets** instead: a permutation of the same
+ * sources is the same policy and passes, while any difference in membership —
+ * added or removed — fails, and the reason names exactly which sources moved.
  *
- * - **Order-insensitive** — a permutation of the same sources is the same policy.
- * - **Tolerant of removals** — a policy that allows fewer origins than approved
- *   is strictly safer, so it passes.
- * - **Strict about additions** — a source that is not in `allow` fails, and the
- *   failure reason names it. That is the direction an attacker moves in, and
- *   the one an assessor cares about.
+ * Removals are **not** tolerated, despite being intuitively "safer". Some CSP
+ * sources only suppress others while present, so dropping one can widen the
+ * policy rather than narrow it:
  *
- * Source expressions are compared **exactly**, with exactly one exception:
- * `'nonce-*'` in `allow` matches any single-response nonce. A nonce is
- * regenerated per response, so pinning one would fail on every request; this
- * mirrors what the inventory already expresses by hand as
- * `'nonce-[A-Za-z0-9+/=]+'`, and nothing else is wildcarded, so an added source
- * or a downgrade still re-alerts.
+ * - `script-src 'self' 'unsafe-inline' 'nonce-…'` → drop the nonce and
+ *   `'unsafe-inline'` stops being ignored and becomes live (CSP2/3).
+ * - `script-src 'strict-dynamic' 'nonce-…' https:` → drop `'strict-dynamic'`
+ *   and the `https:` scheme-source starts matching every HTTPS origin.
+ * - `require-trusted-types-for 'script'` → drop the source and enforcement is
+ *   simply off.
+ *
+ * A change-detection control that stays silent on those is not doing its job,
+ * so membership must match exactly and every CSP change gets a human look.
+ *
+ * Source expressions are compared **exactly**, with one exception:
+ * `'nonce-*'` in `allow` matches a single-response nonce, one for one. A nonce
+ * is regenerated per response, so pinning a value would fail on the very next
+ * request; this mirrors what the inventory already expresses by hand as
+ * `'nonce-[A-Za-z0-9+/=]+'`. It is a placeholder, not a quantifier: two
+ * observed nonces against one `'nonce-*'` is a difference and is reported.
  *
  * Host wildcards are **not** expanded: the subject is the policy text, so
  * `https://*.example.com` and `https://a.example.com` are different assertions
@@ -45,7 +54,7 @@ export class CspDirectiveMatcher implements AuthorisationMatcher {
   private readonly directive: string
   private readonly allow: ReadonlySet<string>
   private readonly allowOrdered: readonly string[]
-  private readonly allowAnyNonce: boolean
+  private readonly expectedNonces: number
   private readonly authorisationInfo: AuthorisationInfo | undefined
 
   constructor(directive: string, allow: readonly string[], authorisationInfo: AuthorisationInfo | undefined = undefined) {
@@ -56,7 +65,7 @@ export class CspDirectiveMatcher implements AuthorisationMatcher {
     this.directive = normalisedDirective
     this.allowOrdered = [...allow]
     this.allow = new Set(allow)
-    this.allowAnyNonce = this.allow.has(CSP_ANY_NONCE)
+    this.expectedNonces = this.allowOrdered.filter((source) => source === CSP_ANY_NONCE).length
     this.authorisationInfo = authorisationInfo
   }
 
@@ -108,15 +117,14 @@ export class CspDirectiveMatcher implements AuthorisationMatcher {
       }
     }
 
-    // Subset semantics: only sources absent from `allow` are a problem.
-    const unapproved = parsed.sources.filter((source) => !this.isApproved(source))
+    const differences = this.compareSets(parsed.sources)
 
     const result: AuthorizationResult =
-      unapproved.length === 0
+      differences.length === 0
         ? { authorized: true }
         : {
             authorized: false,
-            reason: `${this.directive} allows ${unapproved.length} source${unapproved.length === 1 ? '' : 's'} not in the approved set: ${unapproved.join(' ')}`,
+            reason: `${this.directive} differs from the approved policy: ${differences.join('; ')}`,
           }
 
     if (this.authorisationInfo) result.metadataPath = [this.authorisationInfo]
@@ -124,10 +132,32 @@ export class CspDirectiveMatcher implements AuthorisationMatcher {
     return result
   }
 
-  private isApproved(source: string): boolean {
-    if (this.allow.has(source)) return true
+  /**
+   * Describe every membership difference between observed and approved.
+   *
+   * Additions and removals are both reported, and separately, so the finding
+   * says which way the policy moved.
+   */
+  private compareSets(observed: readonly string[]): string[] {
+    const observedNonces = observed.filter((source) => NONCE_SOURCE.test(source))
+    const observedRest = new Set(observed.filter((source) => !NONCE_SOURCE.test(source)))
 
-    return this.allowAnyNonce && NONCE_SOURCE.test(source)
+    const added = [...observedRest].filter((source) => !this.allow.has(source))
+    const removed = this.allowOrdered.filter((source) => source !== CSP_ANY_NONCE && !observedRest.has(source))
+
+    const differences: string[] = []
+
+    if (added.length > 0) differences.push(`${added.length} added source${added.length === 1 ? '' : 's'}: ${added.join(' ')}`)
+    if (removed.length > 0) differences.push(`${removed.length} approved source${removed.length === 1 ? '' : 's'} no longer present: ${removed.join(' ')}`)
+
+    // A nonce placeholder stands for exactly one nonce. An extra nonce is an
+    // extra script-execution channel; a missing one can make an approved
+    // 'unsafe-inline' live.
+    if (observedNonces.length !== this.expectedNonces) {
+      differences.push(`expected ${this.expectedNonces} nonce source${this.expectedNonces === 1 ? '' : 's'} but found ${observedNonces.length}`)
+    }
+
+    return differences
   }
 
   /**

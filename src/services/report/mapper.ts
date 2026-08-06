@@ -89,7 +89,7 @@ export function toObservedContent(content: string | null | undefined, hash: stri
     hash,
     contentLength: content.length,
     contentExcerpt: text,
-    contentTruncated: content.length > CONTENT_EXCERPT_LIMIT || text.length >= CONTENT_EXCERPT_LIMIT,
+    contentTruncated: content.length > CONTENT_EXCERPT_LIMIT,
   }
 }
 

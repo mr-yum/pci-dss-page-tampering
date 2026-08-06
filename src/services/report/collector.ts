@@ -26,7 +26,7 @@ import { inventoryHeaderInfoToRawInventoryHeaderInfo } from '../../utils/invento
 import { createProvenanceResolver, createSourceLocator, type ProvenanceResolver } from '../../utils/provenance.js'
 import { inventoryScriptInfoToRawInventoryScriptInfo } from '../../utils/script.js'
 import { redactUrl } from '../../utils/url.js'
-import { toReportRow } from './mapper.js'
+import { redactForDisplay, toReportRow } from './mapper.js'
 import { toReportAuthorisationInfo, toReportMatcherRef } from './matcher-ref.js'
 
 const GENERATOR_NAME = 'pci-dss-page-tampering'
@@ -122,7 +122,10 @@ export class ReportCollector implements IReportCollector {
     const section = this.sectionFor(input.inventory, input.target)
 
     section.status = 'failed'
-    section.error = input.error instanceof Error ? input.error.message : String(input.error)
+    // Redacted like every other string in the report: Git and network errors
+    // routinely echo the authenticated remote, which would put a token into a
+    // 90-day CI artefact the document itself promises is credential-free.
+    section.error = redactForDisplay(input.error instanceof Error ? input.error.message : String(input.error)).text
   }
 
   recordInventoryRef(pass: ReportPass, ref: ReportInventoryRefInput): void {

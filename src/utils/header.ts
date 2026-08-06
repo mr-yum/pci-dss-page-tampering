@@ -1,8 +1,7 @@
-import type { DetectedHeader, HeaderName, HeaderValues } from '../types/header.js'
-import type { InventoryHeaderInfo } from '../types/inventory/model.js'
+import type { DetectedHeader } from '../types/header.js'
 import { CSP_ANY_NONCE } from '../types/matcher/csp-directive-matcher.js'
 import type { Matchable } from '../types/matcher/matcher.interface.js'
-import { createMatcher, type MatcherConfig } from '../types/matcher/matcher-factory.js'
+import type { MatcherConfig } from '../types/matcher/matcher-factory.js'
 import type { Target } from '../types/target.js'
 import { escapeRegex } from './string.js'
 
@@ -30,8 +29,14 @@ export function detectedHeaderToMatchable(header: DetectedHeader, target: Target
 /** A per-response nonce, which must never be pinned into the inventory. */
 const OBSERVED_NONCE = /^'nonce-[A-Za-z0-9+/\-_]+={0,2}'$/u
 
-/** Header names whose values are a CSP, and so are a set of directives. */
-const CSP_HEADER_NAMES = new Set(['content-security-policy', 'content-security-policy-report-only'])
+/**
+ * Header names whose values are a CSP, and so are a set of directives.
+ *
+ * Only what `TRACKED_HEADER_NAMES` actually captures belongs here — listing
+ * `content-security-policy-report-only` would create a branch no run can reach
+ * and imply a coverage the system does not have.
+ */
+const CSP_HEADER_NAMES = new Set(['content-security-policy'])
 
 /**
  * Choose how to authorise a newly discovered header value.
@@ -45,7 +50,7 @@ const CSP_HEADER_NAMES = new Set(['content-security-policy', 'content-security-p
  * Everything else keeps the exact-value regex: for an ordinary header the whole
  * value is the assertion.
  */
-function newHeaderValueMatcherConfig(headerName: string, headerValue: string): MatcherConfig {
+export function newHeaderValueMatcherConfig(headerName: string, headerValue: string): MatcherConfig {
   const tokens = headerValue
     .trim()
     .split(/\s+/u)
@@ -61,34 +66,4 @@ function newHeaderValueMatcherConfig(headerName: string, headerValue: string): M
   }
 
   return { contentMatcher: `^${escapeRegex(headerValue)}$` }
-}
-
-/**
- * Converts unauthorized headers to InventoryHeaderInfo entries for new header discovery.
- *
- * Updated for Phase 5 - US3:
- * - identifyWith: HeaderNameMatcher with exact header name match (case-insensitive)
- * - authoriseWith: AuthorizeWithConfig with ContentMatcher and authorization metadata
- * - This is used during inventory workflow when discovering new headers
- */
-export function unauthorisedHeadersToInventoryHeaderInfo(headers: Map<HeaderName, HeaderValues>, date: Date): InventoryHeaderInfo[] {
-  return [...headers].flatMap(([headerName, headerValues]) => {
-    const headerValuesArray = [...headerValues.values()]
-    return headerValuesArray.map<InventoryHeaderInfo>((headerValue) => {
-      // Use lowercase for header name pattern (HeaderNameMatcher normalizes to lowercase anyway)
-      const headerNamePattern = `^${headerName.toLowerCase()}$`
-
-      return {
-        identifyWith: createMatcher({ headerNameMatcher: headerNamePattern }),
-        authoriseWith: {
-          matcher: createMatcher(newHeaderValueMatcherConfig(headerName, headerValue)),
-          authorisationInfo: {
-            description: 'NO_DESCRIPTION',
-            authorised: false,
-            date: date,
-          },
-        },
-      }
-    })
-  })
 }

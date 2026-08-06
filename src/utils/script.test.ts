@@ -4,12 +4,19 @@
  * @see ./script.ts
  */
 
+import { RawInventoryScriptInfoSchema } from '../types/inventory/zod.js'
 import { inventoryScriptInfoToRawInventoryScriptInfo, rawInventoryScriptInfoToInventoryScriptInfo } from './script.js'
 
 describe('inventoryScriptInfoToRawInventoryScriptInfo', () => {
   const authorisationInfo = { description: 'Approved', authorised: true, date: '2025-10-01T00:00:00.000Z' }
 
-  const roundTrip = (raw: unknown): { identifyWith: Record<string, string>; authoriseWith: Record<string, unknown> } => inventoryScriptInfoToRawInventoryScriptInfo(rawInventoryScriptInfoToInventoryScriptInfo(raw as never)) as never
+  // Through the real Zod schema on both ends, so a serialised config the loader
+  // would reject cannot pass: the inventory repo's CI validates exactly this way.
+  const roundTrip = (raw: unknown): { identifyWith: Record<string, string>; authoriseWith: Record<string, unknown> } => {
+    const validated = RawInventoryScriptInfoSchema.parse(raw)
+
+    return RawInventoryScriptInfoSchema.parse(inventoryScriptInfoToRawInventoryScriptInfo(rawInventoryScriptInfoToInventoryScriptInfo(validated as never))) as never
+  }
 
   it('serialises a name matcher entry back to the same matcher kind and metadata', () => {
     const result = roundTrip({ identifyWith: { nameMatcher: '^https://cdn\\.example\\.com/a\\.js$' }, authoriseWith: { contentMatcher: 'analytics', authorisationInfo } })

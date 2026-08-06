@@ -765,32 +765,60 @@ CSP header values are split per directive before matching, so each directive is 
   "identifyWith": {
     "andMatcher": [{ "headerNameMatcher": "^content-security-policy$" }, { "hostMatcher": "^checkout\\.example\\.com$" }]
   },
-  "authoriseWith": {
-    "cspDirectiveMatcher": {
-      "directive": "frame-src",
-      "allow": ["'self'", "https://js.stripe.com", "https://hooks.stripe.com", "https://m.stripe.network"]
+  "authoriseWith": [
+    {
+      "cspDirectiveMatcher": {
+        "directive": "frame-src",
+        "allow": ["'self'", "https://js.stripe.com", "https://hooks.stripe.com", "https://m.stripe.network"]
+      },
+      "authorisationInfo": {
+        "description": "Payment provider frames on the checkout page",
+        "authorised": true,
+        "date": "2026-08-06T00:00:00.000Z"
+      }
     },
-    "authorisationInfo": {
-      "description": "Payment provider frames on the checkout page",
-      "authorised": true,
-      "date": "2026-08-06T00:00:00.000Z"
+    {
+      "cspDirectiveMatcher": {
+        "directive": "script-src",
+        "allow": ["'self'", "'nonce-*'", "https://js.stripe.com"]
+      },
+      "authorisationInfo": {
+        "description": "Nonce-gated scripts plus the Stripe SDK",
+        "authorised": true,
+        "date": "2026-08-06T00:00:00.000Z"
+      }
     }
-  }
+  ]
 }
 ```
 
-| Change to the observed policy | Result      | Why                                                      |
-| ----------------------------- | ----------- | -------------------------------------------------------- |
-| Sources reordered             | authorised  | A permutation is the same policy                         |
-| A source removed              | authorised  | Allowing fewer origins is strictly safer                 |
-| A source added                | **flagged** | The direction an attacker moves in — the reason names it |
-| A different directive         | **flagged** | Wrong assertion entirely                                 |
+Note the **array**. `identifyWith` claims the whole header for that host, and identification is first-match-wins, so the entry needs one alternative per directive the page serves — a single-directive `authoriseWith` on a whole-header `identifyWith` would flag every other directive as unauthorised.
+
+| Change to the observed policy | Result      | Why                                               |
+| ----------------------------- | ----------- | ------------------------------------------------- |
+| Sources reordered             | authorised  | A permutation is the same policy                  |
+| A source added                | **flagged** | The reason names exactly which sources were added |
+| A source removed              | **flagged** | Removals can _widen_ a policy — see below         |
+| A different nonce value       | authorised  | `'nonce-*'` stands for one per-response nonce     |
+| A second nonce added          | **flagged** | The placeholder is one-for-one, not a quantifier  |
+| A different directive         | **flagged** | Wrong assertion entirely                          |
+
+**Why removals are flagged.** "Fewer sources must be safer" is false for CSP, because some sources only suppress others while present:
+
+| Approved                                       | Observed after a removal            | Effect                                                     |
+| ---------------------------------------------- | ----------------------------------- | ---------------------------------------------------------- |
+| `script-src 'self' 'unsafe-inline' 'nonce-*'`  | `script-src 'self' 'unsafe-inline'` | `'unsafe-inline'` stops being ignored and becomes **live** |
+| `script-src 'strict-dynamic' 'nonce-*' https:` | `script-src https:`                 | `https:` starts matching **every** HTTPS origin            |
+| `require-trusted-types-for 'script'`           | `require-trusted-types-for`         | Trusted Types enforcement **off**                          |
+
+Membership therefore has to match exactly, and every CSP change gets a human look. Ordering is the only thing safely tolerated.
 
 Notes:
 
-- Source expressions are compared **exactly**, and wildcards are not expanded. `https://*.js.stripe.com` and `https://a.js.stripe.com` are different assertions, and a change between them is reported. The subject is the policy text, not the set of origins it resolves to.
-- Directive names are matched case-insensitively, as CSP defines them; source expressions are case-sensitive, so a `'nonce-…'` cannot be matched by a differently-cased one.
-- The inventory workflow emits this form automatically when it discovers a new `content-security-policy` or `content-security-policy-report-only` value. Other headers keep the exact-value `contentMatcher`, because for those the whole value is the assertion.
+- `'nonce-*'` is the **only** wildcard. It stands for exactly one per-response nonce — a nonce is regenerated on every response, so pinning a value would fail on the next request. Two observed nonces against one `'nonce-*'` is a difference and is reported.
+- Host wildcards are **not** expanded. `https://*.js.stripe.com` and `https://a.js.stripe.com` are different assertions, and a change between them is reported. The subject is the policy text, not the set of origins it resolves to.
+- Directive names are matched case-insensitively, as CSP defines them; source expressions are case-sensitive.
+- The inventory workflow emits this form automatically when it discovers a new `content-security-policy` value, collapsing the observed nonce to `'nonce-*'`. Other headers keep the exact-value `contentMatcher`, because for those the whole value is the assertion.
 
 ### HostMatcher / UrlMatcher (provenance)
 
