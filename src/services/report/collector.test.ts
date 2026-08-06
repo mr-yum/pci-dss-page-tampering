@@ -140,6 +140,19 @@ describe('ReportCollector', () => {
       expect(report.targets[0]!.url).not.toContain('secret')
     })
 
+    it('classifies scripts by their inline_script/ id prefix, not URL shape', () => {
+      // An external script may legally use a non-HTTP scheme; an inline script
+      // carries provenance in `url`. Neither is a reliable discriminator.
+      const inventory = buildInventory()
+      const blobExternal = new UnknownScriptFound(detectionTarget, timestamp, makeScript({ name: 'blob:https://checkout.example.com/ccfd8f47-8319-4f53', url: 'https://checkout.example.com/pay' }))
+      const inline = new UnknownScriptFound(detectionTarget, timestamp, makeScript({ name: 'inline_script/checkout.example.com/bootstrap', url: 'https://checkout.example.com/pay' }))
+      const report = collect([blobExternal, inline], inventory)!
+      const kinds = Object.fromEntries(report.targets[0]!.scripts.map((row) => [row.name.split('/')[0], row.kind]))
+
+      expect(kinds['blob:https:']).toBe('external_script')
+      expect(kinds['inline_script']).toBe('inline_script')
+    })
+
     it('collapses a header repeated across responses into one row with an occurrence count', () => {
       const inventory = buildInventory()
       const authorised = (): AuthorizedHeaderFound => new AuthorizedHeaderFound(detectionTarget, timestamp, makeHeader(), inventory.headers[0]!, [])
