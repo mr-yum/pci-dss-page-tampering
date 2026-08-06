@@ -2,7 +2,7 @@ import type { IInventoryService, InventoryPullOptions, InventoryPushResult, IScr
 import type { ComparisonResultType, KnownScriptWithUnauthorisedContentFound, UnknownScriptFound } from '../types/comparison.js'
 import type { KnownHeaderWithUnauthorisedContentFound } from '../types/comparison/known-header-unauthorised-content-found.js'
 import type { UnknownHeaderFound } from '../types/comparison/unknown-header-found.js'
-import type { Inventory, InventoryDifferenceResult, InventoryHeaderInfo, InventoryScriptInfo } from '../types/inventory/model.js'
+import type { Inventory, InventoryDifferenceResult, InventoryHeaderInfo, InventoryRef, InventoryScriptInfo } from '../types/inventory/model.js'
 import type { InventoryServiceProps } from '../types/inventory/props.js'
 import { ContentMatcher } from '../types/matcher/content-matcher.js'
 import { HashMatcher } from '../types/matcher/hash-matcher.js'
@@ -24,6 +24,10 @@ export class ScriptInventoryService implements IInventoryService {
   async pull(target: PullTarget, branchName?: string, options?: InventoryPullOptions): Promise<Inventory[]> {
     console.log('[Inventory → Service] Pulling inventory from store.')
     return await this._repository.pull(target, branchName, options)
+  }
+
+  getLastPullRef(): InventoryRef | null {
+    return this._repository.getLastPullRef()
   }
 
   diff(inventory: Inventory, comparisonResults: ComparisonResultType[]): Promise<InventoryDifferenceResult> {

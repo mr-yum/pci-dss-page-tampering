@@ -98,12 +98,32 @@ export type InventoryAlert = {
   successNotification: AlertDestination
 }
 
+/**
+ * Where an inventory's on-disk representation came from.
+ *
+ * Retained so the auditor report can cite a file and line number for the
+ * matcher that authorised a resource. Matchers keep no provenance of their own,
+ * and the raw text is the only thing that can answer "which line?" — the
+ * validated model has already lost formatting, key order and unknown keys.
+ *
+ * Never serialised back to Git: `inventoryToRawInventory` enumerates its output
+ * fields, so this stays in memory only.
+ */
+export type InventorySource = {
+  /** Path relative to the inventory repo root, e.g. `targets/2.0.json`. */
+  file: string
+  /** Exact file contents as read. The single source of truth for provenance. */
+  text: string
+}
+
 export type Inventory = {
   fileName: string
   target: InventoryTarget
   alerts: InventoryAlert
   scripts: InventoryScriptInfo[]
   headers: InventoryHeaderInfo[]
+  /** Absent for inventories not built by a repository pull (notably in tests). */
+  source?: InventorySource | undefined
 }
 
 export type InventoryDifferenceResult = {
@@ -123,8 +143,25 @@ export type InventoryDifferenceResult = {
 export type InventoryPullPayload = {
   fileName: string
   rawInventory: RawInventory
+  /** Exact file contents as read. @see InventorySource */
+  rawText: string
+}
+
+/**
+ * The inventory revision a pull read from.
+ *
+ * Recorded so the auditor report can state which baseline a detection run was
+ * compared against. "Detection ran against inventory commit abc1234 on branch
+ * main" is what turns 11.6.1 evidence from plausible into verifiable.
+ */
+export type InventoryRef = {
+  branch: string
+  commitSha: string
+  commitIsoDate: string | null
 }
 
 export type InventoryPullResult = {
   payloads: InventoryPullPayload[]
+  /** Absent when the revision could not be read (e.g. a store with no Git). */
+  ref?: InventoryRef | undefined
 }

@@ -64,6 +64,17 @@ export type TotpConfiguration = Readonly<{
 }>
 
 /**
+ * Auditor report output configuration.
+ *
+ * Opt-in: no report is written unless --report-dir is supplied, so existing
+ * local and manual runs behave exactly as before.
+ */
+export type ReportingConfiguration = Readonly<{
+  /** Directory for report artefacts, or null when reporting is disabled. */
+  reportDir: string | null
+}>
+
+/**
  * Complete runtime configuration object
  * Passed to services for workflow execution
  */
@@ -75,6 +86,7 @@ export type RuntimeConfiguration = Readonly<{
   authentication: AuthenticationConfiguration
   alerting: AlertingConfiguration
   totp: TotpConfiguration
+  reporting: ReportingConfiguration
 }>
 
 /**

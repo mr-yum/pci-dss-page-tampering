@@ -1,5 +1,5 @@
 import type { ComparisonResultType } from '../types/comparison.js'
-import type { Inventory, InventoryDifferenceResult, InventoryPullResult } from '../types/inventory/model.js'
+import type { Inventory, InventoryDifferenceResult, InventoryPullResult, InventoryRef } from '../types/inventory/model.js'
 import type { PullTarget } from '../types/target.js'
 
 /**
@@ -28,9 +28,13 @@ export interface IInventoryService {
   pull(target: PullTarget, branchName?: string, options?: InventoryPullOptions): Promise<Inventory[]>
   diff(inventory: Inventory, comparisonResults: ComparisonResultType[]): Promise<InventoryDifferenceResult>
   push(diffs: InventoryDifferenceResult[], branchName?: string): Promise<InventoryPushResult>
+  /** Revision read by the most recent pull, or null if none/unavailable. */
+  getLastPullRef(): InventoryRef | null
 }
 
 export interface IScriptInventoryRepository {
   pull(target: PullTarget, branchName?: string, options?: InventoryPullOptions): Promise<Inventory[]>
   push(inventories: Inventory[], branchName?: string, commitMessage?: string): Promise<InventoryPushResult>
+  /** Revision read by the most recent pull, or null if none/unavailable. */
+  getLastPullRef(): InventoryRef | null
 }

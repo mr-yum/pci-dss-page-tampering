@@ -60,6 +60,15 @@ OPTIONAL PARAMETERS:
                            store (e.g. GitHub Actions secrets) — never commit
                            seeds to the inventory repository.
 
+  --report-dir <PATH>      Write an auditor report to PATH: a full census of
+                           every script and header observed, each mapped to the
+                           inventory matcher that authorised it (file, JSON
+                           pointer and line) and its recorded justification.
+                           Produces a self-contained HTML page plus a canonical
+                           JSON document. Omit to write no report.
+                           Note: --mode all writes one report per pass, under
+                           PATH/inventory/ and PATH/detection/.
+
   --help, -h               Display this help message and exit
 
 EXIT CODES:
@@ -108,6 +117,13 @@ EXAMPLES:
        --mode validate \\
        --repo file://$PWD \\
        --inventory-branch $GITHUB_HEAD_REF
+
+  7. Detection with an auditor report artefact:
+     npm start -- \\
+       --mode detection \\
+       --repo https://github.com/org/inventory \\
+       --git-token ghp_abc123xyz \\
+       --report-dir ./reports
 
 WORKFLOW BEHAVIOR:
 

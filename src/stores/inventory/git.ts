@@ -3,7 +3,7 @@ import type { SimpleGit } from 'simple-git'
 import { simpleGit } from 'simple-git'
 
 import type { IInventoryStore, InventoryPullOptions } from '../../interfaces/inventory.js'
-import type { Inventory, InventoryPullResult } from '../../types/inventory/model.js'
+import type { Inventory, InventoryPullResult, InventoryRef } from '../../types/inventory/model.js'
 import type { GitInventoryStoreProps } from '../../types/inventory/props.js'
 import { PullTarget } from '../../types/target.js'
 import { GIT_CLONE_PATH, GIT_DETECTION_SCRIPTS_BRANCH_NAME, GIT_UPDATED_SCRIPTS_BRANCH_NAME, TARGET_DIRECTORY_NAME, TARGET_PATH, WORKFLOW_DIRECTORY_NAME } from '../../utils/constants.js'
@@ -62,10 +62,11 @@ export class GitInventoryStore implements IInventoryStore {
         const filePath = `${TARGET_PATH}/${fileName}`
 
         try {
-          const rawInventory = await getRawInventoryFromFile(filePath)
+          const { rawInventory, rawText } = await getRawInventoryFromFile(filePath)
           return {
             fileName: fileName,
             rawInventory: rawInventory,
+            rawText: rawText,
           }
         } catch (error) {
           // Enhanced error message with file context for Zod validation failures
@@ -77,6 +78,27 @@ export class GitInventoryStore implements IInventoryStore {
 
     return {
       payloads: pullResponse,
+      ...(await this.readInventoryRef(targetBranch)),
+    }
+  }
+
+  /**
+   * Read the revision this pull is reading from, for the auditor report.
+   *
+   * Best-effort: a repository that cannot report a revision still yields a
+   * usable inventory, and losing the commit id must never fail a run.
+   */
+  private async readInventoryRef(branch: string): Promise<{ ref?: InventoryRef }> {
+    try {
+      const client = this.repositoryGitClient ?? simpleGit(GIT_CLONE_PATH)
+      const commitSha = (await client.revparse(['HEAD'])).trim()
+      const latest = (await client.log(['-1'])).latest
+
+      return { ref: { branch, commitSha, commitIsoDate: latest?.date === undefined ? null : new Date(latest.date).toISOString() } }
+    } catch (error) {
+      console.log(`[Inventory → Store] Could not read the inventory revision: ${error instanceof Error ? error.message : String(error)}`)
+
+      return {}
     }
   }
 

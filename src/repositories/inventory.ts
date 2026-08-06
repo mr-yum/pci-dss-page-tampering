@@ -1,11 +1,11 @@
 import { rm, writeFile } from 'fs/promises'
 
 import type { IInventoryStore, InventoryPullOptions, InventoryPushResult, IScriptInventoryRepository } from '../interfaces/inventory.js'
-import type { Inventory, InventoryWorkflow } from '../types/inventory/model.js'
+import type { Inventory, InventoryRef, InventoryWorkflow } from '../types/inventory/model.js'
 import type { InventoryRepositoryProps } from '../types/inventory/props.js'
 import type { RawInventoryWorkflow } from '../types/inventory/raw.js'
 import type { PullTarget } from '../types/target.js'
-import { GIT_CLONE_PATH, TARGET_PATH } from '../utils/constants.js'
+import { GIT_CLONE_PATH, TARGET_DIRECTORY_NAME, TARGET_PATH } from '../utils/constants.js'
 import { inventoryToRawInventory, rawInventoryHeaderInfoToInventoryHeaderInfo } from '../utils/inventory.js'
 import { createTargetLogger } from '../utils/logger.js'
 import { rawInventoryScriptInfoToInventoryScriptInfo } from '../utils/script.js'
@@ -13,9 +13,15 @@ import { getWorkflowFromFile } from '../utils/workflow.js'
 
 export class ScriptInventoryRepository implements IScriptInventoryRepository {
   private readonly inventoryStore: IInventoryStore
+  /** Revision of the most recent pull, surfaced to the auditor report. */
+  private lastPullRef: InventoryRef | null = null
 
   constructor(args: InventoryRepositoryProps) {
     this.inventoryStore = args.inventoryStore
+  }
+
+  getLastPullRef(): InventoryRef | null {
+    return this.lastPullRef
   }
 
   async pull(target: PullTarget, branchName?: string, options?: InventoryPullOptions): Promise<Inventory[]> {
@@ -25,6 +31,8 @@ export class ScriptInventoryRepository implements IScriptInventoryRepository {
 
     const pullResult = await this.inventoryStore.pull(target, branchName, options)
     const payloads = pullResult.payloads
+
+    this.lastPullRef = pullResult.ref ?? null
 
     const payloadsToProcess = payloads.map(async (payload): Promise<Inventory> => {
       // Default name to filename (without .json extension) if not specified
@@ -88,6 +96,7 @@ export class ScriptInventoryRepository implements IScriptInventoryRepository {
               },
         scripts: payload.rawInventory.scripts.map(rawInventoryScriptInfoToInventoryScriptInfo),
         headers: (payload.rawInventory.headers || []).map(rawInventoryHeaderInfoToInventoryHeaderInfo),
+        source: { file: `${TARGET_DIRECTORY_NAME}/${payload.fileName}`, text: payload.rawText },
       }
     })
 

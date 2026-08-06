@@ -54,6 +54,41 @@ describe('GitInventoryStore repository logging', () => {
     expect(clone).toHaveBeenCalledWith(authenticatedTarget, './pulled_repo')
   })
 
+  it('records the inventory revision the pull read from', async () => {
+    // Without a commit id, "detection ran against the inventory" is an
+    // assertion an assessor cannot check. This is what makes it verifiable.
+    ;(simpleGit as jest.MockedFunction<typeof simpleGit>).mockReturnValue({
+      fetch: jest.fn().mockResolvedValue(undefined),
+      branch: jest.fn().mockResolvedValue({ all: ['remotes/origin/main'] }),
+      checkout: jest.fn().mockResolvedValue(undefined),
+      revparse: jest.fn().mockResolvedValue('acece577a438c48985bec8eac857bff3ca13c678\n'),
+      log: jest.fn().mockResolvedValue({ latest: { date: '2026-01-02T03:04:05.000Z' } }),
+    } as never)
+
+    const { store } = createStore()
+    const result = await store.pull(PullTarget.Detection, 'main')
+
+    expect(result.ref).toEqual({ branch: 'main', commitSha: 'acece577a438c48985bec8eac857bff3ca13c678', commitIsoDate: '2026-01-02T03:04:05.000Z' })
+  })
+
+  it('still returns the inventory when the revision cannot be read', async () => {
+    // Best-effort: losing the commit id degrades the report, and must never
+    // fail a detection run.
+    ;(simpleGit as jest.MockedFunction<typeof simpleGit>).mockReturnValue({
+      fetch: jest.fn().mockResolvedValue(undefined),
+      branch: jest.fn().mockResolvedValue({ all: ['remotes/origin/main'] }),
+      checkout: jest.fn().mockResolvedValue(undefined),
+      revparse: jest.fn().mockRejectedValue(new Error('not a git repository')),
+      log: jest.fn(),
+    } as never)
+
+    const { store } = createStore()
+    const result = await store.pull(PullTarget.Detection, 'main')
+
+    expect(result.ref).toBeUndefined()
+    expect(result.payloads).toEqual([])
+  })
+
   it('scrubs credentials from propagated clone errors', async () => {
     const clone = jest.fn().mockRejectedValue(new Error(`fatal: repository '${authenticatedTarget}?access_token=query_secret#fragment_secret' not found`))
     const { store } = createStore(clone)

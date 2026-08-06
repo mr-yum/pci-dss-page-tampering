@@ -52,6 +52,7 @@ npm start -- [OPTIONS]
 | `--inventory-branch <name>` | Branch for inventory operations                                | `inventory-updates` |
 | `--detection-branch <name>` | Branch for detection operations                                | `main`              |
 | `--totp-seed <name>=<seed>` | Named base32 TOTP seed for `totp` workflow steps (repeatable)  | -                   |
+| `--report-dir <path>`       | Directory for auditor report artefacts (HTML + JSON)           | - (no report)       |
 | `--help`                    | Display help message and exit                                  | -                   |
 
 ### Usage Examples
@@ -156,6 +157,14 @@ act push --container-architecture linux/amd64 --secret-file .env.secrets
    - Array syntax conversion preserves original authorization metadata
 
 4. **AlertService** (`src/services/alert/slack.ts`) - Sends Slack notifications for detected changes
+
+5. **ReportService** (`src/services/report/`) - Produces the auditor report when `--report-dir` is set:
+   - `ReportCollector` is fed once per target run from `main.ts`, after both comparisons and _before_ the inventory diff, so the report records the baseline the comparison actually ran against
+   - Deliberately **not** an `IAlertService`: alerting is called twice per target with a partial view, fires after the diff, and drops `authorized_*` results — the very rows a census needs
+   - Results are mapped to rows eagerly so the heavy comparison results (full script bodies, `Target`, matcher trees) can be freed
+   - Emitted per pass from a `finally`, so a partially-failed run still produces evidence for the targets that succeeded; a write failure is logged and never fails the run
+   - `--mode all` writes two documents (one per pass) joined by `run.correlationId`
+   - Every authorised row carries `file:line` + JSON pointer provenance for the matcher that authorised it, resolved by `src/utils/provenance.ts` from the raw inventory text retained on `Inventory.source`
 
 ### Data Flow
 
@@ -340,7 +349,8 @@ Workflows are defined as step-by-step instructions for Puppeteer in `src/workflo
 - `src/interfaces/` - TypeScript interfaces for services
 - `src/repositories/` - Data access layer for inventories
 - `src/stores/` - Storage implementations (Git, in-memory)
-- `src/utils/` - Utility functions for hashing, parsing, and workflow conversion
+- `src/services/report/` - Auditor report: collector, mapper, deterministic JSON, self-contained HTML renderer, GitHub step summary
+- `src/utils/` - Utility functions for hashing, parsing, and workflow conversion. Notably `json-position.ts` (JSON pointer → line/column, dependency-free) and `provenance.ts` (comparison result → the inventory file, pointer and line that authorised it)
 
 ## Environment Requirements
 

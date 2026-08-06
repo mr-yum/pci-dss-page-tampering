@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto'
 import puppeteer, { type Browser } from 'puppeteer'
 import { simpleGit } from 'simple-git'
 import { ZodError } from 'zod'
@@ -6,6 +7,7 @@ import { buildConfiguration } from './cli/config.js'
 import { displayHelp } from './cli/help.js'
 import { parseArguments } from './cli/parser.js'
 import type { IAlertService } from './interfaces/alert.js'
+import type { IReportCollector, ReportArtefactPaths } from './interfaces/report.js'
 import { ScriptInventoryRepository } from './repositories/inventory.js'
 import { ConsoleAlertService } from './services/alert/console.js'
 import { SlackAlertService } from './services/alert/slack.js'
@@ -16,12 +18,14 @@ import { ScriptInventoryService } from './services/inventory.js'
 import { assertInventoryBranchReplacementSafe, prepareInventoryBranch } from './services/inventory-branch-coordinator.js'
 import { ensureInventoryPullRequest } from './services/inventory-pr-coordinator.js'
 import { PullRequestService } from './services/pull-request.js'
+import { FileReportWriter, NoopReportCollector, ReportCollector, writeStepSummary } from './services/report/index.js'
 import { GitInventoryStore } from './stores/inventory/git.js'
 import { CliArgsSchema, ExitCode } from './types/cli.js'
 import type { ComparisonResultType } from './types/comparison.js'
 import { ExecutionMode, type RuntimeConfiguration } from './types/config.js'
 import type { ExecutionSummary } from './types/execution-summary.js'
 import { getInventoryWorkflows, type Inventory, type InventoryAlert, type InventoryDifferenceResult, type InventoryWorkflow } from './types/inventory/model.js'
+import type { ReportPass } from './types/report.js'
 import { PullTarget, type Target } from './types/target.js'
 import { mapGroupsSequentially } from './utils/concurrency.js'
 import { getScriptContentMatchersFromInventory } from './utils/script/matcher.js'
@@ -128,6 +132,16 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
   // Use ConsoleAlertService for local development/testing when --slack-token is omitted
   const alertService: IAlertService = config.alerting.slackToken ? new SlackAlertService(config.alerting.slackToken, config.repository.url, config.branches.inventory) : new ConsoleAlertService()
 
+  // Auditor report collection. A null object when --report-dir is absent, so
+  // every call site below stays unconditional and the disabled path is
+  // provably inert rather than a scattering of `if (collector)` checks.
+  const reportDir = config.reporting.reportDir
+  const reportCollector: IReportCollector = reportDir === null ? new NoopReportCollector() : new ReportCollector()
+  const reportWriter = new FileReportWriter()
+  const reportsWritten: { pass: ReportPass; paths: ReportArtefactPaths }[] = []
+  // Ties the inventory and detection documents of one invocation together.
+  const reportCorrelationId = randomUUID()
+
   // T009: Track execution context for success notification
   let totalResourceCount = 0
   const processedTargets: string[] = []
@@ -183,6 +197,16 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
       // T009: Calculate resource count for this target (scripts + headers)
       const resourceCount = scriptComparisonResults.length + headerComparisonResults.length
 
+      // Feed the auditor report here — before the inventory/detection branch —
+      // so both passes are covered by one call site, and before any diff runs,
+      // so the report records the baseline the comparison actually used.
+      //
+      // Isolated: this sits upstream of the detection alert calls below, so an
+      // unhandled fault while building report rows would abort the target and
+      // swallow its 11.6.1 tamper alerts. Evidence collection must never cost
+      // us an alert.
+      collectForReportSafely(() => reportCollector.recordTargetRun({ inventory: payload, target, comparisonResults: [...scriptComparisonResults, ...headerComparisonResults] }))
+
       if (target.type === 'inventory') {
         // Defer alerting; main flow will flush after PR creation.
         const allComparisonResults: ComparisonResultType[] = [...scriptComparisonResults, ...headerComparisonResults]
@@ -198,6 +222,12 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
         return { comparisonResults: [...scriptComparisonResults, ...headerComparisonResults], resourceCount, pendingAlerts: null }
       }
     } catch (error) {
+      // Record the gap so a partially-failed run still produces evidence for
+      // the targets that succeeded, with the failures named in the document.
+      // Isolated too: a fault here would replace the real error with a
+      // reporting one and hide why the target actually failed.
+      collectForReportSafely(() => reportCollector.recordTargetFailure({ inventory: payload, target, error }))
+
       console.error(`[Main]: Error processing target: ${target.url}`)
       if (error instanceof Error) {
         console.error(`[Main]: Error name: ${error.name}`)
@@ -210,6 +240,72 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
     }
   }
 
+  /**
+   * Run a report-collection step without letting it break the run.
+   *
+   * The report is evidence *about* the run, never a participant in it. Alerting
+   * on a tampered payment page is a hard compliance obligation; a defect in
+   * report mapping must not be able to suppress it, so faults are logged loudly
+   * and the run continues. The written report will simply be missing that data.
+   */
+  const collectForReportSafely = (collect: () => void): void => {
+    try {
+      collect()
+    } catch (error) {
+      console.error('[Main]: Failed to collect auditor report data (the run continues; the report may be incomplete):', error)
+    }
+  }
+
+  /**
+   * Build and write the report for one pass.
+   *
+   * Never throws. A disk error must not turn a healthy detection run red when
+   * the finding already reached Slack, and on a failing run the real error must
+   * not be masked by a reporting one. A missing artefact is surfaced at the CI
+   * layer instead (`if-no-files-found: warn`).
+   */
+  const emitReportSafely = async (pass: ReportPass): Promise<void> => {
+    if (reportDir === null) return
+
+    try {
+      const report = reportCollector.build(pass, {
+        configuredMode: config.executionMode,
+        targetFilter: config.targetFilter.targetName,
+        correlationId: reportCorrelationId,
+        inventoryRef: { branch: pass === 'inventory' ? config.branches.inventory : config.branches.detection, commitSha: null, commitIsoDate: null, repositoryUrl: redactRepositoryTarget(config.repository.url) },
+        startedAt: new Date(executionStartTime).toISOString(),
+        completedAt: new Date().toISOString(),
+        durationMs: Date.now() - executionStartTime,
+        ci: buildCiContext(),
+      })
+
+      if (report === null) return
+
+      const paths = await reportWriter.write(report, reportDir)
+      reportsWritten.push({ pass, paths })
+
+      await reportWriter.writeIndex(reportDir, reportsWritten)
+      await writeStepSummary(report, log)
+
+      log(`Auditor report (${pass}): ${paths.htmlPath}`)
+      log(`Auditor report (${pass}), machine-readable: ${paths.jsonPath}`)
+    } catch (error) {
+      console.error(`[Main]: Failed to write the ${pass} auditor report:`, error)
+    }
+  }
+
+  /** Record which inventory revision a pass compared against. */
+  const recordInventoryRef = (pass: ReportPass, branch: string): void => {
+    const ref = scriptInventoryService.getLastPullRef()
+
+    reportCollector.recordInventoryRef(pass, {
+      branch: ref?.branch ?? branch,
+      commitSha: ref?.commitSha ?? null,
+      commitIsoDate: ref?.commitIsoDate ?? null,
+      repositoryUrl: redactRepositoryTarget(config.repository.url),
+    })
+  }
+
   const flushPendingAlerts = async (pending: PendingAlerts): Promise<void> => {
     await alertService.alertForTypedResults(pending.scriptComparisonResults, pending.target, pending.alertDestinations, pending.inventoryUpdatedResults)
     await alertService.alertForTypedResults(pending.headerComparisonResults, pending.target, pending.alertDestinations, pending.inventoryUpdatedResults)
@@ -219,6 +315,8 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
   // No browser launch, no workflow execution, no alerting, no push.
   if (config.executionMode === ExecutionMode.Validate) {
     log('Preparing to validate inventory.')
+    // Validate performs no comparisons, so there is nothing to report on.
+    if (reportDir !== null) log('Note: --mode validate runs no workflows, so no auditor report is produced.')
     const inventory = await scriptInventoryService.pull(PullTarget.Inventory, config.branches.inventory)
     const fileList = inventory.map((i) => i.fileName).join(', ')
     log(`Successfully validated ${inventory.length} inventory file(s): ${fileList}`)
@@ -234,152 +332,166 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
   try {
     // T017, T021, T022: Execute workflows based on mode
     if (config.executionMode === ExecutionMode.Inventory || config.executionMode === ExecutionMode.All) {
-      // Run inventory workflow
-      log('Preparing to pull inventory.')
-      const inventoryPullOptions = await prepareInventoryBranch({
-        pullRequestService,
-        repository: config.repository,
-        branches: config.branches,
-        gitToken: config.authentication.gitToken,
-        log,
-      })
-      const inventory = await scriptInventoryService.pull(PullTarget.Inventory, config.branches.inventory, inventoryPullOptions)
-
-      // T018, T024: Filter to specific target if requested
-      const filteredInventory = filterInventoryByTarget(inventory, config.targetFilter.targetName)
-
-      // T011: Store alert destinations from first processed inventory
-      if (filteredInventory.length > 0 && alertDestinations === null) {
-        alertDestinations = filteredInventory[0]!.alerts
-      }
-
-      log('Preparing to run inventory workflow.')
-      // Variations in one inventory commonly exercise the same application
-      // and payment backends. Run them serially to avoid one synthetic user
-      // starving or rate-limiting another. Inventory files are also serial so
-      // independent hosted-payment frames cannot starve the shared browser.
-      const targetRunResults = await mapGroupsSequentially(
-        filteredInventory,
-        (inventory) => getWorkflowsForTargetFilter(inventory, config.targetFilter.targetName),
-        async (inventory, workflow) => {
-          const result = await runForTargetAsync(browser, inventory, workflow.inventory)
-          totalResourceCount += result.resourceCount
-          const targetName = workflow.inventory.name ?? `${inventory.fileName.replace(/\.json$/, '')}/${workflow.id}`
-          if (!processedTargets.includes(targetName)) processedTargets.push(targetName)
-          return result
-        },
-      )
-
-      const diffResults = await Promise.all(
-        filteredInventory.map(async (inventory, index) => {
-          const workflowResults = targetRunResults[index] ?? []
-          // One inventory is shared by every variation. Diff once against the complete
-          // observation set so later workflow runs cannot overwrite earlier discoveries.
-          const comparisonResults = workflowResults.flatMap((result) => result.comparisonResults)
-          const diffResult = await scriptInventoryService.diff(inventory, comparisonResults)
-          const inventoryUpdatedResults: ReadonlySet<ComparisonResultType> = new Set(diffResult.appliedResults ?? [])
-          for (const result of workflowResults) {
-            if (result.pendingAlerts) result.pendingAlerts.inventoryUpdatedResults = inventoryUpdatedResults
-          }
-          return { diffResult, workflowResults }
-        }),
-      )
-
-      // Push inventory + open PR. Wrap in try/finally so that buffered
-      // inventory alerts always get flushed — even if push() throws — so
-      // operators don't lose findings on a failed inventory push.
-      let prError: unknown = null
+      // Emit the inventory report from a finally so evidence survives a target
+      // failure, a push failure, or a failed PR creation.
       try {
-        log('Preparing to push inventory.')
-        const inventoriesToPush: InventoryDifferenceResult[] = diffResults.map((result) => result.diffResult)
-        const pushResult = await scriptInventoryService.push(inventoriesToPush, config.branches.inventory)
+        // Run inventory workflow
+        log('Preparing to pull inventory.')
+        const inventoryPullOptions = await prepareInventoryBranch({
+          pullRequestService,
+          repository: config.repository,
+          branches: config.branches,
+          gitToken: config.authentication.gitToken,
+          log,
+        })
+        const inventory = await scriptInventoryService.pull(PullTarget.Inventory, config.branches.inventory, inventoryPullOptions)
+        recordInventoryRef('inventory', config.branches.inventory)
 
-        log('Inventory workflow completed successfully.')
+        // T018, T024: Filter to specific target if requested
+        const filteredInventory = filterInventoryByTarget(inventory, config.targetFilter.targetName)
 
-        // Open a PR so the inventory repo's CI (`--mode validate`) runs and humans
-        // can review the change. Skip conditions are handled inside the service
-        // (file://, non-github host) or in the coordinator (same branch, gitToken).
-        if (pushResult.pushed) {
-          try {
-            const prUrl = await ensureInventoryPullRequest({
-              pullRequestService,
-              alertService,
-              repository: config.repository,
-              branches: config.branches,
-              gitToken: config.authentication.gitToken,
-              commitMessage: pushResult.commitMessage,
-              alertDestinations,
-              log,
-            })
-            if (prUrl !== null) {
-              // Point the "Review changes" Slack button at the actual PR.
-              alertService.setReviewUrl(prUrl)
+        // T011: Store alert destinations from first processed inventory
+        if (filteredInventory.length > 0 && alertDestinations === null) {
+          alertDestinations = filteredInventory[0]!.alerts
+        }
+
+        log('Preparing to run inventory workflow.')
+        // Variations in one inventory commonly exercise the same application
+        // and payment backends. Run them serially to avoid one synthetic user
+        // starving or rate-limiting another. Inventory files are also serial so
+        // independent hosted-payment frames cannot starve the shared browser.
+        const targetRunResults = await mapGroupsSequentially(
+          filteredInventory,
+          (inventory) => getWorkflowsForTargetFilter(inventory, config.targetFilter.targetName),
+          async (inventory, workflow) => {
+            const result = await runForTargetAsync(browser, inventory, workflow.inventory)
+            totalResourceCount += result.resourceCount
+            const targetName = workflow.inventory.name ?? `${inventory.fileName.replace(/\.json$/, '')}/${workflow.id}`
+            if (!processedTargets.includes(targetName)) processedTargets.push(targetName)
+            return result
+          },
+        )
+
+        const diffResults = await Promise.all(
+          filteredInventory.map(async (inventory, index) => {
+            const workflowResults = targetRunResults[index] ?? []
+            // One inventory is shared by every variation. Diff once against the complete
+            // observation set so later workflow runs cannot overwrite earlier discoveries.
+            const comparisonResults = workflowResults.flatMap((result) => result.comparisonResults)
+            const diffResult = await scriptInventoryService.diff(inventory, comparisonResults)
+            const inventoryUpdatedResults: ReadonlySet<ComparisonResultType> = new Set(diffResult.appliedResults ?? [])
+            for (const result of workflowResults) {
+              if (result.pendingAlerts) result.pendingAlerts.inventoryUpdatedResults = inventoryUpdatedResults
             }
-          } catch (error) {
-            prError = error
+            return { diffResult, workflowResults }
+          }),
+        )
+
+        // Push inventory + open PR. Wrap in try/finally so that buffered
+        // inventory alerts always get flushed — even if push() throws — so
+        // operators don't lose findings on a failed inventory push.
+        let prError: unknown = null
+        try {
+          log('Preparing to push inventory.')
+          const inventoriesToPush: InventoryDifferenceResult[] = diffResults.map((result) => result.diffResult)
+          const pushResult = await scriptInventoryService.push(inventoriesToPush, config.branches.inventory)
+
+          log('Inventory workflow completed successfully.')
+
+          // Open a PR so the inventory repo's CI (`--mode validate`) runs and humans
+          // can review the change. Skip conditions are handled inside the service
+          // (file://, non-github host) or in the coordinator (same branch, gitToken).
+          if (pushResult.pushed) {
+            try {
+              const prUrl = await ensureInventoryPullRequest({
+                pullRequestService,
+                alertService,
+                repository: config.repository,
+                branches: config.branches,
+                gitToken: config.authentication.gitToken,
+                commitMessage: pushResult.commitMessage,
+                alertDestinations,
+                log,
+              })
+              if (prUrl !== null) {
+                // Point the "Review changes" Slack button at the actual PR.
+                alertService.setReviewUrl(prUrl)
+              }
+            } catch (error) {
+              prError = error
+            }
           }
+        } finally {
+          // Flush deferred inventory alerts. When push+PR succeed, the override
+          // URL is set so the "Review changes" button points to the PR; on a
+          // failed push we fall back to the default branch-compare URL.
+          for (const result of diffResults) {
+            for (const workflowResult of result.workflowResults) {
+              if (workflowResult.pendingAlerts) await flushPendingAlerts(workflowResult.pendingAlerts)
+            }
+          }
+          // Clear the override so the detection phase (under --mode all) doesn't
+          // inherit the inventory PR URL on its own review-link fallbacks.
+          alertService.setReviewUrl(null)
         }
+
+        if (prError !== null) {
+          throw prError
+        }
+
+        // T022: If mode is 'inventory', send success notification and stop here
+        if (config.executionMode === ExecutionMode.Inventory) {
+          await emitReportSafely('inventory')
+          await browser.close()
+
+          // T010: Send success notification with try-catch error handling
+          // T021: Pass execution start time for duration calculation
+          await sendSuccessNotification(alertService, config, processedTargets, totalResourceCount, alertDestinations, executionStartTime, log)
+          return
+        }
+
+        // T022: If mode is 'all' and inventory succeeded, continue to detection
+        log('Continuing to detection workflow (mode: all)...')
       } finally {
-        // Flush deferred inventory alerts. When push+PR succeed, the override
-        // URL is set so the "Review changes" button points to the PR; on a
-        // failed push we fall back to the default branch-compare URL.
-        for (const result of diffResults) {
-          for (const workflowResult of result.workflowResults) {
-            if (workflowResult.pendingAlerts) await flushPendingAlerts(workflowResult.pendingAlerts)
-          }
-        }
-        // Clear the override so the detection phase (under --mode all) doesn't
-        // inherit the inventory PR URL on its own review-link fallbacks.
-        alertService.setReviewUrl(null)
+        // Skipped when --mode inventory already emitted above and returned.
+        if (!reportsWritten.some((written) => written.pass === 'inventory')) await emitReportSafely('inventory')
       }
-
-      if (prError !== null) {
-        throw prError
-      }
-
-      // T022: If mode is 'inventory', send success notification and stop here
-      if (config.executionMode === ExecutionMode.Inventory) {
-        await browser.close()
-
-        // T010: Send success notification with try-catch error handling
-        // T021: Pass execution start time for duration calculation
-        await sendSuccessNotification(alertService, config, processedTargets, totalResourceCount, alertDestinations, executionStartTime, log)
-        return
-      }
-
-      // T022: If mode is 'all' and inventory succeeded, continue to detection
-      log('Continuing to detection workflow (mode: all)...')
     }
 
     // T017, T021: Run detection workflow for 'detection' or 'all' mode
     if (config.executionMode === ExecutionMode.Detection || config.executionMode === ExecutionMode.All) {
-      // Pull inventory from detection branch
-      log('Preparing to pull inventory for detection.')
-      const detectionInventory = await scriptInventoryService.pull(PullTarget.Detection, config.branches.detection)
+      try {
+        // Pull inventory from detection branch
+        log('Preparing to pull inventory for detection.')
+        const detectionInventory = await scriptInventoryService.pull(PullTarget.Detection, config.branches.detection)
+        recordInventoryRef('detection', config.branches.detection)
 
-      // T018, T024: Filter to specific target if requested
-      const filteredDetectionInventory = filterInventoryByTarget(detectionInventory, config.targetFilter.targetName)
+        // T018, T024: Filter to specific target if requested
+        const filteredDetectionInventory = filterInventoryByTarget(detectionInventory, config.targetFilter.targetName)
 
-      // T011: Store alert destinations from first processed inventory (if not already set)
-      if (filteredDetectionInventory.length > 0 && alertDestinations === null) {
-        alertDestinations = filteredDetectionInventory[0]!.alerts
+        // T011: Store alert destinations from first processed inventory (if not already set)
+        if (filteredDetectionInventory.length > 0 && alertDestinations === null) {
+          alertDestinations = filteredDetectionInventory[0]!.alerts
+        }
+
+        // Run detection workflow
+        log('Preparing to run detection workflow.')
+        await mapGroupsSequentially(
+          filteredDetectionInventory,
+          (inventory) => getWorkflowsForTargetFilter(inventory, config.targetFilter.targetName),
+          async (inventory, workflow) => {
+            const result = await runForTargetAsync(browser, inventory, workflow.detection)
+            totalResourceCount += result.resourceCount
+            const targetName = workflow.detection.name ?? `${inventory.fileName.replace(/\.json$/, '')}/${workflow.id}`
+            if (!processedTargets.includes(targetName)) processedTargets.push(targetName)
+            return result
+          },
+        )
+
+        log('Detection workflow completed successfully.')
+      } finally {
+        await emitReportSafely('detection')
       }
-
-      // Run detection workflow
-      log('Preparing to run detection workflow.')
-      await mapGroupsSequentially(
-        filteredDetectionInventory,
-        (inventory) => getWorkflowsForTargetFilter(inventory, config.targetFilter.targetName),
-        async (inventory, workflow) => {
-          const result = await runForTargetAsync(browser, inventory, workflow.detection)
-          totalResourceCount += result.resourceCount
-          const targetName = workflow.detection.name ?? `${inventory.fileName.replace(/\.json$/, '')}/${workflow.id}`
-          if (!processedTargets.includes(targetName)) processedTargets.push(targetName)
-          return result
-        },
-      )
-
-      log('Detection workflow completed successfully.')
     }
   } finally {
     // Always close browser
@@ -396,6 +508,28 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
  * T020, T021: Calculates execution duration from start time
  * Constructs ExecutionSummary and calls alertOnSuccess() with non-blocking error handling
  */
+/**
+ * Identify the CI run that produced a report, so an assessor can trace the
+ * artefact back to the job that generated it.
+ *
+ * Returns null outside GitHub Actions; these are the standard, non-secret
+ * variables the runner always sets.
+ */
+function buildCiContext(): { provider: 'github-actions'; runId: string; runAttempt: string; workflow: string; repository: string; sha: string } | null {
+  const runId = process.env['GITHUB_RUN_ID']
+
+  if (runId === undefined || runId === '') return null
+
+  return {
+    provider: 'github-actions',
+    runId,
+    runAttempt: process.env['GITHUB_RUN_ATTEMPT'] ?? '1',
+    workflow: process.env['GITHUB_WORKFLOW'] ?? '',
+    repository: process.env['GITHUB_REPOSITORY'] ?? '',
+    sha: process.env['GITHUB_SHA'] ?? '',
+  }
+}
+
 async function sendSuccessNotification(
   alertService: IAlertService,
   config: RuntimeConfiguration,

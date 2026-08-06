@@ -26,6 +26,10 @@ export function copyInventory(inventory: Inventory, args?: { newScripts?: Invent
     alerts: inventory.alerts,
     scripts: args?.newScripts ?? inventory.scripts,
     headers: args?.newHeaders ?? inventory.headers,
+    // Carried through explicitly: this function enumerates fields, so a new one
+    // is silently dropped unless listed. The auditor report needs the source
+    // text to resolve matcher line numbers.
+    source: inventory.source,
   }
 }
 

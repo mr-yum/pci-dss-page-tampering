@@ -80,6 +80,7 @@ describe('ScriptInventoryService', () => {
       const mockRepository = {
         pull: jest.fn(),
         push: jest.fn(),
+        getLastPullRef: jest.fn().mockReturnValue(null),
       }
       service = new ScriptInventoryService({ inventoryRepository: mockRepository })
     })
@@ -752,6 +753,7 @@ describe('ScriptInventoryService', () => {
         const mockRepository = {
           pull: jest.fn(),
           push: jest.fn().mockResolvedValue(undefined),
+          getLastPullRef: jest.fn().mockReturnValue(null),
         }
         const noOpService = new ScriptInventoryService({ inventoryRepository: mockRepository })
 
@@ -765,6 +767,7 @@ describe('ScriptInventoryService', () => {
         const mockRepository = {
           pull: jest.fn(),
           push: jest.fn().mockResolvedValue(undefined),
+          getLastPullRef: jest.fn().mockReturnValue(null),
         }
         const pushService = new ScriptInventoryService({ inventoryRepository: mockRepository })
 
