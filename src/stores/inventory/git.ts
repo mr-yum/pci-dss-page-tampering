@@ -96,7 +96,9 @@ export class GitInventoryStore implements IInventoryStore {
 
       return { ref: { branch, commitSha, commitIsoDate: latest?.date === undefined ? null : new Date(latest.date).toISOString() } }
     } catch (error) {
-      console.log(`[Inventory → Store] Could not read the inventory revision: ${error instanceof Error ? error.message : String(error)}`)
+      // Redacted like every other error path here — git errors echo the
+      // authenticated remote.
+      console.log(`[Inventory → Store] Could not read the inventory revision: ${redactUrlCredentials(error instanceof Error ? error.message : String(error))}`)
 
       return {}
     }

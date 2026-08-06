@@ -58,9 +58,14 @@ export function newHeaderValueMatcherConfig(headerName: string, headerValue: str
   const directive = tokens[0]
 
   if (CSP_HEADER_NAMES.has(headerName.toLowerCase()) && directive !== undefined && /^[A-Za-z][A-Za-z0-9-]*$/u.test(directive)) {
-    // Collapse the per-response nonce to the wildcard, and de-duplicate: pinning
-    // an observed nonce would fail on the very next response.
-    const allow = [...new Set(tokens.slice(1).map((token) => (OBSERVED_NONCE.test(token) ? CSP_ANY_NONCE : token)))]
+    // Map each observed nonce to the placeholder — pinning a value would fail
+    // on the very next response. One placeholder PER nonce, because the matcher
+    // counts nonces one-for-one; collapsing two nonces into one placeholder
+    // would emit an entry that never authorises its own observed value.
+    // Non-nonce sources are de-duplicated (a repeated token is one assertion).
+    const sources = tokens.slice(1)
+    const nonceCount = sources.filter((token) => OBSERVED_NONCE.test(token)).length
+    const allow = [...new Set(sources.filter((token) => !OBSERVED_NONCE.test(token)))].concat(Array.from({ length: nonceCount }, () => CSP_ANY_NONCE))
 
     return { cspDirectiveMatcher: { directive: directive.toLowerCase(), allow } }
   }

@@ -234,6 +234,20 @@ describe('ReportCollector', () => {
       expect(report.notes.some((note) => note.startsWith('PARTIAL RUN'))).toBe(true)
     })
 
+    it('redacts credentials from a failure message before it reaches the artefact', () => {
+      // Git errors echo the authenticated remote. Without redaction the token
+      // lands in a 90-day CI artefact whose own notes promise it cannot.
+      const collector = new ReportCollector()
+
+      collector.recordTargetFailure({ inventory: buildInventory(), target: detectionTarget, error: new Error("fatal: repository 'https://x-access-token:ghp_supersecret@github.com/org/inventory' not found") })
+
+      const report = collector.build('detection', runContext())!
+
+      expect(report.run.failures[0]!.message).not.toContain('ghp_supersecret')
+      expect(report.run.failures[0]!.message).toContain('[credentials-redacted]')
+      expect(report.targets[0]!.error).not.toContain('ghp_supersecret')
+    })
+
     it('stringifies a non-Error failure', () => {
       const collector = new ReportCollector()
 

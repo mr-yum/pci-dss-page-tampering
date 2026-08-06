@@ -83,13 +83,16 @@ export function toObservedContent(content: string | null | undefined, hash: stri
     return { hash, contentLength: null, contentExcerpt: null, contentTruncated: false }
   }
 
-  const { text } = redactForDisplay(content, CONTENT_EXCERPT_LIMIT)
+  const { text, truncated } = redactForDisplay(content, CONTENT_EXCERPT_LIMIT)
 
   return {
     hash,
     contentLength: content.length,
     contentExcerpt: text,
-    contentTruncated: content.length > CONTENT_EXCERPT_LIMIT,
+    // Either the input was longer than the limit, or sanitisation expanded a
+    // shorter input past it and the excerpt got clipped — both are truncation
+    // and both must be visible in an evidence document.
+    contentTruncated: truncated,
   }
 }
 

@@ -1221,6 +1221,68 @@ describe('ScriptInventoryService', () => {
         })
       })
 
+      it('records every directive of a multi-directive CSP, not just the first', async () => {
+        // The regression the third review round caught: addNewHeader emits a
+        // CspDirectiveMatcher, but the pending-append gate only admitted
+        // ContentMatchers — so directive 2 of the same header matched directive
+        // 1's pending entry by identity, failed the gate, and was dropped. The
+        // security-critical script-src was exactly the kind of casualty.
+        const target = createMockTarget()
+        const at = new Date('2026-08-06T00:00:00.000Z')
+        const header = (value: string): UnknownHeaderFound => new UnknownHeaderFound(target, at, { name: 'content-security-policy', value, url: 'https://checkout.example.com/pay', target, workflow: target.workflow })
+
+        const diff = await service.diff(createMockInventory([]), [header("default-src 'self'"), header("script-src 'self' https://js.stripe.com")])
+
+        expect(diff.appliedResults).toHaveLength(2)
+        expect(diff.newInventory.headers).toHaveLength(1)
+
+        // Both directives must be RECORDED as pending alternatives. They must
+        // not authorise anything yet — pending means fail-secure until a human
+        // flips authorised to true.
+        const raw = inventoryHeaderInfoToRawInventoryHeaderInfo(diff.newInventory.headers[0]!)
+        expect(Array.isArray(raw.authoriseWith)).toBe(true)
+        const directives = (raw.authoriseWith as any[]).map((alternative) => alternative.cspDirectiveMatcher?.directive)
+        expect(directives.sort()).toEqual(['default-src', 'script-src'])
+        expect((raw.authoriseWith as any[]).every((alternative) => alternative.authorisationInfo.authorised === false)).toBe(true)
+
+        // And the run must be idempotent: same observations, nothing new.
+        const second = await service.diff(diff.newInventory, [header("default-src 'self'"), header("script-src 'self' https://js.stripe.com")])
+        expect(second.appliedResults).toEqual([])
+        expect(second.newInventory.headers).toHaveLength(1)
+      })
+
+      it('auto-appends a changed CSP directive to an authorised set-based entry', async () => {
+        // After a human authorises a cspDirectiveMatcher entry, a changed
+        // directive comes back as known_header_unauthorised_content. The
+        // eligibility gate must admit set-based entries, or the change can
+        // never be auto-inventoried and alerts on every run forever.
+        const target = createMockTarget()
+        const at = new Date('2026-08-06T00:00:00.000Z')
+        const entry = rawInventoryHeaderInfoToInventoryHeaderInfo({
+          identifyWith: { headerNameMatcher: '^content-security-policy$' },
+          authoriseWith: {
+            cspDirectiveMatcher: { directive: 'frame-src', allow: ["'self'"] },
+            authorisationInfo: { description: 'Approved frames', authorised: true, date: '2026-08-01T00:00:00.000Z' },
+          },
+        })
+        const inventory: Inventory = { ...createMockInventory([]), headers: [entry] }
+        const changed = new KnownHeaderWithUnauthorisedContentFound(
+          target,
+          at,
+          { name: 'content-security-policy', value: "frame-src 'self' https://js.stripe.com", target, workflow: target.workflow },
+          entry,
+          entry.authoriseWith.matcher,
+          'frame-src differs from the approved policy',
+        )
+
+        const diff = await service.diff(inventory, [changed])
+
+        expect(diff.appliedResults).toEqual([changed])
+        expect(diff.newInventory.headers[0]!.authoriseWith.matcher.authorize({ name: 'content-security-policy', content: "frame-src https://js.stripe.com 'self'" }).authorized).toBe(true)
+        // The original approved set must survive as its own alternative.
+        expect(diff.newInventory.headers[0]!.authoriseWith.matcher.authorize({ name: 'content-security-policy', content: "frame-src 'self'" }).authorized).toBe(true)
+      })
+
       it('does not re-add a CSP directive whose sources merely got reordered', async () => {
         const target = createMockTarget()
         const header = (value: string): UnknownHeaderFound =>

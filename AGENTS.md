@@ -27,7 +27,7 @@ This is a PCI DSS compliance system implementing **requirements 6.4.3 (Script Ma
 
 ## CLI Usage
 
-The system is configured entirely via command-line parameters. No environment variables are used for execution configuration.
+The system is configured entirely via command-line parameters. No environment variables are used for execution configuration. (When running under GitHub Actions, the runner's standard `GITHUB_*` variables are read solely to annotate the auditor report with CI provenance and to append its job-summary digest — they never influence what the run does.)
 
 ### Basic Syntax
 
@@ -215,9 +215,9 @@ act push --container-architecture linux/amd64 --secret-file .env.secrets
 
 Each inventory entry (scripts and headers) uses a nested authorization structure:
 
-- `identifyWith`: Matcher for identifying the resource (NameMatcher/HeaderNameMatcher/ContentMatcher/HashMatcher/HostMatcher/UrlMatcher/OrMatcher/AndMatcher)
+- `identifyWith`: Matcher for identifying the resource (NameMatcher/HeaderNameMatcher/ContentMatcher/HashMatcher/HostMatcher/UrlMatcher/CspDirectiveMatcher/OrMatcher/AndMatcher)
 - `authoriseWith`: Matcher configuration with authorization metadata:
-  - Can be a single matcher (NameMatcher, ContentMatcher, HashMatcher, HostMatcher, UrlMatcher, OrMatcher, AndMatcher)
+  - Can be a single matcher (NameMatcher, ContentMatcher, HashMatcher, HostMatcher, UrlMatcher, CspDirectiveMatcher, OrMatcher, AndMatcher)
   - Can be an array of matchers (syntactic sugar for OrMatcher)
   - Must include `authorisationInfo` with description, authorization status, and date
   - Composite matchers (OrMatcher, AndMatcher) can have nested `authorisationInfo` at each level

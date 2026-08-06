@@ -155,7 +155,10 @@ export class CspDirectiveMatcher implements AuthorisationMatcher {
     const observedNonces = observed.filter((source) => NONCE_SOURCE.test(source))
     const observedRest = new Set(observed.filter((source) => !NONCE_SOURCE.test(source)))
 
-    const added = [...observedRest].filter((source) => !this.allow.has(source))
+    // The literal placeholder is OUR vocabulary, never a valid CSP source. A
+    // policy that serves the token 'nonce-*' would otherwise slip through the
+    // membership check whenever the allow list holds the placeholder.
+    const added = [...observedRest].filter((source) => source === CSP_ANY_NONCE || !this.allow.has(source))
     const removed = this.allowOrdered.filter((source) => source !== CSP_ANY_NONCE && !observedRest.has(source))
 
     const differences: string[] = []

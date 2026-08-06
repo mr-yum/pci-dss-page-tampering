@@ -5,6 +5,7 @@ import type { UnknownHeaderFound } from '../types/comparison/unknown-header-foun
 import type { Inventory, InventoryDifferenceResult, InventoryHeaderInfo, InventoryRef, InventoryScriptInfo } from '../types/inventory/model.js'
 import type { InventoryServiceProps } from '../types/inventory/props.js'
 import { ContentMatcher } from '../types/matcher/content-matcher.js'
+import { CspDirectiveMatcher } from '../types/matcher/csp-directive-matcher.js'
 import { HashMatcher } from '../types/matcher/hash-matcher.js'
 import { createMatcher } from '../types/matcher/matcher-factory.js'
 import { OrMatcher } from '../types/matcher/or-matcher.js'
@@ -83,11 +84,11 @@ export class ScriptInventoryService implements IInventoryService {
           break
         case 'known_header_unauthorised_content': {
           const topLevelMatcher = result.inventoryEntry.authoriseWith.matcher
-          // Same rationale as scripts: only auto-append a new ContentMatcher
-          // when the existing authorisation is content-based or an OR of
-          // alternatives. AndMatcher / NameMatcher / HashMatcher entries are
-          // intentionally untouched.
-          if (topLevelMatcher instanceof ContentMatcher || topLevelMatcher instanceof OrMatcher) {
+          // Same rationale as scripts: only auto-append a new alternative when
+          // the existing authorisation is value-shaped — content-based, a CSP
+          // directive set, or an OR of alternatives. AndMatcher / NameMatcher /
+          // HashMatcher entries are intentionally untouched.
+          if (topLevelMatcher instanceof ContentMatcher || topLevelMatcher instanceof CspDirectiveMatcher || topLevelMatcher instanceof OrMatcher) {
             const existing = headerContentUpdates.get(result.inventoryEntry) ?? []
             existing.push(result)
             headerContentUpdates.set(result.inventoryEntry, existing)
@@ -151,10 +152,14 @@ export class ScriptInventoryService implements IInventoryService {
       if (pendingIdentity) {
         if (this.canAppendPendingHeaderValue(pendingIdentity)) {
           const updatedPending = this.appendPendingHeaderValue(pendingIdentity, result, updateDate)
-          updatedInventory = copyInventory(updatedInventory, {
-            newHeaders: updatedInventory.headers.map((entry) => (entry === pendingIdentity ? updatedPending : entry)),
-          })
-          appliedResults.push(result)
+          // null = the value is already covered by a pending alternative; a
+          // no-op must not be reported as an inventory mutation.
+          if (updatedPending !== null) {
+            updatedInventory = copyInventory(updatedInventory, {
+              newHeaders: updatedInventory.headers.map((entry) => (entry === pendingIdentity ? updatedPending : entry)),
+            })
+            appliedResults.push(result)
+          }
         }
         continue
       }
@@ -404,7 +409,12 @@ export class ScriptInventoryService implements IInventoryService {
 
   private canAppendPendingHeaderValue(entry: InventoryHeaderInfo): boolean {
     const authorizer = entry.authoriseWith.matcher
-    return authorizer instanceof ContentMatcher || (authorizer instanceof OrMatcher && authorizer.getPattern().every((child) => child instanceof ContentMatcher))
+    // Value-shaped authorisers only. CspDirectiveMatcher must be admitted here:
+    // addNewHeader emits it for CSP, and a multi-directive policy reaches this
+    // gate with directive 2 against directive 1's pending entry — rejecting it
+    // silently drops every directive after the first (third-review regression).
+    const isValueShaped = (matcher: unknown): boolean => matcher instanceof ContentMatcher || matcher instanceof CspDirectiveMatcher
+    return isValueShaped(authorizer) || (authorizer instanceof OrMatcher && authorizer.getPattern().every(isValueShaped))
   }
 
   /**
@@ -412,8 +422,29 @@ export class ScriptInventoryService implements IInventoryService {
    * authorizer. Separate entries with the same identifyWith are unreachable
    * after approval because comparison is first-match-wins.
    */
-  private appendPendingHeaderValue(entry: InventoryHeaderInfo, result: UnknownHeaderFound, updateDate: Date): InventoryHeaderInfo {
+  private appendPendingHeaderValue(entry: InventoryHeaderInfo, result: UnknownHeaderFound, updateDate: Date): InventoryHeaderInfo | null {
     const rawEntry = inventoryHeaderInfoToRawInventoryHeaderInfo(entry)
+    const existingAlternatives: any[] = Array.isArray(rawEntry.authoriseWith) ? rawEntry.authoriseWith : 'orMatcher' in rawEntry.authoriseWith ? (rawEntry.authoriseWith.orMatcher as any[]) : [rawEntry.authoriseWith]
+
+    // Idempotency (documented contract): a value an existing alternative
+    // already matches is never re-appended. The authorised flag must be
+    // stripped before testing — serialisation stamps `authorised: false` onto
+    // every pending alternative, which makes authorize() deny and would
+    // otherwise re-append the same value on every run once the entry is in
+    // array state.
+    const matchable = {
+      name: result.header.name,
+      content: result.header.value,
+      workflowId: result.target.workflowId ?? 'default',
+      ...(result.header.url !== undefined ? { url: result.header.url } : {}),
+    }
+    const alreadyPresent = existingAlternatives.some((alternative: any) => {
+      const { authorisationInfo: _ignored, ...bare } = alternative
+      return createMatcher(bare).authorize(matchable).authorized
+    })
+
+    if (alreadyPresent) return null
+
     const matcherConfig = {
       ...newHeaderValueMatcherConfig(result.header.name, result.header.value),
       authorisationInfo: {
@@ -473,9 +504,10 @@ export class ScriptInventoryService implements IInventoryService {
           orChildren.push(this.scopeNewAuthorisationAlternative(newHeaderValueMatcherConfig(result.header.name, result.header.value), result.target.workflowId, newMatcherConfig.authorisationInfo.description, updateDate))
           applied.push(result)
         }
-      } else if ('contentMatcher' in rawInventoryHeader.authoriseWith) {
-        // Single ContentMatcher: promote to array syntax with the new value
-        // OR'd in. Skip if the existing single matcher already authorises it.
+      } else if ('contentMatcher' in rawInventoryHeader.authoriseWith || 'cspDirectiveMatcher' in rawInventoryHeader.authoriseWith) {
+        // Single value-shaped matcher (exact-value content or a CSP directive
+        // set): promote to array syntax with the new value OR'd in. Skip if the
+        // existing single matcher already authorises it.
         const existingAuthorises = createMatcher(rawInventoryHeader.authoriseWith).authorize({
           name: result.header.name,
           content: result.header.value,

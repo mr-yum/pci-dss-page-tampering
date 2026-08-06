@@ -57,6 +57,17 @@ describe('toObservedContent', () => {
     expect(observed.contentExcerpt).toContain('[credentials-redacted]')
   })
 
+  it('reports truncation when sanitisation expands short content past the limit', () => {
+    // 100 control characters expand to 800 visible tokens; the excerpt is
+    // clipped even though the input was well under the limit. An evidence
+    // document must not claim the excerpt is complete when it is not.
+    const observed = toObservedContent('\u0000'.repeat(100), 'abc')
+
+    expect(observed.contentLength).toBe(100)
+    expect(observed.contentExcerpt).toHaveLength(CONTENT_EXCERPT_LIMIT)
+    expect(observed.contentTruncated).toBe(true)
+  })
+
   it('sanitises before truncating, so an escape is never cut in half', () => {
     const observed = toObservedContent(`${'a'.repeat(CONTENT_EXCERPT_LIMIT - 2)}\u202Ebbbb`, 'abc')
 

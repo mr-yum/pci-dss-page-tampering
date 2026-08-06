@@ -43,6 +43,16 @@ describe('newHeaderValueMatcherConfig', () => {
     expect(matcher.authorize({ name: 'content-security-policy', content: "script-src 'self' 'unsafe-inline'" }).authorized).toBe(false)
   })
 
+  it('keeps one placeholder per observed nonce, because the matcher counts them', () => {
+    // Collapsing two nonces into one placeholder would emit an entry that
+    // never authorises its own observed value.
+    const matcher = matcherFor('content-security-policy', "script-src 'nonce-aaa' 'nonce-bbb' 'self'")
+
+    expect(matcher.authorize({ name: 'content-security-policy', content: "script-src 'self' 'nonce-x' 'nonce-y'" }).authorized).toBe(true)
+    expect(matcher.authorize({ name: 'content-security-policy', content: "script-src 'self' 'nonce-x'" }).authorized).toBe(false)
+    expect(matcher.authorize({ name: 'content-security-policy', content: "script-src 'self' 'nonce-x' 'nonce-y' 'nonce-z'" }).authorized).toBe(false)
+  })
+
   it('leaves an untracked header kind alone, rather than claiming unreachable coverage', () => {
     // content-security-policy-report-only is not in TRACKED_HEADER_NAMES, so it
     // never reaches inventory. Treating it as CSP here would be a branch no run

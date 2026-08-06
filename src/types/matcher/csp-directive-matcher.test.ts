@@ -215,6 +215,15 @@ describe('CspDirectiveMatcher', () => {
       expect(new CspDirectiveMatcher('script-src', ["'self'"]).authorize(value("script-src 'self' 'nonce-abc123'")).authorized).toBe(false)
     })
 
+    it("rejects a literal 'nonce-*' token served by the page", () => {
+      // The placeholder is inventory vocabulary, never a valid CSP source. A
+      // page serving the literal token must not slide through membership.
+      const result = withNonce.authorize(value(`${full("'nonce-real'")} 'nonce-*'`))
+
+      expect(result.authorized).toBe(false)
+      expect(result.reason).toContain("'nonce-*'")
+    })
+
     it('does not treat a malformed nonce-like token as a nonce', () => {
       expect(withNonce.authorize(value(full("'nonce-'"))).authorized).toBe(false)
     })
