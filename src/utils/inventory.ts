@@ -26,6 +26,10 @@ export function copyInventory(inventory: Inventory, args?: { newScripts?: Invent
     alerts: inventory.alerts,
     scripts: args?.newScripts ?? inventory.scripts,
     headers: args?.newHeaders ?? inventory.headers,
+    // Carried through explicitly: this function enumerates fields, so a new one
+    // is silently dropped unless listed. The auditor report needs the source
+    // text to resolve matcher line numbers.
+    source: inventory.source,
   }
 }
 
@@ -103,6 +107,15 @@ export function inventoryHeaderInfoToRawInventoryHeaderInfo(headerInfo: Inventor
         return { headerNameMatcher: pattern as string }
       case 'name': {
         const config: any = { nameMatcher: pattern as string }
+        const authInfo = (matcher as any).getAuthorisationInfo?.()
+        if (authInfo) {
+          config.authorisationInfo = serializeAuthorisationInfo(authInfo)
+        }
+        return config
+      }
+      case 'csp-directive': {
+        const csp = matcher as unknown as { getDirective(): string; getAllowedSources(): readonly string[] }
+        const config: any = { cspDirectiveMatcher: { directive: csp.getDirective(), allow: [...csp.getAllowedSources()] } }
         const authInfo = (matcher as any).getAuthorisationInfo?.()
         if (authInfo) {
           config.authorisationInfo = serializeAuthorisationInfo(authInfo)

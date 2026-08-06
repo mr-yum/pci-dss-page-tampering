@@ -74,6 +74,13 @@ describe('CLI Parser', () => {
       })
     })
 
+    it('should parse --report-dir in both space and equals forms', () => {
+      // normalizeKey has a hardcoded allowlist: a key missing from it is
+      // silently dropped with no error, so the flag would vanish without a word.
+      expect(parseArguments(['node', 'script.js', '--report-dir', './reports'])).toEqual<RawCliArgs>({ reportDir: './reports' })
+      expect(parseArguments(['node', 'script.js', '--report-dir=./reports'])).toEqual<RawCliArgs>({ reportDir: './reports' })
+    })
+
     it('should handle values with equals signs', () => {
       const argv = ['node', 'script.js', '--repo=file:///path/with=equals']
       const result = parseArguments(argv)

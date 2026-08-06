@@ -73,7 +73,7 @@ function normalizeKey(key: string): keyof RawCliArgs | null {
   const camelCase = cleaned.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())
 
   // Map to valid RawCliArgs keys
-  const validKeys: (keyof RawCliArgs)[] = ['mode', 'target', 'repo', 'gitToken', 'slackToken', 'inventoryBranch', 'detectionBranch', 'gitUserName', 'gitUserEmail', 'totpSeed', 'help']
+  const validKeys: (keyof RawCliArgs)[] = ['mode', 'target', 'repo', 'gitToken', 'slackToken', 'inventoryBranch', 'detectionBranch', 'gitUserName', 'gitUserEmail', 'totpSeed', 'reportDir', 'help']
 
   if (validKeys.includes(camelCase as keyof RawCliArgs)) {
     return camelCase as keyof RawCliArgs

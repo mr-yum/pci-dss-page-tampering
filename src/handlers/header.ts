@@ -117,7 +117,10 @@ function identifiesHeaderAndOrigin(matcher: InventoryHeaderInfo['identifyWith'],
             ),
           [{ matches: true, hasHeaderName: false, hasProvenance: false }],
         )
+      // Value-shaped matchers say nothing about which header or origin this is,
+      // so they contribute neither header-name nor provenance evidence.
       case 'content':
+      case 'csp-directive':
       case 'hash':
       case 'name':
         return [{ matches: true, hasHeaderName: false, hasProvenance: false }]

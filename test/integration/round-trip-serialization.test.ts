@@ -114,6 +114,26 @@ describe('Round-Trip Serialization Integration Tests', () => {
       expect(cspHeader!.authoriseWith).not.toHaveProperty('orMatcher')
     })
 
+    it('should not leak the retained source text into serialized output', async () => {
+      // `Inventory.source` carries the raw file text so the auditor report can
+      // cite line numbers. It is in-memory provenance, not inventory content —
+      // if it ever reached inventoryToRawInventory the pushed JSON would gain a
+      // duplicate copy of itself on every inventory run.
+      const originalJson = fs.readFileSync(complexExamplePath, 'utf-8')
+      const parseResult = RawInventorySchema.safeParse(JSON.parse(originalJson))
+
+      expect(parseResult.success).toBe(true)
+      if (!parseResult.success) throw new Error('Failed to validate complex-example.json')
+
+      const inventory: Inventory = await rawInventoryToInventory(parseResult.data, 'complex-example.json')
+      const withSource: Inventory = { ...inventory, source: { file: 'targets/complex-example.json', text: originalJson } }
+
+      const serializedRaw = inventoryToRawInventory(withSource)
+
+      expect(serializedRaw).not.toHaveProperty('source')
+      expect(Object.keys(serializedRaw).sort()).toEqual(['alerts', 'headers', 'scripts', 'target'])
+    })
+
     it('should validate against Zod schema after round-trip', async () => {
       const originalJson = fs.readFileSync(complexExamplePath, 'utf-8')
       const originalRaw: RawInventory = JSON.parse(originalJson)

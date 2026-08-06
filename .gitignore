@@ -48,6 +48,9 @@ tmp
 
 pulled_repo/
 
+# auditor report artefacts
+reports/
+
 # claude code local settings
 .claude/settings.local.json
 .playwright-cli/

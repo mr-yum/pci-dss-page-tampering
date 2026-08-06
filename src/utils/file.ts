@@ -14,18 +14,27 @@ export async function getWorkflowDefinitionFromFile(pathToFile: string): Promise
   return WorkflowDefinitionSchema.parse(jsonData)
 }
 
-export async function getRawInventoryFromFile(pathToFile: string): Promise<RawInventory> {
-  // Get JSON data from workflow definition file
-  const jsonData = await parseJson(pathToFile)
+/**
+ * Read and validate an inventory file, returning the validated model alongside
+ * the exact bytes it was parsed from.
+ *
+ * The raw text is retained because the auditor report has to report the line
+ * number an authorisation lives on, and it cannot be recovered later: the
+ * validated model has unknown keys stripped and timestamps coerced to `Date`
+ * by Zod, and the clone directory is deleted at the start of every pull.
+ *
+ * @see ../utils/json-position.ts for the consumer that turns text into positions
+ */
+export async function getRawInventoryFromFile(pathToFile: string): Promise<{ rawInventory: RawInventory; rawText: string }> {
+  const rawText = await readFile(pathToFile, 'utf8')
 
-  // Map to workflow definition and return
-  return RawInventorySchema.parse(jsonData)
+  return { rawInventory: RawInventorySchema.parse(JSON.parse(rawText)), rawText }
 }
 
 export async function getInventoryFileNames(): Promise<string[]> {
   return await readdir(TARGET_PATH)
 }
 
-async function parseJson(filename: string): Promise<string> {
+async function parseJson(filename: string): Promise<unknown> {
   return JSON.parse(await readFile(filename, 'utf8'))
 }

@@ -23,6 +23,7 @@
  */
 
 import type { AuthorizationResult } from './authorization-result.js'
+import { type AuthorizationTraceStep, type AuthorizeOptions, leafTrace } from './authorization-trace.js'
 import type { AuthorisationInfo, AuthorisationMatcher, Matchable, Matcher } from './matcher.interface.js'
 
 /**
@@ -131,41 +132,62 @@ export class AndMatcher<T extends Matchable = Matchable> implements Authorisatio
    * @param resource - The resource to authorize
    * @returns AuthorizationResult with authorized flag, optional reason, and metadata path
    */
-  authorize(resource: T): AuthorizationResult {
+  authorize(resource: T, options?: AuthorizeOptions): AuthorizationResult {
+    // Descriptive only — `withTrace` never changes a decision, and returns the
+    // result untouched unless the caller opted in.
+    const withTrace = (result: AuthorizationResult, consulted: readonly AuthorizationTraceStep[]): AuthorizationResult => {
+      if (!options?.collectTrace) return result
+
+      return { ...result, trace: { type: 'and', consulted } }
+    }
+
     // Fail-secure: null/empty content check
     if (!resource || !resource.content || resource.content.trim() === '') {
-      return {
-        authorized: false,
-        reason: 'Resource content is null or empty',
-        metadataPath: this.authorisationInfo ? [this.authorisationInfo] : [],
-      }
+      return withTrace(
+        {
+          authorized: false,
+          reason: 'Resource content is null or empty',
+          metadataPath: this.authorisationInfo ? [this.authorisationInfo] : [],
+        },
+        [],
+      )
     }
 
     // Check if all children identify first (early exit if not)
     if (!this.identify(resource)) {
-      return {
-        authorized: false,
-        reason: 'Not all child matchers identified the resource',
-        metadataPath: this.authorisationInfo ? [this.authorisationInfo] : [],
-      }
+      return withTrace(
+        {
+          authorized: false,
+          reason: 'Not all child matchers identified the resource',
+          metadataPath: this.authorisationInfo ? [this.authorisationInfo] : [],
+        },
+        [],
+      )
     }
 
     const childResults: AuthorizationResult[] = []
+    // Grows as conjuncts are evaluated, so a short-circuit leaves it truncated
+    // at exactly the children that actually ran.
+    const consulted: AuthorizationTraceStep[] = []
 
     // FR-014: Short-circuit on first failure
     // IMPORTANT: Never use Array.every() for security decisions without empty array check!
-    for (const child of this.children) {
-      const childResult = child.authorize(resource)
+    for (const [childIndex, child] of this.children.entries()) {
+      const childResult = child.authorize(resource, options)
       childResults.push(childResult)
+      consulted.push({ slot: 'child', index: childIndex, child: childResult.trace ?? leafTrace(child) })
 
       if (!childResult.authorized) {
         // First failure - short-circuit and deny
         const metadataPath = childResults.flatMap((r) => r.metadataPath ?? [])
-        return {
-          authorized: false,
-          reason: `Child matcher failed: ${childResult.reason}`,
-          metadataPath: this.authorisationInfo ? [this.authorisationInfo, ...metadataPath] : metadataPath,
-        }
+        return withTrace(
+          {
+            authorized: false,
+            reason: `Child matcher failed: ${childResult.reason}`,
+            metadataPath: this.authorisationInfo ? [this.authorisationInfo, ...metadataPath] : metadataPath,
+          },
+          consulted,
+        )
       }
     }
 
@@ -185,13 +207,16 @@ export class AndMatcher<T extends Matchable = Matchable> implements Authorisatio
       if (!authorized) {
         result.reason = `Top-level authorization denied: ${this.authorisationInfo.description}`
       }
-      return result
+      return withTrace(result, consulted)
     }
 
     // All children authorized, no top-level override
-    return {
-      authorized: true,
-      metadataPath: fullMetadataPath,
-    }
+    return withTrace(
+      {
+        authorized: true,
+        metadataPath: fullMetadataPath,
+      },
+      consulted,
+    )
   }
 }

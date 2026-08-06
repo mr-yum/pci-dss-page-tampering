@@ -170,6 +170,7 @@ See [Branch Usage](#branch-usage) for the branch model and [CI Validation for th
 | `--git-user-name <name>`    | Git committer name for inventory updates                       | `PCI DSS Page Tampering Bot` |
 | `--git-user-email <email>`  | Git committer email for inventory updates                      | `noreply@example.com`        |
 | `--totp-seed <name>=<seed>` | Named base32 TOTP seed for `totp` workflow steps (repeatable)  | -                            |
+| `--report-dir <path>`       | Directory for [auditor report](#auditor-report) artefacts      | - (no report written)        |
 | `--help`                    | Display help message and exit                                  | -                            |
 
 ### TOTP Verification in Workflows
@@ -385,6 +386,73 @@ npm start -- \
   --git-token <TOKEN> \
   --slack-token <SLACK_TOKEN>
 ```
+
+## Auditor Report
+
+Alerts describe exceptions. The auditor report describes **everything**: a full census of every script and header observed during a run, each mapped to the inventory matcher that authorised it — down to the file, JSON pointer and line number — together with the justification recorded against it.
+
+Pass `--report-dir <path>` to produce one. Without the flag, no report is written and the run behaves exactly as before.
+
+```bash
+npm start -- \
+  --mode detection \
+  --repo https://github.com/org/inventory \
+  --git-token <TOKEN> \
+  --report-dir ./reports
+```
+
+### What an assessor gets
+
+| Requirement                       | The question they ask                                    | Where the report answers it                                                            |
+| --------------------------------- | -------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| **6.4.3** inventory of scripts    | "Is every script on the payment page in your inventory?" | The full census — every row, including `status: "unknown"`                             |
+| **6.4.3** written justification   | "Why is this script here?"                               | `authorisation.effective.description` and the full `authorisation.metadataPath` chain  |
+| **6.4.3** authorisation           | "Who approved it, and when?"                             | `authorisation.effective.authorised` / `.date`, plus `inventoryEntry.raw` as committed |
+| **6.4.3** integrity assurance     | "How do you know it has not changed?"                    | `observed.hash` and the authorising matcher (hash, anchored content, or provenance)    |
+| **11.6.1** detection and alerting | "Show me the mechanism ran, and what it found."          | `run` (mode, inventory commit, time window, status) and every non-`authorised` row     |
+| Both                              | "Where is this written down?"                            | `inventoryEntry.provenance` — `targets/2.0.json:184` plus the exact JSON pointer       |
+
+The provenance is specific, not approximate: for an entry authorised by one of several hashes it points at `/scripts/7/authoriseWith/hashes/2`, the hash that actually matched — not the entry as a whole.
+
+### Output layout
+
+```text
+<report-dir>/index.html                    links both passes
+<report-dir>/inventory/report.{json,html}
+<report-dir>/detection/report.{json,html}
+```
+
+The HTML page is self-contained — no network access, no fonts, no images — so it opens from a downloaded CI artefact on a machine with no connectivity. It supports filtering by status, free-text search and a "findings only" view, and remains complete with JavaScript disabled (so print-to-PDF captures everything). The JSON is the canonical machine-readable form.
+
+`--mode all` writes **two** reports, one per pass. The passes hit different URLs against different branches and evidence different requirements, and the inventory pass mutates the baseline mid-run — merged, a row's meaning would depend on which pass produced it. Both documents of a single invocation share a `run.correlationId`.
+
+### What the report deliberately does not contain
+
+- **Full script bodies.** `observed.hash` is the integrity anchor; `observed.contentExcerpt` is a 512-character excerpt for human recognition only. `contentLength` and `contentTruncated` are always present, so the truncation is itself auditable.
+- **Query strings, fragments or credentials in URLs.** Removed before writing — from the script name, the `origin.url`, the content excerpt, and any URL embedded in a header value (a CSP `report-uri` commonly carries a per-request token). A signed URL or API key cannot reach a CI artefact. The redacted form keeps a `[query-redacted]` marker, so an auditor can still see that a query was present.
+- **Raw control or bidirectional characters.** Replaced with a visible `⟨U+XXXX⟩` token, so a malicious excerpt cannot _render_ as something benign.
+
+A run filtered with `--target` is labelled a **partial census** in both the document and the page banner; a run in which any target failed is marked `run.status: "partial"` with the failures named. A short census is never presented as a clean one.
+
+### Diffing between runs
+
+Report generation introduces no volatility of its own: rows are given a total order, and everything inherently run-specific is confined to the `run` and `generator` blocks. Two runs over identical observations produce byte-identical documents once those blocks are removed:
+
+```bash
+diff <(jq 'del(.run, .generator)' a/report.json) <(jq 'del(.run, .generator)' b/report.json)
+```
+
+Real payment pages do still change between runs, and the report reflects that faithfully rather than hiding it. Expect legitimate differences from per-response CSP nonces, third-party scripts whose bytes change between deploys, `blob:` URLs (the browser mints a fresh identifier each load), and signed or session-scoped URLs in header values. A difference in this diff means the page changed — which is exactly what the report exists to show.
+
+### Compatibility
+
+`schemaVersion` is semver. Additive optional fields bump the minor; removing a field, changing its type, or changing what a value means bumps the major. Consumers should gate on the major version and tolerate unknown fields.
+
+### In CI
+
+The bundled `inventory-and-detection.yml` workflow passes `--report-dir reports` and uploads the directory as an `auditor-report-<run-id>-<attempt>` artefact with `if: always()`, so the evidence survives a failed detection run — the run an assessor is most likely to ask about. A digest of the findings is also appended to the GitHub Actions job summary.
+
+> **Retention:** the Actions artefact is retained for 90 days (GitHub's maximum). PCI evidence retention is typically twelve months, so treat the artefact as a convenience copy, **not** the system of record. Archive it elsewhere if you need to satisfy a retention requirement.
 
 ## GitHub Actions Setup
 
@@ -685,6 +753,72 @@ For complex authorization policies, `authoriseWith` supports composite matchers:
   ]
 }
 ```
+
+### CspDirectiveMatcher (Content-Security-Policy)
+
+CSP header values are split per directive before matching, so each directive is authorised on its own. Authorising one with an anchored `contentMatcher` is brittle: the sources in a directive are an unordered set, so merely reordering them produces a semantically identical policy that nonetheless fails to match — and every reorder mints another authorised alternative, until real entries carry a dozen or more near-duplicates. (Dropping a source is a different matter: as the table below shows, a removal can genuinely widen a policy, which is why it is flagged rather than tolerated.)
+
+`cspDirectiveMatcher` compares sets instead:
+
+```json
+{
+  "identifyWith": {
+    "andMatcher": [{ "headerNameMatcher": "^content-security-policy$" }, { "hostMatcher": "^checkout\\.example\\.com$" }]
+  },
+  "authoriseWith": [
+    {
+      "cspDirectiveMatcher": {
+        "directive": "frame-src",
+        "allow": ["'self'", "https://js.stripe.com", "https://hooks.stripe.com", "https://m.stripe.network"]
+      },
+      "authorisationInfo": {
+        "description": "Payment provider frames on the checkout page",
+        "authorised": true,
+        "date": "2026-08-06T00:00:00.000Z"
+      }
+    },
+    {
+      "cspDirectiveMatcher": {
+        "directive": "script-src",
+        "allow": ["'self'", "'nonce-*'", "https://js.stripe.com"]
+      },
+      "authorisationInfo": {
+        "description": "Nonce-gated scripts plus the Stripe SDK",
+        "authorised": true,
+        "date": "2026-08-06T00:00:00.000Z"
+      }
+    }
+  ]
+}
+```
+
+Note the **array**. `identifyWith` claims the whole header for that host, and identification is first-match-wins, so the entry needs one alternative per directive the page serves — a single-directive `authoriseWith` on a whole-header `identifyWith` would flag every other directive as unauthorised.
+
+| Change to the observed policy | Result      | Why                                               |
+| ----------------------------- | ----------- | ------------------------------------------------- |
+| Sources reordered             | authorised  | A permutation is the same policy                  |
+| A source added                | **flagged** | The reason names exactly which sources were added |
+| A source removed              | **flagged** | Removals can _widen_ a policy — see below         |
+| A different nonce value       | authorised  | `'nonce-*'` stands for one per-response nonce     |
+| A second nonce added          | **flagged** | The placeholder is one-for-one, not a quantifier  |
+| A different directive         | **flagged** | Wrong assertion entirely                          |
+
+**Why removals are flagged.** "Fewer sources must be safer" is false for CSP, because some sources only suppress others while present:
+
+| Approved                                       | Observed after a removal            | Effect                                                     |
+| ---------------------------------------------- | ----------------------------------- | ---------------------------------------------------------- |
+| `script-src 'self' 'unsafe-inline' 'nonce-*'`  | `script-src 'self' 'unsafe-inline'` | `'unsafe-inline'` stops being ignored and becomes **live** |
+| `script-src 'strict-dynamic' 'nonce-*' https:` | `script-src https:`                 | `https:` starts matching **every** HTTPS origin            |
+| `require-trusted-types-for 'script'`           | `require-trusted-types-for`         | Trusted Types enforcement **off**                          |
+
+Membership therefore has to match exactly, and every CSP change gets a human look. Ordering is the only thing safely tolerated.
+
+Notes:
+
+- `'nonce-*'` is the **only** wildcard. It stands for exactly one per-response nonce — a nonce is regenerated on every response, so pinning a value would fail on the next request. Two observed nonces against one `'nonce-*'` is a difference and is reported.
+- Host wildcards are **not** expanded. `https://*.js.stripe.com` and `https://a.js.stripe.com` are different assertions, and a change between them is reported. The subject is the policy text, not the set of origins it resolves to.
+- Directive names are matched case-insensitively, as CSP defines them; source expressions are case-sensitive.
+- The inventory workflow emits this form automatically when it discovers a new `content-security-policy` value, collapsing the observed nonce to `'nonce-*'`. Other headers keep the exact-value `contentMatcher`, because for those the whole value is the assertion.
 
 ### HostMatcher / UrlMatcher (provenance)
 

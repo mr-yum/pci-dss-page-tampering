@@ -107,6 +107,10 @@ jobs:
           CLI_ARGS="$CLI_ARGS --git-user-name '${{ vars.GIT_USER_NAME }}'"
           CLI_ARGS="$CLI_ARGS --git-user-email '${{ vars.GIT_USER_EMAIL }}'"
 
+          # Auditor report: a full census of every script and header observed,
+          # mapped to the inventory matcher that authorised it. Uploaded below.
+          CLI_ARGS="$CLI_ARGS --report-dir reports"
+
           # Add mode (default: all for scheduled runs)
           MODE="${{ github.event.inputs.mode || 'all' }}"
           CLI_ARGS="$CLI_ARGS --mode $MODE"
@@ -126,3 +130,20 @@ jobs:
           npm start -- $CLI_ARGS
 
           echo "✅ PCI DSS detection completed successfully"
+
+      - name: Upload auditor report
+        # Evidence matters most when the run failed: `npm start` exits non-zero
+        # on a detection failure, which is exactly the run an assessor asks
+        # about. Without always() the artefact is lost precisely then.
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: auditor-report-${{ github.run_id }}-${{ github.run_attempt }}
+          path: reports/
+          # Warn rather than fail: writing the report never fails a run, so a
+          # missing artefact should surface in the log, not turn the job red.
+          if-no-files-found: warn
+          # GitHub's maximum. PCI evidence retention is typically 12 months, so
+          # treat this as a convenience copy, not the system of record.
+          retention-days: 90
+          compression-level: 9

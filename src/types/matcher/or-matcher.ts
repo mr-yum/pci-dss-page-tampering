@@ -23,6 +23,7 @@
  */
 
 import type { AuthorizationResult } from './authorization-result.js'
+import { type AuthorizationTraceStep, type AuthorizeOptions, leafTrace } from './authorization-trace.js'
 import type { AuthorisationInfo, AuthorisationMatcher, Matchable, Matcher } from './matcher.interface.js'
 
 /**
@@ -119,29 +120,47 @@ export class OrMatcher<T extends Matchable = Matchable> implements Authorisation
    * @param resource - The resource to authorize
    * @returns AuthorizationResult with authorized flag, optional reason, and metadata path
    */
-  authorize(resource: T): AuthorizationResult {
+  authorize(resource: T, options?: AuthorizeOptions): AuthorizationResult {
+    // Descriptive only — `withTrace` never changes a decision, and returns the
+    // result untouched unless the caller opted in.
+    const withTrace = (result: AuthorizationResult, consulted: readonly AuthorizationTraceStep[]): AuthorizationResult => {
+      if (!options?.collectTrace) return result
+
+      return { ...result, trace: { type: 'or', consulted } }
+    }
+
     // Fail-secure: null/empty content check
     if (!resource || !resource.content || resource.content.trim() === '') {
-      return {
-        authorized: false,
-        reason: 'Resource content is null or empty',
-        metadataPath: this.authorisationInfo ? [this.authorisationInfo] : [],
-      }
+      return withTrace(
+        {
+          authorized: false,
+          reason: 'Resource content is null or empty',
+          metadataPath: this.authorisationInfo ? [this.authorisationInfo] : [],
+        },
+        [],
+      )
     }
 
     // FR-013: First-match-wins semantics (short-circuit on first identifying child)
-    const matchingChild = this.children.find((child) => child.identify(resource))
+    // findIndex rather than find: the position is what the auditor report turns
+    // into a JSON pointer segment.
+    const matchingChildIndex = this.children.findIndex((child) => child.identify(resource))
+    const matchingChild = matchingChildIndex === -1 ? undefined : this.children[matchingChildIndex]
 
     if (!matchingChild) {
-      return {
-        authorized: false,
-        reason: 'No child matcher identified the resource',
-        metadataPath: this.authorisationInfo ? [this.authorisationInfo] : [],
-      }
+      return withTrace(
+        {
+          authorized: false,
+          reason: 'No child matcher identified the resource',
+          metadataPath: this.authorisationInfo ? [this.authorisationInfo] : [],
+        },
+        [],
+      )
     }
 
     // Get authorization from matching child
-    const childResult = matchingChild.authorize(resource)
+    const childResult = matchingChild.authorize(resource, options)
+    const consulted: readonly AuthorizationTraceStep[] = [{ slot: 'child', index: matchingChildIndex, child: childResult.trace ?? leafTrace(matchingChild) }]
 
     // FR-004, FR-011: Top-level authorisationInfo overrides child result
     // - If authorised: true → override to authorized
@@ -156,10 +175,10 @@ export class OrMatcher<T extends Matchable = Matchable> implements Authorisation
       if (!authorized) {
         result.reason = `Top-level authorization denied: ${this.authorisationInfo.description}`
       }
-      return result
+      return withTrace(result, consulted)
     }
 
     // Use child authorization result without override
-    return childResult
+    return withTrace(childResult, consulted)
   }
 }

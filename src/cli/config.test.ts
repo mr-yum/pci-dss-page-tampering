@@ -271,4 +271,28 @@ describe('Configuration Builder', () => {
       expect(formatted).toBe('https://x-access-token:ghp_token@github.com/org/inventory.git')
     })
   })
+
+  describe('reporting configuration', () => {
+    const baseArgs = (reportDir?: string): CliArguments =>
+      ({
+        mode: 'detection',
+        repo: 'https://github.com/org/inventory',
+        gitToken: 'ghp_abc123xyz',
+        inventoryBranch: 'inventory-updates',
+        detectionBranch: 'main',
+        gitUserName: 'PCI DSS Page Tampering Bot',
+        gitUserEmail: 'noreply@example.com',
+        totpSeed: [],
+        help: false,
+        ...(reportDir === undefined ? {} : { reportDir }),
+      }) as CliArguments
+
+    it('disables reporting when --report-dir is omitted', () => {
+      expect(buildConfiguration(baseArgs()).reporting.reportDir).toBeNull()
+    })
+
+    it('carries the directory through when --report-dir is supplied', () => {
+      expect(buildConfiguration(baseArgs('./reports')).reporting.reportDir).toBe('./reports')
+    })
+  })
 })

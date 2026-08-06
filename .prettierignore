@@ -1,0 +1,10 @@
+# Generated at runtime, not source.
+reports/
+pulled_repo/
+tmp/
+
+# Build and coverage output.
+dist/
+lib/
+build/
+coverage/

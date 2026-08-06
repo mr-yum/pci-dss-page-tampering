@@ -17,6 +17,7 @@ import { UnknownHeaderFound } from '../../types/comparison/unknown-header-found.
 import type { DetectedHeader, HeaderDetectionSummary } from '../../types/header.js'
 import type { Inventory, InventoryHeaderInfo } from '../../types/inventory/model.js'
 import type { Target } from '../../types/target.js'
+import { detectedHeaderToMatchable } from '../../utils/header.js'
 import { extractHost, redactUrl } from '../../utils/url.js'
 
 export class HeaderComparisonService implements IHeaderComparisonService {
@@ -164,13 +165,7 @@ export class HeaderComparisonService implements IHeaderComparisonService {
     // - name stays as name
     // - value → content (matcher expects content field)
     // - hash is omitted for headers (optional field with exactOptionalPropertyTypes)
-    const authorizationResult = matchedEntry.authoriseWith.matcher.authorize({
-      name: header.name,
-      content: header.value,
-      workflowId: target.workflowId ?? 'default',
-      ...(header.url !== undefined ? { url: header.url } : {}),
-      // hash is omitted for headers (optional field in Matchable interface)
-    })
+    const authorizationResult = matchedEntry.authoriseWith.matcher.authorize(detectedHeaderToMatchable(header, target))
     const isAuthorized = matchedEntry.authoriseWith.authorisationInfo.authorised && authorizationResult.authorized
 
     // T065: Log authorization result with matcher details

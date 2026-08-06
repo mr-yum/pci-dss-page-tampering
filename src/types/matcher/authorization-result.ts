@@ -10,6 +10,7 @@
  */
 
 import type { InventoryAuthorisationInfo } from '../inventory/model.js'
+import type { AuthorizationTrace } from './authorization-trace.js'
 
 /**
  * Result of an authorization check.
@@ -46,4 +47,16 @@ export type AuthorizationResult = {
    * Optional: undefined for legacy matchers without authorization info
    */
   metadataPath?: InventoryAuthorisationInfo[]
+
+  /**
+   * Which child slots the composite matchers actually visited.
+   *
+   * Present only when the caller passed `{ collectTrace: true }`, so results on
+   * the normal detection path are byte-identical to what they have always been.
+   * Used by the auditor report to cite the exact OR alternative or hash entry
+   * that authorised a resource.
+   *
+   * @see ./authorization-trace.ts
+   */
+  trace?: AuthorizationTrace
 }

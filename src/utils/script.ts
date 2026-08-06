@@ -78,6 +78,28 @@ export function inventoryScriptInfoToRawInventoryScriptInfo(inventoryScriptInfo:
         }
         return config
       }
+      // `MatcherConfigSchema` is shared between scripts and headers, so a
+      // script entry may legally be written with a headerNameMatcher. Odd, but
+      // it validates and loads — and without this case serialising such an
+      // entry throws, which now happens on the detection path via the auditor
+      // report rather than only when writing inventory back.
+      case 'header-name': {
+        const config: any = { headerNameMatcher: pattern as string }
+        const authInfo = (matcher as any).getAuthorisationInfo?.()
+        if (authInfo) {
+          config.authorisationInfo = serializeAuthorisationInfo(authInfo)
+        }
+        return config
+      }
+      case 'csp-directive': {
+        const csp = matcher as unknown as { getDirective(): string; getAllowedSources(): readonly string[] }
+        const config: any = { cspDirectiveMatcher: { directive: csp.getDirective(), allow: [...csp.getAllowedSources()] } }
+        const authInfo = (matcher as any).getAuthorisationInfo?.()
+        if (authInfo) {
+          config.authorisationInfo = serializeAuthorisationInfo(authInfo)
+        }
+        return config
+      }
       case 'content': {
         const config: any = { contentMatcher: pattern as string }
         const authInfo = (matcher as any).getAuthorisationInfo?.()

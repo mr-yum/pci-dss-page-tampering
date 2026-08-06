@@ -89,6 +89,25 @@ const HashMatcherConfigSchema = z.object({
  * IMPORTANT: Must use explicit type annotation (z.ZodType<any>) on MatcherConfigSchema
  * for z.lazy() to resolve circular references correctly.
  */
+/**
+ * Set-based Content-Security-Policy directive matcher.
+ *
+ * `allow` is the approved set of source expressions. An observed directive is
+ * authorised when every source it carries appears in that set, regardless of
+ * order — see CspDirectiveMatcher for the rationale.
+ */
+const CspDirectiveMatcherConfigSchema = z.object({
+  cspDirectiveMatcher: z.object({
+    directive: z
+      .string()
+      .trim()
+      .min(1, 'cspDirectiveMatcher.directive must not be empty')
+      .regex(/^[A-Za-z][A-Za-z0-9-]*$/u, 'cspDirectiveMatcher.directive must be a CSP directive name, e.g. "script-src"'),
+    allow: z.array(z.string().trim().min(1, 'cspDirectiveMatcher.allow entries must not be empty')),
+  }),
+  authorisationInfo: InventoryAuthorisationInfoRawSchema.optional(),
+})
+
 const OrMatcherConfigSchema = z.object({
   orMatcher: z.lazy(() => z.array(MatcherConfigSchema).min(1, 'orMatcher must contain at least 1 child')),
   authorisationInfo: InventoryAuthorisationInfoRawSchema.optional(),
@@ -126,6 +145,7 @@ export const MatcherConfigSchema: z.ZodType<any> = z
     HostMatcherConfigSchema,
     UrlMatcherConfigSchema,
     WorkflowMatcherConfigSchema,
+    CspDirectiveMatcherConfigSchema,
     HashMatcherConfigSchema,
     OrMatcherConfigSchema,
     AndMatcherConfigSchema,

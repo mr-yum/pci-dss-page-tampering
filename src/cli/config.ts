@@ -1,5 +1,5 @@
 import type { CliArguments } from '../types/cli.js'
-import type { AlertingConfiguration, AuthenticationConfiguration, BranchConfiguration, ExecutionMode, RepositoryConfiguration, RuntimeConfiguration, TargetFilter, TotpConfiguration } from '../types/config.js'
+import type { AlertingConfiguration, AuthenticationConfiguration, BranchConfiguration, ExecutionMode, ReportingConfiguration, RepositoryConfiguration, RuntimeConfiguration, TargetFilter, TotpConfiguration } from '../types/config.js'
 import { parseTotpSeedEntry } from '../utils/totp.js'
 
 /**
@@ -18,6 +18,19 @@ export function buildConfiguration(cliArgs: CliArguments): RuntimeConfiguration 
     authentication: buildAuthenticationConfiguration(cliArgs.repo, cliArgs.gitToken, cliArgs.gitUserName, cliArgs.gitUserEmail),
     alerting: buildAlertingConfiguration(cliArgs.slackToken),
     totp: buildTotpConfiguration(cliArgs.totpSeed),
+    reporting: buildReportingConfiguration(cliArgs.reportDir),
+  }
+}
+
+/**
+ * Build auditor report configuration.
+ *
+ * Absent flag means no report is written at all — reporting never changes the
+ * behaviour of a run that did not ask for it.
+ */
+function buildReportingConfiguration(reportDir: string | undefined): ReportingConfiguration {
+  return {
+    reportDir: reportDir ?? null,
   }
 }
 

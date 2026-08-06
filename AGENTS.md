@@ -27,7 +27,7 @@ This is a PCI DSS compliance system implementing **requirements 6.4.3 (Script Ma
 
 ## CLI Usage
 
-The system is configured entirely via command-line parameters. No environment variables are used for execution configuration.
+The system is configured entirely via command-line parameters. No environment variables are used for execution configuration. (When running under GitHub Actions, the runner's standard `GITHUB_*` variables are read solely to annotate the auditor report with CI provenance and to append its job-summary digest — they never influence what the run does.)
 
 ### Basic Syntax
 
@@ -52,6 +52,7 @@ npm start -- [OPTIONS]
 | `--inventory-branch <name>` | Branch for inventory operations                                | `inventory-updates` |
 | `--detection-branch <name>` | Branch for detection operations                                | `main`              |
 | `--totp-seed <name>=<seed>` | Named base32 TOTP seed for `totp` workflow steps (repeatable)  | -                   |
+| `--report-dir <path>`       | Directory for auditor report artefacts (HTML + JSON)           | - (no report)       |
 | `--help`                    | Display help message and exit                                  | -                   |
 
 ### Usage Examples
@@ -157,6 +158,14 @@ act push --container-architecture linux/amd64 --secret-file .env.secrets
 
 4. **AlertService** (`src/services/alert/slack.ts`) - Sends Slack notifications for detected changes
 
+5. **ReportService** (`src/services/report/`) - Produces the auditor report when `--report-dir` is set:
+   - `ReportCollector` is fed once per target run from `main.ts`, after both comparisons and _before_ the inventory diff, so the report records the baseline the comparison actually ran against
+   - Deliberately **not** an `IAlertService`: alerting is called twice per target with a partial view, fires after the diff, and drops `authorized_*` results — the very rows a census needs
+   - Results are mapped to rows eagerly so the heavy comparison results (full script bodies, `Target`, matcher trees) can be freed
+   - Emitted per pass from a `finally`, so a partially-failed run still produces evidence for the targets that succeeded; a write failure is logged and never fails the run
+   - `--mode all` writes two documents (one per pass) joined by `run.correlationId`
+   - Every authorised row carries `file:line` + JSON pointer provenance for the matcher that authorised it, resolved by `src/utils/provenance.ts` from the raw inventory text retained on `Inventory.source`
+
 ### Data Flow
 
 1. **Inventory Workflow**:
@@ -206,9 +215,9 @@ act push --container-architecture linux/amd64 --secret-file .env.secrets
 
 Each inventory entry (scripts and headers) uses a nested authorization structure:
 
-- `identifyWith`: Matcher for identifying the resource (NameMatcher/HeaderNameMatcher/ContentMatcher/HashMatcher/HostMatcher/UrlMatcher/OrMatcher/AndMatcher)
+- `identifyWith`: Matcher for identifying the resource (NameMatcher/HeaderNameMatcher/ContentMatcher/HashMatcher/HostMatcher/UrlMatcher/CspDirectiveMatcher/OrMatcher/AndMatcher)
 - `authoriseWith`: Matcher configuration with authorization metadata:
-  - Can be a single matcher (NameMatcher, ContentMatcher, HashMatcher, HostMatcher, UrlMatcher, OrMatcher, AndMatcher)
+  - Can be a single matcher (NameMatcher, ContentMatcher, HashMatcher, HostMatcher, UrlMatcher, CspDirectiveMatcher, OrMatcher, AndMatcher)
   - Can be an array of matchers (syntactic sugar for OrMatcher)
   - Must include `authorisationInfo` with description, authorization status, and date
   - Composite matchers (OrMatcher, AndMatcher) can have nested `authorisationInfo` at each level
@@ -275,6 +284,7 @@ This structure ensures authorization logic (matcher) and metadata are cohesively
 - **HostMatcher** (`src/types/matcher/host-matcher.ts`) - Derives the host portion of `Matchable.url` on the fly and regex-matches against it. Use when the inventory cares about origin but not path (e.g. "any CSP from `*.checkout.example`"). Fails-secure when `url` is missing or unparseable.
 - **UrlMatcher** (`src/types/matcher/url-matcher.ts`) - Regex-matches the full `Matchable.url` (host + path + query). Use when path precision matters (e.g. _"only `https://payments.example.com/sdk/client-v1.js`, not arbitrary paths"_). Fails-secure when `url` is missing.
 - **WorkflowMatcher** (`src/types/matcher/workflow-matcher.ts`) - Regex-matches `Matchable.workflowId` so a shared inventory entry can apply to one or more checkout variations. Fails secure when `workflowId` is missing or empty.
+- **CspDirectiveMatcher** (`src/types/matcher/csp-directive-matcher.ts`) - Matches one Content-Security-Policy directive by its **set** of source expressions rather than the literal header text. Ordering is tolerated; any difference in membership — added _or_ removed — is flagged, and the reason names which sources moved and in which direction. Removals are deliberately not tolerated: some CSP sources only suppress others while present, so dropping the nonce from `script-src 'self' 'unsafe-inline' 'nonce-…'` makes `'unsafe-inline'` live, dropping `'strict-dynamic'` makes a scheme-source match every origin, and a bare `require-trusted-types-for` is enforcement off. Use for CSP directives instead of an anchored `contentMatcher`, which mints a fresh near-duplicate alternative on every reorder. `'nonce-*'` is the only wildcard and stands for exactly one per-response nonce; host wildcards are not expanded (`https://*.example.com` and `https://a.example.com` are different assertions); directive names are case-insensitive per the CSP spec. Emitted for newly discovered `content-security-policy` values by `newHeaderValueMatcherConfig` (`src/utils/header.ts`), which `ScriptInventoryService` uses on all three header-writing paths. A whole-header `identifyWith` needs one `authoriseWith` alternative per directive, since identification is first-match-wins.
 - **OrMatcher** (`src/types/matcher/or-matcher.ts`) - Composite matcher implementing OR logic (authorizes if ANY child succeeds, first-match-wins)
 - **AndMatcher** (`src/types/matcher/and-matcher.ts`) - Composite matcher implementing AND logic (authorizes only if ALL children succeed)
 
@@ -340,7 +350,8 @@ Workflows are defined as step-by-step instructions for Puppeteer in `src/workflo
 - `src/interfaces/` - TypeScript interfaces for services
 - `src/repositories/` - Data access layer for inventories
 - `src/stores/` - Storage implementations (Git, in-memory)
-- `src/utils/` - Utility functions for hashing, parsing, and workflow conversion
+- `src/services/report/` - Auditor report: collector, mapper, deterministic JSON, self-contained HTML renderer, GitHub step summary
+- `src/utils/` - Utility functions for hashing, parsing, and workflow conversion. Notably `json-position.ts` (JSON pointer → line/column, dependency-free) and `provenance.ts` (comparison result → the inventory file, pointer and line that authorised it)
 
 ## Environment Requirements
 

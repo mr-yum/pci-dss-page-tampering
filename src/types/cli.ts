@@ -17,6 +17,7 @@ export type RawCliArgs = {
   gitUserName?: string
   gitUserEmail?: string
   totpSeed?: string[]
+  reportDir?: string
   help?: boolean
 }
 
@@ -145,6 +146,7 @@ export const CliArgsSchema = z
     gitUserName: z.string().default('PCI DSS Page Tampering Bot'),
     gitUserEmail: z.string().default('noreply@example.com'),
     totpSeed: totpSeedSchema,
+    reportDir: z.string().trim().min(1, 'Report directory must not be empty').optional(),
     help: z.boolean().default(false),
   })
   .superRefine((args, ctx) => {
