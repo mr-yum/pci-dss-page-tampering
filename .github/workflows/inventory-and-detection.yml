@@ -136,7 +136,7 @@ jobs:
         # on a detection failure, which is exactly the run an assessor asks
         # about. Without always() the artefact is lost precisely then.
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: auditor-report-${{ github.run_id }}-${{ github.run_attempt }}
           path: reports/
