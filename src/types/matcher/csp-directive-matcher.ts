@@ -94,8 +94,21 @@ export class CspDirectiveMatcher implements AuthorisationMatcher {
     return this.authorisationInfo
   }
 
+  /**
+   * Identify only a value this matcher would also authorise.
+   *
+   * Deliberately strict, mirroring HashMatcher. `OrMatcher` picks the *first*
+   * child that identifies and never tries another, so a matcher that identified
+   * on directive name alone would make sibling alternatives for the same
+   * directive unreachable — only the first would ever be consulted, and every
+   * other approved variant of that directive would be reported unauthorised.
+   */
   identify(resource: Matchable): boolean {
-    return this.parse(resource.content)?.directive === this.directive
+    const parsed = this.parse(resource.content)
+
+    if (parsed === null || parsed.directive !== this.directive) return false
+
+    return this.compareSets(parsed.sources).length === 0
   }
 
   authorize(resource: Matchable): AuthorizationResult {

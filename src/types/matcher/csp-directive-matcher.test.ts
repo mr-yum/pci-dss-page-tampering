@@ -31,15 +31,24 @@ describe('CspDirectiveMatcher', () => {
 
   describe('identify', () => {
     it('identifies a value for its own directive', () => {
-      expect(matcher().identify(value("frame-src 'self'"))).toBe(true)
+      expect(matcher().identify(value(`frame-src ${ALLOW.join(' ')}`))).toBe(true)
     })
 
-    it('identifies regardless of the sources present', () => {
-      expect(matcher().identify(value('frame-src https://anything.example.test'))).toBe(true)
+    it('does not identify a value it would not authorise', () => {
+      // OrMatcher consults only the first child that identifies, so a loose
+      // identify would make sibling alternatives for the same directive
+      // unreachable. Verified against production: three approved frame-src
+      // variants, only the first ever consulted.
+      expect(matcher().identify(value('frame-src https://anything.example.test'))).toBe(false)
+      expect(matcher().identify(value("frame-src 'self'"))).toBe(false)
+    })
+
+    it('identifies an approved set in any order', () => {
+      expect(matcher().identify(value(`frame-src ${[...ALLOW].reverse().join(' ')}`))).toBe(true)
     })
 
     it('is case-insensitive about the directive name, as CSP is', () => {
-      expect(matcher().identify(value("FRAME-SRC 'self'"))).toBe(true)
+      expect(matcher().identify(value(`FRAME-SRC ${ALLOW.join(' ')}`))).toBe(true)
     })
 
     it('does not identify a different directive', () => {
