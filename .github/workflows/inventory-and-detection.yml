@@ -16,11 +16,19 @@ on:
           - all
           - inventory
           - detection
-  schedule:
-    # Run daily at 12:00 PM UTC, night time in Sydney/Melbourne
-    - cron: '0 12 * * *'
   push:
     branches: ['main']
+
+# No `schedule` here any more. The scheduled production run moved to the
+# inventory repository (mr-yum/script-inventory), because the auditor report's
+# artefact carries that repository's inventory files verbatim and this
+# repository is public — artefacts here are downloadable by anyone.
+#
+# `workflow_dispatch` and `push: main` remain, and both are still FULL
+# production runs against the real inventory: `--mode all` writes to the
+# inventory repository, opens a pull request there, and sends Slack alerts.
+# They are not dry runs. Their value is exercising a tool change end to end;
+# narrow the mode or drop the trigger if that is not wanted.
 
 jobs:
   run-inventory-and-detection:
