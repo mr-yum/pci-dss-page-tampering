@@ -86,6 +86,23 @@ export function join(fragments: readonly RawHtml[], separator = ''): RawHtml {
  * what an attacker leaves behind, and turning the evidence document into a
  * click-to-execute page is not acceptable.
  */
+/**
+ * Build a relative href to a file inside the artefact directory.
+ *
+ * Components come from the inventory repository, so they are neither URL-safe
+ * nor trustworthy: a filename containing `#` or `?` silently truncates the
+ * link, and a `.` or `..` component points outside the artefact. Encode each
+ * component and refuse the traversing ones — the caller renders plain text
+ * instead of a broken or escaping link.
+ */
+export function artefactRelativeHref(path: string): string | null {
+  const segments = path.split('/')
+
+  if (segments.some((segment) => segment === '' || segment === '.' || segment === '..')) return null
+
+  return segments.map(encodeURIComponent).join('/')
+}
+
 export function safeHttpsHref(value: string | null | undefined): string | null {
   if (value === null || value === undefined) return null
 

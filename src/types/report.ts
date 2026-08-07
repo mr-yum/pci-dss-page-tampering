@@ -29,7 +29,7 @@ import type { ResponseResourceType } from './header.js'
  * change in what an existing value means. Consumers should gate on the major
  * and tolerate unknown fields.
  */
-export const REPORT_SCHEMA_VERSION = '1.1.0'
+export const REPORT_SCHEMA_VERSION = '1.2.0'
 
 /** Which half of the system produced this document. */
 export type ReportPass = 'inventory' | 'detection'
@@ -164,6 +164,26 @@ export type ReportTargetSection = {
   unmatchedInventoryEntries: ReportUnmatchedEntry[]
 }
 
+/**
+ * An inventory file shipped alongside the report.
+ *
+ * The bytes are the exact ones the run parsed — the same text the provenance
+ * line numbers were computed against — so `targets/1.0.json:489` in this report
+ * resolves correctly against the copy in this artefact, whatever the branch has
+ * done since. The digest lets a reader confirm the copy was not altered after
+ * the fact.
+ */
+export type ReportInventorySource = {
+  /** Path relative to the inventory repo root, e.g. `targets/1.0.json`. */
+  file: string
+  /** SHA-256 of the exact bytes as read. */
+  sha256: string
+  /** Where the copy sits, relative to this report document. */
+  copiedTo: string
+  /** Size in bytes, so a truncated copy is obvious. */
+  bytes: number
+}
+
 export type ReportInventoryRef = {
   branch: string
   commitSha: string | null
@@ -188,6 +208,8 @@ export type ReportRunMetadata = {
   /** `partial` when any target failed, so a short census is never mistaken for a clean one. */
   status: 'complete' | 'partial'
   failures: { targetKey: string; message: string }[]
+  /** Inventory files copied next to this report. Empty when none was retained. */
+  inventorySources: ReportInventorySource[]
   ci: { provider: 'github-actions'; runId: string; runAttempt: string; workflow: string; repository: string; sha: string } | null
 }
 

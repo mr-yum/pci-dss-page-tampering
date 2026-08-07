@@ -16,6 +16,7 @@ import { UnknownScriptFound } from '../../../types/comparison/unknown-script-fou
 import type { AuditorReport } from '../../../types/report.js'
 import { ReportCollector } from '../collector.js'
 import { buildInventory, detectionTarget, everyResultType, makeHeader, makeScript, runContext } from '../test-fixtures.js'
+import { artefactRelativeHref, escapeHtml } from './escape.js'
 import { renderReportHtml } from './template.js'
 
 describe('renderReportHtml', () => {
@@ -47,6 +48,19 @@ describe('renderReportHtml', () => {
         .replace(/&#(\d+);/gu, (_full, dec: string) => String.fromCharCode(Number(dec)))
         .replace(/&amp;/gu, '&'),
     )
+
+  /**
+   * A link is safe if it is an in-page anchor, an https run-metadata link, or a
+   * relative path to a file inside the artefact (the inventory copies). It must
+   * never carry a scheme, be absolute, or climb out of the directory.
+   */
+  const isSafeHref = (href: string): boolean => {
+    if (href.startsWith('#') || href.startsWith('https://')) return true
+    if (href.startsWith('/') || href.startsWith('\\')) return false
+    if (/^[a-z][a-z0-9+.-]*:/iu.test(href)) return false
+
+    return !href.split('/').includes('..')
+  }
 
   /** Build a report whose detected content carries `payload` in every field an attacker controls. */
   const buildWithPayload = (payload: string): AuditorReport => {
@@ -89,9 +103,9 @@ describe('renderReportHtml', () => {
       expect(renderReportHtml(build())).not.toMatch(/\ssrc="/u)
     })
 
-    it('links only in-page anchors and https run metadata', () => {
+    it('links only in-page anchors, https run metadata, or files inside the artefact', () => {
       for (const reference of hrefs(renderReportHtml(build()))) {
-        expect(reference.startsWith('#') || reference.startsWith('https://')).toBe(true)
+        expect({ href: reference, safe: isSafeHref(reference) }).toEqual({ href: reference, safe: true })
       }
     })
 
@@ -132,7 +146,62 @@ describe('renderReportHtml', () => {
     it('renders every row of the census', () => {
       const html = renderReportHtml(build())
 
-      expect(html.match(/<tr data-row/gu)).toHaveLength(7)
+      // The census is what was observed. Unmatched inventory entries are rows
+      // too, but they are counted separately below.
+      expect(html.match(/<tr data-row[^>]*data-kind=/gu)).toHaveLength(7)
+    })
+
+    it('lists each shipped inventory copy, linked at the path it was written to', () => {
+      const report = build()
+      const html = renderReportHtml(report)
+
+      expect(report.run.inventorySources.length).toBeGreaterThan(0)
+      expect(html).toContain('Inventory as scanned')
+
+      for (const source of report.run.inventorySources) {
+        // The href must be the artefact-relative `copiedTo`, or the link points
+        // at evidence that is not where the document says it is.
+        expect(html).toContain(`href="${escapeHtml(artefactRelativeHref(source.copiedTo)!)}"`)
+        expect(html).toContain(escapeHtml(source.copiedTo))
+        // The digest is what an auditor verifies the copy against.
+        expect(html).toContain(source.sha256.slice(0, 16))
+      }
+    })
+
+    it('warns, beside the links, that the shipped copies are not redacted', () => {
+      // The rest of the document is redacted; these copies cannot be, without
+      // invalidating the line numbers they exist to keep resolvable. Someone
+      // deciding who may download the artefact has to see that where the links
+      // are, not only in the notes further down.
+      const html = renderReportHtml(build())
+      const section = html.slice(html.indexOf('Inventory as scanned'), html.indexOf('Inventory as scanned') + 1500)
+
+      expect(section).toContain('not redacted')
+      expect(section).toContain('same sensitivity as the')
+    })
+
+    it('renders unmatched inventory entries as filterable rows, off by default', () => {
+      const html = renderReportHtml(build())
+
+      expect(html.match(/data-status="not_observed"/gu)!.length).toBeGreaterThan(1)
+
+      // The checkbox ships unchecked, so the block starts hidden once the
+      // filter script runs...
+      expect(html).toContain('<input type="checkbox" data-status="not_observed" />')
+      expect(html).not.toContain('data-status="not_observed" checked')
+
+      // ...but the markup itself is complete, so JS-off readers still see it.
+      expect(html).toContain('<div data-block>')
+      expect(html).toContain('Inventory entries not observed in this run')
+    })
+
+    it('exempts unmatched entries from the Type filter rather than mislabelling their kind', () => {
+      // An inventory entry for a script may match an external or an inline one;
+      // claiming either bucket would hide the row for the wrong reason.
+      const unmatchedRows = renderReportHtml(build()).match(/<tr data-row[^>]*data-status="not_observed"[^>]*>/gu)!
+
+      expect(unmatchedRows.length).toBeGreaterThan(0)
+      for (const row of unmatchedRows) expect(row).not.toContain('data-kind=')
     })
 
     it('ships every row visible, so the page is complete without JavaScript', () => {
@@ -187,7 +256,7 @@ describe('renderReportHtml', () => {
       expect(html).not.toMatch(/\ssrc="/u)
 
       for (const reference of hrefs(html)) {
-        expect(reference.startsWith('#') || reference.startsWith('https://')).toBe(true)
+        expect({ href: reference, safe: isSafeHref(reference) }).toEqual({ href: reference, safe: true })
         expect(reference.toLowerCase()).not.toContain('javascript:')
         expect(reference.toLowerCase()).not.toContain('data:')
       }

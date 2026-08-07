@@ -139,7 +139,16 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: auditor-report-${{ github.run_id }}-${{ github.run_attempt }}
-          path: reports/
+          # THIS REPOSITORY IS PUBLIC, so anyone can download this artefact.
+          # The report documents redact credentials and query strings, but the
+          # verbatim inventory copies under <pass>/inventory/ do not — they are
+          # the inventory repository's own bytes, reproduced exactly so the
+          # file:line references stay resolvable. Excluded here so a public run
+          # cannot publish a private inventory. A run hosted in the inventory
+          # repository itself should upload `reports/` whole.
+          path: |
+            reports/
+            !reports/**/inventory/**
           # Warn rather than fail: writing the report never fails a run, so a
           # missing artefact should surface in the log, not turn the job red.
           if-no-files-found: warn

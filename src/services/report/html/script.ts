@@ -46,13 +46,24 @@ export const REPORT_SCRIPT = `
 
     rows.forEach(function (row) {
       var status = row.getAttribute('data-status');
+      var kind = row.getAttribute('data-kind');
       var haystack = row.getAttribute('data-search') || '';
-      var visible = !!activeStatuses[status] && !!activeKinds[row.getAttribute('data-kind')];
+      // A row without a kind (an unmatched inventory entry) is exempt from the
+      // Type filter — it describes an entry, not an observed resource, so it
+      // belongs to neither script bucket.
+      var visible = !!activeStatuses[status] && (kind === null || !!activeKinds[kind]);
       if (visible && activeTarget && row.getAttribute('data-target') !== activeTarget) visible = false;
       if (visible && onlyFindings && status === 'authorised') visible = false;
       if (visible && term && haystack.indexOf(term) === -1) visible = false;
       row.hidden = !visible;
       if (visible) shown += 1;
+    });
+
+    // Hide a block whose every row went away, so its heading and explanation do
+    // not sit above nothing.
+    document.querySelectorAll('[data-block]').forEach(function (block) {
+      var blockRows = Array.prototype.slice.call(block.querySelectorAll('tr[data-row]'));
+      block.hidden = blockRows.length > 0 && !blockRows.some(function (row) { return !row.hidden; });
     });
 
     document.querySelectorAll('section[data-target]').forEach(function (section) {
