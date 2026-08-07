@@ -1134,6 +1134,49 @@ describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
     ...overrides,
   })
 
+  describe('auditor report link', () => {
+    const blocksOf = async (summary: ExecutionSummary): Promise<any[]> => {
+      const spy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+      await service.alertOnSuccess(summary, mockAlertDestinations)
+      return (spy.mock.calls[0]![0] as any).blocks
+    }
+
+    it('links the workflow run page, not a direct artifact URL', async () => {
+      // The artifact is uploaded by a LATER workflow step, so it has no URL
+      // when this message is sent. The run page lists it and also carries the
+      // job-summary digest — do not "improve" this into an artifact link.
+      const blocks = await blocksOf(createSummary({ auditorReport: { runUrl: 'https://github.com/org/repo/actions/runs/123', htmlPaths: ['/w/reports/detection/report.html'] } }))
+      const button = blocks.find((block) => block.accessory?.action_id === 'view_auditor_report')
+
+      expect(button).toBeDefined()
+      expect(button.accessory.url).toBe('https://github.com/org/repo/actions/runs/123')
+      expect(button.accessory.type).toBe('button')
+    })
+
+    it('falls back to written paths when there is no run page', async () => {
+      const blocks = await blocksOf(createSummary({ auditorReport: { runUrl: null, htmlPaths: ['/local/reports/detection/report.html'] } }))
+      const section = blocks.find((block) => typeof block.text?.text === 'string' && block.text.text.includes('Auditor Report'))
+
+      expect(section.text.text).toContain('/local/reports/detection/report.html')
+      expect(section.accessory).toBeUndefined()
+    })
+
+    it('pluralises when --mode all wrote a report per pass', async () => {
+      const blocks = await blocksOf(createSummary({ auditorReport: { runUrl: null, htmlPaths: ['/w/reports/inventory/report.html', '/w/reports/detection/report.html'] } }))
+
+      expect(blocks.some((block) => typeof block.text?.text === 'string' && block.text.text.includes('*Auditor Reports*'))).toBe(true)
+    })
+
+    it('adds nothing when no report was produced', async () => {
+      const withoutReport = await blocksOf(createSummary())
+      const withNull = await blocksOf(createSummary({ auditorReport: null }))
+
+      for (const blocks of [withoutReport, withNull]) {
+        expect(blocks.some((block) => JSON.stringify(block).includes('Auditor Report'))).toBe(false)
+      }
+    })
+  })
+
   /**
    * T005: Tests for alertOnSuccess using successNotification destination
    * Feature 010: Success notifications should route to dedicated successNotification destination

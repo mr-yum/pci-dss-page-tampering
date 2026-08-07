@@ -165,6 +165,7 @@ act push --container-architecture linux/amd64 --secret-file .env.secrets
    - Emitted per pass from a `finally`, so a partially-failed run still produces evidence for the targets that succeeded; a write failure is logged and never fails the run
    - `--mode all` writes two documents (one per pass) joined by `run.correlationId`
    - Every authorised row carries `file:line` + JSON pointer provenance for the matcher that authorised it, resolved by `src/utils/provenance.ts` from the raw inventory text retained on `Inventory.source`
+   - The Slack success notification links the **workflow run page**, not the artifact: the artifact uploads in a later workflow step and has no URL while the tool is still running. The run page lists it and renders the job-summary digest. Outside CI the written paths are shown instead (`ExecutionSummary.auditorReport`)
 
 ### Data Flow
 

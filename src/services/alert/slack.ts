@@ -1097,8 +1097,50 @@ export class SlackAlertService implements IAlertService {
               },
             ]
           : []),
+        ...this.createAuditorReportBlocks(summary),
       ],
     }
+  }
+
+  /**
+   * Link the run's auditor report, when one was produced.
+   *
+   * Points at the workflow run page rather than the artifact itself: the
+   * artifact is uploaded by a later workflow step and has no URL yet when this
+   * message is sent. The run page is the better target anyway — it offers the
+   * artifact for download and shows the job-summary digest of findings inline.
+   *
+   * Outside CI there is no run page, so the written paths are listed instead;
+   * that keeps a local run's message useful without pretending a link exists.
+   */
+  private createAuditorReportBlocks(summary: ExecutionSummary): object[] {
+    const report = summary.auditorReport
+
+    if (report === undefined || report === null) return []
+
+    const label = report.htmlPaths.length === 1 ? 'Auditor Report' : 'Auditor Reports'
+
+    if (report.runUrl === null) {
+      return [
+        {
+          type: 'section',
+          text: { type: 'mrkdwn', text: `*${label}*: ${report.htmlPaths.map((path) => `\`${path}\``).join(', ')}` },
+        },
+      ]
+    }
+
+    return [
+      {
+        type: 'section',
+        text: { type: 'mrkdwn', text: `*${label}*: full census of every script and header, mapped to the inventory matcher that authorised it.` },
+        accessory: {
+          type: 'button',
+          text: { type: 'plain_text', text: 'View run & download' },
+          url: report.runUrl,
+          action_id: 'view_auditor_report',
+        },
+      },
+    ]
   }
 
   /**
