@@ -452,7 +452,7 @@ Real payment pages do still change between runs, and the report reflects that fa
 
 The bundled `inventory-and-detection.yml` workflow passes `--report-dir reports` and uploads the directory as an `auditor-report-<run-id>-<attempt>` artefact with `if: always()`, so the evidence survives a failed detection run — the run an assessor is most likely to ask about. A digest of the findings is also appended to the GitHub Actions job summary.
 
-> **Retention:** the Actions artefact is retained for 90 days (GitHub's maximum). PCI evidence retention is typically twelve months, so treat the artefact as a convenience copy, **not** the system of record. Archive it elsewhere if you need to satisfy a retention requirement.
+> **Retention:** the workflow configures `retention-days: 90`. That is the ceiling for a public repository; private and internal repositories allow up to 400 days, and an organisation or enterprise policy may cap it lower still. Either way, PCI evidence retention is typically twelve months, so treat the artefact as a convenience copy, **not** the system of record. Archive it elsewhere if you need to satisfy a retention requirement.
 
 ## GitHub Actions Setup
 

@@ -50,6 +50,7 @@ pulled_repo/
 
 # auditor report artefacts
 reports/
+reports-*/
 
 # claude code local settings
 .claude/settings.local.json
