@@ -16,12 +16,13 @@
  * @see ../../interfaces/report.ts
  */
 
-import type { IReportCollector, ReportInventoryRefInput, ReportRunContext } from '../../interfaces/report.js'
+import type { InventoryFileCopy, IReportCollector, ReportInventoryRefInput, ReportRunContext } from '../../interfaces/report.js'
 import type { ComparisonResultType } from '../../types/comparison.js'
 import type { Inventory, InventoryHeaderInfo, InventoryScriptInfo } from '../../types/inventory/model.js'
 import type { AuditorReport, ReportPass, ReportResourceRow, ReportStatusCounts, ReportTargetSection, ReportUnmatchedEntry } from '../../types/report.js'
 import { REPORT_SCHEMA_VERSION } from '../../types/report.js'
 import type { Target } from '../../types/target.js'
+import { createSha256Hash } from '../../utils/hash.js'
 import { inventoryHeaderInfoToRawInventoryHeaderInfo } from '../../utils/inventory.js'
 import { createProvenanceResolver, createSourceLocator, type ProvenanceResolver } from '../../utils/provenance.js'
 import { inventoryScriptInfoToRawInventoryScriptInfo } from '../../utils/script.js'
@@ -95,6 +96,14 @@ type TargetSectionState = {
 export class ReportCollector implements IReportCollector {
   private readonly passes = new Map<ReportPass, Map<string, TargetSectionState>>()
   private readonly inventoryRefs = new Map<ReportPass, ReportInventoryRefInput>()
+  /**
+   * Verbatim inventory text per pass, keyed by repo-relative path.
+   *
+   * The same strings the Inventory objects already hold — retaining a reference
+   * costs nothing — and the same bytes the provenance line numbers were
+   * computed against, which is what makes shipping them worthwhile.
+   */
+  private readonly inventoryFiles = new Map<ReportPass, Map<string, string>>()
 
   recordTargetRun(input: { inventory: Inventory; target: Target; comparisonResults: readonly ComparisonResultType[] }): void {
     const { inventory, target, comparisonResults } = input
@@ -121,6 +130,29 @@ export class ReportCollector implements IReportCollector {
     }
 
     section.unmatched = this.collectUnmatched(inventory, section.matchedScripts, section.matchedHeaders)
+
+    this.retainInventorySource(inventory, target)
+  }
+
+  /**
+   * Keep the verbatim file the run read, for copying beside the report.
+   *
+   * Called on the failure path too: a run that fell over still has to say which
+   * baseline it was working against, and that is exactly the run an assessor
+   * asks about.
+   */
+  private retainInventorySource(inventory: Inventory, target: Target): void {
+    if (inventory.source === undefined) return
+
+    const pass: ReportPass = target.type === 'inventory' ? 'inventory' : 'detection'
+    const files = this.inventoryFiles.get(pass) ?? new Map<string, string>()
+
+    files.set(inventory.source.file, inventory.source.text)
+    this.inventoryFiles.set(pass, files)
+  }
+
+  getInventoryFiles(pass: ReportPass): InventoryFileCopy[] {
+    return [...(this.inventoryFiles.get(pass) ?? new Map<string, string>())].sort(([left], [right]) => collator.compare(left, right)).map(([file, text]) => ({ file, text }))
   }
 
   recordTargetFailure(input: { inventory: Inventory; target: Target; error: unknown }): void {
@@ -131,6 +163,7 @@ export class ReportCollector implements IReportCollector {
     // routinely echo the authenticated remote, which would put a token into a
     // 90-day CI artefact the document itself promises is credential-free.
     section.error = redactForDisplay(input.error instanceof Error ? input.error.message : String(input.error)).text
+    this.retainInventorySource(input.inventory, input.target)
   }
 
   recordInventoryRef(pass: ReportPass, ref: ReportInventoryRefInput): void {
@@ -171,6 +204,14 @@ export class ReportCollector implements IReportCollector {
     const failures = targets.filter((target) => target.status === 'failed').map((target) => ({ targetKey: target.targetKey, message: target.error ?? 'unknown error' }))
     const ref = this.inventoryRefs.get(pass)
 
+    const inventorySources = this.getInventoryFiles(pass).map(({ file, text }) => ({
+      file,
+      sha256: createSha256Hash(text).value,
+      // Sibling of the report document, mirroring the repo layout.
+      copiedTo: `inventory/${file}`,
+      bytes: Buffer.byteLength(text, 'utf8'),
+    }))
+
     return {
       schemaVersion: REPORT_SCHEMA_VERSION,
       generator: { name: GENERATOR_NAME, version: REPORT_SCHEMA_VERSION },
@@ -183,19 +224,29 @@ export class ReportCollector implements IReportCollector {
         inventoryRef: ref ?? run.inventoryRef,
         status: failures.length > 0 ? 'partial' : 'complete',
         failures,
+        inventorySources,
       },
       summary,
       targets,
-      notes: this.buildNotes(run, failures.length > 0),
+      notes: this.buildNotes(run, failures.length > 0, inventorySources.length > 0),
     }
   }
 
-  private buildNotes(run: ReportRunContext, partial: boolean): string[] {
+  private buildNotes(run: ReportRunContext, partial: boolean, shipsInventoryCopies: boolean): string[] {
     const notes = [
       'Content excerpts are truncated and are for recognition only; the SHA-256 hash is the integrity anchor.',
-      'URLs — including script names and URLs embedded in header values — are shown without query strings, fragments or credentials, so the artefact cannot leak signed URLs or tokens.',
+      // Deliberately scoped to what was observed on the page. The verbatim
+      // inventory copies below, when present, are not redacted — they cannot be,
+      // without invalidating the line numbers this document cites.
+      'Detected URLs — including script names and URLs embedded in header values — are shown without query strings, fragments or credentials, so no signed URL or token observed on the page reaches this document.',
       'Control and bidirectional formatting characters in detected content are replaced with a visible ⟨U+XXXX⟩ token.',
     ]
+
+    if (shipsInventoryCopies) {
+      notes.push(
+        'This artefact also carries verbatim copies of the inventory files this run read, so the file and line references above stay resolvable. Those copies are reproduced exactly as committed and are NOT redacted: treat this artefact as having the same sensitivity as the inventory repository itself.',
+      )
+    }
 
     if (run.targetFilter !== null) notes.push(`PARTIAL CENSUS: this run was filtered to target '${run.targetFilter}' and does not cover every monitored target.`)
     if (partial) notes.push('PARTIAL RUN: one or more targets failed, so their resources are absent from this census.')
@@ -281,5 +332,8 @@ export class NoopReportCollector implements IReportCollector {
   recordInventoryRef(_pass: ReportPass, _ref: ReportInventoryRefInput): void {}
   build(_pass?: ReportPass, _run?: ReportRunContext): null {
     return null
+  }
+  getInventoryFiles(_pass?: ReportPass): InventoryFileCopy[] {
+    return []
   }
 }

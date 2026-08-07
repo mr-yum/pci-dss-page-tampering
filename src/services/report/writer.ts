@@ -6,8 +6,14 @@
  * ```
  * <report-dir>/index.html
  * <report-dir>/inventory/report.{json,html}
+ * <report-dir>/inventory/inventory/targets/*.json   copy of what that pass read
  * <report-dir>/detection/report.{json,html}
+ * <report-dir>/detection/inventory/targets/*.json
  * ```
+ *
+ * Each pass carries its own inventory copy on purpose: under `--mode all` the
+ * two passes read different branches, so one shared copy would misrepresent
+ * at least one of them.
  *
  * A timestamped filename would defeat `diff` between runs, which is the single
  * most useful thing an operator does with this artefact ("what changed since
@@ -18,9 +24,9 @@
  */
 
 import { mkdir, writeFile } from 'fs/promises'
-import { dirname, join, resolve } from 'path'
+import { dirname, join, resolve, sep } from 'path'
 
-import type { IReportWriter, ReportArtefactPaths } from '../../interfaces/report.js'
+import type { InventoryFileCopy, IReportWriter, ReportArtefactPaths } from '../../interfaces/report.js'
 import type { AuditorReport, ReportPass } from '../../types/report.js'
 import { escapeHtml } from './html/escape.js'
 import { renderReportHtml } from './html/template.js'
@@ -57,7 +63,7 @@ function withReducedExcerpts(report: AuditorReport): AuditorReport {
 }
 
 export class FileReportWriter implements IReportWriter {
-  async write(report: AuditorReport, reportDir: string): Promise<ReportArtefactPaths> {
+  async write(report: AuditorReport, reportDir: string, inventoryFiles: readonly InventoryFileCopy[]): Promise<ReportArtefactPaths> {
     const passDir = resolve(reportDir, report.run.pass)
     const jsonPath = join(passDir, 'report.json')
     const htmlPath = join(passDir, 'report.html')
@@ -72,11 +78,65 @@ export class FileReportWriter implements IReportWriter {
       rendered = renderReportHtml(effective)
     }
 
+    // Validated before anything is written: a rejected path must leave no
+    // half-written artefact claiming an inventory copy that is not there.
+    const copies = this.resolveInventoryCopies(passDir, inventoryFiles)
+
+    this.assertCopiesMatchReport(effective, inventoryFiles)
+
     await mkdir(passDir, { recursive: true })
     await writeFile(jsonPath, serialiseReport(effective), 'utf8')
     await writeFile(htmlPath, rendered, 'utf8')
 
+    for (const { destination, text } of copies) {
+      await mkdir(dirname(destination), { recursive: true })
+      await writeFile(destination, text, 'utf8')
+    }
+
     return { jsonPath, htmlPath }
+  }
+
+  /**
+   * Copy the inventory the run actually read, next to the report.
+   *
+   * These are the exact bytes the provenance line numbers were computed
+   * against, so `targets/1.0.json:489` in the report resolves against this copy
+   * however the branch moves afterwards. That is what makes the artefact
+   * self-contained evidence rather than a pointer to a moving target.
+   */
+  /**
+   * Refuse to write a report that cites inventory copies it is not shipping.
+   *
+   * `run.inventorySources` is rendered as links and as digests an auditor is
+   * invited to verify, so the two arguments must describe the same set. Only a
+   * miswired caller can break this — which is exactly why it is asserted here
+   * rather than assumed, since the result would be a compliance document
+   * pointing at evidence that does not exist.
+   */
+  private assertCopiesMatchReport(report: AuditorReport, inventoryFiles: readonly InventoryFileCopy[]): void {
+    const cited = report.run.inventorySources.map((source) => source.file).sort()
+    const supplied = inventoryFiles.map(({ file }) => file).sort()
+
+    if (cited.length !== supplied.length || cited.some((file, index) => file !== supplied[index])) {
+      throw new Error(`Report cites inventory sources [${cited.join(', ')}] but was given [${supplied.join(', ')}] to write`)
+    }
+  }
+
+  private resolveInventoryCopies(passDir: string, inventoryFiles: readonly InventoryFileCopy[]): { destination: string; text: string }[] {
+    const root = resolve(passDir, 'inventory')
+
+    return inventoryFiles.map(({ file, text }) => {
+      const destination = resolve(root, file)
+
+      // These paths come from the inventory repository. Refuse anything that
+      // escapes the directory — or is the directory itself — rather than
+      // trusting the source.
+      if (!destination.startsWith(`${root}${sep}`)) {
+        throw new Error(`Refusing to write inventory copy outside the report directory: ${file}`)
+      }
+
+      return { destination, text }
+    })
   }
 
   async writeIndex(reportDir: string, written: readonly { pass: ReportPass; paths: ReportArtefactPaths }[]): Promise<string> {

@@ -17,7 +17,7 @@ import type { AuditorReport, ReportPass, ReportRunMetadata } from '../types/repo
 import type { Target } from '../types/target.js'
 
 /** Run-level facts the collector cannot know for itself. */
-export type ReportRunContext = Omit<ReportRunMetadata, 'pass' | 'status' | 'failures'>
+export type ReportRunContext = Omit<ReportRunMetadata, 'pass' | 'status' | 'failures' | 'inventorySources'>
 
 export type ReportInventoryRefInput = {
   branch: string
@@ -43,12 +43,29 @@ export interface IReportCollector {
 
   /** Build the document for one pass, or null when the pass recorded nothing. */
   build(pass: ReportPass, run: ReportRunContext): AuditorReport | null
+
+  /**
+   * The inventory files this pass read, with their exact bytes.
+   *
+   * Kept off the report document deliberately — embedding whole inventories in
+   * the JSON would multiply its size for data better shipped as files.
+   */
+  getInventoryFiles(pass: ReportPass): InventoryFileCopy[]
 }
 
 export type ReportArtefactPaths = { jsonPath: string; htmlPath: string }
 
+/** An inventory file to ship beside the report, with the exact bytes read. */
+export type InventoryFileCopy = { file: string; text: string }
+
 export interface IReportWriter {
-  write(report: AuditorReport, reportDir: string): Promise<ReportArtefactPaths>
+  /**
+   * `inventoryFiles` is required, and must describe exactly the files the
+   * report's `run.inventorySources` cites: the document and its copies are two
+   * halves of one artefact, and an optional argument here would let a caller
+   * ship a report linking evidence that was never written.
+   */
+  write(report: AuditorReport, reportDir: string, inventoryFiles: readonly InventoryFileCopy[]): Promise<ReportArtefactPaths>
   /** Write the landing page linking every document produced by this invocation. */
   writeIndex(reportDir: string, written: readonly { pass: ReportPass; paths: ReportArtefactPaths }[]): Promise<string>
 }

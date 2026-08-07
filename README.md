@@ -417,19 +417,40 @@ The provenance is specific, not approximate: for an entry authorised by one of s
 ### Output layout
 
 ```text
-<report-dir>/index.html                    links both passes
+<report-dir>/index.html                            links both passes
 <report-dir>/inventory/report.{json,html}
+<report-dir>/inventory/inventory/targets/*.json    the inventory that pass read
 <report-dir>/detection/report.{json,html}
+<report-dir>/detection/inventory/targets/*.json
 ```
 
-The HTML page is self-contained — no network access, no fonts, no images — so it opens from a downloaded CI artefact on a machine with no connectivity. It supports filtering by status, free-text search and a "findings only" view, and remains complete with JavaScript disabled (so print-to-PDF captures everything). The JSON is the canonical machine-readable form.
+The HTML page is self-contained — no network access, no fonts, no images — so it opens from a downloaded CI artefact on a machine with no connectivity. It supports filtering by type and status, free-text search and a "findings only" view, and remains complete with JavaScript disabled (so print-to-PDF captures everything). The JSON is the canonical machine-readable form.
+
+One status filter starts **off**: **Not observed** — inventory entries that nothing on the page matched, either stale inventory or a resource that stopped loading. They are 6.4.3 hygiene signal rather than part of the census, so they are hidden until asked for. They are always present in the markup (and so in a JS-disabled read and in `unmatchedInventoryEntries` in the JSON); the filter only hides them. Being inventory entries rather than observations, they are exempt from the **Type** filter — an entry for a script may match an external or an inline one, so it belongs to neither bucket.
+
+### The inventory travels with the report
+
+Each pass ships a verbatim copy of the inventory files it read, under `<pass>/inventory/`. These are the exact bytes the provenance line numbers were computed against, so a reference like `targets/2.0.json:184` still resolves months later, when the branch has long since moved on — the artefact is self-contained evidence rather than a pointer at a moving target.
+
+`run.inventorySources` lists each copy with its `sha256` and byte count, so an auditor can verify the copy was not altered after the fact, and can compare it against the commit named in `run.inventoryRef`:
+
+```bash
+jq -r '.run.inventorySources[] | "\(.sha256)  \(.copiedTo)"' detection/report.json | (cd detection && shasum -a 256 -c)
+```
+
+Each pass carries its own copy on purpose: under `--mode all` the two passes read different branches, so one shared copy would misrepresent at least one of them.
+
+> **Where you host the run matters.** These copies are the inventory repository's own bytes. If the workflow runs in a repository more widely readable than the inventory it monitors — a public repository monitoring a private inventory, say — the artefact publishes that inventory to everyone who can read the run. Host the run in the inventory repository itself, or exclude `**/inventory/**` from the upload as this repository's own workflow does.
+
+> **The copy is verbatim, and so is exempt from the redaction described below.** That is not an oversight — redacting it would change the byte count, break the `sha256` check against the committed file, and shift every line number the report cites, which is the whole point of shipping it. The redaction policy applies to what was _observed on the page_; the inventory is your own committed configuration, and the artefact reproduces it exactly as written. If a target URL in your inventory embeds a query token, expect to find it here. Treat the artefact as having the same sensitivity as the inventory repository itself, and scope who can download CI artefacts accordingly.
 
 `--mode all` writes **two** reports, one per pass. The passes hit different URLs against different branches and evidence different requirements, and the inventory pass mutates the baseline mid-run — merged, a row's meaning would depend on which pass produced it. Both documents of a single invocation share a `run.correlationId`.
 
 ### What the report deliberately does not contain
 
 - **Full script bodies.** `observed.hash` is the integrity anchor; `observed.contentExcerpt` is a 512-character excerpt for human recognition only. `contentLength` and `contentTruncated` are always present, so the truncation is itself auditable.
-- **Query strings, fragments or credentials in URLs.** Removed before writing — from the script name, the `origin.url`, the content excerpt, and any URL embedded in a header value (a CSP `report-uri` commonly carries a per-request token). A signed URL or API key cannot reach a CI artefact. The redacted form keeps a `[query-redacted]` marker, so an auditor can still see that a query was present.
+- **Query strings, fragments or credentials in URLs.** Removed before writing — from the script name, the `origin.url`, the content excerpt, and any URL embedded in a header value (a CSP `report-uri` commonly carries a per-request token). A signed URL or API key observed on the page cannot reach a CI artefact. The redacted form keeps a `[query-redacted]` marker, so an auditor can still see that a query was present.
+- **Inventory files the run did not read.** The copy under `<pass>/inventory/` covers the targets that pass actually processed. Under `--target`, that is one file, not the whole repository — consistent with the partial-census labelling.
 - **Raw control or bidirectional characters.** Replaced with a visible `⟨U+XXXX⟩` token, so a malicious excerpt cannot _render_ as something benign.
 
 A run filtered with `--target` is labelled a **partial census** in both the document and the page banner; a run in which any target failed is marked `run.status: "partial"` with the failures named. A short census is never presented as a clean one.
@@ -450,7 +471,7 @@ Real payment pages do still change between runs, and the report reflects that fa
 
 ### In CI
 
-The bundled `inventory-and-detection.yml` workflow passes `--report-dir reports` and uploads the directory as an `auditor-report-<run-id>-<attempt>` artefact with `if: always()`, so the evidence survives a failed detection run — the run an assessor is most likely to ask about. A digest of the findings is also appended to the GitHub Actions job summary.
+The bundled `inventory-and-detection.yml` workflow passes `--report-dir reports` and uploads the directory as an `auditor-report-<run-id>-<attempt>` artefact with `if: always()`, so the evidence survives a failed detection run — the run an assessor is most likely to ask about. It deliberately excludes `**/inventory/**` from the upload, because this repository is public and the inventory it monitors is not; a workflow hosted in the inventory repository should upload `reports/` whole. A digest of the findings is also appended to the GitHub Actions job summary.
 
 The Slack success notification carries a **View run & download** button linking the workflow run page. That is deliberately the run page rather than the artifact itself: the artifact is uploaded by a workflow step that runs _after_ the tool exits, so it has no URL at the moment the notification is sent. The run page is the better destination regardless — the artefact is one click away, and the job-summary digest of findings renders on that same page. Outside CI the notification lists the written file paths instead.
 

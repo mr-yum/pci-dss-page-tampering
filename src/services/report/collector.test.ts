@@ -247,6 +247,36 @@ describe('ReportCollector', () => {
       expect(report.notes.some((note) => note.startsWith('PARTIAL RUN'))).toBe(true)
     })
 
+    it('orders inventory copies deterministically, whatever order targets ran in', () => {
+      // `run.inventorySources` is a digest list an auditor diffs between runs.
+      // Target processing order is not guaranteed, so the sort is the only
+      // thing keeping two identical runs byte-identical here.
+      const files = (names: string[]): string[] => {
+        const collector = new ReportCollector()
+
+        for (const name of names) collector.recordTargetRun({ inventory: buildInventory(undefined, name), target: detectionTarget, comparisonResults: [] })
+
+        return collector.getInventoryFiles('detection').map(({ file }) => file)
+      }
+
+      const expected = ['targets/1.0.json', 'targets/2.0.json', 'targets/10.0.json']
+
+      expect(files(['10.0.json', '2.0.json', '1.0.json'])).toEqual(expected)
+      expect(files(['2.0.json', '10.0.json', '1.0.json'])).toEqual(expected)
+    })
+
+    it('still retains the inventory a failed target was compared against', () => {
+      // The run that fell over is the one an assessor asks about, so the report
+      // must still be able to say which baseline it was working from.
+      const collector = new ReportCollector()
+      const broken = buildInventory(undefined, '2.0.json')
+
+      collector.recordTargetFailure({ inventory: broken, target: detectionTarget, error: new Error('navigation timeout') })
+
+      expect(collector.getInventoryFiles('detection')).toEqual([{ file: 'targets/2.0.json', text: broken.source!.text }])
+      expect(collector.build('detection', runContext())!.run.inventorySources.map((source) => source.file)).toEqual(['targets/2.0.json'])
+    })
+
     it('redacts credentials from a failure message before it reaches the artefact', () => {
       // Git errors echo the authenticated remote. Without redaction the token
       // lands in a 90-day CI artefact whose own notes promise it cannot.

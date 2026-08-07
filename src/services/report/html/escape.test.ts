@@ -4,7 +4,7 @@
  * @see ./escape.ts
  */
 
-import { escapeHtml, html, join, raw, safeHttpsHref } from './escape.js'
+import { artefactRelativeHref, escapeHtml, html, join, raw, safeHttpsHref } from './escape.js'
 
 describe('escapeHtml', () => {
   it('escapes the OWASP character set', () => {
@@ -83,5 +83,30 @@ describe('safeHttpsHref', () => {
 
   it('accepts an https URL', () => {
     expect(safeHttpsHref('https://github.example.com/org/inventory')).toBe('https://github.example.com/org/inventory')
+  })
+})
+
+describe('artefactRelativeHref', () => {
+  it('leaves an ordinary inventory path alone', () => {
+    expect(artefactRelativeHref('inventory/targets/1.0.json')).toBe('inventory/targets/1.0.json')
+  })
+
+  it('encodes characters that would truncate or redirect the link', () => {
+    // A `#` would make the rest a fragment and a `?` a query, so the link would
+    // silently point at the wrong file. Filenames come from the inventory repo.
+    expect(artefactRelativeHref('inventory/targets/a#b.json')).toBe('inventory/targets/a%23b.json')
+    expect(artefactRelativeHref('inventory/targets/a?b.json')).toBe('inventory/targets/a%3Fb.json')
+    expect(artefactRelativeHref('inventory/targets/a b.json')).toBe('inventory/targets/a%20b.json')
+  })
+
+  it('keeps the separators, so the path still resolves', () => {
+    expect(artefactRelativeHref('inventory/a/b/c.json')).toBe('inventory/a/b/c.json')
+  })
+
+  it('refuses a path that would climb out of the artefact', () => {
+    expect(artefactRelativeHref('inventory/../../etc/passwd')).toBeNull()
+    expect(artefactRelativeHref('inventory/./targets/1.0.json')).toBeNull()
+    expect(artefactRelativeHref('/inventory/targets/1.0.json')).toBeNull()
+    expect(artefactRelativeHref('inventory//targets/1.0.json')).toBeNull()
   })
 })

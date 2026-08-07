@@ -68,6 +68,12 @@ OPTIONAL PARAMETERS:
                            JSON document. Omit to write no report.
                            Note: --mode all writes one report per pass, under
                            PATH/inventory/ and PATH/detection/.
+                           Also writes a VERBATIM COPY of each inventory file
+                           the run read, under <pass>/inventory/, so the cited
+                           line numbers stay resolvable. Those copies are not
+                           redacted — treat the output directory as having the
+                           same sensitivity as the inventory repository, and
+                           scope who can download it accordingly.
 
   --help, -h               Display this help message and exit
 

@@ -281,7 +281,7 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
 
       if (report === null) return
 
-      const paths = await reportWriter.write(report, reportDir)
+      const paths = await reportWriter.write(report, reportDir, reportCollector.getInventoryFiles(pass))
       reportsWritten.push({ pass, paths })
 
       await reportWriter.writeIndex(reportDir, reportsWritten)

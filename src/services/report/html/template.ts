@@ -12,7 +12,7 @@
 import type { AuditorReport, ReportAuthorisationInfo, ReportMatcherRef, ReportResourceRow, ReportStatusCounts, ReportTargetSection, ReportUnmatchedEntry } from '../../../types/report.js'
 import { createSha256Hash } from '../../../utils/hash.js'
 import type { ProvenanceNode, SourceProvenance } from '../../../utils/provenance.js'
-import { escapeHtml, html, join, raw, type RawHtml, safeHttpsHref } from './escape.js'
+import { artefactRelativeHref, escapeHtml, html, join, raw, type RawHtml, safeHttpsHref } from './escape.js'
 import { REPORT_SCRIPT } from './script.js'
 import { REPORT_STYLES } from './styles.js'
 
@@ -22,6 +22,15 @@ const STATUS_LABELS: Record<string, string> = {
   unknown: 'Unknown',
   missing_required: 'Missing',
 }
+
+/**
+ * Inventory entries nothing on the page matched. Not an observation, so it is
+ * not a row `status` — it gets its own filter, defaulting to off: the census
+ * question is "what was on the page", and absent entries are a separate,
+ * quieter signal that would otherwise pad every target with stale-inventory
+ * rows the reader did not ask for.
+ */
+const NOT_OBSERVED_STATUS = 'not_observed'
 
 const KIND_LABELS: Record<string, string> = {
   external_script: 'External script',
@@ -201,10 +210,13 @@ function formatTable(caption: string, rows: readonly ReportResourceRow[], target
   </div>`
 }
 
-function formatUnmatched(entries: readonly ReportUnmatchedEntry[]): RawHtml {
+function formatUnmatched(entries: readonly ReportUnmatchedEntry[], targetKey: string): RawHtml {
   if (entries.length === 0) return raw('')
 
-  return html`<h3>Inventory entries not observed in this run (${entries.length})</h3>
+  // Wrapped in a block so the heading and its explanation hide with the rows,
+  // rather than standing above an empty table when the filter is off.
+  return html`<div data-block>
+    <h3>Inventory entries not observed in this run (${entries.length})</h3>
     <p class="muted">Authorised entries that nothing on the page matched — either stale inventory, or a resource that stopped loading.</p>
     <div class="table-wrap">
       <table>
@@ -223,7 +235,10 @@ function formatUnmatched(entries: readonly ReportUnmatchedEntry[]): RawHtml {
           ${join(
             entries.map(
               (entry) =>
-                html`<tr>
+                // No `data-kind`: an inventory entry for a script may match an
+                // external or an inline one, so it cannot honestly claim either
+                // bucket of the Type filter. The script treats that as exempt.
+                html`<tr data-row data-target="${targetKey}" data-status="${NOT_OBSERVED_STATUS}" data-search="${unmatchedSearchText(entry)}">
                   <td>${entry.kind}</td>
                   <td>${formatMatcher(entry.identification)}</td>
                   <td>${formatAuthorisationInfo(entry.effective)}</td>
@@ -233,7 +248,16 @@ function formatUnmatched(entries: readonly ReportUnmatchedEntry[]): RawHtml {
           )}
         </tbody>
       </table>
-    </div>`
+    </div>
+  </div>`
+}
+
+/**
+ * Search text for an unmatched entry, mirroring `formatRow`'s: the free-text
+ * box must reach these rows too once the reader turns them on.
+ */
+function unmatchedSearchText(entry: ReportUnmatchedEntry): string {
+  return [entry.kind, NOT_OBSERVED_STATUS, entry.identification.description, entry.effective?.description ?? ''].join(' ').toLowerCase()
 }
 
 function formatCounts(counts: ReportStatusCounts): RawHtml {
@@ -253,7 +277,7 @@ function formatTarget(target: ReportTargetSection): RawHtml {
     <h2>${target.targetName} <span class="badge badge-${target.status}">${target.status}</span></h2>
     <p class="sub"><span class="mono">${target.url}</span> · inventory <span class="mono">${target.inventoryFile}</span> · workflow <span class="mono">${target.workflowId}</span> (<span class="mono">${target.workflowFile}</span>)</p>
     ${target.error === null ? '' : html`<p class="banner banner-warn">This target failed: ${target.error}</p>`} ${formatCounts(target.counts)} ${formatTable('Scripts', target.scripts, target.targetKey)}
-    ${formatTable('Headers', target.headers, target.targetKey)} ${formatUnmatched(target.unmatchedInventoryEntries)}
+    ${formatTable('Headers', target.headers, target.targetKey)} ${formatUnmatched(target.unmatchedInventoryEntries, target.targetKey)}
   </section>`
 }
 
@@ -315,10 +339,31 @@ export function renderReportHtml(report: AuditorReport): string {
         ${join(Object.keys(KIND_LABELS).map((kind) => html`<label><input type="checkbox" data-kind="${kind}" checked />${KIND_LABELS[kind]}</label>`))}
         <span class="group-label">Status</span>
         ${join(Object.keys(STATUS_LABELS).map((status) => html`<label><input type="checkbox" data-status="${status}" checked />${STATUS_LABELS[status]}</label>`))}
+        <label><input type="checkbox" data-status="${NOT_OBSERVED_STATUS}" />Not observed</label>
       </div>
     </div>
 
     ${join(report.targets.map(formatTarget))}
+    ${
+      report.run.inventorySources.length === 0
+        ? ''
+        : html`<section class="notes">
+            <h2>Inventory as scanned</h2>
+            <p>The exact inventory this run read is included beside this report — the same bytes the <span class="mono">file:line</span> references above were resolved against, so they stay correct however the branch moves afterwards.</p>
+            <ul>
+              ${join(
+                report.run.inventorySources.map((source) => {
+                  const href = artefactRelativeHref(source.copiedTo)
+
+                  return html`<li>
+                    ${href === null ? html`<span class="mono">${source.copiedTo}</span>` : html`<a href="${href}"><span class="mono">${source.copiedTo}</span></a>`} — ${source.bytes} bytes, sha256
+                    <span class="mono">${source.sha256.slice(0, 16)}…</span>
+                  </li>`
+                }),
+              )}
+            </ul>
+          </section>`
+    }
 
     <section class="notes">
       <h2>Notes</h2>
