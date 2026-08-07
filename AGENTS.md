@@ -377,12 +377,12 @@ run: |
 
 ## Scheduled Execution
 
-The system runs on CRON schedules:
+The daily run is scheduled from the **inventory repository**, not from this one. The auditor report's artefact contains the inventory verbatim, and this repository is public, so a scheduled run here would publish a private inventory. This repository keeps `workflow_dispatch` and `push: main` — both still full production runs, not dry runs.
 
-- **Daily execution** at 12:00 PM UTC via GitHub Actions
-- **Inventory workflow** runs first to update baselines
-- **Detection workflow** follows to monitor against updated inventory
-- Consider staggering schedules to avoid stale inventory data during detection
+- **Daily execution** at 12:00 PM UTC, from the inventory repository's own workflow
+- **Inventory pass** runs first to update baselines
+- **Detection pass** follows to monitor against updated inventory
+- Only one repository should hold the schedule: two would run concurrently against the same inventory, and two `--mode inventory` passes would each push `inventory-updates` and open a PR
 
 ## Build System
 
