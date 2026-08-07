@@ -55,6 +55,29 @@ describe('ConsoleAlertService - alertOnSuccess (Phase 3)', () => {
     ...overrides,
   })
 
+  describe('auditor report line', () => {
+    const output = async (summary: ExecutionSummary): Promise<string> => {
+      await service.alertOnSuccess(summary, {} as never)
+      return consoleSpy.mock.calls.flat().join('\n')
+    }
+
+    it('prefers the run page when there is one', async () => {
+      const text = await output(createSummary({ auditorReport: { runUrl: 'https://github.com/org/repo/actions/runs/123', htmlPaths: ['/w/reports/detection/report.html'] } }))
+
+      expect(text).toContain('Auditor Report: https://github.com/org/repo/actions/runs/123')
+    })
+
+    it('lists local paths when running outside CI', async () => {
+      const text = await output(createSummary({ auditorReport: { runUrl: null, htmlPaths: ['/local/a.html', '/local/b.html'] } }))
+
+      expect(text).toContain('/local/a.html, /local/b.html')
+    })
+
+    it('says nothing when no report was produced', async () => {
+      expect(await output(createSummary())).not.toContain('Auditor Report')
+    })
+  })
+
   describe('Success message output', () => {
     it('should log success header', async () => {
       const summary = createSummary()

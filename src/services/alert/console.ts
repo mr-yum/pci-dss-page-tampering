@@ -192,6 +192,10 @@ export class ConsoleAlertService implements IAlertService {
       console.log(`  Execution Duration: ${this.formatDuration(summary.executionDuration)}`)
     }
 
+    if (summary.auditorReport) {
+      const { runUrl, htmlPaths } = summary.auditorReport
+      console.log(`  Auditor Report: ${runUrl ?? htmlPaths.join(', ')}`)
+    }
     console.log()
   }
 

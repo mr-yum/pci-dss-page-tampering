@@ -28,6 +28,29 @@ export type ExecutionSummary = {
 
   /** Optional: Milliseconds from start to completion (P3 enhancement) */
   executionDuration?: number | null
+
+  /**
+   * Where the auditor report for this run can be found, when one was produced.
+   *
+   * Null when `--report-dir` was not supplied.
+   */
+  auditorReport?: AuditorReportLocation | null
+}
+
+/**
+ * Pointer to the auditor report a run produced.
+ *
+ * Under GitHub Actions this is the *run page*, not a direct artifact link. The
+ * artifact is uploaded by a later workflow step, so at the moment this
+ * notification is sent it does not exist yet and has no URL. The run page is
+ * also the better destination: it lists the artifact for download and renders
+ * the job-summary digest of findings inline.
+ */
+export type AuditorReportLocation = {
+  /** GitHub Actions run page, or null outside CI. */
+  runUrl: string | null
+  /** Absolute paths written, for local runs and for the console alerter. */
+  htmlPaths: string[]
 }
 
 /**

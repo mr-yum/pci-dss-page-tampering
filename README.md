@@ -452,6 +452,8 @@ Real payment pages do still change between runs, and the report reflects that fa
 
 The bundled `inventory-and-detection.yml` workflow passes `--report-dir reports` and uploads the directory as an `auditor-report-<run-id>-<attempt>` artefact with `if: always()`, so the evidence survives a failed detection run — the run an assessor is most likely to ask about. A digest of the findings is also appended to the GitHub Actions job summary.
 
+The Slack success notification carries a **View run & download** button linking the workflow run page. That is deliberately the run page rather than the artifact itself: the artifact is uploaded by a workflow step that runs _after_ the tool exits, so it has no URL at the moment the notification is sent. The run page is the better destination regardless — the artefact is one click away, and the job-summary digest of findings renders on that same page. Outside CI the notification lists the written file paths instead.
+
 > **Retention:** the workflow configures `retention-days: 90`. That is the ceiling for a public repository; private and internal repositories allow up to 400 days, and an organisation or enterprise policy may cap it lower still. Either way, PCI evidence retention is typically twelve months, so treat the artefact as a convenience copy, **not** the system of record. Archive it elsewhere if you need to satisfy a retention requirement.
 
 ## GitHub Actions Setup

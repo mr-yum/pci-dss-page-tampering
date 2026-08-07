@@ -23,7 +23,7 @@ import { GitInventoryStore } from './stores/inventory/git.js'
 import { CliArgsSchema, ExitCode } from './types/cli.js'
 import type { ComparisonResultType } from './types/comparison.js'
 import { ExecutionMode, type RuntimeConfiguration } from './types/config.js'
-import type { ExecutionSummary } from './types/execution-summary.js'
+import type { AuditorReportLocation, ExecutionSummary } from './types/execution-summary.js'
 import { getInventoryWorkflows, type Inventory, type InventoryAlert, type InventoryDifferenceResult, type InventoryWorkflow } from './types/inventory/model.js'
 import type { ReportPass } from './types/report.js'
 import { PullTarget, type Target } from './types/target.js'
@@ -446,7 +446,7 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
 
           // T010: Send success notification with try-catch error handling
           // T021: Pass execution start time for duration calculation
-          await sendSuccessNotification(alertService, config, processedTargets, totalResourceCount, alertDestinations, executionStartTime, log)
+          await sendSuccessNotification(alertService, config, processedTargets, totalResourceCount, alertDestinations, executionStartTime, log, buildAuditorReportLocation(reportsWritten))
           return
         }
 
@@ -500,7 +500,7 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
 
   // T010: Send success notification with try-catch error handling (for detection and all modes)
   // T021: Pass execution start time for duration calculation
-  await sendSuccessNotification(alertService, config, processedTargets, totalResourceCount, alertDestinations, executionStartTime, log)
+  await sendSuccessNotification(alertService, config, processedTargets, totalResourceCount, alertDestinations, executionStartTime, log, buildAuditorReportLocation(reportsWritten))
 }
 
 /**
@@ -530,6 +530,26 @@ function buildCiContext(): { provider: 'github-actions'; runId: string; runAttem
   }
 }
 
+/**
+ * Where this run's auditor report can be found.
+ *
+ * Deliberately the run page rather than a direct artifact link: the artifact is
+ * uploaded by a later workflow step, so it does not exist when this runs. The
+ * run page lists it and also carries the job-summary digest.
+ *
+ * Returns null when no report was produced, so the notification stays silent
+ * rather than linking somewhere empty.
+ */
+function buildAuditorReportLocation(written: readonly { paths: ReportArtefactPaths }[]): AuditorReportLocation | null {
+  if (written.length === 0) return null
+
+  const ci = buildCiContext()
+  const server = process.env['GITHUB_SERVER_URL'] ?? 'https://github.com'
+  const runUrl = ci === null || ci.repository === '' ? null : `${server}/${ci.repository}/actions/runs/${ci.runId}`
+
+  return { runUrl, htmlPaths: written.map((entry) => entry.paths.htmlPath) }
+}
+
 async function sendSuccessNotification(
   alertService: IAlertService,
   config: RuntimeConfiguration,
@@ -538,6 +558,7 @@ async function sendSuccessNotification(
   alertDestinations: InventoryAlert | null,
   executionStartTime: number,
   log: (message: string) => void,
+  auditorReport: AuditorReportLocation | null = null,
 ): Promise<void> {
   // Skip if no targets were processed (should not happen, but fail-safe)
   if (processedTargets.length === 0) {
@@ -565,6 +586,7 @@ async function sendSuccessNotification(
     resourceCount: totalResourceCount,
     completedAt: new Date(),
     executionDuration,
+    auditorReport,
   }
 
   // T010: Call alertOnSuccess() with try-catch error handling (non-blocking per FR-009)
