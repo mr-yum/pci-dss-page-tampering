@@ -302,6 +302,24 @@ describe('auditor report end to end', () => {
       await expect(mismatched).rejects.toThrow(/cites inventory sources .* but was given/u)
     })
 
+    it('refuses copies whose bytes are not the ones the report vouches for', async () => {
+      // The digest in the document is what an auditor checks the copy against.
+      // Writing different bytes under it would make the report vouch for
+      // content it never saw — the exact failure the copies exist to prevent.
+      const { report, files } = buildWritable()
+      const tampered = files.map(({ file, text }) => ({ file, text: `${text} ` }))
+
+      await expect(new FileReportWriter().write(report, reportDir, tampered)).rejects.toThrow(/does not match the report: cites sha256/u)
+      await expect(stat(join(reportDir, 'detection', 'report.json'))).rejects.toThrow(/ENOENT/u)
+    })
+
+    it('refuses two copies claiming the same path', async () => {
+      const { report, files } = buildWritable()
+      const duplicated = [...files, ...files]
+
+      await expect(new FileReportWriter().write(report, reportDir, duplicated)).rejects.toThrow(/two inventory copies/u)
+    })
+
     it('writes no inventory directory when no source text was retained', async () => {
       // Through the collector, not a hand-passed [], so this exercises the path
       // a real run takes when the repository retained no raw text.
