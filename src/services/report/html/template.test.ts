@@ -168,6 +168,18 @@ describe('renderReportHtml', () => {
       }
     })
 
+    it('warns, beside the links, that the shipped copies are not redacted', () => {
+      // The rest of the document is redacted; these copies cannot be, without
+      // invalidating the line numbers they exist to keep resolvable. Someone
+      // deciding who may download the artefact has to see that where the links
+      // are, not only in the notes further down.
+      const html = renderReportHtml(build())
+      const section = html.slice(html.indexOf('Inventory as scanned'), html.indexOf('Inventory as scanned') + 1500)
+
+      expect(section).toContain('not redacted')
+      expect(section).toContain('same sensitivity as the')
+    })
+
     it('renders unmatched inventory entries as filterable rows, off by default', () => {
       const html = renderReportHtml(build())
 

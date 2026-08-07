@@ -350,6 +350,10 @@ export function renderReportHtml(report: AuditorReport): string {
         : html`<section class="notes">
             <h2>Inventory as scanned</h2>
             <p>The exact inventory this run read is included beside this report — the same bytes the <span class="mono">file:line</span> references above were resolved against, so they stay correct however the branch moves afterwards.</p>
+            <p class="banner banner-warn">
+              These copies are reproduced exactly as committed and are <strong>not redacted</strong> — unlike everything else in this document. Treat this artefact as having the same sensitivity as the inventory repository itself, and scope
+              who can download it accordingly.
+            </p>
             <ul>
               ${join(
                 report.run.inventorySources.map((source) => {

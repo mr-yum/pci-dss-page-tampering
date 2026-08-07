@@ -442,6 +442,8 @@ Each pass carries its own copy on purpose: under `--mode all` the two passes rea
 
 > **Where you host the run matters.** These copies are the inventory repository's own bytes. If the workflow runs in a repository more widely readable than the inventory it monitors — a public repository monitoring a private inventory, say — the artefact publishes that inventory to everyone who can read the run. Host the run in the inventory repository itself, or exclude `**/inventory/**` from the upload as this repository's own workflow does.
 
+<!-- markdownlint MD028: this comment keeps the two blockquotes distinct. -->
+
 > **The copy is verbatim, and so is exempt from the redaction described below.** That is not an oversight — redacting it would change the byte count, break the `sha256` check against the committed file, and shift every line number the report cites, which is the whole point of shipping it. The redaction policy applies to what was _observed on the page_; the inventory is your own committed configuration, and the artefact reproduces it exactly as written. If a target URL in your inventory embeds a query token, expect to find it here. Treat the artefact as having the same sensitivity as the inventory repository itself, and scope who can download CI artefacts accordingly.
 
 `--mode all` writes **two** reports, one per pass. The passes hit different URLs against different branches and evidence different requirements, and the inventory pass mutates the baseline mid-run — merged, a row's meaning would depend on which pass produced it. Both documents of a single invocation share a `run.correlationId`.
