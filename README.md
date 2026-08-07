@@ -508,13 +508,16 @@ Three GitHub Actions workflows ship with this repo under [.github/workflows/](.g
 
 Runs on every push to `main`, every pull request, and on manual dispatch. Installs dependencies, audits them at `--audit-level=high`, then runs linting, type checking, unit tests, and integration tests on Node 24. This is the gate that protects `main`.
 
-#### [inventory-and-detection.yml](.github/workflows/inventory-and-detection.yml) — Scheduled monitoring
+#### [inventory-and-detection.yml](.github/workflows/inventory-and-detection.yml) — On-demand and post-merge monitoring
 
-The production runner. Triggers:
+Triggers:
 
-- **Scheduled**: daily at 12:00 UTC (overnight in AU). Runs `--mode all` against every target.
 - **`workflow_dispatch`**: manual run with optional `mode` (`all` / `inventory` / `detection`) and `target` inputs — useful for ad-hoc inventory sweeps or re-running detection after a fix.
 - **Push to `main`**: runs after merges so newly-approved inventory takes effect immediately.
+
+There is **no schedule here.** The daily run moved to the inventory repository, because the auditor report's artefact carries that repository's files verbatim and this repository is public — see [In CI](#in-ci).
+
+Both remaining triggers are still **full production runs** against the real inventory: `--mode all` writes to the inventory repository, opens a pull request there, and sends Slack alerts. They are not dry runs.
 
 Requires repo secrets `INVENTORY_REPO_PAT` and `SLACK_OAUTH_TOKEN`, and repo variables `INVENTORY_REPO_URL`, `GIT_USER_NAME`, `GIT_USER_EMAIL`. Installs Chrome system dependencies for Puppeteer before invoking `npm start`.
 
