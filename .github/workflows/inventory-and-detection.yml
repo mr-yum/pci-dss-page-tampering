@@ -143,7 +143,9 @@ jobs:
           # Warn rather than fail: writing the report never fails a run, so a
           # missing artefact should surface in the log, not turn the job red.
           if-no-files-found: warn
-          # GitHub's maximum. PCI evidence retention is typically 12 months, so
-          # treat this as a convenience copy, not the system of record.
+          # The ceiling for a public repo (private/internal allow up to 400,
+          # subject to org policy). PCI evidence retention is typically 12
+          # months either way, so treat this as a convenience copy, not the
+          # system of record.
           retention-days: 90
           compression-level: 9

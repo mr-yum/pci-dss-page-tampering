@@ -1,5 +1,6 @@
 # Generated at runtime, not source.
 reports/
+reports-*/
 pulled_repo/
 tmp/
 
