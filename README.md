@@ -440,6 +440,8 @@ jq -r '.run.inventorySources[] | "\(.sha256)  \(.copiedTo)"' detection/report.js
 
 Each pass carries its own copy on purpose: under `--mode all` the two passes read different branches, so one shared copy would misrepresent at least one of them.
 
+The tool always writes these copies when `--report-dir` is set. A publishing step may still strip them — this repository's own workflow does, see [In CI](#in-ci) — so "self-contained" describes what the tool emits, not necessarily what a given artefact carries.
+
 > **Where you host the run matters.** These copies are the inventory repository's own bytes. If the workflow runs in a repository more widely readable than the inventory it monitors — a public repository monitoring a private inventory, say — the artefact publishes that inventory to everyone who can read the run. Host the run in the inventory repository itself, or exclude `**/inventory/**` from the upload as this repository's own workflow does.
 
 <!-- markdownlint MD028: this comment keeps the two blockquotes distinct. -->
@@ -473,7 +475,9 @@ Real payment pages do still change between runs, and the report reflects that fa
 
 ### In CI
 
-The bundled `inventory-and-detection.yml` workflow passes `--report-dir reports` and uploads the directory as an `auditor-report-<run-id>-<attempt>` artefact with `if: always()`, so the evidence survives a failed detection run — the run an assessor is most likely to ask about. It deliberately excludes `**/inventory/**` from the upload, because this repository is public and the inventory it monitors is not; a workflow hosted in the inventory repository should upload `reports/` whole. A digest of the findings is also appended to the GitHub Actions job summary.
+The bundled `inventory-and-detection.yml` workflow passes `--report-dir reports` and uploads the directory as an `auditor-report-<run-id>-<attempt>` artefact with `if: always()`, so the evidence survives a failed detection run — the run an assessor is most likely to ask about.
+
+It deliberately excludes `**/inventory/**` from the upload, because this repository is public and the inventory it monitors is not. **That artefact is therefore not self-contained**: its `file:line` citations and the "Inventory as scanned" links have nothing to resolve against, and the `sha256` values in `run.inventorySources` can only be checked by someone who fetches the matching files from the inventory repository at the commit named in `run.inventoryRef`. A workflow hosted in the inventory repository uploads `reports/` whole and does not have this gap — which is why the scheduled run lives there. A digest of the findings is also appended to the GitHub Actions job summary.
 
 The Slack success notification carries a **View run & download** button linking the workflow run page. That is deliberately the run page rather than the artifact itself: the artifact is uploaded by a workflow step that runs _after_ the tool exits, so it has no URL at the moment the notification is sent. The run page is the better destination regardless — the artefact is one click away, and the job-summary digest of findings renders on that same page. Outside CI the notification lists the written file paths instead.
 
