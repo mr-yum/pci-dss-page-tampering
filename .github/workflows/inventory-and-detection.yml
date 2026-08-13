@@ -46,7 +46,7 @@ jobs:
     # as root so checkout, npm, and git can write the workspace; the app launches
     # Chrome with --no-sandbox so root is safe.
     container:
-      image: ghcr.io/puppeteer/puppeteer:25.5.0
+      image: ghcr.io/puppeteer/puppeteer:25.6.0
       options: --user root
 
     # The image installs Chrome under pptruser's home; point Puppeteer at it so
