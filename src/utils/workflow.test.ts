@@ -71,6 +71,10 @@ describe('collectTotpSeedRefs', () => {
       ['card:number', '[id="card:number"]'],
       ['a"b', '[id="a\\"b"]'],
       ['a\\b', '[id="a\\\\b"]'],
+      // Six-digit hex, so the following character cannot be absorbed into the escape.
+      ['a\nb', '[id="a\\00000ab"]'],
+      ['a\rb', '[id="a\\00000db"]'],
+      ['a\fb', '[id="a\\00000cb"]'],
     ]
 
     for (const [identifier, querySelector] of cases) {
@@ -79,11 +83,19 @@ describe('collectTotpSeedRefs', () => {
   })
 
   it('escapes the same characters for the other attribute-valued selector types', () => {
-    const build = (type: 'input' | 'testid' | 'aria', identifier: string) => stepsToPuppeteerLocatorAction([{ description: 'step', waitFor: [{ type, identifier }], action: { type: 'click' } }])[0]?.querySelector
+    const build = (type: 'input' | 'href' | 'testid' | 'aria', identifier: string) => stepsToPuppeteerLocatorAction([{ description: 'step', waitFor: [{ type, identifier }], action: { type: 'click' } }])[0]?.querySelector
 
     expect(build('input', 'a"b')).toBe('input[name="a\\"b"]')
+    expect(build('href', 'a"b')).toBe('a[href$="a\\"b"]')
     expect(build('testid', 'a"b')).toBe('[data-testid="a\\"b"]')
     expect(build('aria', 'a"b')).toBe('[aria-label="a\\"b"]')
+
+    expect(build('input', 'a\\b')).toBe('input[name="a\\\\b"]')
+    expect(build('href', 'a\\b')).toBe('a[href$="a\\\\b"]')
+    expect(build('testid', 'a\\b')).toBe('[data-testid="a\\\\b"]')
+    expect(build('aria', 'a\\b')).toBe('[aria-label="a\\\\b"]')
+
+    expect(build('href', 'a\nb')).toBe('a[href$="a\\00000ab"]')
   })
 
   it('combines an id selector with other waitFor entries as a descendant chain', () => {

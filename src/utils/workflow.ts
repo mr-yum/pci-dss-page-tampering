@@ -60,12 +60,16 @@ export function getPuppeteerWorkflowFromTarget(target: Target): PuppeteerWorkflo
  * Escape an inventory-supplied identifier for use inside a double-quoted CSS
  * attribute value. An unescaped `"` ends the string early and yields an invalid
  * selector; an unescaped `\` silently changes which element the selector
- * decodes to. Both are author errors rather than attacks -- identifiers come
- * from the PR-reviewed inventory repo -- but a selector that quietly matches
- * the wrong element is exactly the failure this tool must not have.
+ * decodes to; a raw line break is not permitted in a CSS string at all. All
+ * three are author errors rather than attacks -- identifiers come from the
+ * PR-reviewed inventory repo -- but a selector that quietly matches the wrong
+ * element is exactly the failure this tool must not have.
+ *
+ * Line breaks use full six-digit hex escapes so no whitespace terminator is
+ * needed and a following hex digit cannot be absorbed into the escape.
  */
 function escapeCssStringValue(identifier: string): string {
-  return identifier.replaceAll('\\', '\\\\').replaceAll('"', '\\"')
+  return identifier.replaceAll('\\', '\\\\').replaceAll('"', '\\"').replaceAll('\n', '\\00000a').replaceAll('\r', '\\00000d').replaceAll('\f', '\\00000c')
 }
 
 function waitForDefinitionToQuerySelector(waitForDefinition: WorkflowWaitForDefinition): string {
