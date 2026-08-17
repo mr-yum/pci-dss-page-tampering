@@ -57,7 +57,7 @@ describe('collectTotpSeedRefs', () => {
       [{ type: 'h3', identifier: 'Pay' }, 'h3 ::-p-text(Pay)'],
       [{ type: 'span', identifier: 'Add' }, 'span ::-p-text(Add)'],
       [{ type: 'testid', identifier: 'otp-input' }, '[data-testid="otp-input"]'],
-      [{ type: 'aria', identifier: 'Add Cake' }, '[aria-label="Add Cake"]'],
+      [{ type: 'aria', identifier: 'Add to order' }, '[aria-label="Add to order"]'],
       [{ type: 'id', identifier: 'credit_card_number' }, '[id="credit_card_number"]'],
     ]
 
