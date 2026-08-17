@@ -30,7 +30,7 @@ function hasTopLevelAlternation(pattern: string): boolean {
 
 // Schema for WorkflowWaitForDefinition
 export const WorkflowWaitForDefinitionSchema: z.ZodType<WorkflowWaitForDefinition> = z.object({
-  type: z.enum(['div', 'button', 'input', 'href', 'h2', 'h3', 'span', 'testid', 'aria']),
+  type: z.enum(['div', 'button', 'input', 'href', 'h2', 'h3', 'span', 'testid', 'aria', 'id']),
   identifier: z.string(),
 })
 

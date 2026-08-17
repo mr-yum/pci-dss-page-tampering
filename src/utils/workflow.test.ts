@@ -47,6 +47,70 @@ describe('collectTotpSeedRefs', () => {
     ])
   })
 
+  it('maps every waitFor type to its query selector, including id for fields with no name attribute', () => {
+    const cases: Array<[WorkflowStep['waitFor'][number], string]> = [
+      [{ type: 'div', identifier: 'nav-bar__element' }, 'div.nav-bar__element'],
+      [{ type: 'button', identifier: 'Continue' }, 'button:enabled ::-p-text(Continue)'],
+      [{ type: 'input', identifier: 'cardnumber' }, 'input[name="cardnumber"]'],
+      [{ type: 'href', identifier: '/checkout' }, 'a[href$="/checkout"]'],
+      [{ type: 'h2', identifier: 'Pay' }, 'h2 ::-p-text(Pay)'],
+      [{ type: 'h3', identifier: 'Pay' }, 'h3 ::-p-text(Pay)'],
+      [{ type: 'span', identifier: 'Add' }, 'span ::-p-text(Add)'],
+      [{ type: 'testid', identifier: 'otp-input' }, '[data-testid="otp-input"]'],
+      [{ type: 'aria', identifier: 'Add to order' }, '[aria-label="Add to order"]'],
+      [{ type: 'id', identifier: 'credit_card_number' }, '[id="credit_card_number"]'],
+    ]
+
+    for (const [waitFor, querySelector] of cases) {
+      expect(stepsToPuppeteerLocatorAction([{ description: 'step', waitFor: [waitFor], action: { type: 'click' } }])[0]?.querySelector).toBe(querySelector)
+    }
+  })
+
+  it('escapes quotes and backslashes so an identifier cannot break out of the attribute selector', () => {
+    const cases: Array<[string, string]> = [
+      ['card:number', '[id="card:number"]'],
+      ['a"b', '[id="a\\"b"]'],
+      ['a\\b', '[id="a\\\\b"]'],
+      // Six-digit hex, so the following character cannot be absorbed into the escape.
+      ['a\nb', '[id="a\\00000ab"]'],
+      ['a\rb', '[id="a\\00000db"]'],
+      ['a\fb', '[id="a\\00000cb"]'],
+    ]
+
+    for (const [identifier, querySelector] of cases) {
+      expect(stepsToPuppeteerLocatorAction([{ description: 'step', waitFor: [{ type: 'id', identifier }], action: { type: 'click' } }])[0]?.querySelector).toBe(querySelector)
+    }
+  })
+
+  it('escapes the same characters for the other attribute-valued selector types', () => {
+    const build = (type: 'input' | 'href' | 'testid' | 'aria', identifier: string) => stepsToPuppeteerLocatorAction([{ description: 'step', waitFor: [{ type, identifier }], action: { type: 'click' } }])[0]?.querySelector
+
+    expect(build('input', 'a"b')).toBe('input[name="a\\"b"]')
+    expect(build('href', 'a"b')).toBe('a[href$="a\\"b"]')
+    expect(build('testid', 'a"b')).toBe('[data-testid="a\\"b"]')
+    expect(build('aria', 'a"b')).toBe('[aria-label="a\\"b"]')
+
+    expect(build('input', 'a\\b')).toBe('input[name="a\\\\b"]')
+    expect(build('href', 'a\\b')).toBe('a[href$="a\\\\b"]')
+    expect(build('testid', 'a\\b')).toBe('[data-testid="a\\\\b"]')
+    expect(build('aria', 'a\\b')).toBe('[aria-label="a\\\\b"]')
+
+    expect(build('href', 'a\nb')).toBe('a[href$="a\\00000ab"]')
+  })
+
+  it('combines an id selector with other waitFor entries as a descendant chain', () => {
+    const step: WorkflowStep = {
+      description: 'step',
+      waitFor: [
+        { type: 'div', identifier: 'card-form' },
+        { type: 'id', identifier: 'credit_card_cvv' },
+      ],
+      action: { type: 'input', value: '100' },
+    }
+
+    expect(stepsToPuppeteerLocatorAction([step])[0]?.querySelector).toBe('div.card-form [id="credit_card_cvv"]')
+  })
+
   it('rejects an untrusted frame matcher in a programmatically constructed recovery step', () => {
     const frameStep: WorkflowStep = {
       ...step({ type: 'input', value: 'value', reloadOnMissingTarget: true }),

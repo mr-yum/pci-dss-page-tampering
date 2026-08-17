@@ -260,7 +260,19 @@ against the top-level page as usual:
   "description": "Enter the test card number",
   "frameUrl": "^https://payments\\.example\\.com/card-frame",
   "waitFor": [{ "type": "input", "identifier": "cardnumber" }],
-  "action": { "type": "input", "value": "4242424242424242" }
+  "action": { "type": "input", "value": "<provider test card>" }
+}
+```
+
+Not every hosted card form gives its inputs a `name`. Where the provider
+identifies fields by `id` instead, use the `id` selector type:
+
+```json
+{
+  "description": "Enter the test card number",
+  "frameUrl": "^https://payments\\.example\\.com/assets/checkout\\.",
+  "waitFor": [{ "type": "id", "identifier": "credit_card_number" }],
+  "action": { "type": "input", "value": "<provider test card>" }
 }
 ```
 
