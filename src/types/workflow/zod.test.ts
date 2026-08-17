@@ -40,7 +40,7 @@ describe('WorkflowStepSchema', () => {
     const result = WorkflowStepSchema.safeParse({
       description: 'Enter the card number in the provider iframe',
       waitFor: [{ type: 'id', identifier: 'credit_card_number' }],
-      action: { type: 'input', value: '4000000000000002' },
+      action: { type: 'input', value: 'card-number-sentinel' },
     })
     expect(result.success).toBe(true)
   })
@@ -49,7 +49,7 @@ describe('WorkflowStepSchema', () => {
     const result = WorkflowStepSchema.safeParse({
       description: 'Enter the card number',
       waitFor: [{ type: 'cssSelector', identifier: '.card input' }],
-      action: { type: 'input', value: '4000000000000002' },
+      action: { type: 'input', value: 'card-number-sentinel' },
     })
     expect(result.success).toBe(false)
   })

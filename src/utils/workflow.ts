@@ -56,16 +56,29 @@ export function getPuppeteerWorkflowFromTarget(target: Target): PuppeteerWorkflo
   }
 }
 
+/**
+ * Escape an inventory-supplied identifier for use inside a double-quoted CSS
+ * attribute value. An unescaped `"` ends the string early and yields an invalid
+ * selector; an unescaped `\` silently changes which element the selector
+ * decodes to. Both are author errors rather than attacks -- identifiers come
+ * from the PR-reviewed inventory repo -- but a selector that quietly matches
+ * the wrong element is exactly the failure this tool must not have.
+ */
+function escapeCssStringValue(identifier: string): string {
+  return identifier.replaceAll('\\', '\\\\').replaceAll('"', '\\"')
+}
+
 function waitForDefinitionToQuerySelector(waitForDefinition: WorkflowWaitForDefinition): string {
+  const attributeValue = escapeCssStringValue(waitForDefinition.identifier)
   switch (waitForDefinition.type) {
     case 'div':
       return `div.${waitForDefinition.identifier}`
     case 'button':
       return `button:enabled ::-p-text(${waitForDefinition.identifier})`
     case 'input':
-      return `input[name="${waitForDefinition.identifier}"]`
+      return `input[name="${attributeValue}"]`
     case 'href':
-      return `a[href$="${waitForDefinition.identifier}"]`
+      return `a[href$="${attributeValue}"]`
     case 'h2':
       return `h2 ::-p-text(${waitForDefinition.identifier})`
     case 'h3':
@@ -73,14 +86,14 @@ function waitForDefinitionToQuerySelector(waitForDefinition: WorkflowWaitForDefi
     case 'span':
       return `span ::-p-text(${waitForDefinition.identifier})`
     case 'testid':
-      return `[data-testid="${waitForDefinition.identifier}"]`
+      return `[data-testid="${attributeValue}"]`
     case 'aria':
-      return `[aria-label="${waitForDefinition.identifier}"]`
+      return `[aria-label="${attributeValue}"]`
     // Attribute form rather than `#id`: hosted payment iframes routinely use ids
     // containing characters that are not valid in a CSS id selector without
     // escaping, and this keeps the mapping consistent with testid/aria.
     case 'id':
-      return `[id="${waitForDefinition.identifier}"]`
+      return `[id="${attributeValue}"]`
   }
 }
 

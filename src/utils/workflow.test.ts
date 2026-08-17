@@ -66,6 +66,26 @@ describe('collectTotpSeedRefs', () => {
     }
   })
 
+  it('escapes quotes and backslashes so an identifier cannot break out of the attribute selector', () => {
+    const cases: Array<[string, string]> = [
+      ['card:number', '[id="card:number"]'],
+      ['a"b', '[id="a\\"b"]'],
+      ['a\\b', '[id="a\\\\b"]'],
+    ]
+
+    for (const [identifier, querySelector] of cases) {
+      expect(stepsToPuppeteerLocatorAction([{ description: 'step', waitFor: [{ type: 'id', identifier }], action: { type: 'click' } }])[0]?.querySelector).toBe(querySelector)
+    }
+  })
+
+  it('escapes the same characters for the other attribute-valued selector types', () => {
+    const build = (type: 'input' | 'testid' | 'aria', identifier: string) => stepsToPuppeteerLocatorAction([{ description: 'step', waitFor: [{ type, identifier }], action: { type: 'click' } }])[0]?.querySelector
+
+    expect(build('input', 'a"b')).toBe('input[name="a\\"b"]')
+    expect(build('testid', 'a"b')).toBe('[data-testid="a\\"b"]')
+    expect(build('aria', 'a"b')).toBe('[aria-label="a\\"b"]')
+  })
+
   it('combines an id selector with other waitFor entries as a descendant chain', () => {
     const step: WorkflowStep = {
       description: 'step',
