@@ -36,6 +36,24 @@ describe('WorkflowStepSchema', () => {
     expect(result.success).toBe(true)
   })
 
+  it('accepts an id waitFor definition', () => {
+    const result = WorkflowStepSchema.safeParse({
+      description: 'Enter the card number in the provider iframe',
+      waitFor: [{ type: 'id', identifier: 'credit_card_number' }],
+      action: { type: 'input', value: '4000000000000002' },
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('rejects an unknown waitFor type', () => {
+    const result = WorkflowStepSchema.safeParse({
+      description: 'Enter the card number',
+      waitFor: [{ type: 'cssSelector', identifier: '.card input' }],
+      action: { type: 'input', value: '4000000000000002' },
+    })
+    expect(result.success).toBe(false)
+  })
+
   it('accepts an aria waitFor definition', () => {
     const result = WorkflowStepSchema.safeParse({
       description: 'Add upgrade via icon button',

@@ -264,6 +264,18 @@ against the top-level page as usual:
 }
 ```
 
+Not every hosted card form gives its inputs a `name`. Where the provider
+identifies fields by `id` instead, use the `id` selector type:
+
+```json
+{
+  "description": "Enter the test card number",
+  "frameUrl": "^https://payments\\.example\\.com/assets/checkout\\.",
+  "waitFor": [{ "type": "id", "identifier": "credit_card_number" }],
+  "action": { "type": "input", "value": "4242424242424242" }
+}
+```
+
 Anchor frame matchers to a trusted HTTPS origin and the narrowest stable path.
 The frame is resolved when the step executes, so dynamically mounted payment
 frames are supported. The same mechanism works in nested `clickPopup` steps.

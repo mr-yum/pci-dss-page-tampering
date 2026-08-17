@@ -339,7 +339,7 @@ These typed results provide complete context to alert handlers without additiona
 Workflows are defined as step-by-step instructions for Puppeteer in `src/workflows/`:
 
 - Each step includes element selectors and actions (click, input, navigate, totp)
-- `waitFor` selector types: `div` (class), `button`/`h2`/`h3`/`span` (visible text, substring match), `input` (name attribute), `href` (link suffix), `testid` (`data-testid` attribute — preferred when the target app exposes test ids), `aria` (`aria-label` attribute — for icon buttons with no visible text). Set a step's optional `frameUrl` regular expression to resolve and act inside a dynamically mounted child frame; anchor it to a trusted HTTPS origin and stable path.
+- `waitFor` selector types: `div` (class), `button`/`h2`/`h3`/`span` (visible text, substring match), `input` (name attribute), `href` (link suffix), `testid` (`data-testid` attribute — preferred when the target app exposes test ids), `aria` (`aria-label` attribute — for icon buttons with no visible text), `id` (`id` attribute — for hosted payment iframes whose fields carry no `name`, e.g. Toast's `credit_card_number`). Set a step's optional `frameUrl` regular expression to resolve and act inside a dynamically mounted child frame; anchor it to a trusted HTTPS origin and stable path.
 - Target URLs may embed `{{date}}` / `{{date+Nd}}` placeholders (`src/utils/date-template.ts`), resolved to a UTC `YYYY-MM-DD` at navigation time — for booking-style targets whose availability requires a future date
 - Steps are converted to PuppeteerLocatorActions for execution
 - Support for popup handling and complex user flows

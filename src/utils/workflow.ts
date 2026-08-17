@@ -76,6 +76,11 @@ function waitForDefinitionToQuerySelector(waitForDefinition: WorkflowWaitForDefi
       return `[data-testid="${waitForDefinition.identifier}"]`
     case 'aria':
       return `[aria-label="${waitForDefinition.identifier}"]`
+    // Attribute form rather than `#id`: hosted payment iframes routinely use ids
+    // containing characters that are not valid in a CSS id selector without
+    // escaping, and this keeps the mapping consistent with testid/aria.
+    case 'id':
+      return `[id="${waitForDefinition.identifier}"]`
   }
 }
 
