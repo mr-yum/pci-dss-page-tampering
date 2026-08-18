@@ -75,7 +75,7 @@ describe('extractHost', () => {
 
 describe('redactUrl', () => {
   it('drops the query string and fragment, keeping origin + path', () => {
-    expect(redactUrl('https://itsyourtable.com/api/auth/set-token?token=secret123&sig=abc#frag')).toBe('https://itsyourtable.com/api/auth/set-token')
+    expect(redactUrl('https://checkout.example.com/api/auth/set-token?token=secret123&sig=abc#frag')).toBe('https://checkout.example.com/api/auth/set-token')
   })
 
   it('returns origin + path unchanged when there is no query', () => {
