@@ -28,6 +28,28 @@ describe('headerResponseHandler', () => {
     summary = new Map()
   })
 
+  // Regression: identifiesHeaderAndOrigin built its matchable without a target
+  // type, so a targetTypeMatcher inside an entry's identifyWith failed secure
+  // here and the header was never captured from a third-party origin at all --
+  // which reads as "clean" downstream rather than "not monitored".
+  it('captures a third-party header whose entry is scoped to the current pass', async () => {
+    const entry = {
+      identifyWith: createMatcher({
+        andMatcher: [{ headerNameMatcher: '^strict-transport-security$' }, { hostMatcher: '^pay\\.provider\\.example$' }, { targetTypeMatcher: '^detection$' }],
+      }),
+    } as any
+
+    const capture = async (targetType: string) => {
+      const headers: HeaderDetectionSummary['headers'] = new Map()
+      await headerResponseHandler(mockResponse('https://pay.provider.example/charge', { 'strict-transport-security': 'max-age=31536000' }), headers, [], 'https://shop.example.test/checkout', [entry], 'default', targetType)
+      return headers
+    }
+
+    expect([...(await capture('detection')).keys()]).toEqual(['strict-transport-security'])
+    // Scoped to detection, so the inventory pass must not treat it as tracked.
+    expect([...(await capture('inventory')).keys()]).toEqual([])
+  })
+
   it('captures the originating response URL alongside CSP directives', async () => {
     await headerResponseHandler(mockResponse('https://m.stripe.network/something.js', { 'content-security-policy': "default-src 'self'; object-src 'none'" }), summary)
 

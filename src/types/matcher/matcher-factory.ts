@@ -17,8 +17,8 @@ import { HostMatcher } from './host-matcher.js'
 import type { AuthorisationInfo, Matcher } from './matcher.interface.js'
 import { NameMatcher } from './name-matcher.js'
 import { OrMatcher } from './or-matcher.js'
-import { UrlMatcher } from './url-matcher.js'
 import { TargetTypeMatcher } from './target-type-matcher.js'
+import { UrlMatcher } from './url-matcher.js'
 import { WorkflowMatcher } from './workflow-matcher.js'
 
 /**

@@ -51,6 +51,28 @@ describe('HeaderComparisonService required headers', () => {
     })
   })
 
+  // Regression: detectedHeaderToMatchable omitted targetType, so a
+  // targetTypeMatcher inside authoriseWith could never authorise.
+  it('authorises a header value only on the pass its entry is scoped to', async () => {
+    const scoped: InventoryHeaderInfo = {
+      identifyWith: createMatcher({ headerNameMatcher: '^strict-transport-security$' }),
+      authoriseWith: {
+        matcher: createMatcher({ targetTypeMatcher: '^inventory$' }),
+        authorisationInfo: { description: 'Staging-only acceptance', authorised: true, date: new Date('2026-08-18T00:00:00.000Z') },
+      },
+    }
+    const summary = {
+      headers: new Map([['strict-transport-security', new Map([['max-age=0', new Set([target.url])]])]]),
+      responses: [],
+    }
+
+    const onInventory = await new HeaderComparisonService().compare({ ...target, type: 'inventory' as const }, { ...inventory, headers: [scoped] }, summary as any)
+    const onDetection = await new HeaderComparisonService().compare({ ...target, type: 'detection' as const }, { ...inventory, headers: [scoped] }, summary as any)
+
+    expect(onInventory.map((r) => r.type)).toEqual(['authorized_header'])
+    expect(onDetection.map((r) => r.type)).toEqual(['known_header_unauthorised_content'])
+  })
+
   it('scopes required header presence checks to the current pass', async () => {
     const passHeader: InventoryHeaderInfo = {
       ...requiredHeader,
