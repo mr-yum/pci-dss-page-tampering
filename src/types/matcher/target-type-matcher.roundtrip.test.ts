@@ -26,6 +26,22 @@ describe('targetTypeMatcher serialisation', () => {
     expect(inventoryHeaderInfoToRawInventoryHeaderInfo(rawInventoryHeaderInfoToInventoryHeaderInfo(raw as any))).toEqual(raw)
   })
 
+  // A second matcher key used to be stripped silently by z.object(), so
+  // { headerNameMatcher, targetTypeMatcher } parsed as header-name only and the
+  // pass scope evaporated -- the entry then applied during detection too.
+  it('rejects a config carrying more than one matcher key', () => {
+    expect(MatcherConfigSchema.safeParse({ headerNameMatcher: '^x-frame-options$', targetTypeMatcher: '^inventory$' }).success).toBe(false)
+    expect(MatcherConfigSchema.safeParse({ nameMatcher: '^https:\\/\\/a\\.example\\/.+$', workflowMatcher: '^stripe$' }).success).toBe(false)
+    expect(MatcherConfigSchema.safeParse({ targetTypeMatcher: '^inventory$', hostMatcher: '^a\\.example$' }).success).toBe(false)
+
+    // The intended way to combine them is an explicit andMatcher.
+    expect(MatcherConfigSchema.safeParse({ andMatcher: [{ headerNameMatcher: '^x-frame-options$' }, { targetTypeMatcher: '^inventory$' }] }).success).toBe(true)
+  })
+
+  it('rejects an unknown key alongside a valid matcher', () => {
+    expect(MatcherConfigSchema.safeParse({ targetTypeMatcher: '^inventory$', hostMatchr: '^typo\\.example$' }).success).toBe(false)
+  })
+
   it('is accepted by the matcher config schema and rejects an invalid regex', () => {
     expect(MatcherConfigSchema.safeParse({ targetTypeMatcher: '^inventory$' }).success).toBe(true)
     expect(MatcherConfigSchema.safeParse({ targetTypeMatcher: '' }).success).toBe(false)
