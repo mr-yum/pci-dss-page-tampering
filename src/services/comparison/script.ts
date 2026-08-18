@@ -66,6 +66,7 @@ export class ScriptComparisonService implements IScriptComparisonService {
       content,
       hash: scriptInfo.hash,
       workflowId: target.workflowId ?? 'default',
+      targetType: target.type,
       ...(url !== undefined ? { url } : {}),
     }
   }

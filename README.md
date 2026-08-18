@@ -147,6 +147,40 @@ Omit `workflowMatcher` when an entry should apply to every variation. Newly
 discovered resources are generated with an exact workflow matcher so approving
 one variation cannot silently approve another.
 
+### Scoping an entry to one pass
+
+A workflow id names a checkout _variation_, and a variation owns both an
+inventory target and a detection target — so `workflowMatcher` is live during
+both passes. It cannot, on its own, authorise something for staging without
+also trusting it in production.
+
+`targetTypeMatcher` matches the pass that observed the resource, `inventory` or
+`detection`. Combine the two when an origin belongs to one environment only:
+
+```json
+{
+  "identifyWith": {
+    "andMatcher": [{ "targetTypeMatcher": "^inventory$" }, { "nameMatcher": "^https://sandbox\\.provider\\.example/.+$" }]
+  },
+  "authoriseWith": {
+    "urlMatcher": "^https://sandbox\\.provider\\.example/",
+    "authorisationInfo": {
+      "description": "Provider sandbox SDK, loaded by the staging checkout only",
+      "authorised": true,
+      "date": "2026-08-18T00:00:00.000Z"
+    }
+  }
+}
+```
+
+The `identifyWith` decides _when the entry applies_; the `authoriseWith` is what
+grants trust. Scoped this way, the entry matches the provider's sandbox origin
+only while the inventory pass runs against staging. On the detection pass the
+same origin matches nothing, so it comes back as an unknown script and alerts —
+which is the point: a staging-only origin never earns trust on the production
+payment page. `targetTypeMatcher` fails secure when the target type is
+missing.
+
 See [Branch Usage](#branch-usage) for the branch model and [CI Validation for the Inventory Repo](#ci-validation-for-the-inventory-repo) for the CI wiring.
 
 ## CLI Parameters
@@ -698,8 +732,8 @@ must be present. This detects removal in addition to changed values:
 ```
 
 Required entries must contain one exact anchored `headerNameMatcher`. Their
-identifiers may otherwise contain only `hostMatcher`, `urlMatcher`, and
-`workflowMatcher` children
+identifiers may otherwise contain only `hostMatcher`, `urlMatcher`,
+`workflowMatcher`, and `targetTypeMatcher` children
 under `andMatcher`, because content-dependent matchers cannot be evaluated when
 the header is absent. `requiredOn` values are validated against Puppeteer's
 response resource types (for example `document`, `script`, and `stylesheet`),

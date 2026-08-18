@@ -21,6 +21,7 @@ export function detectedHeaderToMatchable(header: DetectedHeader, target: Target
     name: header.name,
     content: header.value,
     workflowId: target.workflowId ?? 'default',
+    targetType: target.type,
     ...(header.url !== undefined ? { url: header.url } : {}),
     // hash is omitted for headers (optional field in Matchable interface)
   }

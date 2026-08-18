@@ -38,7 +38,7 @@ export type ReportRowStatus = 'authorised' | 'unauthorised_content' | 'unknown' 
 
 export type ReportResourceKind = 'external_script' | 'inline_script' | 'header'
 
-export type ReportMatcherType = 'name' | 'header-name' | 'content' | 'hash' | 'host' | 'url' | 'workflow' | 'csp-directive' | 'or' | 'and'
+export type ReportMatcherType = 'name' | 'header-name' | 'content' | 'hash' | 'host' | 'url' | 'workflow' | 'targetType' | 'csp-directive' | 'or' | 'and'
 
 /** Authorisation metadata, with dates rendered as ISO-8601 UTC strings. */
 export type ReportAuthorisationInfo = {

@@ -45,40 +45,61 @@ const InventoryAuthorisationInfoRawSchema = z.object({
  * This enables authorization metadata to be attached at any level in the matcher tree,
  * preserving the exact structure specified in inventory files.
  */
-const NameMatcherConfigSchema = z.object({
-  nameMatcher: z.string().min(1, 'nameMatcher must not be empty'),
-  authorisationInfo: InventoryAuthorisationInfoRawSchema.optional(),
-})
+const NameMatcherConfigSchema = z
+  .object({
+    nameMatcher: z.string().min(1, 'nameMatcher must not be empty'),
+    authorisationInfo: InventoryAuthorisationInfoRawSchema.optional(),
+  })
+  .strict()
 
-const HeaderNameMatcherConfigSchema = z.object({
-  headerNameMatcher: z.string().min(1, 'headerNameMatcher must not be empty'),
-  // No authorisationInfo - HeaderNameMatcher is only for identification, not authorization
-})
+const HeaderNameMatcherConfigSchema = z
+  .object({
+    headerNameMatcher: z.string().min(1, 'headerNameMatcher must not be empty'),
+    // No authorisationInfo - HeaderNameMatcher is only for identification, not authorization
+  })
+  .strict()
 
-const ContentMatcherConfigSchema = z.object({
-  contentMatcher: z.string().min(1, 'contentMatcher must not be empty'),
-  authorisationInfo: InventoryAuthorisationInfoRawSchema.optional(),
-})
+const ContentMatcherConfigSchema = z
+  .object({
+    contentMatcher: z.string().min(1, 'contentMatcher must not be empty'),
+    authorisationInfo: InventoryAuthorisationInfoRawSchema.optional(),
+  })
+  .strict()
 
-const HostMatcherConfigSchema = z.object({
-  hostMatcher: z.string().min(1, 'hostMatcher must not be empty'),
-  authorisationInfo: InventoryAuthorisationInfoRawSchema.optional(),
-})
+const HostMatcherConfigSchema = z
+  .object({
+    hostMatcher: z.string().min(1, 'hostMatcher must not be empty'),
+    authorisationInfo: InventoryAuthorisationInfoRawSchema.optional(),
+  })
+  .strict()
 
-const UrlMatcherConfigSchema = z.object({
-  urlMatcher: z.string().min(1, 'urlMatcher must not be empty'),
-  authorisationInfo: InventoryAuthorisationInfoRawSchema.optional(),
-})
+const UrlMatcherConfigSchema = z
+  .object({
+    urlMatcher: z.string().min(1, 'urlMatcher must not be empty'),
+    authorisationInfo: InventoryAuthorisationInfoRawSchema.optional(),
+  })
+  .strict()
 
-const WorkflowMatcherConfigSchema = z.object({
-  workflowMatcher: z.string().min(1, 'workflowMatcher must not be empty'),
-  authorisationInfo: InventoryAuthorisationInfoRawSchema.optional(),
-})
+const WorkflowMatcherConfigSchema = z
+  .object({
+    workflowMatcher: z.string().min(1, 'workflowMatcher must not be empty'),
+    authorisationInfo: InventoryAuthorisationInfoRawSchema.optional(),
+  })
+  .strict()
 
-const HashMatcherConfigSchema = z.object({
-  hashes: z.array(InventoryScriptHashInfoSchema).min(1, 'hashes array must contain at least 1 hash'),
-  authorisationInfo: InventoryAuthorisationInfoRawSchema.optional(),
-})
+const TargetTypeMatcherConfigSchema = z
+  .object({
+    targetTypeMatcher: z.string().min(1, 'targetTypeMatcher must not be empty'),
+    authorisationInfo: InventoryAuthorisationInfoRawSchema.optional(),
+  })
+  .strict()
+
+const HashMatcherConfigSchema = z
+  .object({
+    hashes: z.array(InventoryScriptHashInfoSchema).min(1, 'hashes array must contain at least 1 hash'),
+    authorisationInfo: InventoryAuthorisationInfoRawSchema.optional(),
+  })
+  .strict()
 
 /**
  * Composite matcher schemas (new)
@@ -96,27 +117,33 @@ const HashMatcherConfigSchema = z.object({
  * authorised when every source it carries appears in that set, regardless of
  * order — see CspDirectiveMatcher for the rationale.
  */
-const CspDirectiveMatcherConfigSchema = z.object({
-  cspDirectiveMatcher: z.object({
-    directive: z
-      .string()
-      .trim()
-      .min(1, 'cspDirectiveMatcher.directive must not be empty')
-      .regex(/^[A-Za-z][A-Za-z0-9-]*$/u, 'cspDirectiveMatcher.directive must be a CSP directive name, e.g. "script-src"'),
-    allow: z.array(z.string().trim().min(1, 'cspDirectiveMatcher.allow entries must not be empty')),
-  }),
-  authorisationInfo: InventoryAuthorisationInfoRawSchema.optional(),
-})
+const CspDirectiveMatcherConfigSchema = z
+  .object({
+    cspDirectiveMatcher: z.object({
+      directive: z
+        .string()
+        .trim()
+        .min(1, 'cspDirectiveMatcher.directive must not be empty')
+        .regex(/^[A-Za-z][A-Za-z0-9-]*$/u, 'cspDirectiveMatcher.directive must be a CSP directive name, e.g. "script-src"'),
+      allow: z.array(z.string().trim().min(1, 'cspDirectiveMatcher.allow entries must not be empty')),
+    }),
+    authorisationInfo: InventoryAuthorisationInfoRawSchema.optional(),
+  })
+  .strict()
 
-const OrMatcherConfigSchema = z.object({
-  orMatcher: z.lazy(() => z.array(MatcherConfigSchema).min(1, 'orMatcher must contain at least 1 child')),
-  authorisationInfo: InventoryAuthorisationInfoRawSchema.optional(),
-})
+const OrMatcherConfigSchema = z
+  .object({
+    orMatcher: z.lazy(() => z.array(MatcherConfigSchema).min(1, 'orMatcher must contain at least 1 child')),
+    authorisationInfo: InventoryAuthorisationInfoRawSchema.optional(),
+  })
+  .strict()
 
-const AndMatcherConfigSchema = z.object({
-  andMatcher: z.lazy(() => z.array(MatcherConfigSchema).min(1, 'andMatcher must contain at least 1 child')),
-  authorisationInfo: InventoryAuthorisationInfoRawSchema.optional(),
-})
+const AndMatcherConfigSchema = z
+  .object({
+    andMatcher: z.lazy(() => z.array(MatcherConfigSchema).min(1, 'andMatcher must contain at least 1 child')),
+    authorisationInfo: InventoryAuthorisationInfoRawSchema.optional(),
+  })
+  .strict()
 
 /**
  * Zod schema for MatcherConfig union type.
@@ -145,6 +172,7 @@ export const MatcherConfigSchema: z.ZodType<any> = z
     HostMatcherConfigSchema,
     UrlMatcherConfigSchema,
     WorkflowMatcherConfigSchema,
+    TargetTypeMatcherConfigSchema,
     CspDirectiveMatcherConfigSchema,
     HashMatcherConfigSchema,
     OrMatcherConfigSchema,
@@ -217,6 +245,19 @@ export const MatcherConfigSchema: z.ZodType<any> = z
           code: 'custom',
           message: `Invalid regex in urlMatcher: "${val.urlMatcher}". Error: ${errorMessage}. Ensure all brackets are closed and escape sequences are valid.`,
           path: ['urlMatcher'],
+        })
+      }
+    }
+
+    if ('targetTypeMatcher' in val) {
+      try {
+        new RegExp(val.targetTypeMatcher)
+      } catch (e: unknown) {
+        const errorMessage = e instanceof Error ? e.message : 'Unknown regex error'
+        ctx.addIssue({
+          code: 'custom',
+          message: `Invalid regex in targetTypeMatcher: "${val.targetTypeMatcher}". Error: ${errorMessage}. Ensure all brackets are closed and escape sequences are valid.`,
+          path: ['targetTypeMatcher'],
         })
       }
     }

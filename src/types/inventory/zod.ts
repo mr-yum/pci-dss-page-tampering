@@ -241,7 +241,7 @@ export const RawInventoryHeaderInfoSchema: z.ZodType<RawInventoryHeaderInfo> = z
     }
 
     const unsupportedPresenceMatchers = (matcher: any): string[] => {
-      if ('headerNameMatcher' in matcher || 'hostMatcher' in matcher || 'urlMatcher' in matcher || 'workflowMatcher' in matcher) return []
+      if ('headerNameMatcher' in matcher || 'hostMatcher' in matcher || 'urlMatcher' in matcher || 'workflowMatcher' in matcher || 'targetTypeMatcher' in matcher) return []
       if ('andMatcher' in matcher) return matcher.andMatcher.flatMap(unsupportedPresenceMatchers)
       if ('contentMatcher' in matcher) return ['contentMatcher']
       if ('nameMatcher' in matcher) return ['nameMatcher']
@@ -263,7 +263,7 @@ export const RawInventoryHeaderInfoSchema: z.ZodType<RawInventoryHeaderInfo> = z
       context.addIssue({
         code: 'custom',
         path: ['identifyWith'],
-        message: `A requiredOn header entry can identify responses only with headerNameMatcher, hostMatcher, urlMatcher, workflowMatcher, and andMatcher; unsupported: ${[...new Set(unsupported)].join(', ')}.`,
+        message: `A requiredOn header entry can identify responses only with headerNameMatcher, hostMatcher, urlMatcher, workflowMatcher, targetTypeMatcher, and andMatcher; unsupported: ${[...new Set(unsupported)].join(', ')}.`,
       })
     }
   })

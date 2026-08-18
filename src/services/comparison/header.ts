@@ -87,7 +87,7 @@ export class HeaderComparisonService implements IHeaderComparisonService {
 
       for (const response of responses) {
         if (!entry.requiredOn.includes(response.resourceType)) continue
-        if (!entry.identifyWith.identify({ name: headerName, content: '', url: response.url, workflowId: target.workflowId ?? 'default' })) continue
+        if (!entry.identifyWith.identify({ name: headerName, content: '', url: response.url, workflowId: target.workflowId ?? 'default', targetType: target.type })) continue
 
         const wasObserved = response.headerNames.has(headerName)
         const key = `${headerName}\u0000${response.resourceType}\u0000${response.url}`
@@ -105,7 +105,7 @@ export class HeaderComparisonService implements IHeaderComparisonService {
   private getRequiredHeaderName(entry: InventoryHeaderInfo): string | null {
     const isPresenceSafeMatcher = (matcher: InventoryHeaderInfo['identifyWith']): boolean => {
       const matcherType = matcher.getType()
-      if (matcherType === 'header-name' || matcherType === 'host' || matcherType === 'url' || matcherType === 'workflow') return true
+      if (matcherType === 'header-name' || matcherType === 'host' || matcherType === 'url' || matcherType === 'workflow' || matcherType === 'targetType') return true
       if (matcherType !== 'and') return false
       return (matcher.getPattern() as InventoryHeaderInfo['identifyWith'][]).every(isPresenceSafeMatcher)
     }
@@ -213,7 +213,7 @@ export class HeaderComparisonService implements IHeaderComparisonService {
       // Pass both canonical content and provenance. Structured Set-Cookie
       // entries use content to distinguish cookie names, while ordinary
       // security headers generally identify by header name + host.
-      if (entry.identifyWith.identify({ name: header.name, content: header.value, workflowId: header.target.workflowId ?? 'default', ...(header.url !== undefined ? { url: header.url } : {}) })) {
+      if (entry.identifyWith.identify({ name: header.name, content: header.value, workflowId: header.target.workflowId ?? 'default', targetType: header.target.type, ...(header.url !== undefined ? { url: header.url } : {}) })) {
         return entry // First match wins (BR-2)
       }
     }
