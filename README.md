@@ -147,6 +147,29 @@ Omit `workflowMatcher` when an entry should apply to every variation. Newly
 discovered resources are generated with an exact workflow matcher so approving
 one variation cannot silently approve another.
 
+### Scoping an entry to one pass
+
+A workflow id names a checkout _variation_, and a variation owns both an
+inventory target and a detection target — so `workflowMatcher` is live during
+both passes. It cannot, on its own, authorise something for staging without
+also trusting it in production.
+
+`targetTypeMatcher` matches the pass that observed the resource, `inventory` or
+`detection`. Combine the two when an origin belongs to one environment only:
+
+```json
+{
+  "identifyWith": {
+    "andMatcher": [{ "targetTypeMatcher": "^inventory$" }, { "nameMatcher": "^https://sandbox\\.provider\\.example/.+$" }]
+  }
+}
+```
+
+That entry authorises the provider's sandbox origin while the inventory pass
+runs against staging, and leaves the same origin unknown — and therefore
+alertable — if it ever appears on the production payment page. It fails secure
+when the target type is missing.
+
 See [Branch Usage](#branch-usage) for the branch model and [CI Validation for the Inventory Repo](#ci-validation-for-the-inventory-repo) for the CI wiring.
 
 ## CLI Parameters

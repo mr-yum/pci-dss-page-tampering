@@ -80,6 +80,15 @@ export interface Matchable {
 
   /** Stable checkout workflow identifier (for example `workflow-a`). */
   workflowId?: string
+
+  /**
+   * Which pass observed this resource: `inventory` or `detection`.
+   *
+   * A workflow id is shared by a variation's inventory and detection targets,
+   * so it cannot distinguish the two. This can, which is what lets an entry
+   * trust a staging-only origin without also trusting it in production.
+   */
+  targetType?: string
 }
 
 /**
@@ -120,7 +129,7 @@ export interface Matcher<T extends Matchable = Matchable> {
    * Returns the matcher type discriminator.
    * Used for logging, debugging, and type narrowing.
    */
-  getType(): 'name' | 'header-name' | 'content' | 'hash' | 'host' | 'url' | 'workflow' | 'csp-directive' | 'or' | 'and'
+  getType(): 'name' | 'header-name' | 'content' | 'hash' | 'host' | 'url' | 'workflow' | 'targetType' | 'csp-directive' | 'or' | 'and'
 
   /**
    * Returns the pattern, hashes, or child matchers used by this matcher.

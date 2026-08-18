@@ -51,6 +51,25 @@ describe('HeaderComparisonService required headers', () => {
     })
   })
 
+  it('scopes required header presence checks to the current pass', async () => {
+    const passHeader: InventoryHeaderInfo = {
+      ...requiredHeader,
+      identifyWith: createMatcher({
+        andMatcher: [{ targetTypeMatcher: '^detection$' }, { headerNameMatcher: '^strict-transport-security$' }, { hostMatcher: '^pay\\.example\\.com$' }],
+      }),
+    }
+    const summary = {
+      headers: new Map(),
+      responses: [{ url: target.url, resourceType: 'document' as const, headerNames: new Set<string>() }],
+    }
+
+    const onDetection = await new HeaderComparisonService().compare({ ...target, type: 'detection' as const }, { ...inventory, headers: [passHeader] }, summary)
+    const onInventory = await new HeaderComparisonService().compare({ ...target, type: 'inventory' as const }, { ...inventory, headers: [passHeader] }, summary)
+
+    expect(onDetection.map((result) => result.type)).toEqual(['missing_required_header'])
+    expect(onInventory).toEqual([])
+  })
+
   it('scopes required header presence checks to the current workflow', async () => {
     const workflowTarget = { ...target, workflowId: 'workflow-a' }
     const workflowHeader: InventoryHeaderInfo = {

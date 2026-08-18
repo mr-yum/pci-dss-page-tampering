@@ -18,6 +18,7 @@ import type { AuthorisationInfo, Matcher } from './matcher.interface.js'
 import { NameMatcher } from './name-matcher.js'
 import { OrMatcher } from './or-matcher.js'
 import { UrlMatcher } from './url-matcher.js'
+import { TargetTypeMatcher } from './target-type-matcher.js'
 import { WorkflowMatcher } from './workflow-matcher.js'
 
 /**
@@ -65,6 +66,7 @@ export type MatcherConfig =
   | { hostMatcher: string; authorisationInfo?: RawAuthorisationInfo }
   | { urlMatcher: string; authorisationInfo?: RawAuthorisationInfo }
   | { workflowMatcher: string; authorisationInfo?: RawAuthorisationInfo }
+  | { targetTypeMatcher: string; authorisationInfo?: RawAuthorisationInfo }
   | { cspDirectiveMatcher: { directive: string; allow: string[] }; authorisationInfo?: RawAuthorisationInfo }
   | { hashes: InventoryScriptHashInfo[]; authorisationInfo?: RawAuthorisationInfo }
   | { orMatcher: MatcherConfig[]; authorisationInfo?: RawAuthorisationInfo }
@@ -129,6 +131,10 @@ export function createMatcher(config: MatcherConfig): Matcher {
 
   if ('workflowMatcher' in config) {
     return new WorkflowMatcher(config.workflowMatcher, convertAuthorisationInfo(config.authorisationInfo))
+  }
+
+  if ('targetTypeMatcher' in config) {
+    return new TargetTypeMatcher(config.targetTypeMatcher, convertAuthorisationInfo(config.authorisationInfo))
   }
 
   if ('cspDirectiveMatcher' in config) {

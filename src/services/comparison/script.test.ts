@@ -143,6 +143,26 @@ describe('ScriptComparisonService', () => {
       expect(workflowBResult.type).toBe('unknown_script_found')
     })
 
+    it('uses the target type so an entry can be scoped to one pass', () => {
+      // A workflow id is shared by a variation's inventory and detection
+      // targets, so it cannot keep a staging-only origin off the production
+      // payment page. Target type can.
+      const detectedScript = createScriptInfo('https://sandbox.provider.example/sdk.js', 'hash123')
+      const sandboxEntry: InventoryScriptInfo = {
+        identifyWith: createMatcher({ andMatcher: [{ targetTypeMatcher: '^inventory$' }, { nameMatcher: '^https:\\/\\/sandbox\\.provider\\.example\\/.+$' }] }),
+        authoriseWith: {
+          matcher: createMatcher({ hashes: [{ timestamp: new Date(), hash: { value: 'hash123' } as SHA256Hash }] }),
+          authorisationInfo: { description: 'Provider sandbox SDK, staging only', authorised: true, date: new Date() },
+        },
+      }
+
+      const onInventoryPass = (service as any).compareSingleScriptWithInventory(detectedScript, [sandboxEntry], { ...mockTarget, type: 'inventory' })
+      const onDetectionPass = (service as any).compareSingleScriptWithInventory(detectedScript, [sandboxEntry], { ...mockTarget, type: 'detection' })
+
+      expect(onInventoryPass.type).toBe('authorized_script')
+      expect(onDetectionPass.type).toBe('unknown_script_found')
+    })
+
     describe('script exists in inventory with content matcher and empty hashes', () => {
       it('should return AuthorizedScriptFound when content matcher matches', () => {
         const detectedScript = createScriptInfo('https://cdn.example.com/payment.js', 'hash123', 'initPayment({ amount: total })')

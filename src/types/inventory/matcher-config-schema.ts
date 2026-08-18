@@ -75,6 +75,11 @@ const WorkflowMatcherConfigSchema = z.object({
   authorisationInfo: InventoryAuthorisationInfoRawSchema.optional(),
 })
 
+const TargetTypeMatcherConfigSchema = z.object({
+  targetTypeMatcher: z.string().min(1, 'targetTypeMatcher must not be empty'),
+  authorisationInfo: InventoryAuthorisationInfoRawSchema.optional(),
+})
+
 const HashMatcherConfigSchema = z.object({
   hashes: z.array(InventoryScriptHashInfoSchema).min(1, 'hashes array must contain at least 1 hash'),
   authorisationInfo: InventoryAuthorisationInfoRawSchema.optional(),
@@ -145,6 +150,7 @@ export const MatcherConfigSchema: z.ZodType<any> = z
     HostMatcherConfigSchema,
     UrlMatcherConfigSchema,
     WorkflowMatcherConfigSchema,
+    TargetTypeMatcherConfigSchema,
     CspDirectiveMatcherConfigSchema,
     HashMatcherConfigSchema,
     OrMatcherConfigSchema,
@@ -217,6 +223,19 @@ export const MatcherConfigSchema: z.ZodType<any> = z
           code: 'custom',
           message: `Invalid regex in urlMatcher: "${val.urlMatcher}". Error: ${errorMessage}. Ensure all brackets are closed and escape sequences are valid.`,
           path: ['urlMatcher'],
+        })
+      }
+    }
+
+    if ('targetTypeMatcher' in val) {
+      try {
+        new RegExp(val.targetTypeMatcher)
+      } catch (e: unknown) {
+        const errorMessage = e instanceof Error ? e.message : 'Unknown regex error'
+        ctx.addIssue({
+          code: 'custom',
+          message: `Invalid regex in targetTypeMatcher: "${val.targetTypeMatcher}". Error: ${errorMessage}. Ensure all brackets are closed and escape sequences are valid.`,
+          path: ['targetTypeMatcher'],
         })
       }
     }

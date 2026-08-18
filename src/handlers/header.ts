@@ -102,6 +102,10 @@ function identifiesHeaderAndOrigin(matcher: InventoryHeaderInfo['identifyWith'],
       case 'url':
         return [{ matches: candidate.identify(matchable), hasHeaderName: false, hasProvenance: true }]
       case 'workflow':
+      // Target type, like workflow id, narrows *which run* an entry applies to.
+      // It says nothing about the header's identity or origin, so it is neither
+      // a header-name nor a provenance signal for third-party capture.
+      case 'targetType':
         return [{ matches: candidate.identify(matchable), hasHeaderName: false, hasProvenance: false }]
       case 'or':
         return (candidate.getPattern() as InventoryHeaderInfo['identifyWith'][]).flatMap(paths)
