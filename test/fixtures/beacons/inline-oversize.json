@@ -1,0 +1,20 @@
+{
+  "v": 1,
+  "session": {
+    "id": "3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f",
+    "agentVersion": "1.0.0"
+  },
+  "page": { "url": "https://pay.example.com/checkout" },
+  "observations": [
+    {
+      "kind": "inline-script",
+      "length": 600000,
+      "head": "/*! example-bundle v3.2.1 | generated, do not edit */\n(function (root, factory) {\n  typeof exports === 'object' ? (module.export",
+      "tail": " return t.default = e, Object.freeze(t)\n    }\n  )\n})(typeof self !== 'undefined' ? self : this, function () {\n  'use strict'\n})\n",
+      "oversize": true,
+      "initiator": "https://pay.example.com/checkout",
+      "route": "/checkout",
+      "ts": 1755600003000
+    }
+  ]
+}

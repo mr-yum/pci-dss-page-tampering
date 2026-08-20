@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RUM fixture page</title>
+  </head>
+  <body>
+    <!--
+      Fixture SPA for the real-user script surveillance agent.
+
+      This page is the subject of observation, not an observer: it deliberately
+      implements no monitoring of its own. Tests inject the agent script and
+      assert on what it reports. Everything here is generic — no real domains,
+      no frameworks, no build step. Serve the directory statically and open it
+      with ?collector=<endpoint> to point the injected agent somewhere.
+    -->
+    <h1>RUM fixture page</h1>
+
+    <nav>
+      <button type="button" data-route="/">Home</button>
+      <button type="button" data-route="/menu">Menu</button>
+      <button type="button" data-route="/checkout">Checkout</button>
+    </nav>
+
+    <p>Current route: <span id="route">/</span></p>
+
+    <p>
+      <button type="button" id="add-inline">Insert inline script</button>
+      <button type="button" id="add-external">Insert external script</button>
+    </p>
+
+    <ul id="log"></ul>
+
+    <!-- Static external script: present in the initial HTML, parser-inserted. -->
+    <script src="./static-vendor.js"></script>
+
+    <script>
+      // Read the collector endpoint from ?collector= and expose it as the
+      // data-collector attribute the agent reads. The agent itself is added by
+      // tests; this only stages the element it configures itself from.
+      const collector = new URLSearchParams(location.search).get('collector')
+      if (collector) {
+        const agent = document.createElement('script')
+        agent.id = 'rum-agent'
+        agent.setAttribute('data-collector', collector)
+        agent.src = './agent.js'
+        agent.async = true
+        document.head.appendChild(agent)
+      }
+
+      const routeLabel = document.getElementById('route')
+      const log = document.getElementById('log')
+
+      function note(message) {
+        const item = document.createElement('li')
+        item.textContent = message
+        log.appendChild(item)
+      }
+
+      // Soft navigation: history.pushState only, no document load.
+      function go(route) {
+        history.pushState({ route }, '', route)
+        routeLabel.textContent = route
+        note('navigated to ' + route)
+      }
+
+      for (const button of document.querySelectorAll('nav button')) {
+        button.addEventListener('click', () => go(button.dataset.route))
+      }
+
+      window.addEventListener('popstate', (event) => {
+        const route = (event.state && event.state.route) || location.pathname
+        routeLabel.textContent = route
+        note('popstate to ' + route)
+      })
+
+      // Dynamically inserted inline script.
+      document.getElementById('add-inline').addEventListener('click', () => {
+        const script = document.createElement('script')
+        script.textContent = "window.fixtureInline = (window.fixtureInline || 0) + 1\nconsole.log('fixture inline script ran')\n"
+        document.body.appendChild(script)
+        note('inserted inline script')
+      })
+
+      // Dynamically inserted external script.
+      document.getElementById('add-external').addEventListener('click', () => {
+        const script = document.createElement('script')
+        script.src = './dynamic-vendor.js'
+        document.body.appendChild(script)
+        note('inserted external script')
+      })
+    </script>
+  </body>
+</html>

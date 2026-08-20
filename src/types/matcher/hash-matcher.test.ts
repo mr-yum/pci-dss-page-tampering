@@ -83,11 +83,23 @@ describe('HashMatcher', () => {
       expect(matcher.identify(script)).toBe(false)
     })
 
-    it('fails secure for empty content even when the pre-computed hash matches', () => {
+    // ADAPTED (feature 011, evidence-aware matchers): this test previously
+    // asserted a content pre-gate on identify(). The hash IS this matcher's
+    // evidence — RUM inline observations carry a client-computed hash with no
+    // content — so identification now succeeds on a matching hash regardless
+    // of content, and fails secure only when the hash itself is missing/empty.
+    it('identifies on a matching pre-computed hash even when content did not travel with the resource', () => {
       const matcher = new HashMatcher([createHashInfo('matching-hash')])
 
-      expect(matcher.identify(createDetectedScript('https://example.com/script.js', '', 'matching-hash'))).toBe(false)
-      expect(matcher.identify(createDetectedScript('https://example.com/script.js', null, 'matching-hash'))).toBe(false)
+      expect(matcher.identify(createDetectedScript('https://example.com/script.js', '', 'matching-hash'))).toBe(true)
+      expect(matcher.identify(createDetectedScript('https://example.com/script.js', null, 'matching-hash'))).toBe(true)
+    })
+
+    it('fails secure when the pre-computed hash is missing or empty', () => {
+      const matcher = new HashMatcher([createHashInfo('matching-hash')])
+
+      expect(matcher.identify({ name: 'x', content: 'content' })).toBe(false)
+      expect(matcher.identify(createDetectedScript('https://example.com/script.js', 'content', ''))).toBe(false)
     })
 
     it('fails secure when a non-script resource has no hash', () => {
@@ -182,35 +194,62 @@ describe('HashMatcher', () => {
       })
     })
 
-    describe('null/empty content', () => {
-      it('should not authorize when content is null', () => {
+    // ADAPTED (feature 011, evidence-aware matchers): this block previously
+    // asserted a null/empty-content pre-gate on authorize(). The gate is now
+    // evidence-specific — the hash is compared regardless of content, and the
+    // fail-secure trigger is a missing/empty hash. Synthetic behaviour is
+    // unchanged: compare() pre-gates null content before any matcher runs,
+    // and synthetic scripts always carry content+hash.
+    describe('evidence-aware authorisation without content (RUM inline observations)', () => {
+      it('authorizes on a matching client-computed hash when content is null', () => {
         const matcher = new HashMatcher([createHashInfo('hash123')])
         const script = createDetectedScript('https://example.com/script.js', null, 'hash123')
 
         const result = matcher.authorize(script)
 
-        expect(result.authorized).toBe(false)
-        expect(result.reason).toBe('content is null or empty')
+        expect(result.authorized).toBe(true)
+        expect(result.reason).toBeUndefined()
       })
 
-      it('should not authorize when content is empty string', () => {
+      it('reports a hash mismatch (not a content failure) when content is null and the hash is wrong', () => {
         const matcher = new HashMatcher([createHashInfo('hash123')])
-        const script = createDetectedScript('https://example.com/script.js', '', 'hash123')
+        const script = createDetectedScript('https://example.com/script.js', null, 'tampered-hash')
 
         const result = matcher.authorize(script)
 
         expect(result.authorized).toBe(false)
-        expect(result.reason).toBe('content is null or empty')
+        expect(result.reason).toBe('hash tampered-hash not in authorized list')
       })
 
-      it('should not authorize when content is whitespace-only', () => {
+      it('fails secure when content is null and NO hash was carried', () => {
         const matcher = new HashMatcher([createHashInfo('hash123')])
-        const script = createDetectedScript('https://example.com/script.js', '   ', 'hash123')
+
+        const result = matcher.authorize({ name: 'inline_script/rum:len42', content: null })
+
+        expect(result.authorized).toBe(false)
+        expect(result.reason).toBe('hash is missing')
+      })
+
+      it('fails secure when the carried hash is an empty string', () => {
+        const matcher = new HashMatcher([createHashInfo('hash123')])
+        const script = createDetectedScript('https://example.com/script.js', 'content', '')
 
         const result = matcher.authorize(script)
 
         expect(result.authorized).toBe(false)
-        expect(result.reason).toBe('content is null or empty')
+        expect(result.reason).toBe('hash is missing')
+      })
+
+      it('authorizes through an array-syntax OrMatcher of HashMatchers with null content and a matching hash', () => {
+        // Array-syntax authoriseWith deserialises to an OrMatcher of the
+        // alternatives; the composite must delegate rather than pre-gate on
+        // content for hash evidence to reach the matching alternative.
+        const composite = new OrMatcher([new HashMatcher([createHashInfo('other-hash')]), new HashMatcher([createHashInfo('hash123')])])
+        const script = createDetectedScript('https://example.com/script.js', null, 'hash123')
+
+        const result = composite.authorize(script)
+
+        expect(result.authorized).toBe(true)
       })
     })
 

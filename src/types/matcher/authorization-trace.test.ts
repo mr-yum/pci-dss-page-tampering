@@ -105,14 +105,25 @@ describe('authorisation tracing', () => {
       expect(result.trace).toEqual({ type: 'hash', consulted: [] })
     })
 
+    // ADAPTED (feature 011, evidence-aware matchers): the 'empty content'
+    // case previously exercised the hash matcher's content pre-gate. The
+    // hash is the matcher's evidence now, so the fail-secure denials to
+    // trace are hash-shaped: missing hash and empty hash value.
     it.each([
-      ['empty content', createScript({ content: '' })],
       ['missing hash', { name: 'x', content: 'body' } as DetectedScript],
+      ['empty hash value', createScript({ hash: createHash('') })],
     ])('emits an empty trace for a fail-secure denial on %s', (_case, script) => {
       const result = new HashMatcher(hashes).authorize(script, TRACE)
 
       expect(result.authorized).toBe(false)
       expect(result.trace).toEqual({ type: 'hash', consulted: [] })
+    })
+
+    it('records the consulted hash slot when authorising on hash evidence alone (content never transported)', () => {
+      const result = new HashMatcher(hashes).authorize(createScript({ content: null, hash: createHash('hash-c') }), TRACE)
+
+      expect(result.authorized).toBe(true)
+      expect(result.trace).toEqual({ type: 'hash', consulted: [{ slot: 'hashes', index: 2 }] })
     })
 
     it('emits an empty trace when the top-level authorisation denies', () => {

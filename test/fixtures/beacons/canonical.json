@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "session": {
+    "id": "6f1e2c3d-4b5a-4c7d-8e9f-0a1b2c3d4e5f",
+    "agentVersion": "1.0.0"
+  },
+  "page": { "url": "https://pay.example.com/checkout" },
+  "observations": [
+    {
+      "kind": "external-script",
+      "url": "https://cdn.example.net/sdk.js",
+      "initiator": "https://pay.example.com/",
+      "route": "/menu",
+      "ts": 1755600000000
+    },
+    {
+      "kind": "inline-script",
+      "hash": "7203b6957b6d57135e76fcb3aab4ddfa32f6ee9074a1041e201b9993c8d86669",
+      "length": 412,
+      "head": "// analytics shim\n(function () {\n  window.dataLayer = window.dataLayer || []\n  function push(event) {\n    window.dataLayer.push(",
+      "tail": "lick', function () {\n    push('click')\n  })\n  window.addEventListener('pagehide', function () {\n    push('page_hide')\n  })\n})()\n",
+      "initiator": "https://pay.example.com/",
+      "route": "/checkout",
+      "ts": 1755600000123
+    },
+    {
+      "kind": "csp-violation",
+      "directive": "script-src",
+      "blockedUri": "https://evil.example/x.js",
+      "route": "/checkout",
+      "ts": 1755600000456
+    },
+    {
+      "kind": "agent-health",
+      "p95TaskMs": 2,
+      "dropped": 0,
+      "route": "/",
+      "ts": 1755600000999
+    }
+  ]
+}

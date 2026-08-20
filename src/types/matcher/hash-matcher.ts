@@ -23,9 +23,12 @@ import type { AuthorisationInfo, AuthorisationMatcher, Matchable } from './match
  * - identify(): Matches the script's pre-computed hash. Prefer a stable
  *   name/content/provenance matcher for inventory identification so changed
  *   bytes remain associated with the known script.
- * - authorize(): Compares the script's pre-computed SHA-256 hash (computed from
- *   the response body at detection time) against the authorizedHashes array
- * - Returns false for null/empty content (fail-secure: no content, no trust)
+ * - authorize(): Compares the script's pre-computed SHA-256 hash against the
+ *   authorizedHashes array. Evidence-aware: the hash IS this matcher's
+ *   evidence, so it is compared regardless of whether content travelled with
+ *   the resource (synthetic scripts carry both; RUM inline observations carry
+ *   only the client-computed hash).
+ * - Fails secure when the hash is missing or empty (no evidence, no trust)
  *
  * Validation:
  * - authorizedHashes array must contain at least 1 hash (with timestamp)
@@ -96,12 +99,17 @@ export class HashMatcher implements AuthorisationMatcher<Matchable> {
    * hash for authorization, so a changed body is reported as a known script
    * with unauthorized content rather than as an unknown script.
    *
+   * Evidence-aware (feature 011): the pre-computed hash is this matcher's
+   * evidence, so identification does not require content to have travelled
+   * with the resource — RUM inline observations carry only the hash. Fails
+   * secure when the hash is missing or empty.
+   *
    * @param script - The detected resource with an optional pre-computed hash
-   * @returns true when the script has non-empty content and its hash is listed
+   * @returns true when the script carries a hash and that hash is listed
    */
   identify(script: Matchable): boolean {
     const hash = script.hash
-    if (!script.content || script.content.trim() === '' || !hash) {
+    if (!hash || hash.value === '') {
       return false
     }
     return this.authorizedHashes.some((authorizedHashInfo) => authorizedHashInfo.hash.value === hash.value)
@@ -123,18 +131,14 @@ export class HashMatcher implements AuthorisationMatcher<Matchable> {
       return { ...result, trace: { type: 'hash', consulted } }
     }
 
-    if (!script.content || script.content.trim() === '') {
-      return withTrace(
-        {
-          authorized: false,
-          reason: 'content is null or empty',
-        },
-        [],
-      )
-    }
-
+    // Evidence-aware gate (feature 011): the hash is this matcher's evidence,
+    // so its absence — not the content's — is what fails secure. Content is
+    // deliberately NOT pre-gated here: synthetic scripts always carry
+    // content+hash (and the synthetic compare() pre-gates null content before
+    // any matcher runs), while RUM inline observations legitimately carry a
+    // client-computed hash with no content.
     const hash = script.hash
-    if (!hash) {
+    if (!hash || hash.value === '') {
       return withTrace(
         {
           authorized: false,

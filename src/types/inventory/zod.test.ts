@@ -1183,3 +1183,74 @@ describe('InventoryAlertSchema (Feature 010)', () => {
     })
   })
 })
+
+/**
+ * Feature 011: `rum` alert destinations block.
+ * Same optional semantics as the optional detection categories — the whole
+ * block and every key inside it are optional so existing inventories parse
+ * unchanged, and destinations validate exactly like the synthetic categories.
+ */
+describe('InventoryAlertSchema rum block (Feature 011)', () => {
+  const validAlerts = (rum?: unknown) => ({
+    inventory: {
+      newScriptIdentified: { destination: 'inventory-script-channel' },
+      newHeaderIdentified: { destination: 'inventory-header-channel' },
+    },
+    detection: {
+      newScriptDetected: { destination: 'detection-script-channel' },
+      scriptMismatchDetected: { destination: 'script-mismatch-channel' },
+      newHeaderDetected: { destination: 'detection-header-channel' },
+    },
+    successNotification: { destination: 'success-channel' },
+    ...(rum !== undefined ? { rum } : {}),
+  })
+
+  it('accepts alerts without a rum block (existing inventories)', () => {
+    const result = InventoryAlertSchema.safeParse(validAlerts())
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.rum).toBeUndefined()
+    }
+  })
+
+  it('accepts a full rum block with a destination per category', () => {
+    const result = InventoryAlertSchema.safeParse(
+      validAlerts({
+        uninventoriedScriptDetected: { destination: 'rum-uninventoried-channel' },
+        mismatchedScriptDetected: { destination: 'rum-mismatched-channel' },
+        cspViolationReported: { destination: 'rum-csp-channel' },
+      }),
+    )
+
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.rum?.uninventoriedScriptDetected?.destination).toBe('rum-uninventoried-channel')
+      expect(result.data.rum?.mismatchedScriptDetected?.destination).toBe('rum-mismatched-channel')
+      expect(result.data.rum?.cspViolationReported?.destination).toBe('rum-csp-channel')
+    }
+  })
+
+  it('accepts a partial rum block (each category independently optional)', () => {
+    const result = InventoryAlertSchema.safeParse(validAlerts({ mismatchedScriptDetected: { destination: 'rum-mismatched-channel' } }))
+
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.rum?.mismatchedScriptDetected?.destination).toBe('rum-mismatched-channel')
+      expect(result.data.rum?.uninventoriedScriptDetected).toBeUndefined()
+    }
+  })
+
+  it('rejects an empty destination inside the rum block', () => {
+    const result = InventoryAlertSchema.safeParse(validAlerts({ cspViolationReported: { destination: '' } }))
+
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(result.error.issues.some((issue) => issue.message.includes('Alert destination cannot be empty'))).toBe(true)
+    }
+  })
+
+  it('rejects a rum category whose value is not a destination object', () => {
+    const result = InventoryAlertSchema.safeParse(validAlerts({ uninventoriedScriptDetected: 'not-a-destination' }))
+    expect(result.success).toBe(false)
+  })
+})

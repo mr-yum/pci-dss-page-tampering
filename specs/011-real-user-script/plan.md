@@ -72,7 +72,7 @@ collector/
 │   └── *.test.ts
 infra/
 ├── collector-core/            # lambda, firehose→s3, dynamodb, sqs+dlq, alarms, oidc role
-├── edge-cloudfront/           # distribution, WAF, OAC
+├── edge-cloudfront/           # distribution, WAF, shared-secret origin header
 ├── edge-cloudflare/           # proxied DNS, ruleset, transform rule (secret header)
 ├── examples/
 │   ├── cloudfront-stack/

@@ -1,4 +1,5 @@
 import type { IAlertService, PullRequestFailureContext } from '../../interfaces/alert.js'
+import type { RumAlertCategory, RumAlertContext } from '../../types/alert.js'
 import { AlertType } from '../../types/alert.js'
 import type { ComparisonResultType } from '../../types/comparison.js'
 import type { KnownHeaderWithUnauthorisedContentFound } from '../../types/comparison/known-header-unauthorised-content-found.js'
@@ -11,6 +12,7 @@ import type { ExecutionSummary } from '../../types/execution-summary.js'
 import type { InventoryAlert } from '../../types/inventory/model.js'
 import type { Target } from '../../types/target.js'
 import { extractHost, redactUrl } from '../../utils/url.js'
+import { resolveRumAlertDestination, rumAlertContextLines, rumAlertTitle } from './rum.js'
 
 /**
  * T042: Console-based alert service for local development and testing.
@@ -63,6 +65,22 @@ export class ConsoleAlertService implements IAlertService {
     }
 
     // AuthorizedScriptFound and AuthorizedHeaderFound are no-ops (no alert needed)
+  }
+
+  /**
+   * Log one real-user monitoring alert (feature 011) to the console.
+   * The destination is still resolved so a misconfigured category fails as
+   * loudly here as it would with Slack delivery enabled.
+   */
+  async alertForRumObservation(category: RumAlertCategory, context: RumAlertContext, alertDestinations: InventoryAlert): Promise<void> {
+    const destination = resolveRumAlertDestination(alertDestinations, category)
+
+    this.log(AlertType.Rum, rumAlertTitle(category))
+    console.log(`  Destination: ${destination.destination}`)
+    for (const line of rumAlertContextLines(category, context)) {
+      console.log(`  ${line.label}: ${line.value}`)
+    }
+    console.log()
   }
 
   private logUnknownScripts(scripts: UnknownScriptFound[], target: Target): void {
@@ -222,7 +240,10 @@ export class ConsoleAlertService implements IAlertService {
         return summary.inventoryBranch ?? 'unknown'
       case ExecutionMode.Detection:
         return summary.detectionBranch ?? 'unknown'
+      // rum-compare reads both branches (detection targets from the detection
+      // branch, inventory targets from the inventory branch), so both are shown.
       case ExecutionMode.All:
+      case ExecutionMode.RumCompare:
         return `${summary.inventoryBranch ?? 'unknown'} (inventory), ${summary.detectionBranch ?? 'unknown'} (detection)`
     }
   }

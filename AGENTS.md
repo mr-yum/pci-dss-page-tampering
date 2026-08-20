@@ -27,7 +27,7 @@ This is a PCI DSS compliance system implementing **requirements 6.4.3 (Script Ma
 
 ## CLI Usage
 
-The system is configured entirely via command-line parameters. No environment variables are used for execution configuration. (When running under GitHub Actions, the runner's standard `GITHUB_*` variables are read solely to annotate the auditor report with CI provenance and to append its job-summary digest — they never influence what the run does.)
+The system is configured entirely via command-line parameters. No environment variables are used for execution configuration. (When running under GitHub Actions, the runner's standard `GITHUB_*` variables are read solely to annotate the auditor report with CI provenance and to append its job-summary digest — they never influence what the run does.) One deliberate carve-out: `--mode rum-compare` authenticates to AWS with ambient credentials/region from the environment (e.g. OIDC-assumed role in CI), never via CLI parameters — credentials do not belong on command lines.
 
 ### Basic Syntax
 
@@ -44,16 +44,17 @@ npm start -- [OPTIONS]
 
 ### Optional Parameters
 
-| Parameter                   | Description                                                    | Default             |
-| --------------------------- | -------------------------------------------------------------- | ------------------- |
-| `--mode <mode>`             | Execution mode: `inventory`, `detection`, `all`, or `validate` | `all`               |
-| `--target <name>`           | Process specific target (e.g., "1.0")                          | all targets         |
-| `--slack-token <token>`     | Slack token for alerts (logs to console if omitted)            | -                   |
-| `--inventory-branch <name>` | Branch for inventory operations                                | `inventory-updates` |
-| `--detection-branch <name>` | Branch for detection operations                                | `main`              |
-| `--totp-seed <name>=<seed>` | Named base32 TOTP seed for `totp` workflow steps (repeatable)  | -                   |
-| `--report-dir <path>`       | Directory for auditor report artefacts (HTML + JSON)           | - (no report)       |
-| `--help`                    | Display help message and exit                                  | -                   |
+| Parameter                   | Description                                                                                                      | Default             |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------- |
+| `--mode <mode>`             | Execution mode: `inventory`, `detection`, `all`, `validate`, or `rum-compare`                                    | `all`               |
+| `--target <name>`           | Process specific target (e.g., "1.0")                                                                            | all targets         |
+| `--slack-token <token>`     | Slack token for alerts (logs to console if omitted)                                                              | -                   |
+| `--inventory-branch <name>` | Branch for inventory operations                                                                                  | `inventory-updates` |
+| `--detection-branch <name>` | Branch for detection operations                                                                                  | `main`              |
+| `--totp-seed <name>=<seed>` | Named base32 TOTP seed for `totp` workflow steps (repeatable)                                                    | -                   |
+| `--rum-queue-url <url>`     | SQS queue URL (or `file://` dir for local testing) of novel RUM observations; required with `--mode rum-compare` | -                   |
+| `--report-dir <path>`       | Directory for auditor report artefacts (HTML + JSON)                                                             | - (no report)       |
+| `--help`                    | Display help message and exit                                                                                    | -                   |
 
 ### Usage Examples
 
@@ -69,6 +70,9 @@ npm start -- --mode detection --repo https://github.com/org/inventory --git-toke
 
 # Run detection with custom branches
 npm start -- --mode detection --detection-branch release/v2.0 --repo https://github.com/org/inventory --git-token $TOKEN
+
+# Compare queued real-user observations against the inventory
+npm start -- --mode rum-compare --repo https://github.com/org/inventory --git-token $TOKEN --rum-queue-url https://sqs.ap-southeast-2.amazonaws.com/123456789012/rum-novel-observations --slack-token $SLACK_TOKEN
 
 # Local testing with file protocol (no authentication needed)
 npm start -- --repo file:///path/to/local/inventory --git-token dummy
@@ -91,6 +95,7 @@ npm start -- --mode validate --repo file://$PWD --inventory-branch $GITHUB_HEAD_
 - **`detection`**: Read-only comparison against inventory, sends alerts
 - **`all`**: Runs inventory first, then detection (default)
 - **`validate`**: Runs full deserialization (Zod schema + `createMatcher()` + workflow file resolution) against the inventory repo and exits. No Puppeteer, no alerting, no push. Use as a CI pre-merge check in the script-inventory repository.
+- **`rum-compare`**: Drains first-sighting observations reported from real user sessions and evaluates them against the inventory with the same matcher pipeline: detection-pass observations raise `rum_*` alerts; inventory-pass observations feed the candidate PR flow. Read-only except for candidate PRs; hourly scheduling lives in the inventory repository. Requires `--rum-queue-url`.
 
 For detailed implementation documentation, see `specs/008-refactor-the-code/quickstart.md`.
 
@@ -381,7 +386,7 @@ Workflows are defined as step-by-step instructions for Puppeteer in `src/workflo
 
 ## Configuration
 
-**CLI Parameters Only**: The system no longer uses environment variables for runtime configuration. All configuration is provided via CLI parameters (see CLI Usage section above).
+**CLI Parameters Only**: The system no longer uses environment variables for runtime configuration. All configuration is provided via CLI parameters (see CLI Usage section above). The one deliberate exception is AWS access in `--mode rum-compare`, which uses ambient AWS credentials/region (e.g. OIDC in CI) rather than CLI parameters.
 
 **For GitHub Actions**: Pass secrets via CLI parameters:
 

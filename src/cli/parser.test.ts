@@ -81,6 +81,13 @@ describe('CLI Parser', () => {
       expect(parseArguments(['node', 'script.js', '--report-dir=./reports'])).toEqual<RawCliArgs>({ reportDir: './reports' })
     })
 
+    it('should parse --rum-queue-url in both space and equals forms', () => {
+      // normalizeKey has a hardcoded allowlist: a key missing from it is
+      // silently dropped with no error, so the flag would vanish without a word.
+      expect(parseArguments(['node', 'script.js', '--rum-queue-url', 'https://sqs.us-east-1.amazonaws.com/123456789012/queue'])).toEqual<RawCliArgs>({ rumQueueUrl: 'https://sqs.us-east-1.amazonaws.com/123456789012/queue' })
+      expect(parseArguments(['node', 'script.js', '--rum-queue-url=file:///tmp/queue'])).toEqual<RawCliArgs>({ rumQueueUrl: 'file:///tmp/queue' })
+    })
+
     it('should handle values with equals signs', () => {
       const argv = ['node', 'script.js', '--repo=file:///path/with=equals']
       const result = parseArguments(argv)

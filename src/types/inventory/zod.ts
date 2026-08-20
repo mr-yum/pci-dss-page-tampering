@@ -6,7 +6,7 @@ import { OrMatcher } from '../matcher/or-matcher.js'
 import type { RawTargetDetection, RawTargetInventory } from '../target/raw.js'
 import { SHA256HashSchema } from '../zod.js'
 import { MatcherConfigSchema } from './matcher-config-schema.js'
-import type { AlertDestination, AlertDetection, AlertInventory, AuthorizeWithConfig, InventoryAlert, InventoryAuthorisationInfo, InventoryScriptHashInfo } from './model.js'
+import type { AlertDestination, AlertDetection, AlertInventory, AlertRum, AuthorizeWithConfig, InventoryAlert, InventoryAuthorisationInfo, InventoryScriptHashInfo } from './model.js'
 import type { RawAuthorizeWithConfig, RawInventory, RawInventoryHeaderInfo, RawInventoryScriptInfo, RawInventoryTarget, RawInventoryWorkflow } from './raw.js'
 
 export const AlertDestinationSchema: z.ZodType<AlertDestination> = z.object({
@@ -26,9 +26,22 @@ export const AlertDetectionSchema: z.ZodType<AlertDetection> = z.object({
   missingHeaderDetected: AlertDestinationSchema.optional(),
 })
 
+/**
+ * Destinations for the `rum_*` alert categories (feature 011). Every key is
+ * optional — same semantics as the optional detection categories above — and
+ * an unconfigured category falls back to the analogous synthetic detection
+ * destination at resolution time, so existing inventories parse unchanged.
+ */
+export const AlertRumSchema: z.ZodType<AlertRum> = z.object({
+  uninventoriedScriptDetected: AlertDestinationSchema.optional(),
+  mismatchedScriptDetected: AlertDestinationSchema.optional(),
+  cspViolationReported: AlertDestinationSchema.optional(),
+})
+
 export const InventoryAlertSchema: z.ZodType<InventoryAlert> = z.object({
   inventory: AlertInventorySchema,
   detection: AlertDetectionSchema,
+  rum: AlertRumSchema.optional(),
   successNotification: AlertDestinationSchema,
 })
 

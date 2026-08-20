@@ -190,8 +190,16 @@ export interface Matcher<T extends Matchable = Matchable> {
    * - OrMatcher: Returns authorized if ANY child authorizes (first-match-wins)
    * - AndMatcher: Returns authorized if ALL children authorize (short-circuit on failure)
    *
-   * Edge cases:
-   * - Null/empty resource.content: returns { authorized: false, reason: "content is null or empty" }
+   * Edge cases (evidence-aware, feature 011): every matcher fails secure on
+   * its OWN missing evidence —
+   * - ContentMatcher/HeaderNameMatcher/CspDirectiveMatcher: null/empty
+   *   resource.content → { authorized: false, reason: "content is null or empty" }
+   * - HashMatcher: missing/empty resource.hash → "hash is missing" (content is
+   *   not pre-gated: RUM inline observations carry a hash but no content)
+   * - HostMatcher/UrlMatcher: missing url; WorkflowMatcher: missing workflowId;
+   *   TargetTypeMatcher: missing targetType
+   * - OrMatcher/AndMatcher: delegate — no composite content pre-gate; each
+   *   child applies its own gate
    * - Top-level authorisationInfo.authorised: false always denies regardless of matcher result
    *
    * @param options - Opt-in extras. `{ collectTrace: true }` additionally

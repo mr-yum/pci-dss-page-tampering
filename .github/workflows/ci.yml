@@ -47,6 +47,19 @@ jobs:
           npm run check:typing
           echo "✅ Formatting and linting commands completed"
 
+      # Bundling is a separate failure mode from type checking: esbuild resolves
+      # the real import graph and the collector bundle is what infra/ deploys.
+      # The unit suites for both already run in the next step: `npm run test:unit`
+      # selects the `unit` project (which matches collector/src) and `unit-agent`
+      # (agent/src, jsdom), so nothing is duplicated here.
+      - name: Build browser agent and collector bundles
+        timeout-minutes: 10
+        run: |
+          echo "▶️ Building browser agent and collector bundles..."
+          npm run build:agent
+          npm run build:collector
+          echo "✅ Bundles built successfully"
+
       - name: Run unit tests
         timeout-minutes: 30
         run: |

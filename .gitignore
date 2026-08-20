@@ -40,6 +40,9 @@ dist.tgz
 
 tmp
 
+# local collector dev-server origin map (see origin-targets.local.example.json)
+origin-targets.local.json
+
 # jetbrains
 .idea/
 
@@ -56,3 +59,9 @@ reports-*/
 .claude/settings.local.json
 .playwright-cli/
 scripts/run.sh
+
+# Terraform local state/provider caches
+**/.terraform/
+# Consumer-side Terraform lock files (module dirs keep theirs committed)
+infra/examples/**/.terraform.lock.hcl
+infra/tests/.terraform.lock.hcl

@@ -196,7 +196,13 @@ describe('OrMatcher', () => {
       })
     })
 
-    describe('T037: null/empty content (fail-secure)', () => {
+    // ADAPTED (feature 011, evidence-aware matchers): this block previously
+    // asserted the composite's own content pre-gate. The composite now
+    // delegates — the ContentMatcher child fails secure on its own missing
+    // evidence (identify() returns false on null/empty/whitespace content),
+    // so the decision stays DENIED with the delegation reason. The pre-gate
+    // had to go so a HashMatcher child can authorise hash-only RUM evidence.
+    describe('T037: null/empty content (fail-secure via child evidence gates)', () => {
       it('should deny authorization for null content', () => {
         const matcher = new OrMatcher([new ContentMatcher('.*')])
 
@@ -204,7 +210,7 @@ describe('OrMatcher', () => {
         const result = matcher.authorize(script)
 
         expect(result.authorized).toBe(false)
-        expect(result.reason).toBe('Resource content is null or empty')
+        expect(result.reason).toBe('No child matcher identified the resource')
       })
 
       it('should deny authorization for empty string content', () => {
@@ -214,7 +220,7 @@ describe('OrMatcher', () => {
         const result = matcher.authorize(script)
 
         expect(result.authorized).toBe(false)
-        expect(result.reason).toBe('Resource content is null or empty')
+        expect(result.reason).toBe('No child matcher identified the resource')
       })
 
       it('should deny authorization for whitespace-only content', () => {
@@ -224,7 +230,7 @@ describe('OrMatcher', () => {
         const result = matcher.authorize(script)
 
         expect(result.authorized).toBe(false)
-        expect(result.reason).toBe('Resource content is null or empty')
+        expect(result.reason).toBe('No child matcher identified the resource')
       })
 
       it('should include top-level metadata in path even for null content', () => {

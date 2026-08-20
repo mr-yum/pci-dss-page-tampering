@@ -1,6 +1,7 @@
 import axios from 'axios'
 
 import type { IAlertService, PullRequestFailureContext } from '../../interfaces/alert.js'
+import type { RumAlertCategory, RumAlertContext } from '../../types/alert.js'
 import { AlertType } from '../../types/alert.js'
 import type { ComparisonResultType } from '../../types/comparison.js'
 import type { KnownHeaderWithUnauthorisedContentFound } from '../../types/comparison/known-header-unauthorised-content-found.js'
@@ -16,6 +17,7 @@ import type { DetectedScript } from '../../types/matcher/matcher.interface.js'
 import type { ScriptInfo } from '../../types/script.js'
 import type { Target } from '../../types/target.js'
 import { extractHost, redactUrl } from '../../utils/url.js'
+import { resolveRumAlertDestination, rumAlertContextLines, rumAlertTitle } from './rum.js'
 
 /**
  * Row passed to the unknown-header alert table. Carries the originating
@@ -161,6 +163,39 @@ export class SlackAlertService implements IAlertService {
     }
 
     // T030: AuthorizedScriptFound and AuthorizedHeaderFound are no-ops (no alert)
+  }
+
+  /**
+   * Send one real-user monitoring alert (feature 011).
+   *
+   * Deliberately lets delivery errors propagate: the RUM router catches, logs,
+   * and counts them so a broken Slack call never blocks queue routing — but
+   * the router needs to see the failure to count it.
+   */
+  async alertForRumObservation(category: RumAlertCategory, context: RumAlertContext, alertDestinations: InventoryAlert): Promise<void> {
+    const destination = resolveRumAlertDestination(alertDestinations, category)
+    const title = rumAlertTitle(category)
+
+    const messagePayload = {
+      channel: destination.destination,
+      blocks: [
+        {
+          type: 'section',
+          text: { type: 'mrkdwn', text: `:warning: *${title}* :warning:` },
+        },
+        { type: 'divider' },
+        ...rumAlertContextLines(category, context).map((line) => ({
+          type: 'section',
+          // Backticks in an attacker-influenced value (URL, failure reason)
+          // would close the mrkdwn code span and let the remainder render as
+          // markup — swap them for a lookalike before interpolating.
+          text: { type: 'mrkdwn', text: `*${line.label}*: \`${this.truncateText(line.value).replace(/`/g, 'ˋ')}\`` },
+        })),
+      ],
+    }
+
+    this.log(AlertType.Rum, title)
+    await this.sendMessage(messagePayload)
   }
 
   /**
@@ -1180,7 +1215,10 @@ export class SlackAlertService implements IAlertService {
         return `\`${summary.inventoryBranch ?? 'unknown'}\``
       case ExecutionMode.Detection:
         return `\`${summary.detectionBranch ?? 'unknown'}\``
+      // rum-compare reads both branches (detection targets from the detection
+      // branch, inventory targets from the inventory branch), so both are shown.
       case ExecutionMode.All:
+      case ExecutionMode.RumCompare:
         return `\`${summary.inventoryBranch ?? 'unknown'}\` (inventory), \`${summary.detectionBranch ?? 'unknown'}\` (detection)`
     }
   }

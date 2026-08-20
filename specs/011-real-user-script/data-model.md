@@ -6,13 +6,13 @@ Single source of truth for the wire schema is `src/types/beacon.ts` (Zod, strict
 
 The unit of transport and archival. One session emits one or more beacons per flush.
 
-| Field                  | Type             | Constraints  | Notes                                                                                     |
-| ---------------------- | ---------------- | ------------ | ----------------------------------------------------------------------------------------- |
-| `v`                    | literal `1`      | required     | schema version; bump = new literal, collector accepts known versions only                 |
-| `session.id`           | string (UUID v4) | required     | random, minted per browser session; the only session identifier; carries no user identity |
-| `session.agentVersion` | string (semver)  | required     | released agent version, for skew triage                                                   |
-| `page.url`             | string URL       | ≤ 2048 chars | document URL at flush time                                                                |
-| `observations`         | array            | 1–24 items   | mixed kinds; agent splits a flush across beacons beyond 24                                |
+| Field                  | Type             | Constraints  | Notes                                                                                                                                                       |
+| ---------------------- | ---------------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `v`                    | literal `1`      | required     | schema version; bump = new literal, collector accepts known versions only                                                                                   |
+| `session.id`           | string (UUID v4) | required     | random, minted per browser session; the only session identifier; carries no user identity                                                                   |
+| `session.agentVersion` | string (semver)  | required     | released agent version, for skew triage                                                                                                                     |
+| `page.url`             | string URL       | ≤ 2048 chars | document origin + path at flush time — query string and fragment stripped by design (privacy: queries routinely carry tokens/order ids); clamped to the cap |
+| `observations`         | array            | 1–24 items   | mixed kinds; agent splits a flush across beacons beyond 24                                                                                                  |
 
 **Global caps** (enforced by Zod and by edge/Lambda body limits): total serialized body ≤ 32 KB; every string field individually capped; unknown keys anywhere → reject whole beacon.
 
@@ -107,14 +107,14 @@ Consumption: visibility timeout > workflow run; delete only after the outcome is
 
 ## 6. Comparator normalisation (queue message → `Matchable`)
 
-| `Matchable` field | Source                                                                                                                                                                           |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`            | external: `observation.url`; inline: `inline_script/rum:{hash \| fingerprint}`                                                                                                   |
-| `content`         | external: `null`; inline: `head + "…" + tail` reconstruction is **not** used — matching runs against head and tail independently as anchored windows; unverifiable → fail-secure |
-| `hash`            | inline `hash` when present                                                                                                                                                       |
-| `url`             | `observation.initiator` (provenance, same semantics as synthetic inline attribution)                                                                                             |
-| `workflowId`      | never set in v1 — workflow-gated entries fail secure by design                                                                                                                   |
-| `targetType`      | `target_type` from the message                                                                                                                                                   |
+| `Matchable` field | Source                                                                                                                                                                                                                                                                                                                                                                                  |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`            | external: `observation.url`; inline: `inline_script/rum:{hash \| fingerprint}`                                                                                                                                                                                                                                                                                                          |
+| `content`         | external: `null`; inline: `head + "…" + tail` reconstruction is **not** used — matching runs against head and tail independently as anchored windows; unverifiable → fail-secure                                                                                                                                                                                                        |
+| `hash`            | inline `hash` when present                                                                                                                                                                                                                                                                                                                                                              |
+| `url`             | external: `observation.url` (the script's **own** URL, matching the synthetic external binding — never the initiator, so first-party domain-trust entries cannot identify a third-party script by its inserter); inline: `observation.initiator` (synthetic inline attribution semantics). The initiator is carried separately on the normalised `rum` context as provenance for alerts |
+| `workflowId`      | never set in v1 — workflow-gated entries fail secure by design                                                                                                                                                                                                                                                                                                                          |
+| `targetType`      | `target_type` from the message                                                                                                                                                                                                                                                                                                                                                          |
 
 External scripts short-circuit to identification-only evaluation (research R8): identified + authorised-by-identity → recorded; unidentified → `rum_uninventoried_script_detected`.
 

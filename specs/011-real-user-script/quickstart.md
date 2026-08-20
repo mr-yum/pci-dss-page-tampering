@@ -17,6 +17,7 @@ npm run build:js           # existing SWC build for src/ (unchanged)
 npm run test:unit -- agent            # co-located jsdom tests: capture, fingerprint, session dedupe
 npx serve test/fixtures/rum-page &    # fixture SPA: soft navigations, inline/external/CSP cases
 # open http://localhost:3000?collector=http://localhost:9999 — the fixture wires data-collector
+cp origin-targets.local.example.json origin-targets.local.json   # one-time: local origin map (gitignored; adjust as needed)
 npx tsx collector/dev-server.ts       # local stand-in: runs the REAL ingest handler in-process,
                                       # origin map from origin-targets.local.json,
                                       # archive → ./tmp/archive/, queue → ./tmp/queue/*.json
@@ -48,11 +49,13 @@ npm start -- --mode rum-compare \
 
 ```bash
 cd infra && terraform fmt -check -recursive
-terraform -chdir=examples/cloudfront-stack init -backend=false && terraform test
-terraform -chdir=examples/cloudflare-stack init -backend=false && terraform test
+terraform -chdir=tests init -backend=false && terraform -chdir=tests test
+terraform -chdir=examples/cloudfront-stack init -backend=false && terraform -chdir=examples/cloudfront-stack test
+terraform -chdir=examples/cloudflare-stack init -backend=false && terraform -chdir=examples/cloudflare-stack test
+./tests/no-vpc-check.sh
 ```
 
-Mocked-provider tests assert: required inputs, edge/`edge_auth` pairing, the no-VPC contract, alarm presence, output wiring.
+Mocked-provider tests assert: required inputs, edge/`edge_auth` pairing, alarm presence, output wiring. The no-VPC contract is enforced by `tests/no-vpc-check.sh`, a source-level guard (`terraform test` cannot assert the absence of a resource type across a plan). See `infra/tests/README.md` for coverage details and known plan-time gaps.
 
 ## 5. Integration suite
 

@@ -1,0 +1,16 @@
+{
+  "v": 1,
+  "session": {
+    "id": "9c0d1e2f-3a4b-4c5d-8e6f-7a8b9c0d1e2f",
+    "agentVersion": "1.0.0"
+  },
+  "page": { "url": "https://pay.example.com/checkout" },
+  "observations": [
+    {
+      "kind": "external-script",
+      "url": "https://cdn.example.net/sdk.js",
+      "initiator": "https://pay.example.com/",
+      "route": "/checkout"
+    }
+  ]
+}

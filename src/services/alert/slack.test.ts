@@ -1707,4 +1707,31 @@ describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
       consoleLogSpy.mockRestore()
     })
   })
+
+  describe('RUM alert mrkdwn safety', () => {
+    it('escapes backticks in attacker-influenced context values so they cannot break out of the code span', async () => {
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+      const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation()
+
+      await service.alertForRumObservation(
+        'rum_uninventoried_script_detected',
+        {
+          observation: { kind: 'external-script', identity: 'https://evil.example.org/skim.js?q=`*payload*`' },
+          prevalence: { first_seen: 1755600000123 },
+          first_route: '/checkout',
+          targetType: 'detection',
+          inventoryRef: 'abc1234',
+        },
+        mockAlertDestinations,
+      )
+
+      const payload = JSON.stringify(sendMessageSpy.mock.calls[0]?.[0])
+      // No raw backtick from the value survives inside the mrkdwn text: the
+      // only backticks left are the code-span delimiters the template adds.
+      expect(payload).not.toContain('?q=`')
+      expect(payload).toContain('?q=ˋ*payload*ˋ')
+
+      consoleLogSpy.mockRestore()
+    })
+  })
 })

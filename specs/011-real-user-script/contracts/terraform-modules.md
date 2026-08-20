@@ -14,8 +14,8 @@ Shared rules: no module declares a provider it doesn't strictly need (core: `aws
 
 ## edge-cloudfront
 
-**Inputs**: `origin_function_url` (from core), `name_prefix`, `tags`, `acm_certificate_arn` + `route53_zone_id` + `domain_name` (all optional together — default: CloudFront domain), `waf_rate_limit` (default 300 req/5min/IP), `max_body_kb` (default 32).
-**Creates**: distribution (no caching, POST passthrough), WAFv2 web ACL (rate limit, size constraint), OAC binding to the Function URL (requires core `edge_auth.mode = "aws_iam"`).
+**Inputs**: `origin_function_url` (from core), `name_prefix`, `tags`, `edge_shared_secret` (sensitive — must equal core's `edge_auth.secret`), `acm_certificate_arn` + `route53_zone_id` + `domain_name` (all optional together — default: CloudFront domain), `waf_rate_limit` (default 300 req/5min/IP), `max_body_kb` (default 32).
+**Creates**: distribution (no caching, POST passthrough), WAFv2 web ACL (rate limit, size constraint), origin custom header injecting `x-collector-edge-key` (requires core `edge_auth.mode = "shared_secret"`). OAC + `AWS_IAM` is deliberately not used: for OAC-signed POST/PUT requests AWS requires the client to send `x-amz-content-sha256`, and `navigator.sendBeacon` cannot set headers — every beacon would be rejected at the Function URL.
 **Outputs**: `collector_endpoint` (https URL for the page's CSP `connect-src` and agent `data-collector`).
 
 ## edge-cloudflare
@@ -30,4 +30,4 @@ Shared rules: no module declares a provider it doesn't strictly need (core: `aws
 
 ## Test obligations
 
-`terraform test` with mocked providers (AWS and Cloudflare) runs per PR against all three modules and both examples: plan-level assertions on required inputs, `edge_auth` mode/edge pairing (cloudfront example fails if core isn't `aws_iam`; cloudflare example fails if secret missing), no-VPC assertion (no `aws_vpc`/`aws_subnet`/`aws_security_group` resources in any plan), alarm presence, and output wiring. No credentials, no applies in this repo's CI.
+`terraform test` with mocked providers (AWS and Cloudflare) runs per PR against all three modules and both examples: plan-level assertions on required inputs, `edge_auth` mode/edge pairing (both edges inject the shared-secret header, so both examples run core in `shared_secret` mode and fail if the secret is missing), no-VPC assertion (no `aws_vpc`/`aws_subnet`/`aws_security_group` resources in any plan), alarm presence, and output wiring. Core's `aws_iam` mode remains covered by the collector-core suite (valid for SigV4-capable, non-beacon consumers). No credentials, no applies in this repo's CI.

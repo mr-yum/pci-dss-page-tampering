@@ -272,6 +272,32 @@ describe('Configuration Builder', () => {
     })
   })
 
+  describe('rum configuration', () => {
+    const rumArgs = (rumQueueUrl?: string): CliArguments =>
+      ({
+        mode: rumQueueUrl === undefined ? 'detection' : 'rum-compare',
+        repo: 'https://github.com/org/inventory',
+        gitToken: 'ghp_abc123xyz',
+        inventoryBranch: 'inventory-updates',
+        detectionBranch: 'main',
+        gitUserName: 'PCI DSS Page Tampering Bot',
+        gitUserEmail: 'noreply@example.com',
+        totpSeed: [],
+        help: false,
+        ...(rumQueueUrl === undefined ? {} : { rumQueueUrl }),
+      }) as CliArguments
+
+    it('leaves the queue URL null when --rum-queue-url is omitted', () => {
+      expect(buildConfiguration(rumArgs()).rum.queueUrl).toBeNull()
+    })
+
+    it('carries the queue URL through for rum-compare mode', () => {
+      const config = buildConfiguration(rumArgs('https://sqs.us-east-1.amazonaws.com/123456789012/novel-observations'))
+      expect(config.executionMode).toBe(ExecutionMode.RumCompare)
+      expect(config.rum.queueUrl).toBe('https://sqs.us-east-1.amazonaws.com/123456789012/novel-observations')
+    })
+  })
+
   describe('reporting configuration', () => {
     const baseArgs = (reportDir?: string): CliArguments =>
       ({

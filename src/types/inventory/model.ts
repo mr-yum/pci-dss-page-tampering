@@ -92,9 +92,29 @@ export type AlertDetection = {
   missingHeaderDetected?: AlertDestination | undefined
 }
 
+/**
+ * Destinations for real-user monitoring alert categories (feature 011,
+ * data-model.md §8). Each key mirrors one `rum_*` category:
+ *
+ * - `uninventoriedScriptDetected` → `rum_uninventoried_script_detected`
+ * - `mismatchedScriptDetected` → `rum_mismatched_script_detected`
+ * - `cspViolationReported` → `rum_csp_violation_reported`
+ *
+ * Every key is optional, as is the whole block: an unconfigured category
+ * falls back to the analogous synthetic detection destination (see
+ * `resolveRumAlertDestination` in ../../services/alert/rum.ts) so a missing
+ * config line never silently drops an alert.
+ */
+export type AlertRum = {
+  uninventoriedScriptDetected?: AlertDestination | undefined
+  mismatchedScriptDetected?: AlertDestination | undefined
+  cspViolationReported?: AlertDestination | undefined
+}
+
 export type InventoryAlert = {
   inventory: AlertInventory
   detection: AlertDetection
+  rum?: AlertRum | undefined
   successNotification: AlertDestination
 }
 

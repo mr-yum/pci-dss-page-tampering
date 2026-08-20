@@ -18,6 +18,7 @@ export type RawCliArgs = {
   gitUserEmail?: string
   totpSeed?: string[]
   reportDir?: string
+  rumQueueUrl?: string
   help?: boolean
 }
 
@@ -136,7 +137,7 @@ const totpSeedSchema = z
  */
 export const CliArgsSchema = z
   .object({
-    mode: z.enum(['inventory', 'detection', 'all', 'validate']).default('all'),
+    mode: z.enum(['inventory', 'detection', 'all', 'validate', 'rum-compare']).default('all'),
     target: z.string().optional(),
     repo: repoUrlSchema,
     gitToken: z.string().trim().default(''),
@@ -147,6 +148,7 @@ export const CliArgsSchema = z
     gitUserEmail: z.string().default('noreply@example.com'),
     totpSeed: totpSeedSchema,
     reportDir: z.string().trim().min(1, 'Report directory must not be empty').optional(),
+    rumQueueUrl: z.string().trim().optional(),
     help: z.boolean().default(false),
   })
   .superRefine((args, ctx) => {
@@ -156,6 +158,31 @@ export const CliArgsSchema = z
         code: z.ZodIssueCode.custom,
         path: ['gitToken'],
         message: 'Git token is required unless using --mode validate with a file:// repository',
+      })
+    }
+
+    // --rum-queue-url is bound to --mode rum-compare in both directions:
+    // the mode cannot run without a queue, and the parameter is meaningless
+    // (and therefore rejected, not ignored) in every other mode.
+    if (args.mode === 'rum-compare') {
+      if (args.rumQueueUrl === undefined || args.rumQueueUrl.length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['rumQueueUrl'],
+          message: '--rum-queue-url is required with --mode rum-compare. Example: https://sqs.us-east-1.amazonaws.com/123456789012/novel-observations or file:///path/to/local/queue',
+        })
+      } else if (!args.rumQueueUrl.startsWith('https://') && !args.rumQueueUrl.startsWith('file://')) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['rumQueueUrl'],
+          message: '--rum-queue-url must be an https:// SQS queue URL or a file:// directory for local development',
+        })
+      }
+    } else if (args.rumQueueUrl !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['rumQueueUrl'],
+        message: '--rum-queue-url is only valid with --mode rum-compare',
       })
     }
   })

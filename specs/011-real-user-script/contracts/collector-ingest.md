@@ -10,10 +10,12 @@
 
 ## Edge → origin authentication
 
-| Edge       | Mechanism                                                      | Lambda obligation                                                                                                                                                                 |
-| ---------- | -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| CloudFront | OAC: IAM-signed origin requests (Function URL auth `AWS_IAM`)  | none extra — unsigned requests never reach the handler                                                                                                                            |
-| Cloudflare | Transform Rule injects `x-collector-edge-key: <shared secret>` | constant-time compare against configured secret **before** reading the body; optional source-IP check against Cloudflare ranges; mismatch → drop + `rum_edge_auth_failure` metric |
+Both edges authenticate to the origin with an edge-injected shared-secret header. CloudFront's OAC (IAM-signed origin requests, Function URL auth `AWS_IAM`) is deliberately not used: for OAC-signed POST/PUT requests AWS requires the **client** to send `x-amz-content-sha256`, and `navigator.sendBeacon` cannot set headers — every beacon would be rejected at the Function URL.
+
+| Edge       | Mechanism                                                            | Lambda obligation                                                                                                             |
+| ---------- | -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| CloudFront | Origin custom header injects `x-collector-edge-key: <shared secret>` | constant-time compare against configured secret **before** reading the body; mismatch → drop + `rum_edge_auth_failure` metric |
+| Cloudflare | Transform Rule injects `x-collector-edge-key: <shared secret>`       | as above; optional source-IP check against Cloudflare ranges                                                                  |
 
 ## Response
 

@@ -1,0 +1,20 @@
+{
+  "v": 1,
+  "session": {
+    "id": "8b9c0d1e-2f3a-4b4c-9d5e-6f7a8b9c0d1e",
+    "agentVersion": "1.0.0"
+  },
+  "page": { "url": "https://pay.example.com/checkout" },
+  "observations": [
+    {
+      "kind": "inline-script",
+      "hash": "zzzz3e32432da11443aadf6bd83d5464588956cec02521e635d56f11f7bfcfff",
+      "length": 139,
+      "head": "window.dataLayer=window.dataLayer||[];function gtag(){window.dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-E",
+      "tail": "Layer=window.dataLayer||[];function gtag(){window.dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-EXAMPLE01');",
+      "initiator": "https://pay.example.com/checkout",
+      "route": "/checkout",
+      "ts": 1755600007000
+    }
+  ]
+}

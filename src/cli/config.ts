@@ -1,5 +1,16 @@
 import type { CliArguments } from '../types/cli.js'
-import type { AlertingConfiguration, AuthenticationConfiguration, BranchConfiguration, ExecutionMode, ReportingConfiguration, RepositoryConfiguration, RuntimeConfiguration, TargetFilter, TotpConfiguration } from '../types/config.js'
+import type {
+  AlertingConfiguration,
+  AuthenticationConfiguration,
+  BranchConfiguration,
+  ExecutionMode,
+  ReportingConfiguration,
+  RepositoryConfiguration,
+  RumConfiguration,
+  RuntimeConfiguration,
+  TargetFilter,
+  TotpConfiguration,
+} from '../types/config.js'
 import { parseTotpSeedEntry } from '../utils/totp.js'
 
 /**
@@ -19,6 +30,19 @@ export function buildConfiguration(cliArgs: CliArguments): RuntimeConfiguration 
     alerting: buildAlertingConfiguration(cliArgs.slackToken),
     totp: buildTotpConfiguration(cliArgs.totpSeed),
     reporting: buildReportingConfiguration(cliArgs.reportDir),
+    rum: buildRumConfiguration(cliArgs.rumQueueUrl),
+  }
+}
+
+/**
+ * Build RUM comparison configuration.
+ *
+ * The Zod schema guarantees the queue URL is present exactly when the mode is
+ * `rum-compare`, so this is a plain carry-through.
+ */
+function buildRumConfiguration(rumQueueUrl: string | undefined): RumConfiguration {
+  return {
+    queueUrl: rumQueueUrl ?? null,
   }
 }
 

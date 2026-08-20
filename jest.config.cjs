@@ -24,14 +24,27 @@ const config = {
     {
       displayName: 'unit',
       testEnvironment: 'node',
-      testMatch: ['<rootDir>/src/**/*.test.(j|t)s', '<rootDir>/src/**/*.spec.(j|t)s'],
+      testMatch: ['<rootDir>/src/**/*.test.(j|t)s', '<rootDir>/src/**/*.spec.(j|t)s', '<rootDir>/collector/src/**/*.test.(j|t)s', '<rootDir>/collector/src/**/*.spec.(j|t)s'],
       testPathIgnorePatterns: ['\\.integration\\.(spec|test)\\.(j|t)s$', '__fixtures__'],
       modulePathIgnorePatterns: ['<rootDir>/dist'],
       moduleNameMapper,
       transform: {
         '^.+\\.(t|j)sx?$': ['@swc/jest', swcConfig],
       },
-      collectCoverageFrom: ['<rootDir>/src/**/*.(t|j)s', '!**/*.spec.ts', '!**/*.test.ts', '!**/__tests__/**'],
+      collectCoverageFrom: ['<rootDir>/src/**/*.(t|j)s', '<rootDir>/collector/src/**/*.(t|j)s', '!**/*.spec.ts', '!**/*.test.ts', '!**/__tests__/**'],
+    },
+    {
+      // Browser agent tests run in jsdom; everything else stays on node.
+      displayName: 'unit-agent',
+      testEnvironment: 'jsdom',
+      testMatch: ['<rootDir>/agent/src/**/*.test.(j|t)s', '<rootDir>/agent/src/**/*.spec.(j|t)s'],
+      testPathIgnorePatterns: ['__fixtures__'],
+      modulePathIgnorePatterns: ['<rootDir>/dist'],
+      moduleNameMapper,
+      transform: {
+        '^.+\\.(t|j)sx?$': ['@swc/jest', swcConfig],
+      },
+      collectCoverageFrom: ['<rootDir>/agent/src/**/*.(t|j)s', '!**/*.spec.ts', '!**/*.test.ts', '!**/__tests__/**'],
     },
     {
       displayName: 'integration',

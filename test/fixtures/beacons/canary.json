@@ -1,0 +1,17 @@
+{
+  "v": 1,
+  "session": {
+    "id": "5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b",
+    "agentVersion": "1.0.0"
+  },
+  "page": { "url": "https://canary.example.test/" },
+  "observations": [
+    {
+      "kind": "external-script",
+      "url": "https://canary-marker.example.test/rum-canary.js",
+      "initiator": "https://canary.example.test/",
+      "route": "/",
+      "ts": 1755600005000
+    }
+  ]
+}

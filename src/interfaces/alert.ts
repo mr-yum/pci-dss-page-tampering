@@ -1,3 +1,4 @@
+import type { RumAlertCategory, RumAlertContext } from '../types/alert.js'
 import type { ComparisonResultType } from '../types/comparison.js'
 import type { ExecutionSummary } from '../types/execution-summary.js'
 import type { InventoryAlert } from '../types/inventory/model.js'
@@ -17,6 +18,23 @@ export interface IAlertService {
    *   message regardless.
    */
   alertForTypedResults(comparisonResults: ComparisonResultType[], target: Target, alertDestinations: InventoryAlert, inventoryUpdatedResults?: ReadonlySet<ComparisonResultType>): Promise<void>
+
+  /**
+   * Send one real-user monitoring alert (feature 011, `--mode rum-compare`).
+   *
+   * Separate from `alertForTypedResults` because a RUM alert is about a single
+   * observation the tool never fetched — the context carries the observation
+   * identity, prevalence snapshot, first-seen route, and the inventory commit
+   * it was judged against instead of a typed comparison result.
+   *
+   * The destination is resolved per category from `alertDestinations.rum`,
+   * falling back to the analogous synthetic detection destination
+   * (see resolveRumAlertDestination in ../services/alert/rum.js).
+   *
+   * Implementations may throw on delivery failure; the RUM router catches,
+   * logs, and counts the failure — an alert failure never blocks routing.
+   */
+  alertForRumObservation(category: RumAlertCategory, context: RumAlertContext, alertDestinations: InventoryAlert): Promise<void>
 
   /**
    * Alert for successful workflow execution.

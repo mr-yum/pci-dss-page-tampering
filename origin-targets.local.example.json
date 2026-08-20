@@ -1,0 +1,5 @@
+[
+  { "origin": "https://staging.pay.example.com", "target_id": "1.0", "target_type": "inventory" },
+  { "origin": "https://pay.example.com", "target_id": "1.0", "target_type": "detection" },
+  { "origin": "http://localhost:3000", "target_id": "1.0", "target_type": "inventory" }
+]

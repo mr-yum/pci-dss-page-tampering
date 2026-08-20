@@ -59,6 +59,17 @@ npm start -- \
   --slack-token <YOUR_SLACK_TOKEN>
 ```
 
+**Compare queued real-user observations against the inventory:**
+
+```bash
+npm start -- \
+  --mode rum-compare \
+  --repo https://github.com/org/inventory \
+  --git-token <YOUR_TOKEN> \
+  --rum-queue-url https://sqs.ap-southeast-2.amazonaws.com/123456789012/rum-novel-observations \
+  --slack-token <YOUR_SLACK_TOKEN>
+```
+
 **Use custom branches for inventory and detection:**
 
 ```bash
@@ -79,12 +90,13 @@ npm start -- \
 
 ## Workflows
 
-The system runs one of four modes via `--mode`:
+The system runs one of five modes via `--mode`:
 
 - **`inventory`** — visits staging/inventory URLs, discovers scripts and headers, pushes updates to the `inventory-updates` branch of the inventory repo, and opens a PR for review. Alerts on resources that need manual authorization.
 - **`detection`** — visits production/detection URLs, compares what's loaded against the approved inventory on `main`, and alerts on anything unauthorized. Read-only against the inventory repo.
 - **`all`** (default) — runs `inventory`, then `detection`.
 - **`validate`** — runs as a CI check inside the inventory repo. Fully deserializes every `targets/*.json` (Zod schema, `createMatcher()`, workflow resolution) so malformed inventory cannot merge. No browser, no alerts, no push.
+- **`rum-compare`** — drains first-sighting observations reported from real user sessions and evaluates them against the inventory with the same matcher pipeline: detection-pass observations raise `rum_*` alerts; inventory-pass observations feed the candidate PR flow. Read-only except for candidate PRs; hourly scheduling lives in the inventory repository. Requires `--rum-queue-url`. Unlike every other mode, it reads ambient AWS credentials/region from the environment (e.g. an OIDC-assumed role in CI) — a deliberate carve-out from the CLI-parameters-only rule, since credentials do not belong on command lines.
 
 The intended day-to-day cycle:
 
@@ -194,18 +206,19 @@ See [Branch Usage](#branch-usage) for the branch model and [CI Validation for th
 
 ### Optional Parameters
 
-| Parameter                   | Description                                                    | Default                      |
-| --------------------------- | -------------------------------------------------------------- | ---------------------------- |
-| `--mode <mode>`             | Execution mode: `inventory`, `detection`, `all`, or `validate` | `all`                        |
-| `--target <name>`           | Process specific target (e.g., "1.0")                          | all targets                  |
-| `--slack-token <token>`     | Slack token for alerts (logs to console if omitted)            | -                            |
-| `--inventory-branch <name>` | Branch for inventory operations                                | `inventory-updates`          |
-| `--detection-branch <name>` | Branch for detection operations                                | `main`                       |
-| `--git-user-name <name>`    | Git committer name for inventory updates                       | `PCI DSS Page Tampering Bot` |
-| `--git-user-email <email>`  | Git committer email for inventory updates                      | `noreply@example.com`        |
-| `--totp-seed <name>=<seed>` | Named base32 TOTP seed for `totp` workflow steps (repeatable)  | -                            |
-| `--report-dir <path>`       | Directory for [auditor report](#auditor-report) artefacts      | - (no report written)        |
-| `--help`                    | Display help message and exit                                  | -                            |
+| Parameter                   | Description                                                                                                      | Default                      |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| `--mode <mode>`             | Execution mode: `inventory`, `detection`, `all`, `validate`, or `rum-compare`                                    | `all`                        |
+| `--target <name>`           | Process specific target (e.g., "1.0")                                                                            | all targets                  |
+| `--slack-token <token>`     | Slack token for alerts (logs to console if omitted)                                                              | -                            |
+| `--inventory-branch <name>` | Branch for inventory operations                                                                                  | `inventory-updates`          |
+| `--detection-branch <name>` | Branch for detection operations                                                                                  | `main`                       |
+| `--git-user-name <name>`    | Git committer name for inventory updates                                                                         | `PCI DSS Page Tampering Bot` |
+| `--git-user-email <email>`  | Git committer email for inventory updates                                                                        | `noreply@example.com`        |
+| `--totp-seed <name>=<seed>` | Named base32 TOTP seed for `totp` workflow steps (repeatable)                                                    | -                            |
+| `--rum-queue-url <url>`     | SQS queue URL (or `file://` dir for local testing) of novel RUM observations; required with `--mode rum-compare` | -                            |
+| `--report-dir <path>`       | Directory for [auditor report](#auditor-report) artefacts                                                        | - (no report written)        |
+| `--help`                    | Display help message and exit                                                                                    | -                            |
 
 ### TOTP Verification in Workflows
 
