@@ -1,0 +1,19 @@
+version: 3
+
+# This repository is the public, open-source reference implementation of the
+# RUM collector. Everything under infra/ is reusable Terraform MODULES
+# (collector-core, edge-cloudfront, edge-cloudflare), illustrative EXAMPLES
+# with RFC-reserved placeholder values, and a mocked-provider test harness —
+# none of them are deployable root configurations, and none describe
+# infrastructure this repo owns. Real deployment happens from the private
+# estate's wrapper that consumes these modules by tag, never from here.
+#
+# Atlantis auto-discovery otherwise treats each infra/ directory as a root and
+# runs `terraform plan`, which fails on the modules' required variables and is
+# pure noise on this repo. Disable discovery and declare no projects so
+# Atlantis leaves this repo alone. The modules are exercised by CI
+# (`terraform test` with mocked providers) in .github/workflows/infra.yml.
+autodiscover:
+  mode: disabled
+
+projects: []
