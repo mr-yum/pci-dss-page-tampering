@@ -1305,3 +1305,43 @@ describe('InventoryAlertSchema rum block (Feature 011)', () => {
     })
   })
 })
+
+describe('initiatorHostMatcher config (feature 011 — inventory-decided initiator constraint)', () => {
+  const scriptWith = (identifyWith: unknown) => ({
+    identifyWith,
+    authoriseWith: {
+      hashes: [{ timestamp: '2026-08-24T00:00:00.000Z', hash: { value: 'a'.repeat(64) } }],
+      authorisationInfo: { description: 'SDK loaded only by the checkout shell', authorised: true, date: '2026-08-24T00:00:00.000Z' },
+    },
+  })
+
+  it('accepts a standalone initiatorHostMatcher', () => {
+    expect(RawInventoryScriptInfoSchema.safeParse(scriptWith({ initiatorHostMatcher: '^pay\\.example\\.com$' })).success).toBe(true)
+  })
+
+  it('accepts it composed in an andMatcher beside a nameMatcher (the supply-chain pinning shape)', () => {
+    const result = RawInventoryScriptInfoSchema.safeParse(scriptWith({ andMatcher: [{ nameMatcher: '^https://cdn\\.example\\.net/sdk\\.js$' }, { initiatorHostMatcher: '^pay\\.example\\.com$' }] }))
+    expect(result.success).toBe(true)
+  })
+
+  it('accepts authorisationInfo alongside the pattern', () => {
+    const result = RawInventoryScriptInfoSchema.safeParse(scriptWith({ initiatorHostMatcher: '^pay\\.example\\.com$', authorisationInfo: { description: 'Checkout shell only', authorised: true, date: '2026-08-24T00:00:00.000Z' } }))
+    expect(result.success).toBe(true)
+  })
+
+  it('rejects an empty pattern', () => {
+    expect(RawInventoryScriptInfoSchema.safeParse(scriptWith({ initiatorHostMatcher: '' })).success).toBe(false)
+  })
+
+  it('rejects an invalid regex with the field named in the error', () => {
+    const result = RawInventoryScriptInfoSchema.safeParse(scriptWith({ initiatorHostMatcher: '[unclosed' }))
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(JSON.stringify(result.error.issues)).toContain('initiatorHostMatcher')
+    }
+  })
+
+  it('rejects unknown sibling keys (strict schema)', () => {
+    expect(RawInventoryScriptInfoSchema.safeParse(scriptWith({ initiatorHostMatcher: '^x$', extra: true })).success).toBe(false)
+  })
+})

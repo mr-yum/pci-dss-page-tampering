@@ -10,6 +10,17 @@ export type ExternalScriptSource = {
    * on — the URL is never used as a stand-in for content.
    */
   content: string
+  /**
+   * URL of whatever caused this script to load, derived from the CDP request
+   * initiator (`HTTPRequest.initiator()`): the top call frame's URL for
+   * script-issued requests (the same "immediate inserter" semantics as the
+   * RUM agent's `document.currentScript` capture), the initiator/document URL
+   * for parser-inserted tags, falling back to the requesting frame's URL when
+   * the stack is anonymous (eval'd code — mirroring the RUM agent's
+   * `location.href` fallback). Undefined when attribution genuinely failed.
+   * Consumed by `InitiatorHostMatcher`.
+   */
+  initiator?: string
 }
 
 export type InlineScriptSource = {

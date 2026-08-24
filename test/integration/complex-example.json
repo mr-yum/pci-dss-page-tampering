@@ -731,6 +731,33 @@
         }
       },
       "requiredOn": ["detection"]
+    },
+    {
+      "identifyWith": {
+        "andMatcher": [
+          {
+            "nameMatcher": "^https:\\/\\/cdn\\.example\\.net\\/payments\\/sdk\\.v2\\.js$"
+          },
+          {
+            "initiatorHostMatcher": "^checkout\\.example$"
+          }
+        ]
+      },
+      "authoriseWith": {
+        "hashes": [
+          {
+            "timestamp": "2026-08-24T00:00:00.000Z",
+            "hash": {
+              "value": "b1c2d3e4f5a60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
+            }
+          }
+        ],
+        "authorisationInfo": {
+          "description": "Payments SDK, initiator-pinned: only the checkout shell may load it — the same URL arriving via any other host alerts as uninventoried (supply-chain signal)",
+          "authorised": true,
+          "date": "2026-08-24T00:00:00.000Z"
+        }
+      }
     }
   ],
   "headers": [

@@ -99,6 +99,11 @@ export class ScriptComparisonService implements IScriptComparisonService {
     // always populated) and inline (initiator URL, optional). The discriminated
     // union narrows the type for us; no ternary needed.
     const url = scriptInfo.source.url
+    // The initiator, for InitiatorHostMatcher: external scripts carry it from
+    // the CDP request initiator; for inline scripts the source `url` IS the
+    // initiator (page-attribution shim), so the same value is exposed under
+    // both names — mirroring the RUM normalisation.
+    const initiator = scriptInfo.source.type === 'external' ? scriptInfo.source.initiator : scriptInfo.source.url
 
     return {
       name,
@@ -107,6 +112,7 @@ export class ScriptComparisonService implements IScriptComparisonService {
       workflowId: target.workflowId ?? 'default',
       targetType: target.type,
       ...(url !== undefined ? { url } : {}),
+      ...(initiator !== undefined ? { initiator } : {}),
     }
   }
 

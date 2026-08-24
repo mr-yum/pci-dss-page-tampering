@@ -121,6 +121,28 @@ export interface Matchable {
    * trust a staging-only origin without also trusting it in production.
    */
   targetType?: string
+
+  /**
+   * URL of whatever inserted or loaded this script, when attributable —
+   * consumed by `InitiatorHostMatcher` so an inventory entry can constrain
+   * WHO may load a script, independent of the script's own `url`.
+   *
+   * Populated for:
+   *   - RUM external scripts: the inserting script's URL (agent insertion
+   *     patch), falling back to the document URL for parser-inserted tags.
+   *   - RUM inline scripts: the same initiator the observation carried (for
+   *     inline, `url` holds the identical value per the synthetic inline
+   *     semantics — this field exists so external scripts, whose `url` is
+   *     their OWN address, can still expose provenance to matchers).
+   *   - Synthetic inline scripts: the page-attribution shim's initiator.
+   *   - Synthetic external scripts: the CDP request initiator (script-stack
+   *     top frame URL, else the initiator/document URL) captured by the
+   *     response handlers.
+   *
+   * Undefined when attribution genuinely failed. `InitiatorHostMatcher`
+   * fails secure when it is missing or unparseable.
+   */
+  initiator?: string
 }
 
 /**
@@ -161,7 +183,7 @@ export interface Matcher<T extends Matchable = Matchable> {
    * Returns the matcher type discriminator.
    * Used for logging, debugging, and type narrowing.
    */
-  getType(): 'name' | 'header-name' | 'content' | 'hash' | 'host' | 'url' | 'workflow' | 'targetType' | 'csp-directive' | 'or' | 'and'
+  getType(): 'name' | 'header-name' | 'content' | 'hash' | 'host' | 'url' | 'workflow' | 'targetType' | 'csp-directive' | 'initiator-host' | 'or' | 'and'
 
   /**
    * Returns the pattern, hashes, or child matchers used by this matcher.

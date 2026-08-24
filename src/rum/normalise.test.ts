@@ -40,6 +40,10 @@ describe('normaliseMessage', () => {
       // script's own URL — never the initiator, which is provenance only.
       expect(normalised.matchable.url).toBe('https://cdn.example.com/pixel.js')
       expect(normalised.rum.initiator).toBe('https://pay.example.com/checkout')
+      // The initiator ALSO rides Matchable.initiator, where only
+      // InitiatorHostMatcher consumes it — provenance the inventory can
+      // constrain without contaminating url-based identification.
+      expect(normalised.matchable.initiator).toBe('https://pay.example.com/checkout')
     })
 
     it('does NOT let a first-party initiator masquerade as the script URL (domain-trust must not identify a skimmer by its inserter)', () => {
@@ -88,6 +92,7 @@ describe('normaliseMessage', () => {
       expect(normalised.matchable.url).toBe('https://cdn.example.com/pixel.js')
       expect(normalised.rum.initiator).toBeUndefined()
       expect('initiator' in normalised.rum).toBe(false)
+      expect('initiator' in normalised.matchable).toBe(false)
     })
   })
 
@@ -175,6 +180,9 @@ describe('normaliseMessage', () => {
       if (normalised.kind !== 'script') throw new Error('expected script')
       expect(normalised.matchable.url).toBe('https://pay.example.com/checkout')
       expect(normalised.rum.initiator).toBe('https://pay.example.com/checkout')
+      // Inline scripts expose the same value under both names so
+      // initiatorHostMatcher entries behave uniformly across script kinds.
+      expect(normalised.matchable.initiator).toBe('https://pay.example.com/checkout')
       expect(normalised.evidence?.oversize).toBe(true)
     })
   })

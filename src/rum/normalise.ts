@@ -139,8 +139,10 @@ export function normaliseMessage(msg: QueueMessage): NormalisedObservation {
           // The script's OWN URL — never the initiator. Binding the initiator
           // here would let a first-party domain-trust entry (urlMatcher /
           // hostMatcher on the page's host) identify a third-party skimmer
-          // merely because first-party code inserted it.
+          // merely because first-party code inserted it. The initiator rides
+          // its own field, where only InitiatorHostMatcher consumes it.
           url: observation.url,
+          ...(observation.initiator !== undefined ? { initiator: observation.initiator } : {}),
           targetType: msg.target_type,
         },
         rum: rumContextOf(msg, observation.initiator),
@@ -164,8 +166,10 @@ export function normaliseMessage(msg: QueueMessage): NormalisedObservation {
           ...(wholeSource ? {} : { contentEvidence: { length: observation.length, head: observation.head, tail: observation.tail } }),
           ...(observation.hash !== undefined ? { hash: { value: observation.hash } } : {}),
           // Inline scripts have no URL of their own: the initiator IS the
-          // synthetic inline provenance semantics (Matchable.url docs).
-          ...(observation.initiator !== undefined ? { url: observation.initiator } : {}),
+          // synthetic inline provenance semantics (Matchable.url docs). It is
+          // ALSO bound to `initiator` so entries written with
+          // initiatorHostMatcher behave uniformly across script kinds.
+          ...(observation.initiator !== undefined ? { url: observation.initiator, initiator: observation.initiator } : {}),
           targetType: msg.target_type,
         },
         evidence: {

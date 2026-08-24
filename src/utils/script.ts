@@ -117,6 +117,14 @@ export function inventoryScriptInfoToRawInventoryScriptInfo(inventoryScriptInfo:
         }
         return config
       }
+      case 'initiator-host': {
+        const config: any = { initiatorHostMatcher: pattern as string }
+        const authInfo = (matcher as any).getAuthorisationInfo?.()
+        if (authInfo) {
+          config.authorisationInfo = serializeAuthorisationInfo(authInfo)
+        }
+        return config
+      }
       case 'url': {
         const config: any = { urlMatcher: pattern as string }
         const authInfo = (matcher as any).getAuthorisationInfo?.()

@@ -110,7 +110,10 @@ function identifiesHeaderAndOrigin(matcher: InventoryHeaderInfo['identifyWith'],
     switch (candidate.getType()) {
       case 'header-name':
         return [{ matches: candidate.identify(matchable), hasHeaderName: true, hasProvenance: false }]
+      // initiator-host is provenance-shaped too, but header matchables carry
+      // no initiator, so it can never match here — identify() fails secure.
       case 'host':
+      case 'initiator-host':
       case 'url':
         return [{ matches: candidate.identify(matchable), hasHeaderName: false, hasProvenance: true }]
       // Workflow id and target type both narrow *which run* an entry applies

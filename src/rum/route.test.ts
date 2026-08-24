@@ -130,6 +130,52 @@ describe('routeMessage', () => {
       expect(authorizeSpy).not.toHaveBeenCalled()
     })
 
+    describe('initiatorHostMatcher — the inventory decides who may load a known URL (clarification #1)', () => {
+      // The novelty key includes the initiator host so a known script
+      // re-injected by a NEW source re-enters evaluation; this entry is how
+      // the inventory turns that event into an alert. Composition is the
+      // whole mechanism: same allow-listed URL, constrained inserter.
+      const pinnedEntry = (): InventoryScriptInfo => ({
+        identifyWith: createMatcher({
+          andMatcher: [{ nameMatcher: '^https://cdn\\.example\\.com/known\\.js$' }, { initiatorHostMatcher: '^pay\\.example\\.com$' }],
+        }),
+        authoriseWith: {
+          matcher: createMatcher({ initiatorHostMatcher: '^pay\\.example\\.com$' }),
+          authorisationInfo: { description: 'SDK loaded only by the checkout shell', authorised: true, date: new Date() },
+        },
+      })
+
+      it('records the known URL when loaded by the expected initiator host', async () => {
+        const { deps, alertMock } = makeDeps([pinnedEntry()])
+
+        const outcome = await routeMessage(normaliseMessage(queueMessage(externalObservation('https://cdn.example.com/known.js'))), deps)
+
+        expect(outcome).toEqual({ drain: 'routed', outcome: 'recorded', alertDeliveryFailed: false })
+        expect(alertMock).not.toHaveBeenCalled()
+      })
+
+      it('alerts rum_uninventoried_script_detected when the SAME known URL arrives via a new initiator', async () => {
+        const { deps, alertMock } = makeDeps([pinnedEntry()])
+        const observation: QueueMessage['observation'] = { kind: 'external-script', ts: 1755600000000, route: '/checkout', url: 'https://cdn.example.com/known.js', initiator: 'https://evil.example.org/injector.js' }
+
+        const outcome = await routeMessage(normaliseMessage(queueMessage(observation)), deps)
+
+        expect(outcome).toMatchObject({ drain: 'routed', outcome: 'alerted', category: 'rum_uninventoried_script_detected' })
+        expect(alertMock).toHaveBeenCalledTimes(1)
+        expect(alertMock.mock.calls[0]![1]).toMatchObject({ observation: { identity: 'https://cdn.example.com/known.js', initiator: 'https://evil.example.org/injector.js' } })
+      })
+
+      it('fails secure (alerts) when the known URL arrives with no attribution at all', async () => {
+        const { deps, alertMock } = makeDeps([pinnedEntry()])
+        const observation: QueueMessage['observation'] = { kind: 'external-script', ts: 1755600000000, route: '/checkout', url: 'https://cdn.example.com/known.js' }
+
+        const outcome = await routeMessage(normaliseMessage(queueMessage(observation)), deps)
+
+        expect(outcome).toMatchObject({ drain: 'routed', outcome: 'alerted', category: 'rum_uninventoried_script_detected' })
+        expect(alertMock).toHaveBeenCalledTimes(1)
+      })
+    })
+
     describe('domain-trust entries judge the script by its OWN URL, never its initiator', () => {
       // First-party domain-trust entry: any script served from the payment
       // page's own host is identified (the urlMatcher/hostMatcher pattern the
