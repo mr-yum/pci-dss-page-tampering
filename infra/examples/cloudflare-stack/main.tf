@@ -19,6 +19,12 @@ module "collector_core" {
   origin_targets = var.origin_targets
   lambda_package = var.lambda_package
 
+  # Required trust boundary: only the comparator workflow on the default
+  # branch of the inventory repo may assume the queue-consumer role. Widen
+  # deliberately (environment/reusable-workflow claims) if your scheduler
+  # runs elsewhere.
+  oidc_subject_claims = ["repo:${var.github_repo}:ref:refs/heads/main"]
+
   edge_auth = {
     mode   = "shared_secret"
     secret = var.edge_shared_secret

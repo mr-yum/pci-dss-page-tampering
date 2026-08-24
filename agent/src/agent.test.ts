@@ -252,6 +252,35 @@ describe('inline scripts', () => {
     }
   })
 
+  it('bounds the hash memo by retained bytes: an over-budget source re-hashes on repeat but never re-emits or double-holds memory', async () => {
+    installWebCrypto()
+    const digestSpy = jest.spyOn(webcrypto.subtle, 'digest')
+    try {
+      installCollectorTag()
+      initAgent()
+      // Three ~400KB sources (each under the 512KB hashing ceiling, so all
+      // are hashed): the first two fit the 1MB memo byte budget, the third
+      // would exceed it and must NOT be memoised.
+      const big = (marker: string) => `window.__pad_${marker} = "${'x'.repeat(400 * 1024)}"; window.__m = '${marker}'`
+      appendInline(big('a'))
+      appendInline(big('b'))
+      appendInline(big('c'))
+      await processInlineCaptures()
+      expect(getPendingObservationCount()).toBe(3)
+      expect(digestSpy).toHaveBeenCalledTimes(3)
+
+      // Repeats: a and b hit the memo (no new digest); c re-hashes because it
+      // was never memoised — but its SHA still dedupes emission.
+      appendInline(big('a'))
+      appendInline(big('c'))
+      await processInlineCaptures()
+      expect(getPendingObservationCount()).toBe(3) // nothing re-emitted
+      expect(digestSpy).toHaveBeenCalledTimes(4) // only c hashed again
+    } finally {
+      digestSpy.mockRestore()
+    }
+  })
+
   it('emits BOTH of two distinct scripts that share length+first64+last64 but differ mid-body (dedupe must not be coarser than the wire identity)', async () => {
     installWebCrypto()
     const beaconMock = mockSendBeacon()

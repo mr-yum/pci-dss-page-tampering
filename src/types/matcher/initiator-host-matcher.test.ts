@@ -65,6 +65,25 @@ describe('InitiatorHostMatcher', () => {
     it('fails secure when the initiator is whitespace', () => {
       expect(new InitiatorHostMatcher('^.*$').identify(make('   '))).toBe(false)
     })
+
+    it('rejects a lookalike host — an anchored pattern must not match a suffix-spoofing domain', () => {
+      const m = new InitiatorHostMatcher('^pay\\.example\\.com$')
+      // Classic supply-chain spoofs: the trusted host as a subdomain label of
+      // an attacker domain, and as an undelimited prefix.
+      expect(m.identify(make('https://pay.example.com.evil.example/x.js'))).toBe(false)
+      expect(m.identify(make('https://pay.example.com-evil.example/x.js'))).toBe(false)
+      expect(m.identify(make('https://evilpay.example.com/x.js'))).toBe(false)
+    })
+
+    it('derives the host regardless of query string, fragment, credentials, or port in the initiator URL', () => {
+      const m = new InitiatorHostMatcher('^pay\\.example\\.com$')
+      expect(m.identify(make('https://pay.example.com/checkout?order=1&token=abc#step-2'))).toBe(true)
+      expect(m.identify(make('https://user:pw@pay.example.com/path'))).toBe(true)
+      // URL.host includes a non-default port — an anchored host pattern
+      // deliberately does NOT match it (the author pins the exact host).
+      expect(m.identify(make('https://pay.example.com:8443/path'))).toBe(false)
+      expect(new InitiatorHostMatcher('^pay\\.example\\.com(:8443)?$').identify(make('https://pay.example.com:8443/path'))).toBe(true)
+    })
   })
 
   describe('authorize', () => {

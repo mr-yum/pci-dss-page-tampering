@@ -25,9 +25,10 @@ mock_provider "aws" {
 }
 
 variables {
-  name_prefix    = "tst"
-  github_repo    = "example-org/script-inventory"
-  lambda_package = "./fixtures/placeholder.zip"
+  name_prefix         = "tst"
+  github_repo         = "example-org/script-inventory"
+  lambda_package      = "./fixtures/placeholder.zip"
+  oidc_subject_claims = ["repo:example-org/script-inventory:ref:refs/heads/main"]
 
   origin_targets = [
     {
@@ -88,10 +89,10 @@ run "rejects_empty_oidc_subject_claims" {
   expect_failures = [var.oidc_subject_claims]
 }
 
-# The default (oidc_subject_claims = null) must preserve the permissive
-# repo-wide subject, and a custom list must feed the trust policy condition
-# verbatim. The mocked aws_iam_policy_document overrides its rendered `json`,
-# so we assert on the data source's configured statement input instead.
+# The subject allowlist is REQUIRED (no permissive fallback exists), and the
+# supplied list must feed the trust policy condition verbatim. The mocked
+# aws_iam_policy_document overrides its rendered `json`, so we assert on the
+# data source's configured statement input instead.
 run "oidc_subject_claims_feed_trust_policy" {
   command = plan
 

@@ -36,6 +36,12 @@ module "collector_core" {
   origin_targets = var.origin_targets             # step 2
   lambda_package = var.lambda_package             # released ingest zip (or a local build)
 
+  # Required: the exact OIDC subject(s) allowed to assume the queue-consumer
+  # role. The comparator runs on the inventory repo's default branch (step 6);
+  # widen deliberately (environment / reusable-workflow claims) if yours
+  # runs elsewhere — never to repo-wide "*" without writing down why.
+  oidc_subject_claims = ["repo:example-org/script-inventory:ref:refs/heads/main"]
+
   edge_auth = {
     mode   = "shared_secret"
     secret = var.edge_shared_secret

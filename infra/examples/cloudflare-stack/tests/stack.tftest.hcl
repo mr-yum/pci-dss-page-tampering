@@ -104,8 +104,9 @@ run "core_pairing_shared_secret" {
   }
 
   variables {
-    name_prefix = "tst"
-    github_repo = "example-org/script-inventory"
+    name_prefix         = "tst"
+    github_repo         = "example-org/script-inventory"
+    oidc_subject_claims = ["repo:example-org/script-inventory:ref:refs/heads/main"]
     origin_targets = [
       {
         origin      = "https://checkout.example.com"

@@ -55,13 +55,12 @@ variable "github_repo" {
 # branch, or an environment claim ["repo:ORG/REPO:environment:production"] or a
 # reusable-workflow claim. Matched with StringLike in the trust policy.
 variable "oidc_subject_claims" {
-  description = "OIDC token subject (`sub`) claims allowed to assume the comparator role, matched with StringLike. SECURITY: leave null and you inherit the permissive \"repo:<github_repo>:*\" default, which trusts every ref/tag/PR/environment/reusable-workflow subject in the repo — restrict this to your comparator workflow's exact subject (e.g. \"repo:ORG/REPO:ref:refs/heads/main\", or an environment/reusable-workflow claim)."
+  description = "OIDC token subject (`sub`) claims allowed to assume the comparator role, matched with StringLike. Required with no default: this role can consume and delete security observations, so the trust boundary must be an explicit operator decision. Use your comparator workflow's exact subject (e.g. \"repo:ORG/REPO:ref:refs/heads/main\", or an environment/reusable-workflow claim); a broad claim like \"repo:ORG/REPO:*\" trusts every ref/tag/PR/environment subject in the repo — legal, but a conscious choice you must write down."
   type        = list(string)
-  default     = null
 
   validation {
-    condition     = var.oidc_subject_claims == null || length(coalesce(var.oidc_subject_claims, [])) > 0
-    error_message = "oidc_subject_claims must be null (to use the default) or a non-empty list."
+    condition     = length(var.oidc_subject_claims) > 0
+    error_message = "oidc_subject_claims must be a non-empty list of GitHub OIDC subject claims."
   }
 }
 

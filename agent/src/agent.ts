@@ -189,10 +189,20 @@ export function processPendingCaptures(): void {
  * sources are never hashed and never entered here.
  */
 const MAX_INLINE_HASH_MEMO = 512
+/**
+ * Byte budget for memo KEYS (each key retains the exact source): the entry
+ * cap alone would let 512 near-ceiling sources hold ~hundreds of MB in the
+ * visitor's tab for the whole session. Sources that would blow the budget are
+ * simply not memoised — a repeat re-hashes (idle-time, native, cheap), and
+ * correctness never depends on a cache hit. The exact-source key is kept
+ * deliberately: it is what makes the collision soundness argument hold.
+ */
+const MAX_INLINE_HASH_MEMO_BYTES = 1024 * 1024
+let inlineHashMemoBytes = 0
 const inlineHashMemo = new Map<string, string>()
 
 function inlineMemoKey(host: string, source: string): string {
-  return `${host} ${source}`
+  return `${host}\u0000${source}`
 }
 
 /**
@@ -267,7 +277,15 @@ async function memoisedHashInline(host: string, source: string): Promise<string 
   const cached = inlineHashMemo.get(key)
   if (cached !== undefined) return cached
   const hash = await hashInline(source)
-  if (hash !== undefined && inlineHashMemo.size < MAX_INLINE_HASH_MEMO) inlineHashMemo.set(key, hash)
+  if (hash !== undefined && inlineHashMemo.size < MAX_INLINE_HASH_MEMO) {
+    // Both caps must hold: entry count AND retained bytes (the key carries
+    // the whole source). Over-budget sources stay unmemoised and re-hash.
+    const keyBytes = utf8ByteLength(key)
+    if (inlineHashMemoBytes + keyBytes <= MAX_INLINE_HASH_MEMO_BYTES) {
+      inlineHashMemo.set(key, hash)
+      inlineHashMemoBytes += keyBytes
+    }
+  }
   return hash
 }
 
@@ -548,6 +566,7 @@ export function resetAgentCountersForTesting(): void {
   healthSamples.length = 0
   healthOverwriteIndex = 0
   inlineHashMemo.clear()
+  inlineHashMemoBytes = 0
 }
 
 // Self-invoking guard: only start in a real browser context with a
