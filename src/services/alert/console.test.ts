@@ -12,9 +12,14 @@
  *   - Logs optional executionDuration when provided
  */
 
+import type { RumAlertContext } from '../../types/alert.js'
+import { MissingRequiredScript } from '../../types/comparison/missing-required-script.js'
 import { ExecutionMode } from '../../types/config.js'
 import type { ExecutionSummary } from '../../types/execution-summary.js'
-import type { InventoryAlert } from '../../types/inventory/model.js'
+import type { InventoryAlert, InventoryScriptInfo } from '../../types/inventory/model.js'
+import { createMatcher } from '../../types/matcher/matcher-factory.js'
+import type { Target } from '../../types/target.js'
+import { createLogger } from '../../utils/logger.js'
 import { ConsoleAlertService } from './console.js'
 
 describe('ConsoleAlertService - alertOnSuccess (Phase 3)', () => {
@@ -329,6 +334,64 @@ describe('ConsoleAlertService - alertOnSuccess (Phase 3)', () => {
         '  Resources Monitored: 10 scripts and headers',
         '  Completed At: 2025-12-17T14:30:00.000Z',
       ])
+    })
+  })
+
+  // ConsoleAlertService is the default alert sink whenever --slack-token is
+  // absent (main.ts), so its RUM and missing-script rendering is production
+  // path, not a dev convenience.
+  describe('RUM and missing-script rendering (default token-less sink)', () => {
+    let service: ConsoleAlertService
+    let consoleSpy: jest.SpyInstance
+    let destinations: InventoryAlert
+
+    beforeEach(() => {
+      service = new ConsoleAlertService()
+      consoleSpy = jest.spyOn(console, 'log').mockImplementation()
+      destinations = {
+        inventory: { newScriptIdentified: { destination: 'inv-script' }, newHeaderIdentified: { destination: 'inv-header' } },
+        detection: { newScriptDetected: { destination: 'det-script' }, scriptMismatchDetected: { destination: 'mismatch' }, newHeaderDetected: { destination: 'det-header' } },
+        successNotification: { destination: 'success' },
+        rum: { uninventoriedScriptDetected: { destination: 'rum-unknown' } },
+      }
+    })
+
+    it('renders an uninventoried-script RUM alert with destination and context lines', async () => {
+      const context: RumAlertContext = {
+        observation: { kind: 'external-script', identity: 'https://evil.example/skimmer.js', initiator: 'https://pay.example.com/' },
+        prevalence: { sessions: 3, first_seen: 1755600000000 },
+        first_route: '/checkout',
+        targetType: 'detection',
+        inventoryRef: 'abc1234',
+      }
+
+      await service.alertForRumObservation('rum_uninventoried_script_detected', context, destinations)
+
+      const calls = consoleSpy.mock.calls.map((c) => c[0]).filter((c) => c !== undefined)
+      expect(calls.some((line: string) => line.includes('Destination: rum-unknown'))).toBe(true)
+      expect(calls.some((line: string) => line.includes('https://evil.example/skimmer.js'))).toBe(true)
+      expect(calls.some((line: string) => line.includes('/checkout'))).toBe(true)
+      expect(calls.some((line: string) => line.includes('abc1234'))).toBe(true)
+    })
+
+    it('renders a missing_required_script finding via alertForTypedResults', async () => {
+      const target: Target = { type: 'detection', url: 'https://pay.example.com/checkout', workflow: { fileName: 'w.json', definition: { steps: [] } }, logger: createLogger('console-missing-test') }
+      const entry: InventoryScriptInfo = {
+        identifyWith: createMatcher({ nameMatcher: '^https://static\\.example\\.com/agent\\.js$' }),
+        authoriseWith: {
+          matcher: createMatcher({ hashes: [{ timestamp: new Date('2026-08-21T00:00:00.000Z'), hash: { value: 'a'.repeat(64) } }] }),
+          authorisationInfo: { description: 'RUM monitoring agent', authorised: true, date: new Date('2026-08-21T00:00:00.000Z') },
+        },
+        requiredOn: ['detection'],
+      }
+      const missing = new MissingRequiredScript(target, new Date('2026-08-21T00:00:00.000Z'), 'RUM monitoring agent (name matcher)', entry)
+
+      await service.alertForTypedResults([missing], target, destinations)
+
+      const calls = consoleSpy.mock.calls.map((c) => c[0]).filter((c) => c !== undefined)
+      expect(calls.some((line: string) => line.includes('Required scripts missing'))).toBe(true)
+      expect(calls.some((line: string) => line.includes('RUM monitoring agent'))).toBe(true)
+      expect(calls.some((line: string) => line.includes('detection'))).toBe(true)
     })
   })
 })

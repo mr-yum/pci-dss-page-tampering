@@ -192,3 +192,64 @@ describe('HeaderComparisonService required headers', () => {
     expect(raw.requiredOn).toEqual(['document'])
   })
 })
+
+describe('HeaderComparisonService empty-value fail-secure gate', () => {
+  const target: TargetDetection = {
+    type: 'detection',
+    url: 'https://checkout.example/pay',
+    workflow: { fileName: 'workflow.json', definition: { steps: [] } },
+    logger: createLogger('header-empty-test'),
+  }
+
+  // A provenance-only composite authoriser: authorises on host alone, ignoring
+  // content. This is the shape the branch-review flagged — after composites
+  // became pure delegation (evidence-aware), only the header path's own gate
+  // stops it authorising an emptied CSP from the trusted host.
+  const provenanceOnlyCsp: InventoryHeaderInfo = {
+    identifyWith: createMatcher({ headerNameMatcher: '^content-security-policy$' }),
+    authoriseWith: {
+      matcher: createMatcher({ orMatcher: [{ hostMatcher: '^checkout\\.example$' }] }),
+      authorisationInfo: { description: 'CSP trusted from the checkout host', authorised: true, date: new Date('2026-08-21T00:00:00.000Z') },
+    },
+  }
+
+  const inventory: Inventory = {
+    fileName: 'target.json',
+    target: { inventory: { ...target, type: 'inventory' } as TargetInventory, detection: target },
+    alerts: {
+      inventory: { newScriptIdentified: { destination: 'x' }, newHeaderIdentified: { destination: 'x' } },
+      detection: { newScriptDetected: { destination: 'x' }, scriptMismatchDetected: { destination: 'x' }, newHeaderDetected: { destination: 'x' }, headerMismatchDetected: { destination: 'x' } },
+      successNotification: { destination: 'x' },
+    },
+    scripts: [],
+    headers: [provenanceOnlyCsp],
+  }
+
+  it('fails secure on an emptied CSP a provenance-only composite would otherwise authorise', async () => {
+    const results = await new HeaderComparisonService().compare(target, inventory, {
+      headers: new Map([['content-security-policy', new Map([['', new Set([target.url])]])]]),
+      responses: [],
+    })
+
+    expect(results.map((r) => r.type)).toEqual(['known_header_unauthorised_content'])
+    expect(results[0]).toMatchObject({ failureReason: 'header value is empty' })
+  })
+
+  it('still authorises the same header when its value is non-empty', async () => {
+    const results = await new HeaderComparisonService().compare(target, inventory, {
+      headers: new Map([['content-security-policy', new Map([["default-src 'self'", new Set([target.url])]])]]),
+      responses: [],
+    })
+
+    expect(results.map((r) => r.type)).toEqual(['authorized_header'])
+  })
+
+  it('treats a whitespace-only value as empty', async () => {
+    const results = await new HeaderComparisonService().compare(target, inventory, {
+      headers: new Map([['content-security-policy', new Map([['   ', new Set([target.url])]])]]),
+      responses: [],
+    })
+
+    expect(results.map((r) => r.type)).toEqual(['known_header_unauthorised_content'])
+  })
+})
