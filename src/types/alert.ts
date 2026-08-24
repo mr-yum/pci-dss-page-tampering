@@ -1,3 +1,5 @@
+import type { InventoryAuthorisationInfo } from './inventory/model.js'
+
 export const AlertType = {
   Script: 'Script',
   Header: 'Header',
@@ -17,7 +19,9 @@ export type AlertType = (typeof AlertType)[keyof typeof AlertType]
  * - `rum_mismatched_script_detected`: an inline script was identified but its
  *   evidence failed authorisation (detection pass).
  * - `rum_csp_violation_reported`: a CSP violation report was observed.
- *   Recorded from phase 1; alerting activates in phase 4 (T035).
+ *   Recorded from phase 1; alerting is opt-in per target (T035) — only when
+ *   `alerts.rum.cspViolationReported` provides a destination, detection lane
+ *   only, optionally gated by `cspViolationReportedMinSessions`.
  */
 export const RUM_ALERT_CATEGORIES = ['rum_uninventoried_script_detected', 'rum_mismatched_script_detected', 'rum_csp_violation_reported'] as const
 
@@ -74,4 +78,11 @@ export type RumAlertContext = {
   failureReason?: string | undefined
   /** Mismatched alerts only: description of the authorisation matcher consulted. */
   matcherDescription?: string | undefined
+  /**
+   * Mismatched alerts only: root → leaf authorisation metadata from the
+   * comparison result (composite matchers), so the alert shows which
+   * alternative was being evaluated when authorisation failed. Omitted when
+   * the comparison produced none (leaf matchers without nested metadata).
+   */
+  metadataPath?: InventoryAuthorisationInfo[] | undefined
 }

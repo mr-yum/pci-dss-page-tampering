@@ -1,0 +1,116 @@
+name: Release
+
+# Publishes the versioned artefacts FR-018 promises for every release tag,
+# together: the browser agent bundle (rebuilt with the tag version injected so
+# beacons carry the real agentVersion), its SHA-256 and SRI string, the
+# collector Lambda package with its SHA-256, and a ready-to-paste inventory
+# entry snippet. The Terraform modules need no separate artefact — adopters
+# consume infra/ from this repository at this same tag (`?ref=vX.Y.Z`).
+on:
+  push:
+    tags: ['v*.*.*']
+
+# Needed to create the release and upload its assets. Nothing here pushes to
+# branches, and no cloud or Slack secrets are involved.
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Use Node.js 24.x
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24.x
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          echo "📦 Installing dependencies..."
+          npm ci
+          echo "✅ Dependencies installed successfully"
+
+      # The agent is rebuilt by scripts/build-release-agent.mjs rather than
+      # `npm run build:agent`: the dev build leaves __AGENT_VERSION__ undefined
+      # (bundle falls back to 0.0.0), while the release bundle must stamp the
+      # tag version into every beacon.
+      - name: Build release bundles
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          echo "▶️ Building release bundles for ${TAG}..."
+          node scripts/build-release-agent.mjs "${TAG#v}"
+          npm run build:collector
+          echo "✅ Release bundles built"
+
+      - name: Assemble release assets
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          echo "▶️ Assembling release assets..."
+          mkdir -p dist/release
+          cp dist/agent/agent.js "dist/release/agent-${TAG}.js"
+          cp dist/collector/ingest.zip "dist/release/ingest-${TAG}.zip"
+          (cd dist/release && sha256sum "agent-${TAG}.js" > "agent-${TAG}.js.sha256")
+          (cd dist/release && sha256sum "ingest-${TAG}.zip" > "ingest-${TAG}.zip.sha256")
+          npx tsx scripts/make-inventory-entry.mjs "dist/release/agent-${TAG}.js" "${TAG#v}" > "dist/release/inventory-entry-${TAG}.json"
+          echo "✅ Release assets assembled"
+
+      - name: Write release notes
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          echo "▶️ Writing release notes..."
+          SRI="$(node scripts/print-sri.mjs "dist/release/agent-${TAG}.js" | sed 's/^SRI: //')"
+          {
+            echo "Deployment guide: [docs/rum/IMPLEMENTATION.md](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/blob/${TAG}/docs/rum/IMPLEMENTATION.md). Changes: [CHANGELOG.md](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/blob/${TAG}/CHANGELOG.md)."
+            echo ""
+            echo "### Artefacts"
+            echo ""
+            echo "| File | Purpose |"
+            echo "| ---- | ------- |"
+            echo "| \`agent-${TAG}.js\` | Browser RUM agent bundle (beacons report agentVersion \`${TAG#v}\`) |"
+            echo "| \`agent-${TAG}.js.sha256\` | SHA-256 checksum of the agent bundle |"
+            echo "| \`ingest-${TAG}.zip\` | Collector Lambda deployment package |"
+            echo "| \`ingest-${TAG}.zip.sha256\` | SHA-256 checksum of the collector package |"
+            echo "| \`inventory-entry-${TAG}.json\` | Ready-to-paste inventory entry — review, replace the REPLACE-ME URL, then set \`authorised: true\` |"
+            echo ""
+            echo "### Integrity"
+            echo ""
+            echo "Agent SRI string (for the script tag's \`integrity\` attribute):"
+            echo ""
+            echo '```'
+            echo "${SRI}"
+            echo '```'
+            echo ""
+            echo "SHA-256 checksums:"
+            echo ""
+            echo '```'
+            cat "dist/release/agent-${TAG}.js.sha256" "dist/release/ingest-${TAG}.zip.sha256"
+            echo '```'
+            echo ""
+            echo "The Terraform modules under \`infra/\` are consumed from this repository at this same tag (\`?ref=${TAG}\`)."
+          } > dist/release/notes.md
+          echo "✅ Release notes written"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          echo "▶️ Creating GitHub release ${TAG}..."
+          gh release create "${TAG}" \
+            --title "${TAG}" \
+            --notes-file dist/release/notes.md \
+            --verify-tag \
+            "dist/release/agent-${TAG}.js" \
+            "dist/release/agent-${TAG}.js.sha256" \
+            "dist/release/ingest-${TAG}.zip" \
+            "dist/release/ingest-${TAG}.zip.sha256" \
+            "dist/release/inventory-entry-${TAG}.json"
+          echo "✅ Release published"

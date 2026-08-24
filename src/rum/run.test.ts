@@ -3,8 +3,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import type { IAlertService } from '../interfaces/alert.js'
-import type { IInventoryService } from '../interfaces/inventory.js'
+import type { IScriptInventoryRepository } from '../interfaces/inventory.js'
 import { ScriptComparisonService } from '../services/comparison/script.js'
+import { ScriptInventoryService } from '../services/inventory.js'
+import type { SHA256Hash } from '../types/hash.js'
 import type { Inventory, InventoryScriptInfo } from '../types/inventory/model.js'
 import { createMatcher } from '../types/matcher/matcher-factory.js'
 import { PullTarget } from '../types/target.js'
@@ -16,11 +18,20 @@ const silentLogger: Logger = { log: jest.fn(), error: jest.fn(), warn: jest.fn()
 
 // Fixture pattern mirrors src/rum/route.test.ts: entries are built with the
 // real matcher factory and evaluated by the real comparison service.
-const inventoryEntry = (namePattern: string): InventoryScriptInfo => ({
+const inventoryEntry = (namePattern: string, authorisedHashes: string[] = []): InventoryScriptInfo => ({
   identifyWith: createMatcher({ nameMatcher: namePattern }),
   authoriseWith: {
-    matcher: createMatcher({ contentMatcher: 'console\\.log' }),
+    matcher: authorisedHashes.length > 0 ? createMatcher({ hashes: authorisedHashes.map((hash) => ({ timestamp: new Date(), hash: { value: hash } as SHA256Hash })) }) : createMatcher({ contentMatcher: 'console\\.log' }),
     authorisationInfo: { description: 'Test entry', authorised: true, date: new Date() },
+  },
+})
+
+/** An unapproved entry from an earlier run, exactly as the diff writes it. */
+const pendingEntry = (namePattern: string): InventoryScriptInfo => ({
+  identifyWith: createMatcher({ nameMatcher: namePattern }),
+  authoriseWith: {
+    matcher: createMatcher({ nameMatcher: namePattern }),
+    authorisationInfo: { description: 'NO_DESCRIPTION', authorised: false, date: new Date() },
   },
 })
 
@@ -95,13 +106,22 @@ class FakeQueueSource implements QueueSource {
   }
 }
 
+/**
+ * A REAL ScriptInventoryService over a faked Git repository, so the candidate
+ * flow (diff → matcher generation → idempotency → push gating) is exercised
+ * by the actual production logic; only cloning and pushing are faked.
+ */
 const makeInventoryService = (detectionInventories: Inventory[], inventoryInventories: Inventory[], refs: { detection: string | null; inventory: string | null } = { detection: 'de7ec7104ef', inventory: '1abe11edref' }) => {
   const pull = jest.fn(async (target: PullTarget) => (target === PullTarget.Detection ? detectionInventories : inventoryInventories))
   const getLastPullRef = jest
     .fn()
     .mockReturnValueOnce(refs.detection === null ? null : { branch: 'main', commitSha: refs.detection, commitIsoDate: null })
     .mockReturnValueOnce(refs.inventory === null ? null : { branch: 'inventory-updates', commitSha: refs.inventory, commitIsoDate: null })
-  return { pull, getLastPullRef, service: { pull, getLastPullRef } as unknown as IInventoryService }
+  // Mirrors ScriptInventoryRepository.push's contract: a non-null commit
+  // message means a commit was pushed.
+  const push = jest.fn(async (_inventories: Inventory[], _branchName?: string, commitMessage?: string) => (commitMessage ? { pushed: true as const, commitMessage } : { pushed: false as const }))
+  const repository = { pull, getLastPullRef, push } as unknown as IScriptInventoryRepository
+  return { pull, getLastPullRef, push, service: new ScriptInventoryService({ inventoryRepository: repository }) }
 }
 
 const makeAlertService = () => {
@@ -109,8 +129,9 @@ const makeAlertService = () => {
   return { mock: alertForRumObservation, service: { alertForRumObservation } as unknown as IAlertService }
 }
 
-const makeDeps = (overrides: Partial<RumCompareDeps> = {}): { deps: RumCompareDeps; alertMock: jest.Mock } => {
+const makeDeps = (overrides: Partial<RumCompareDeps> = {}): { deps: RumCompareDeps; alertMock: jest.Mock; ensurePullRequest: jest.Mock } => {
   const { mock, service } = makeAlertService()
+  const ensurePullRequest = jest.fn<Promise<string | null>, unknown[]>().mockResolvedValue(null)
   const deps: RumCompareDeps = {
     inventoryService: makeInventoryService([makeInventory('1.0.json', [inventoryEntry('^https://cdn\\.example\\.com/known\\.js$')])], [makeInventory('1.0.json', [])]).service,
     scriptComparison: new ScriptComparisonService(),
@@ -119,9 +140,10 @@ const makeDeps = (overrides: Partial<RumCompareDeps> = {}): { deps: RumCompareDe
     branches: { inventory: 'inventory-updates', detection: 'main' },
     reportDir: null,
     log: silentLogger,
+    ensurePullRequest: ensurePullRequest as unknown as RumCompareDeps['ensurePullRequest'],
     ...overrides,
   }
-  return { deps, alertMock: mock }
+  return { deps, alertMock: mock, ensurePullRequest }
 }
 
 describe('runRumCompare', () => {
@@ -135,17 +157,20 @@ describe('runRumCompare', () => {
 
     const summary = await runRumCompare(deps)
 
-    expect(inventoryService.pull).toHaveBeenCalledWith(PullTarget.Detection, 'main')
-    expect(inventoryService.pull).toHaveBeenCalledWith(PullTarget.Inventory, 'inventory-updates')
+    expect(inventoryService.pull).toHaveBeenCalledWith(PullTarget.Detection, 'main', undefined)
+    // Same base semantics as --mode inventory: a missing inventory branch
+    // starts from the detection branch.
+    expect(inventoryService.pull).toHaveBeenCalledWith(PullTarget.Inventory, 'inventory-updates', { baseBranchName: 'main' })
     expect(summary).toEqual({
       processed: 0,
       routed: 0,
       invalid: 0,
       failed: 0,
       unknownTargetIds: 0,
-      outcomes: { alerted: 0, recorded: 0, recordedPending: 0, duplicateSuppressed: 0 },
+      outcomes: { alerted: 0, recorded: 0, candidate: 0, duplicateSuppressed: 0 },
       alertedByCategory: {},
       alertDeliveryFailures: 0,
+      candidates: { byTarget: {}, entriesAppended: 0, pushed: false, prUrl: null },
       inventoryRefs: {
         detection: { branch: 'main', commitSha: 'de7ec7104ef' },
         inventory: { branch: 'inventory-updates', commitSha: '1abe11edref' },
@@ -218,15 +243,169 @@ describe('runRumCompare', () => {
     expect(summary.unknownTargetIds).toBe(0)
   })
 
-  it('tallies an inventory-pass message as recorded-pending (T031 stub) and routes it', async () => {
-    const queueSource = new FakeQueueSource([[entryOf(queueMessage({ target_type: 'inventory' }))]])
-    const { deps, alertMock } = makeDeps({ queueSource })
+  describe('inventory-pass candidate flow (US3)', () => {
+    const NOVEL_URL = 'https://sandbox.newpay.example/sdk.js'
+    const NOVEL_PATTERN = '^https://sandbox\\.newpay\\.example/sdk\\.js$'
 
-    const summary = await runRumCompare(deps)
+    const novelStagingMessage = (pk = `1.0#url:${NOVEL_URL}#staging.example.com`): QueueMessage =>
+      queueMessage({
+        target_type: 'inventory',
+        observation: { kind: 'external-script', ts: 1755600000000, route: '/checkout', url: NOVEL_URL, initiator: 'https://staging.example.com/checkout' },
+        novelty: { pk, first_seen: 1755600000123, first_route: '/checkout' },
+      })
 
-    expect(alertMock).not.toHaveBeenCalled()
-    expect(summary.outcomes.recordedPending).toBe(1)
-    expect(summary.routed).toBe(1)
+    const inlineStagingMessage = (hash: string): QueueMessage =>
+      queueMessage({
+        target_type: 'inventory',
+        observation: { kind: 'inline-script', ts: 1755600000000, route: '/checkout', hash, length: 42, head: 'window.__init(', tail: ');', initiator: 'https://staging.example.com/checkout' },
+        novelty: { pk: `1.0#inline:${hash}#staging.example.com`, first_seen: 1755600000123, first_route: '/checkout' },
+      })
+
+    it('turns a novel staging script into one pending entry, pushed to the inventory branch with a PR', async () => {
+      const inventoryService = makeInventoryService([makeInventory('1.0.json', [])], [makeInventory('1.0.json', [inventoryEntry('^https://cdn\\.example\\.com/known\\.js$')])])
+      const queueSource = new FakeQueueSource([[entryOf(novelStagingMessage())]])
+      const { deps, alertMock, ensurePullRequest } = makeDeps({ inventoryService: inventoryService.service, queueSource })
+
+      const summary = await runRumCompare(deps)
+
+      expect(alertMock).not.toHaveBeenCalled()
+      expect(summary.outcomes.candidate).toBe(1)
+      expect(summary.candidates).toEqual({ byTarget: { '1.0': 1 }, entriesAppended: 1, pushed: true, prUrl: null })
+      expect(queueSource.deleted).toEqual(['msg-1'])
+
+      // Pushed to the inventory branch with the standard commit message.
+      expect(inventoryService.push).toHaveBeenCalledTimes(1)
+      const [pushedInventories, pushedBranch, commitMessage] = inventoryService.push.mock.calls[0] as [Inventory[], string, string]
+      expect(pushedBranch).toBe('inventory-updates')
+      expect(commitMessage).toBe('inventory(1.0): add 1 script')
+
+      // The appended entry: exact-name identification (matcher generation
+      // reused from ScriptInventoryService), explicitly unauthorised, and —
+      // because external RUM scripts carry no hash — authorised-by-exact-name
+      // rather than a fabricated hash.
+      const pushed = pushedInventories[0]!
+      expect(pushed.scripts).toHaveLength(2)
+      const appended = pushed.scripts[1]!
+      expect(appended.identifyWith.getType()).toBe('name')
+      // RegExp.source normalises `/` to `\/`, hence the doubled escaping.
+      expect(appended.identifyWith.getPattern()).toBe('^https:\\/\\/sandbox\\.newpay\\.example\\/sdk\\.js$')
+      expect(appended.authoriseWith.matcher.getType()).toBe('name')
+      expect(appended.authoriseWith.authorisationInfo.authorised).toBe(false)
+
+      // PR flow invoked exactly as --mode inventory would.
+      expect(ensurePullRequest).toHaveBeenCalledTimes(1)
+      expect(ensurePullRequest).toHaveBeenCalledWith('inventory(1.0): add 1 script', pushed.alerts)
+    })
+
+    it('the automated system never authorises: pre-existing authorised entries are untouched and every appended entry is authorised: false', async () => {
+      const mismatchHash = 'b'.repeat(64)
+      const identifiedEntry = inventoryEntry('^inline_script/rum:', ['c'.repeat(64)])
+      const inventoryService = makeInventoryService([makeInventory('1.0.json', [])], [makeInventory('1.0.json', [identifiedEntry])])
+      // An identified inline script whose hash is NOT authorised: the synthetic
+      // pass would append the hash to the identified entry (a de facto
+      // authorisation) — the RUM lane must produce an unauthorised candidate.
+      const queueSource = new FakeQueueSource([[entryOf(novelStagingMessage(), 'msg-1'), entryOf(inlineStagingMessage(mismatchHash), 'msg-2')]])
+      const { deps } = makeDeps({ inventoryService: inventoryService.service, queueSource })
+
+      const summary = await runRumCompare(deps)
+
+      expect(summary.outcomes.candidate).toBe(2)
+      expect(summary.candidates.entriesAppended).toBe(2)
+
+      const [pushedInventories] = inventoryService.push.mock.calls[0] as [Inventory[]]
+      const pushed = pushedInventories[0]!
+      // The identified entry kept its single authorised hash — nothing was
+      // appended to it, and it is still the only authorised entry.
+      expect(identifiedEntry.authoriseWith.matcher.getPattern()).toHaveLength(1)
+      expect(pushed.scripts.filter((script) => script.authoriseWith.authorisationInfo.authorised)).toEqual([identifiedEntry])
+      // Every appended candidate is explicitly unauthorised, and the inline
+      // one pins the observed hash for the human to review.
+      const appended = pushed.scripts.slice(1)
+      expect(appended).toHaveLength(2)
+      for (const entry of appended) {
+        expect(entry.authoriseWith.authorisationInfo.authorised).toBe(false)
+      }
+      const inlineCandidate = appended.find((entry) => entry.authoriseWith.matcher.getType() === 'hash')!
+      expect(inlineCandidate.authoriseWith.matcher.getPattern()).toEqual([expect.objectContaining({ hash: { value: mismatchHash } })])
+    })
+
+    it('a duplicate delivery within one run appends a single entry', async () => {
+      const inventoryService = makeInventoryService([makeInventory('1.0.json', [])], [makeInventory('1.0.json', [])])
+      const message = novelStagingMessage()
+      const queueSource = new FakeQueueSource([[entryOf(message, 'msg-1'), entryOf(message, 'msg-2')]])
+      const { deps } = makeDeps({ inventoryService: inventoryService.service, queueSource })
+
+      const summary = await runRumCompare(deps)
+
+      expect(summary.outcomes.candidate).toBe(1)
+      expect(summary.outcomes.duplicateSuppressed).toBe(1)
+      expect(summary.candidates.entriesAppended).toBe(1)
+      const [pushedInventories] = inventoryService.push.mock.calls[0] as [Inventory[]]
+      expect(pushedInventories[0]!.scripts).toHaveLength(1)
+    })
+
+    it('a script already covered by a pending entry is not re-appended, and nothing is pushed (idempotent across runs)', async () => {
+      // The pending entry exactly as a previous run's diff wrote it: invisible
+      // to identification (authorised: false), so routing still emits a
+      // candidate — the diff's covered-entry check is what deduplicates.
+      const inventoryService = makeInventoryService([makeInventory('1.0.json', [])], [makeInventory('1.0.json', [pendingEntry(NOVEL_PATTERN)])])
+      const queueSource = new FakeQueueSource([[entryOf(novelStagingMessage())]])
+      const { deps, ensurePullRequest } = makeDeps({ inventoryService: inventoryService.service, queueSource })
+
+      const summary = await runRumCompare(deps)
+
+      expect(summary.outcomes.candidate).toBe(1)
+      expect(summary.candidates).toEqual({ byTarget: { '1.0': 1 }, entriesAppended: 0, pushed: false, prUrl: null })
+      // No material change → no commit, no push, no PR.
+      expect(inventoryService.push).not.toHaveBeenCalled()
+      expect(ensurePullRequest).not.toHaveBeenCalled()
+      expect(queueSource.deleted).toEqual(['msg-1'])
+    })
+
+    it('records an inventory-pass script an authorised entry identifies, without touching the inventory', async () => {
+      const inventoryService = makeInventoryService([makeInventory('1.0.json', [])], [makeInventory('1.0.json', [inventoryEntry(NOVEL_PATTERN)])])
+      const queueSource = new FakeQueueSource([[entryOf(novelStagingMessage())]])
+      const { deps, alertMock, ensurePullRequest } = makeDeps({ inventoryService: inventoryService.service, queueSource })
+
+      const summary = await runRumCompare(deps)
+
+      expect(alertMock).not.toHaveBeenCalled()
+      expect(summary.outcomes.recorded).toBe(1)
+      expect(summary.outcomes.candidate).toBe(0)
+      expect(summary.candidates).toEqual({ byTarget: {}, entriesAppended: 0, pushed: false, prUrl: null })
+      expect(inventoryService.push).not.toHaveBeenCalled()
+      expect(ensurePullRequest).not.toHaveBeenCalled()
+    })
+
+    it('surfaces the PR URL in the summary when the coordinator opens one', async () => {
+      const inventoryService = makeInventoryService([makeInventory('1.0.json', [])], [makeInventory('1.0.json', [])])
+      const queueSource = new FakeQueueSource([[entryOf(novelStagingMessage())]])
+      const { deps, ensurePullRequest } = makeDeps({ inventoryService: inventoryService.service, queueSource })
+      ensurePullRequest.mockResolvedValueOnce('https://github.com/org/inventory/pull/7')
+
+      const summary = await runRumCompare(deps)
+
+      expect(summary.candidates.prUrl).toBe('https://github.com/org/inventory/pull/7')
+    })
+
+    it('fails the run when PR creation fails, after the summary is preserved', async () => {
+      const inventoryService = makeInventoryService([makeInventory('1.0.json', [])], [makeInventory('1.0.json', [])])
+      const queueSource = new FakeQueueSource([[entryOf(novelStagingMessage())]])
+      const reportDir = await mkdtemp(join(tmpdir(), 'rum-pr-failure-'))
+      try {
+        const { deps, ensurePullRequest } = makeDeps({ inventoryService: inventoryService.service, queueSource, reportDir })
+        ensurePullRequest.mockRejectedValueOnce(new Error('PR creation failed'))
+
+        await expect(runRumCompare(deps)).rejects.toThrow('PR creation failed')
+
+        // The drained messages are already deleted from the queue, so the
+        // summary artefact must survive the failure as routing evidence.
+        const written = JSON.parse(await readFile(join(reportDir, 'rum-compare', 'rum-summary.json'), 'utf8'))
+        expect(written.candidates).toEqual({ byTarget: { '1.0': 1 }, entriesAppended: 1, pushed: true, prUrl: null })
+      } finally {
+        await rm(reportDir, { recursive: true, force: true })
+      }
+    })
   })
 
   it('falls back to the branch name as the routing ref when the store reports no SHA', async () => {

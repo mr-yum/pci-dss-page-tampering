@@ -1,8 +1,9 @@
 /**
- * External-script capture for the RUM agent (US1 scope: external scripts
- * only; inline-script fingerprinting arrives in a later task).
+ * Script capture for the RUM agent: external scripts (US1), inline scripts
+ * (US2) and CSP violations (US4). Fingerprinting/hashing of inline sources
+ * happens in the idle processor (`agent.ts`), never here.
  *
- * Three complementary capture paths feed one queue:
+ * Three complementary capture paths feed the queues:
  *
  * 1. Insertion patch — `Node.prototype.appendChild`/`insertBefore` wrappers
  *    (call-through first, then observe). This is the only path that can
@@ -17,7 +18,15 @@
  * 3. PerformanceObserver (`type: 'resource'`, `buffered: true`) — safety net
  *    for script fetches with no DOM insertion we saw (e.g. scripts added
  *    before the agent ran, workers of type module are out of scope). No
- *    attribution is possible here, so `initiator` stays unset.
+ *    attribution is possible here, so `initiator` stays unset. External
+ *    scripts only — an inline script never fetches.
+ *
+ * Inline scripts (no `src`, non-whitespace source) go to their own queue as
+ * raw source references: callbacks must not pay for slicing or hashing
+ * (FR-003), and the element-level WeakSet below keeps the patch and the
+ * MutationObserver from enqueueing the same element twice. Whitespace-only
+ * scripts are skipped — nothing meaningful was observed (the inventory
+ * flow's degenerate-matcher case is a synthetic-side concern).
  *
  * All paths dedupe through the session's seen-set, so double capture is
  * harmless. Callbacks only capture and enqueue (FR-003): no encoding, no
@@ -38,14 +47,55 @@ export interface ScriptCapture {
   ts: number
 }
 
+/** A raw CSP-violation capture, clamped to the beacon schema's field caps. */
+export interface CspViolationCapture {
+  /** The effective directive that was violated (≤ 128 chars). */
+  directive: string
+  /**
+   * The blocked URI as the browser reported it (≤ 2048 chars). Not always a
+   * URL: the CSP spec uses bare strings like `inline` and `eval` here — they
+   * pass through verbatim.
+   */
+  blockedUri: string
+  /** SPA route active at capture (pathname only). */
+  route: string
+  /** Capture timestamp, epoch ms. */
+  ts: number
+}
+
+/** A raw inline-script capture: the source is kept by reference only. */
+export interface InlineScriptCapture {
+  /** The inline script's full source text (fingerprinted later, at idle). */
+  source: string
+  /** URL of the inserting script (or document) when attributable. */
+  initiator?: string
+  /** SPA route active at capture (pathname only). */
+  route: string
+  /** Capture timestamp, epoch ms. */
+  ts: number
+}
+
 /**
- * Hard cap on unprocessed captures. Beyond it, captures are counted as
- * dropped rather than growing memory unboundedly — the agent must never
- * degrade the page it monitors (FR-003).
+ * Hard cap on unprocessed captures — external and inline COMBINED. Beyond
+ * it, captures are counted as dropped rather than growing memory unboundedly
+ * — the agent must never degrade the page it monitors (FR-003).
  */
 const MAX_PENDING_CAPTURES = 500
 
+/** Matches the beacon schema's `directive` cap (`src/types/beacon.ts`). */
+const MAX_CSP_DIRECTIVE_CHARS = 128
+/** Matches the beacon schema's `blockedUri` cap (`src/types/beacon.ts`). */
+const MAX_CSP_BLOCKED_URI_CHARS = 2048
+
 const queue: ScriptCapture[] = []
+const inlineQueue: InlineScriptCapture[] = []
+const cspQueue: CspViolationCapture[] = []
+/**
+ * Elements already enqueued as inline captures: the insertion patch and the
+ * MutationObserver both see an appendChild-inserted script, and (unlike
+ * external scripts) no cheap URL key exists at capture time to dedupe on.
+ */
+let capturedInlineElements = new WeakSet<HTMLScriptElement>()
 let dropped = 0
 let started = false
 let insertionPatched = false
@@ -57,9 +107,20 @@ export function drainCaptures(): ScriptCapture[] {
   return queue.splice(0, queue.length)
 }
 
+/** Drains and returns all queued inline captures (consumed at idle). */
+export function drainInlineCaptures(): InlineScriptCapture[] {
+  return inlineQueue.splice(0, inlineQueue.length)
+}
+
+/** Drains and returns all queued CSP-violation captures (consumed at idle). */
+export function drainCspCaptures(): CspViolationCapture[] {
+  return cspQueue.splice(0, cspQueue.length)
+}
+
 /**
- * Observations discarded under pressure (queue cap). Stub counter for the
- * agent-health observation; emission logic is a later task (T034).
+ * Observations discarded under pressure (queue cap) — one input to the
+ * agent-health observation's `dropped` count (`agent.ts` adds its own
+ * oversize drops on top).
  */
 export function getDroppedCount(): number {
   return dropped
@@ -71,20 +132,26 @@ function urlKey(url: string): string {
 }
 
 /**
+ * Host portion of an initiator URL, `-` when absent or unparseable —
+ * mirrors the collector's novelty-key host derivation so agent-side dedupe
+ * and server-side novelty agree on what counts as "the same initiator".
+ */
+export function initiatorHost(initiator: string | undefined): string {
+  if (!initiator) return '-'
+  try {
+    return new URL(initiator).host || '-'
+  } catch {
+    return '-'
+  }
+}
+
+/**
  * Dedupe key for a script URL + initiator host — matches the novelty
  * identity (FR-009): a known script re-injected by a NEW initiator is a new
  * observation (supply-chain signal), so the host is part of the key.
  */
 function urlWithInitiatorKey(url: string, initiator: string | undefined): string {
-  let host = '-'
-  if (initiator) {
-    try {
-      host = new URL(initiator).host || '-'
-    } catch {
-      host = '-'
-    }
-  }
-  return `ext:${url}|${host}`
+  return `ext:${url}|${initiatorHost(initiator)}`
 }
 
 /**
@@ -93,7 +160,7 @@ function urlWithInitiatorKey(url: string, initiator: string | undefined): string
  * marking first would permanently silence the observation for the session.
  */
 function hasCapacity(): boolean {
-  if (queue.length >= MAX_PENDING_CAPTURES) {
+  if (queue.length + inlineQueue.length + cspQueue.length >= MAX_PENDING_CAPTURES) {
     dropped += 1
     return false
   }
@@ -118,6 +185,24 @@ function resolveSrc(script: HTMLScriptElement): string | null {
 }
 
 /**
+ * Enqueues an inline script's source for idle-time fingerprinting. The only
+ * work done here is a non-whitespace probe (`/\S/` scans to the first real
+ * character — no copies, no slicing) and the WeakSet/capacity bookkeeping;
+ * everything expensive is deferred (FR-003).
+ */
+function captureInline(script: HTMLScriptElement, initiator: string): void {
+  if (capturedInlineElements.has(script)) return
+  const source = script.textContent ?? ''
+  // Whitespace-only: nothing meaningful was observed.
+  if (!/\S/.test(source)) return
+  // Capacity before marking — a capture dropped at the cap must stay
+  // re-capturable once the queue drains (same ordering as external capture).
+  if (!hasCapacity()) return
+  capturedInlineElements.add(script)
+  inlineQueue.push({ source, initiator, route: getRoute(), ts: Date.now() })
+}
+
+/**
  * Capture from the insertion patch: the only attribution-capable path.
  * Called synchronously from the wrapped appendChild/insertBefore, where
  * `document.currentScript` is still the inserting script. Parser-inserted
@@ -125,9 +210,12 @@ function resolveSrc(script: HTMLScriptElement): string | null {
  */
 function captureFromInsertion(script: HTMLScriptElement): void {
   const url = resolveSrc(script)
-  if (!url) return
   const currentScript = document.currentScript
   const initiator = currentScript instanceof HTMLScriptElement && currentScript.src ? currentScript.src : location.href
+  if (!url) {
+    captureInline(script, initiator)
+    return
+  }
   if (hasSeen(urlWithInitiatorKey(url, initiator))) return
   // Capacity before marking: a capture dropped at the cap must not have its
   // dedupe keys burned, or the observation is lost for the whole session.
@@ -182,23 +270,29 @@ function patchInsertion(): void {
   }
 }
 
+/**
+ * Routes a script found by the MutationObserver. document.currentScript is
+ * null in observer microtasks — the document URL is the honest fallback
+ * attribution on this path, for external and inline scripts alike.
+ */
+function captureScriptFromSafetyNet(script: HTMLScriptElement): void {
+  const url = resolveSrc(script)
+  if (url) captureFromSafetyNet(url, location.href)
+  else captureInline(script, location.href)
+}
+
 function scanAddedNode(node: Node): void {
   if (node instanceof HTMLScriptElement) {
-    const url = resolveSrc(node)
-    // document.currentScript is null in observer microtasks — the document
-    // URL is the honest fallback attribution here.
-    if (url) captureFromSafetyNet(url, location.href)
+    captureScriptFromSafetyNet(node)
     return
   }
   if (node instanceof Element) {
     // Index-based: NodeList is not iterable under this tsconfig (no
     // DOM.Iterable lib), and older engines agree.
-    const scripts = node.querySelectorAll('script[src]')
+    const scripts = node.querySelectorAll('script')
     for (let i = 0; i < scripts.length; i += 1) {
       const script = scripts[i]
-      if (!(script instanceof HTMLScriptElement)) continue
-      const url = resolveSrc(script)
-      if (url) captureFromSafetyNet(url, location.href)
+      if (script instanceof HTMLScriptElement) captureScriptFromSafetyNet(script)
     }
   }
 }
@@ -218,6 +312,32 @@ function startMutationObserver(): void {
     }
   })
   mutationObserver.observe(document.documentElement, { childList: true, subtree: true })
+}
+
+/**
+ * CSP-violation listener (capture-and-enqueue only, FR-003). Fields are
+ * clamped to the beacon schema's caps at capture — a clamped value still
+ * ships (a truncated blocked URI beats a rejected beacon). Deduped per
+ * session on directive + blockedUri through the session seen-set; the route
+ * is triage context, never part of the dedupe identity (same philosophy as
+ * script novelty). Capacity is checked BEFORE marking, so a violation
+ * dropped at the queue cap stays re-capturable once the queue drains.
+ */
+function onSecurityPolicyViolation(event: Event): void {
+  try {
+    const violation = event as Partial<SecurityPolicyViolationEvent>
+    if (typeof violation.effectiveDirective !== 'string' || violation.effectiveDirective === '') return
+    const directive = violation.effectiveDirective.slice(0, MAX_CSP_DIRECTIVE_CHARS)
+    // blockedURI is not always a URL: 'inline', 'eval' etc. pass through.
+    const blockedUri = (typeof violation.blockedURI === 'string' ? violation.blockedURI : '').slice(0, MAX_CSP_BLOCKED_URI_CHARS)
+    const key = `csp:${directive}|${blockedUri}`
+    if (hasSeen(key)) return
+    if (!hasCapacity()) return
+    markSeenIfNew(key)
+    cspQueue.push({ directive, blockedUri, route: getRoute(), ts: Date.now() })
+  } catch {
+    // Monitoring must never break the host page.
+  }
 }
 
 function startPerformanceObserver(Observer: typeof PerformanceObserver | undefined): void {
@@ -252,13 +372,16 @@ export interface CaptureOptions {
   performanceObserver?: typeof PerformanceObserver
 }
 
-/** Installs all three capture paths. Idempotent per module instance. */
+/** Installs all capture paths (script insertion, safety nets, CSP events). Idempotent per module instance. */
 export function startCapture(options: CaptureOptions = {}): void {
   if (started) return
   started = true
   patchInsertion()
   startMutationObserver()
   startPerformanceObserver(options.performanceObserver ?? (typeof PerformanceObserver !== 'undefined' ? PerformanceObserver : undefined))
+  // Document-level: securitypolicyviolation bubbles from the violating
+  // element up to the document, so one listener sees page-wide violations.
+  document.addEventListener('securitypolicyviolation', onSecurityPolicyViolation)
 }
 
 /**
@@ -267,10 +390,15 @@ export function startCapture(options: CaptureOptions = {}): void {
  */
 export function resetCaptureForTesting(): void {
   queue.length = 0
+  inlineQueue.length = 0
+  cspQueue.length = 0
+  capturedInlineElements = new WeakSet()
   dropped = 0
   started = false
   mutationObserver?.disconnect()
   mutationObserver = null
   performanceObserver?.disconnect?.()
   performanceObserver = null
+  // Removed so the next startCapture does not stack a second listener.
+  document.removeEventListener('securitypolicyviolation', onSecurityPolicyViolation)
 }

@@ -347,6 +347,21 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
       branches: { inventory: config.branches.inventory, detection: config.branches.detection },
       reportDir,
       log: createLogger('Main → RUM'),
+      // Inventory-pass observations feed the candidate flow (US3); when a
+      // candidate push lands, open the same PR --mode inventory would — its
+      // skip conditions (file://, non-GitHub, same branch, no token) and its
+      // failure semantics (throw → exit 2) live in the coordinator.
+      ensurePullRequest: (commitMessage, alertDestinations) =>
+        ensureInventoryPullRequest({
+          pullRequestService,
+          alertService,
+          repository: config.repository,
+          branches: config.branches,
+          gitToken: config.authentication.gitToken,
+          commitMessage,
+          alertDestinations,
+          log,
+        }),
     })
     log('RUM comparison completed successfully.')
     return

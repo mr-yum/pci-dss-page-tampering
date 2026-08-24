@@ -73,11 +73,18 @@ const deps: CollectorDeps = {
       item.sessions += 1
       await persistNovelty()
     },
+    // Compensating delete when a first-sighting enqueue fails (parity with the
+    // real adapter); locally the file queue never fails, so this is rarely hit.
+    deleteItem: async ({ pk }) => {
+      if (novelty.delete(pk)) await persistNovelty()
+    },
   },
   sqs: {
-    sendMessage: async ({ body, attributes }) => {
+    // The file IS the message body: FileQueueSource parses each file as a bare
+    // QueueMessage, so the wrapper attributes must not leak into the file.
+    sendMessage: async ({ body }) => {
       const file = join(queueDir, `${Date.now()}-${String(seq++).padStart(4, '0')}.json`)
-      await writeFile(file, JSON.stringify({ attributes, body: JSON.parse(body) }, null, 2))
+      await writeFile(file, JSON.stringify(JSON.parse(body), null, 2))
       console.log(`queued ${file}`)
     },
   },
@@ -97,8 +104,11 @@ const server = createServer((req, res) => {
   req.on('end', () => {
     void (async () => {
       // Node lowercases incoming header names; multi-value headers never
-      // matter for the ones the handler reads (origin, edge key).
-      const result = await handler({ headers: req.headers as Record<string, string | undefined>, body: Buffer.concat(chunks).toString('utf8'), isBase64Encoded: false })
+      // matter for the ones the handler reads (origin, edge key). rawPath is
+      // the pathname only (no query), so the /csp-reports route is reachable
+      // locally exactly as the Function URL delivers it.
+      const rawPath = new URL(req.url ?? '/', 'http://localhost').pathname
+      const result = await handler({ rawPath, headers: req.headers as Record<string, string | undefined>, body: Buffer.concat(chunks).toString('utf8'), isBase64Encoded: false })
       res.writeHead(result.statusCode).end()
     })()
   })

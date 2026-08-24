@@ -124,13 +124,49 @@ describe('normaliseMessage', () => {
       expect(normalised.matchable.hash).toBeUndefined()
     })
 
-    it('keeps content null (US1 fail-secure) and carries head/tail/length evidence for T029', () => {
+    it('keeps content null for a longer-than-window source and carries the windows as anchored content evidence (T028)', () => {
       const normalised = normaliseMessage(baseMessage(withHash))
 
       if (normalised.kind !== 'script') throw new Error('expected script')
       expect(normalised.matchable.content).toBeNull()
       expect(normalised.identificationOnly).toBe(false)
       expect(normalised.evidence).toEqual({ length: 1234, head: 'window.__init(', tail: ');', oversize: false })
+      // The matching-relevant subset rides the matchable for ContentMatcher's
+      // anchored-window evaluation.
+      expect(normalised.matchable.contentEvidence).toEqual({ length: 1234, head: 'window.__init(', tail: ');' })
+    })
+
+    describe('whole-source promotion (US2 rule (a): head IS the full content when it fits one window)', () => {
+      const shortSource = "console.log('checkout ready');"
+      const wholeSourceObservation: QueueMessage['observation'] = {
+        kind: 'inline-script',
+        ts: 1755600000000,
+        route: '/checkout',
+        hash,
+        length: shortSource.length,
+        head: shortSource,
+        tail: shortSource,
+        initiator: 'https://pay.example.com/checkout',
+      }
+
+      it('promotes the head to Matchable.content so any pattern evaluates exactly as full content', () => {
+        const normalised = normaliseMessage(baseMessage(wholeSourceObservation))
+
+        if (normalised.kind !== 'script') throw new Error('expected script')
+        expect(normalised.matchable.content).toBe(shortSource)
+        // content and contentEvidence are mutually exclusive by construction.
+        expect(normalised.matchable.contentEvidence).toBeUndefined()
+        expect('contentEvidence' in normalised.matchable).toBe(false)
+      })
+
+      it('does NOT promote when the claimed length disagrees with the windows (internal consistency, fail toward the stricter path)', () => {
+        const inconsistent = { ...wholeSourceObservation, length: 20 } // head is 30 chars — cannot be a strict prefix of a 20-char source
+        const normalised = normaliseMessage(baseMessage(inconsistent))
+
+        if (normalised.kind !== 'script') throw new Error('expected script')
+        expect(normalised.matchable.content).toBeNull()
+        expect(normalised.matchable.contentEvidence).toEqual({ length: 20, head: shortSource, tail: shortSource })
+      })
     })
 
     it('maps url from the initiator and preserves the oversize flag', () => {

@@ -48,6 +48,7 @@ export function rawInventoryScriptInfoToInventoryScriptInfo(rawInventoryScriptIn
   return {
     identifyWith: createMatcher(rawInventoryScriptInfo.identifyWith),
     authoriseWith: processAuthorizeWith(rawInventoryScriptInfo.authoriseWith),
+    ...(rawInventoryScriptInfo.requiredOn !== undefined ? { requiredOn: rawInventoryScriptInfo.requiredOn } : {}),
   }
 }
 
@@ -198,6 +199,7 @@ export function inventoryScriptInfoToRawInventoryScriptInfo(inventoryScriptInfo:
       return {
         identifyWith: matcherToConfig(inventoryScriptInfo.identifyWith),
         authoriseWith: arrayConfig,
+        ...(inventoryScriptInfo.requiredOn !== undefined ? { requiredOn: inventoryScriptInfo.requiredOn } : {}),
       }
     }
     // Fall through to use orMatcher format (OrMatcher has its own authorisationInfo)
@@ -216,5 +218,6 @@ export function inventoryScriptInfoToRawInventoryScriptInfo(inventoryScriptInfo:
         date: inventoryScriptInfo.authoriseWith.authorisationInfo.date.toISOString(),
       },
     },
+    ...(inventoryScriptInfo.requiredOn !== undefined ? { requiredOn: inventoryScriptInfo.requiredOn } : {}),
   }
 }

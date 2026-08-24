@@ -4,6 +4,7 @@ import { createMatcher } from '../../types/matcher/matcher-factory.js'
 import type { ScriptDetectionSummary, ScriptInfo } from '../../types/script.js'
 import type { Target } from '../../types/target.js'
 import { createLogger } from '../../utils/logger.js'
+import { inventoryScriptInfoToRawInventoryScriptInfo, rawInventoryScriptInfoToInventoryScriptInfo } from '../../utils/script.js'
 import { ScriptComparisonService } from './script.js'
 
 describe('ScriptComparisonService', () => {
@@ -473,6 +474,87 @@ describe('ScriptComparisonService', () => {
 
       expect(results).toHaveLength(1)
       expect(results[0]!.target).toBe(mockTarget)
+    })
+  })
+
+  describe('required scripts (requiredOn presence sweep)', () => {
+    // The motivating use case is a hash-pinned monitoring agent that must be
+    // present on every monitored page (feature 011, FR-016) — but the
+    // mechanism is generic to any script entry carrying requiredOn.
+    const requiredEntry = (requiredOn: ('inventory' | 'detection')[], hashes: string[] = ['agentHash']): InventoryScriptInfo => ({
+      ...createInventoryScriptInfo('^https://monitor\\.example\\.com/agent\\.js$', hashes),
+      requiredOn,
+    })
+
+    it('emits missing_required_script when no detected script is identified by a required entry', async () => {
+      mockInventory.scripts = [requiredEntry(['detection'])]
+
+      const results = await service.compare(mockTarget, mockInventory, { externalScripts: [createScriptInfo('https://other.example.com/lib.js', 'libHash')], inlineScripts: [] })
+
+      const missing = results.filter((r) => r.type === 'missing_required_script')
+      expect(missing).toHaveLength(1)
+      expect(missing[0]).toMatchObject({
+        type: 'missing_required_script',
+        scriptDescription: mockInventory.scripts[0]!.identifyWith.getDescription(),
+        inventoryEntry: mockInventory.scripts[0],
+      })
+    })
+
+    it('emits nothing when the required script is present and authorised', async () => {
+      mockInventory.scripts = [requiredEntry(['detection'])]
+
+      const results = await service.compare(mockTarget, mockInventory, { externalScripts: [createScriptInfo('https://monitor.example.com/agent.js', 'agentHash')], inlineScripts: [] })
+
+      expect(results.map((r) => r.type)).toEqual(['authorized_script'])
+    })
+
+    it('does not double-alert on tampering: a present script with a changed hash stays a mismatch, not a missing script', async () => {
+      mockInventory.scripts = [requiredEntry(['detection'], ['expectedHash'])]
+
+      const results = await service.compare(mockTarget, mockInventory, { externalScripts: [createScriptInfo('https://monitor.example.com/agent.js', 'tamperedHash')], inlineScripts: [] })
+
+      // Byte-integrity is normal hash authorisation's job; presence is the
+      // sweep's. A tampered-but-present script must not also read as absent.
+      expect(results.map((r) => r.type)).toEqual(['known_script_unauthorised_content'])
+    })
+
+    it('scopes the presence requirement to the passes named in requiredOn', async () => {
+      mockInventory.scripts = [requiredEntry(['detection'])]
+      const emptyPage: ScriptDetectionSummary = { externalScripts: [], inlineScripts: [] }
+
+      const onInventory = await service.compare({ ...mockTarget, type: 'inventory' }, mockInventory, emptyPage)
+      const onDetection = await service.compare(mockTarget, mockInventory, emptyPage)
+
+      expect(onInventory).toEqual([])
+      expect(onDetection.map((r) => r.type)).toEqual(['missing_required_script'])
+    })
+
+    it('skips required entries that are not authorised', async () => {
+      const pending = requiredEntry(['detection'])
+      pending.authoriseWith.authorisationInfo.authorised = false
+      mockInventory.scripts = [pending]
+
+      const results = await service.compare(mockTarget, mockInventory, { externalScripts: [], inlineScripts: [] })
+
+      expect(results).toEqual([])
+    })
+
+    it('counts the script as present even when an earlier entry claims it first', async () => {
+      // First-match-wins identification attributes the script to the broad
+      // entry, but the required entry's own identifyWith still matches it —
+      // presence must be judged against the entry, not the attribution.
+      mockInventory.scripts = [createInventoryScriptInfo('^https://monitor\\.example\\.com/.*$', ['agentHash']), requiredEntry(['detection'])]
+
+      const results = await service.compare(mockTarget, mockInventory, { externalScripts: [createScriptInfo('https://monitor.example.com/agent.js', 'agentHash')], inlineScripts: [] })
+
+      expect(results.some((r) => r.type === 'missing_required_script')).toBe(false)
+    })
+
+    it('preserves requiredOn through inventory serialization', () => {
+      const raw = inventoryScriptInfoToRawInventoryScriptInfo(requiredEntry(['inventory', 'detection']))
+
+      expect(raw.requiredOn).toEqual(['inventory', 'detection'])
+      expect(rawInventoryScriptInfoToInventoryScriptInfo(raw).requiredOn).toEqual(['inventory', 'detection'])
     })
   })
 })

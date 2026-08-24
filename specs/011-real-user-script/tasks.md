@@ -55,11 +55,11 @@
 
 **Independent Test**: post an inline-script fixture beacon whose fingerprint fails an identified entry's authorisation; assert `rum_mismatched_script_detected` with matcher context and failure reason.
 
-- [ ] T026 [P] [US2] Implement fingerprinting in agent/src/fingerprint.ts (crypto.subtle SHA-256, length, strict-prefix 128-char head, strict-suffix 128-char tail, 512 KB ceiling with oversize flag, cheap pre-hash local dedupe fingerprint) with co-located tests in agent/src/fingerprint.test.ts including multibyte boundary cases
-- [ ] T027 [US2] Extend agent/src/capture.ts + agent.ts for inline scripts: source capture at insertion, initiator attribution via the page-attribution technique, idle-time hashing pipeline, degraded (hash-absent) path when crypto.subtle unavailable — with tests covering the fallback
-- [ ] T028 [US2] Extend src/rum/normalise.ts for inline observations (hash, anchored head/tail windows as content evidence, fail-secure when unverifiable) with tests asserting an existing 64-char anchored matcher evaluates identically against fingerprint and full content
-- [ ] T029 [US2] Extend src/rum/route.ts detection lane with rum_mismatched_script_detected (matcher details, failure reason, metadataPath from the existing comparison result types) with co-located tests
-- [ ] T030 [US2] Write integration test test/integration/rum-inline.test.ts covering: authorised inline (recorded, no alert), mismatch (alert with reason), oversize fallback (evaluated, never dropped), hash-absent degraded observation (fail-secure)
+- [x] T026 [P] [US2] Implement fingerprinting in agent/src/fingerprint.ts (crypto.subtle SHA-256, length, strict-prefix 128-char head, strict-suffix 128-char tail, 512 KB ceiling with oversize flag, cheap pre-hash local dedupe fingerprint) with co-located tests in agent/src/fingerprint.test.ts including multibyte boundary cases
+- [x] T027 [US2] Extend agent/src/capture.ts + agent.ts for inline scripts: source capture at insertion, initiator attribution via the page-attribution technique, idle-time hashing pipeline, degraded (hash-absent) path when crypto.subtle unavailable — with tests covering the fallback
+- [x] T028 [US2] Extend src/rum/normalise.ts for inline observations (hash, anchored head/tail windows as content evidence, fail-secure when unverifiable) with tests asserting an existing 64-char anchored matcher evaluates identically against fingerprint and full content
+- [x] T029 [US2] Extend src/rum/route.ts detection lane with rum_mismatched_script_detected (matcher details, failure reason, metadataPath from the existing comparison result types) with co-located tests
+- [x] T030 [US2] Write integration test test/integration/rum-inline.test.ts covering: authorised inline (recorded, no alert), mismatch (alert with reason), oversize fallback (evaluated, never dropped), hash-absent degraded observation (fail-secure)
 
 **Checkpoint**: full inline pipeline — both script kinds evaluated with existing matcher semantics.
 
@@ -69,9 +69,9 @@
 
 **Independent Test**: post a novel-script fixture beacon from a staging origin; assert a pending candidate entry lands on the inventory branch; re-run and assert no duplicate; assert the automated path never sets `authorised: true`.
 
-- [ ] T031 [US3] Implement inventory-lane routing in src/rum/route.ts feeding the existing InventoryService candidate flow (provenance-based matcher generation reused as-is; idempotent against entries already covering the script; PR flow unchanged) with co-located tests
-- [ ] T032 [US3] Write integration test test/integration/rum-inventory-candidates.test.ts: novel staging script → pending entry diff on the inventory branch; duplicate observation → no second entry; staging-scoped (targetTypeMatcher) authorisation → same script on a production origin still alerts as unknown
-- [ ] T033 [US3] Extend the run summary and --report-dir artefacts in src/rum/ + src/services/report/ so RUM runs record processed/alerted/candidates/recorded/DLQ counts and the inventory SHAs used, with tests
+- [x] T031 [US3] Implement inventory-lane routing in src/rum/route.ts feeding the existing InventoryService candidate flow (provenance-based matcher generation reused as-is; idempotent against entries already covering the script; PR flow unchanged) with co-located tests
+- [x] T032 [US3] Write integration test test/integration/rum-inventory-candidates.test.ts: novel staging script → pending entry diff on the inventory branch; duplicate observation → no second entry; staging-scoped (targetTypeMatcher) authorisation → same script on a production origin still alerts as unknown
+- [x] T033 [US3] Extend the run summary and --report-dir artefacts in src/rum/ + src/services/report/ so RUM runs record processed/alerted/candidates/recorded/DLQ counts and the inventory SHAs used, with tests
 
 **Checkpoint**: both lanes live — detection alerts and human-gated inventory growth from real traffic.
 
@@ -81,13 +81,13 @@
 
 **Independent Test**: per-target volume drop fires the anomaly alarm (terraform test assertion + fixture metrics); aged queue fires staleness alarm; altered agent bytes flagged by the synthetic run; canary fixture produces its ops-channel alert and its absence alarms.
 
-- [ ] T034 [P] [US4] Extend agent capture for `securitypolicyviolation` events and the per-session `agent-health` observation (p95 task time via self-instrumented marks, drop count) in agent/src/capture.ts + agent.ts with co-located tests
-- [ ] T035 [US4] Activate rum_csp_violation_reported in src/rum/route.ts (was recorded-only pre-phase-4) with prevalence-threshold gating from alert config, plus tests covering the noise-floor behaviour (extension-injected violation below threshold → recorded, not alerted)
-- [ ] T036 [US4] Extend the ingest Lambda to emit agent-health metrics (p95TaskMs distribution, dropped count per target) for the SC-003 evidence trail, with tests in collector/src/ingest.test.ts
-- [ ] T037 [US4] Extend the synthetic detection pass to assert the RUM agent's presence and hash on every monitored page (agent entry identified in inventory but absent from the page → alert) in src/services/detection.ts + comparison services, with co-located tests
-- [ ] T038 [US4] Add the CSP report-to ingestion path to collector/src/ingest.ts (accept report-to/report-uri payloads on a dedicated path, map to csp-violation observations, same stamping and novelty flow) and document it as an addendum in specs/011-real-user-script/contracts/collector-ingest.md, with tests
-- [ ] T039 [P] [US4] Create the canary fixture test/fixtures/beacons/canary.json (dedicated canary target, deliberately uninventoried marker URL) and the documented inventory-repo workflow snippet (hourly canary post + assertion + alarm-on-absence) for docs/rum/IMPLEMENTATION.md
-- [ ] T040 [US4] Write integration test test/integration/rum-interlocks.test.ts: canary beacon → ops-channel category routing (never the security channel); agent-tamper fixture → synthetic detection alert; CSP violation above threshold → alert, below → recorded
+- [x] T034 [P] [US4] Extend agent capture for `securitypolicyviolation` events and the per-session `agent-health` observation (p95 task time via self-instrumented marks, drop count) in agent/src/capture.ts + agent.ts with co-located tests
+- [x] T035 [US4] Activate rum_csp_violation_reported in src/rum/route.ts (was recorded-only pre-phase-4) with prevalence-threshold gating from alert config, plus tests covering the noise-floor behaviour (extension-injected violation below threshold → recorded, not alerted)
+- [x] T036 [US4] Extend the ingest Lambda to emit agent-health metrics (p95TaskMs distribution, dropped count per target) for the SC-003 evidence trail, with tests in collector/src/ingest.test.ts
+- [x] T037 [US4] Extend the synthetic detection pass to assert the RUM agent's presence and hash on every monitored page (agent entry identified in inventory but absent from the page → alert) in src/services/detection.ts + comparison services, with co-located tests
+- [x] T038 [US4] Add the CSP report-to ingestion path to collector/src/ingest.ts (accept report-to/report-uri payloads on a dedicated path, map to csp-violation observations, same stamping and novelty flow) and document it as an addendum in specs/011-real-user-script/contracts/collector-ingest.md, with tests
+- [x] T039 [P] [US4] Create the canary fixture test/fixtures/beacons/canary.json (dedicated canary target, deliberately uninventoried marker URL) and the documented inventory-repo workflow snippet (hourly canary post + assertion + alarm-on-absence) for docs/rum/IMPLEMENTATION.md
+- [x] T040 [US4] Write integration test test/integration/rum-interlocks.test.ts: canary beacon → ops-channel category routing (never the security channel); agent-tamper fixture → synthetic detection alert; CSP violation above threshold → alert, below → recorded
 
 **Checkpoint**: defeating RUM silently now requires defeating three independent mechanisms.
 
@@ -97,17 +97,17 @@
 
 **Independent Test**: follow docs/rum/IMPLEMENTATION.md against a fresh account using only repo contents and released artefacts; passing canary within the guide's steps.
 
-- [ ] T041 [US5] Write docs/rum/IMPLEMENTATION.md — the nine dependency-ordered adopter steps (deploy modules → origin map → CSP connect-src → embed agent with SRI → inventory the agent → schedule comparator with sample workflow YAML → alarms to Slack → canary verification → operate/upgrade with the wrapper rule), each with copy-paste material
-- [ ] T042 [US5] Add the release workflow in .github/workflows/release.yml: on tag vX.Y.Z publish agent-vX.Y.Z.js + SHA-256 + SRI string + ready-to-paste inventory-entry snippet, ingest-vX.Y.Z.zip + SHA-256; Terraform modules consumed at the same tag; CHANGELOG discipline noted in CONTRIBUTING/README
-- [ ] T043 [P] [US5] Add CODEOWNERS entry for infra/ requiring infra review (contracts/terraform-modules.md shared rules)
+- [x] T041 [US5] Write docs/rum/IMPLEMENTATION.md — the nine dependency-ordered adopter steps (deploy modules → origin map → CSP connect-src → embed agent with SRI → inventory the agent → schedule comparator with sample workflow YAML → alarms to Slack → canary verification → operate/upgrade with the wrapper rule), each with copy-paste material
+- [x] T042 [US5] Add the release workflow in .github/workflows/release.yml: on tag vX.Y.Z publish agent-vX.Y.Z.js + SHA-256 + SRI string + ready-to-paste inventory-entry snippet, ingest-vX.Y.Z.zip + SHA-256; Terraform modules consumed at the same tag; CHANGELOG discipline noted in CONTRIBUTING/README
+- [x] T043 [P] [US5] Add CODEOWNERS entry for infra/ requiring infra review (contracts/terraform-modules.md shared rules)
 
 **Checkpoint**: the open-source deliverable is complete and self-serve.
 
 ## Phase 8: Polish & Cross-Cutting
 
-- [ ] T044 [P] Update AGENTS.md (architecture section: RUM components, new mode, alert categories, beacon schema pointer) and verify README.md CLI tables are complete
-- [ ] T045 [P] Align quickstart npm scripts (`test:unit -- agent`, `test:integration -- rum`, dev-server invocation) with specs/011-real-user-script/quickstart.md and fix any drift
-- [ ] T046 Run the full gate suite (npm run precommit; terraform fmt/validate/test; /coderabbit:review --base main; branch-review skill over the branch) and address findings before PR
+- [x] T044 [P] Update AGENTS.md (architecture section: RUM components, new mode, alert categories, beacon schema pointer) and verify README.md CLI tables are complete
+- [x] T045 [P] Align quickstart npm scripts (`test:unit -- agent`, `test:integration -- rum`, dev-server invocation) with specs/011-real-user-script/quickstart.md and fix any drift
+- [x] T046 Run the full gate suite (npm run precommit; terraform fmt/validate/test; /coderabbit:review --base main; branch-review skill over the branch) and address findings before PR
 
 ## Dependencies
 

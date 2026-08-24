@@ -30,3 +30,41 @@ Failure semantics: steps 4–5 are at-least-once; a crash between them can re-de
 ## Metrics (CloudWatch, dimensioned by target where applicable)
 
 `rum_beacons_accepted`, `rum_beacons_rejected` (reason: schema|size|version), `rum_unmapped_origin`, `rum_edge_auth_failure`, `rum_first_sightings`, `rum_observations_counted`. Beacon-volume anomaly alarms hang off `rum_beacons_accepted` per target.
+
+## Addendum: browser-native CSP reports — `POST /csp-reports`
+
+A second route on the same Function URL (routed on the event's `rawPath`; the default `/` beacon path is unchanged) ingests the browser's own CSP violation reports, so pages can point `report-uri`/`report-to` at the collector and violations reach the pipeline even when the agent itself is blocked or absent.
+
+### Request
+
+Both delivery formats are accepted, recognised by **body shape**, not `Content-Type` (UAs vary):
+
+- **Legacy `report-uri`** (`application/csp-report`): `{"csp-report": { "document-uri", "effective-directive", "blocked-uri", … }}` — one report per request. `violated-directive` is the accepted pre-CSP2 fallback for a missing `effective-directive`.
+- **Reporting API `report-to`** (`application/reports+json`): an array of `{ "type": "csp-violation", "body": { "documentURL", "effectiveDirective", "blockedURL", … } }` records. Records of other report types in the batch (e.g. `deprecation`) are not ours: skipped, never rejected.
+
+The body shares the beacon path's 32 KB pre-parse cap. Edge auth is identical to the beacon path and runs first.
+
+### Origin → target stamping
+
+The `Origin` header, when present, is the sole authority exactly as for beacons — present-but-unmapped drops the whole request (`rum_unmapped_origin`). But CSP reports carry **no `Origin` header in some UAs** (report delivery is not CORS-governed), so when the header is absent the collector falls back to mapping the origin of each report's own document URL (`document-uri` / `documentURL`) against `origin_targets`, per report. If neither maps, the report is dropped and counted as unmapped. The fallback trusts a page-reported field only for _routing to a target the operator already mapped_ — a forged document URL can at worst add noise to a target's triage queue, the same bound as a forged beacon.
+
+### Mapping to observations
+
+Each accepted report becomes a synthetic `csp-violation` observation:
+
+| Observation field | Source                                                                                         | Cap  |
+| ----------------- | ---------------------------------------------------------------------------------------------- | ---- |
+| `directive`       | `effective-directive` / `effectiveDirective` (legacy fallback: `violated-directive`)           | 128  |
+| `blockedUri`      | `blocked-uri` / `blockedURL`; missing → `""` (inline violations)                               | 2048 |
+| `route`           | pathname of the document URL — query and fragment stripped (same privacy rule as agent routes) | 512  |
+| `ts`              | receipt time (`received_at`); browser-supplied timestamps are not trusted                      | —    |
+
+A report missing its directive or a parseable document URL is rejected (`Reason: schema`).
+
+### Pipeline
+
+Identical to beacon observations from there on: Firehose archives the **verbatim** report record wrapped in a marked envelope `{stamp: {target_id, target_type, received_at}, cspReport}` (the `cspReport` key distinguishes the source from `beacon` records); novelty conditional write under the same `csp:{directive}:{blockedUri}` identity (initiator host `-`); SQS enqueue on first sighting with the standard queue-message.md body. `session_id` is the fixed sentinel `"csp-report"` — browser reports carry no agent session — and satisfies the schema's non-empty-string requirement while marking provenance.
+
+### Response and metrics
+
+Always `204 No Content` — the no-oracle contract holds on this path too. Metrics: `rum_csp_reports_accepted` (dimensioned by target), `rum_csp_reports_rejected` (reason: size|json|schema), plus the shared `rum_unmapped_origin`, `rum_edge_auth_failure`, `rum_first_sightings`, `rum_observations_counted`.

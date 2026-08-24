@@ -1,6 +1,6 @@
 import type { IScriptComparisonService } from '../../interfaces/comparison.js'
 import type { ComparisonResultType } from '../../types/comparison.js'
-import { AuthorizedScriptFound, KnownScriptWithUnauthorisedContentFound, UnknownScriptFound } from '../../types/comparison.js'
+import { AuthorizedScriptFound, KnownScriptWithUnauthorisedContentFound, MissingRequiredScript, UnknownScriptFound } from '../../types/comparison.js'
 import type { Inventory, InventoryScriptInfo } from '../../types/inventory/model.js'
 import type { DetectedScript, Matchable } from '../../types/matcher/matcher.interface.js'
 import type { ScriptDetectionSummary, ScriptInfo } from '../../types/script.js'
@@ -24,8 +24,47 @@ export class ScriptComparisonService implements IScriptComparisonService {
 
     const externalScriptsResults = this.compareScriptWithInventory(detectedExternalScripts, inventoryScripts, target)
     const inlineScriptsResults = this.compareScriptWithInventory(detectedInlineScripts, inventoryScripts, target)
+    const missingRequiredResults = this.findMissingRequiredScripts([...detectedExternalScripts, ...detectedInlineScripts], inventoryScripts, target)
 
-    return Promise.resolve([...externalScriptsResults, ...inlineScriptsResults])
+    return Promise.resolve([...externalScriptsResults, ...inlineScriptsResults, ...missingRequiredResults])
+  }
+
+  /**
+   * Presence sweep for `requiredOn` entries — the script-side analogue of the
+   * header service's missing-required check (feature 011, FR-016 / R12).
+   *
+   * An entry that declares `requiredOn` for the current pass asserts that some
+   * detected script is identified by its `identifyWith`. When nothing on the
+   * page matches, the control is gone — e.g. the RUM monitoring agent removed
+   * from a payment page — and that absence is the finding. Integrity of a
+   * script that IS present stays with the entry's ordinary authorisation
+   * (hash) path; this sweep only ever answers "was it there at all".
+   *
+   * Synthetic pass only by construction: it runs from `compare()`, which the
+   * RUM evidence path never enters — a beacon stream can prove presence but
+   * never absence.
+   */
+  private findMissingRequiredScripts(detectedScripts: ScriptInfo[], inventoryScripts: InventoryScriptInfo[], target: Target): MissingRequiredScript[] {
+    const requiredEntries = inventoryScripts.filter((entry) => entry.authoriseWith.authorisationInfo.authorised && (entry.requiredOn?.includes(target.type) ?? false))
+
+    if (requiredEntries.length === 0) return []
+
+    const timestamp = new Date()
+    const detected = detectedScripts.map((script) => this.scriptInfoToDetectedScript(script, target))
+    const missing: MissingRequiredScript[] = []
+
+    for (const entry of requiredEntries) {
+      // Tested against the entry directly, not via first-match-wins: an
+      // earlier entry claiming the script for identification purposes must not
+      // make the required one look absent.
+      if (detected.some((script) => entry.identifyWith.identify(script))) continue
+
+      const description = entry.identifyWith.getDescription()
+      target.logger.log(`Required script '${description}' missing: no detected script identified by this entry on the ${target.type} pass.`)
+      missing.push(new MissingRequiredScript(target, timestamp, description, entry))
+    }
+
+    return missing
   }
 
   /**
@@ -134,11 +173,13 @@ export class ScriptComparisonService implements IScriptComparisonService {
    * identified inline script as unknown would hide tampering behind the wrong
    * alert category. Matchers are evidence-aware: a hash-based authoriser
    * (HashMatcher, alone or inside a composite) compares the client-computed
-   * hash and can authorise — or report a hash mismatch — while matchers whose
-   * evidence is content (ContentMatcher, CspDirectiveMatcher) fail secure with
-   * their own reason, yielding KnownScriptWithUnauthorisedContentFound — a
-   * mismatched alert, the fail-secure outcome. T029 refines this with
-   * head/tail anchored-window evidence.
+   * hash and can authorise — or report a hash mismatch — and ContentMatcher
+   * evaluates anchored head/tail window evidence (`Matchable.contentEvidence`,
+   * T028): a sound anchored match authorises, anything else fails secure with
+   * an explicit bounded-excerpt reason. Matchers whose evidence is truly
+   * absent (CspDirectiveMatcher, ContentMatcher with no windows) fail secure
+   * with their own reason, yielding KnownScriptWithUnauthorisedContentFound —
+   * a mismatched alert, the fail-secure outcome.
    */
   compareScriptEvidence(detectedScript: DetectedScript, inventoryScripts: InventoryScriptInfo[], target: Target): ComparisonResultType {
     const scriptLabel = `Script '${extractHost(detectedScript.url)}':'${detectedScript.name}'`

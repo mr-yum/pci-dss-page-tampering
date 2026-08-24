@@ -7,21 +7,28 @@ import type { AlertDestination, InventoryAlert } from '../../types/inventory/mod
  * `alerts{}` config (data-model.md §8: same destinations mechanism as the
  * synthetic categories, configured per target).
  *
- * Fallback semantics mirror the existing optional detection categories
- * (`headerMismatchDetected ?? newHeaderDetected`): an unconfigured RUM
- * category routes to the closest synthetic detection destination rather than
- * silently dropping the alert — alerting must fail safe, not fail silent.
+ * Fallback semantics for the script categories mirror the existing optional
+ * detection categories (`headerMismatchDetected ?? newHeaderDetected`): an
+ * unconfigured script category routes to the closest synthetic detection
+ * destination rather than silently dropping the alert — alerting must fail
+ * safe, not fail silent.
  *
  * - `rum_uninventoried_script_detected` → `rum.uninventoriedScriptDetected`
  *   falling back to `detection.newScriptDetected`
  * - `rum_mismatched_script_detected` → `rum.mismatchedScriptDetected`
  *   falling back to `detection.scriptMismatchDetected`
- * - `rum_csp_violation_reported` → `rum.cspViolationReported` falling back to
- *   `detection.headerMismatchDetected ?? detection.newHeaderDetected` (a CSP
- *   violation is a policy signal, so the header channels are the analogue)
+ * - `rum_csp_violation_reported` → `rum.cspViolationReported` ONLY — the
+ *   generic fallback chain deliberately does NOT apply (T035). The category
+ *   is opt-in per target: real-user CSP reports carry heavy browser-extension
+ *   noise, so falling back to the header channels would implicitly activate
+ *   the category for every existing inventory and flood those channels.
+ *   Routing (src/rum/route.ts) records the violation without ever calling an
+ *   alert service when the destination is absent; reaching this resolver
+ *   without one is therefore a programming error and throws.
  *
  * @throws {Error} on a category name outside {@link RUM_ALERT_CATEGORIES} —
- *   config-driven callers must fail loudly, never route to a guessed channel.
+ *   config-driven callers must fail loudly, never route to a guessed channel —
+ *   and on `rum_csp_violation_reported` without an explicit destination.
  */
 export function resolveRumAlertDestination(alertDestinations: InventoryAlert, category: RumAlertCategory): AlertDestination {
   switch (category) {
@@ -29,8 +36,13 @@ export function resolveRumAlertDestination(alertDestinations: InventoryAlert, ca
       return alertDestinations.rum?.uninventoriedScriptDetected ?? alertDestinations.detection.newScriptDetected
     case 'rum_mismatched_script_detected':
       return alertDestinations.rum?.mismatchedScriptDetected ?? alertDestinations.detection.scriptMismatchDetected
-    case 'rum_csp_violation_reported':
-      return alertDestinations.rum?.cspViolationReported ?? alertDestinations.detection.headerMismatchDetected ?? alertDestinations.detection.newHeaderDetected
+    case 'rum_csp_violation_reported': {
+      const destination = alertDestinations.rum?.cspViolationReported
+      if (destination === undefined) {
+        throw new Error('rum_csp_violation_reported has no destination: the category is opt-in via alerts.rum.cspViolationReported and never falls back (routing must record, not alert, when it is unconfigured)')
+      }
+      return destination
+    }
     default: {
       // Exhaustiveness guard for typed callers; runtime rejection for untyped
       // (config-driven) category strings.
@@ -78,6 +90,8 @@ export function rumAlertContextLines(category: RumAlertCategory, context: RumAle
 
   if (context.matcherDescription !== undefined) lines.push({ label: 'Authorisation Matcher', value: context.matcherDescription })
   if (context.failureReason !== undefined) lines.push({ label: 'Failure Reason', value: context.failureReason })
+  // Root → leaf, same rendering as the comparison log's metadata path.
+  if (context.metadataPath !== undefined && context.metadataPath.length > 0) lines.push({ label: 'Authorisation Path', value: context.metadataPath.map((info) => info.description).join(' > ') })
 
   return lines
 }

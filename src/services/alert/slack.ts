@@ -7,6 +7,7 @@ import type { ComparisonResultType } from '../../types/comparison.js'
 import type { KnownHeaderWithUnauthorisedContentFound } from '../../types/comparison/known-header-unauthorised-content-found.js'
 import type { KnownScriptWithUnauthorisedContentFound } from '../../types/comparison/known-script-unauthorised-content-found.js'
 import type { MissingRequiredHeader } from '../../types/comparison/missing-required-header.js'
+import type { MissingRequiredScript } from '../../types/comparison/missing-required-script.js'
 import type { UnknownHeaderFound } from '../../types/comparison/unknown-header-found.js'
 import type { UnknownScriptFound } from '../../types/comparison/unknown-script-found.js'
 import { ExecutionMode } from '../../types/config.js'
@@ -69,6 +70,7 @@ export class SlackAlertService implements IAlertService {
     const unknownHeaders = comparisonResults.filter((r): r is UnknownHeaderFound => r.type === 'unknown_header_found')
     const unauthorizedHeaders = comparisonResults.filter((r): r is KnownHeaderWithUnauthorisedContentFound => r.type === 'known_header_unauthorised_content')
     const missingHeaders = comparisonResults.filter((r): r is MissingRequiredHeader => r.type === 'missing_required_header')
+    const missingScripts = comparisonResults.filter((r): r is MissingRequiredScript => r.type === 'missing_required_script')
 
     // For inventory-mode unauthorised results, split into "diff applied an
     // inventory mutation for this result" vs "diff did not auto-update".
@@ -160,6 +162,19 @@ export class SlackAlertService implements IAlertService {
       }
     } catch (error) {
       console.error('[Alert Error] Failed to send missing header alerts:', error)
+    }
+
+    try {
+      // Required script absent from the page (e.g. the RUM monitoring agent
+      // removed) — routed like missing headers: a dedicated destination when
+      // configured, otherwise the mismatch channel (an absent pinned control
+      // is closest to tampering, not to a new discovery).
+      if (missingScripts.length > 0) {
+        const destination = isInventoryMode ? alertDestinations.inventory.newScriptIdentified : (alertDestinations.detection.missingScriptDetected ?? alertDestinations.detection.scriptMismatchDetected)
+        await this.alertOnMissingScripts(missingScripts, target, destination)
+      }
+    } catch (error) {
+      console.error('[Alert Error] Failed to send missing script alerts:', error)
     }
 
     // T030: AuthorizedScriptFound and AuthorizedHeaderFound are no-ops (no alert)
@@ -299,6 +314,32 @@ export class SlackAlertService implements IAlertService {
     }
 
     this.log(AlertType.Header, message)
+    await this.sendMessage(payload)
+  }
+
+  private async alertOnMissingScripts(missingScripts: MissingRequiredScript[], target: Target, destination: AlertDestination): Promise<void> {
+    const message = `Required script missing from target!`
+    const rows = missingScripts
+      .slice(0, 19)
+      .map((result) => [
+        this.buildRichTextCell(this.truncateText(result.scriptDescription)),
+        this.buildRichTextCell((result.inventoryEntry.requiredOn ?? []).join(', ')),
+        this.buildRichTextCell(result.inventoryEntry.authoriseWith.authorisationInfo.description),
+      ])
+    const payload = {
+      channel: destination.destination,
+      blocks: [
+        { type: 'section', text: { type: 'mrkdwn', text: `:warning: *${message}* :warning:` } },
+        { type: 'section', text: { type: 'mrkdwn', text: `*Target*: \`${target.url}\`` } },
+        {
+          type: 'table',
+          column_settings: [{ is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }],
+          rows: [[this.buildBoldHeaderCell('Identified By'), this.buildBoldHeaderCell('Required On'), this.buildBoldHeaderCell('Justification')], ...rows],
+        },
+      ],
+    }
+
+    this.log(AlertType.Script, message)
     await this.sendMessage(payload)
   }
 

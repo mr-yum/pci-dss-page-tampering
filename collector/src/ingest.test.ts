@@ -1,9 +1,13 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
+import { z } from 'zod'
+
 import type { Beacon } from '../../src/types/beacon.js'
+import { CspViolationObservationSchema } from '../../src/types/beacon.js'
 import type { CollectorConfig, CollectorDeps, FunctionUrlEvent, FunctionUrlResult, MetricDatum } from './ingest.js'
 import { createHandler, loadConfigFromEnv } from './ingest.js'
+import { buildNoveltyKey } from './novelty.js'
 
 const FIXTURES = join(__dirname, '../../test/fixtures/beacons')
 const fixture = (name: string): string => readFileSync(join(FIXTURES, name), 'utf8')
@@ -28,14 +32,14 @@ const makeConfig = (overrides: Partial<CollectorConfig> = {}): CollectorConfig =
 
 interface MockDeps extends CollectorDeps {
   firehose: { putRecord: jest.Mock }
-  dynamo: { putItemIfAbsent: jest.Mock; updateCounters: jest.Mock }
+  dynamo: { putItemIfAbsent: jest.Mock; updateCounters: jest.Mock; deleteItem: jest.Mock }
   sqs: { sendMessage: jest.Mock }
   metrics: { publish: jest.Mock }
 }
 
 const makeDeps = (): MockDeps => ({
   firehose: { putRecord: jest.fn().mockResolvedValue(undefined) },
-  dynamo: { putItemIfAbsent: jest.fn().mockResolvedValue(undefined), updateCounters: jest.fn().mockResolvedValue(undefined) },
+  dynamo: { putItemIfAbsent: jest.fn().mockResolvedValue(undefined), updateCounters: jest.fn().mockResolvedValue(undefined), deleteItem: jest.fn().mockResolvedValue(undefined) },
   sqs: { sendMessage: jest.fn().mockResolvedValue(undefined) },
   metrics: { publish: jest.fn().mockResolvedValue(undefined) },
   now: () => NOW,
@@ -200,6 +204,30 @@ describe('createHandler', () => {
     expect(metricNames(deps)).not.toContain('rum_first_sightings')
   })
 
+  it('compensates a first-sighting novelty write when the SQS enqueue fails, so a later delivery re-enqueues', async () => {
+    const deps = makeDeps()
+    deps.sqs.sendMessage.mockRejectedValueOnce(new Error('sqs down'))
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      // First delivery: put succeeds, enqueue throws → the novelty item is
+      // deleted (compensation) so the pk does not block re-enqueue for the TTL.
+      expectNoContent(await createHandler(makeConfig(), deps)(makeEvent(fixture('external-unknown.json'))))
+      const pk = '1.0#https://evil.example/skimmer.js#pay.example.com'
+      expect(deps.dynamo.putItemIfAbsent).toHaveBeenCalledTimes(1)
+      expect(deps.dynamo.deleteItem).toHaveBeenCalledWith({ table: 'novelty-table', pk })
+
+      // A subsequent identical request re-triggers the first-sighting path and
+      // enqueues (the compensating delete cleared the blocking record).
+      const second = makeDeps()
+      expectNoContent(await createHandler(makeConfig(), second)(makeEvent(fixture('external-unknown.json'))))
+      expect(second.dynamo.putItemIfAbsent).toHaveBeenCalledTimes(1)
+      expect(second.dynamo.deleteItem).not.toHaveBeenCalled()
+      expect(second.sqs.sendMessage).toHaveBeenCalledTimes(1)
+    } finally {
+      consoleError.mockRestore()
+    }
+  })
+
   it('emits metrics for agent-health observations but never keys or enqueues them', async () => {
     const deps = makeDeps()
     const result = await createHandler(makeConfig(), deps)(makeEvent(fixture('canonical.json')))
@@ -258,6 +286,200 @@ describe('createHandler', () => {
       expectNoContent(await handler(makeEvent(undefined)))
       expectNoContent(await handler({}))
     })
+  })
+
+  it('routes the canary fixture through its dedicated canary target', async () => {
+    const canaryOrigin = 'https://canary.example.test'
+    const config = makeConfig({ originTargets: [...makeConfig().originTargets, { origin: canaryOrigin, target_id: 'canary', target_type: 'detection' }] })
+    const deps = makeDeps()
+
+    expectNoContent(await createHandler(config, deps)(makeEvent(fixture('canary.json'), { Origin: canaryOrigin })))
+    // The deliberately uninventoried marker URL is keyed under the canary
+    // target id — never a payment-page target — so its expected alert routes
+    // to the ops channel via the canary target's alerts config.
+    expect(deps.dynamo.putItemIfAbsent).toHaveBeenCalledWith(expect.objectContaining({ item: expect.objectContaining({ pk: 'canary#https://canary-marker.example.test/rum-canary.js#canary.example.test' }) }))
+    expect(JSON.parse(deps.sqs.sendMessage.mock.calls[0][0].body)).toMatchObject({ target_id: 'canary', target_type: 'detection' })
+  })
+})
+
+describe('CSP report ingestion (/csp-reports)', () => {
+  const cspEvent = (body: string, headers: Record<string, string> = { Origin: PROD_ORIGIN }): FunctionUrlEvent => ({ rawPath: '/csp-reports', headers, body, isBase64Encoded: false })
+
+  const LEGACY_REPORT = {
+    'csp-report': {
+      'document-uri': 'https://pay.example.com/checkout?session=abc123#step-2',
+      'effective-directive': 'script-src',
+      'violated-directive': 'script-src',
+      'blocked-uri': 'https://evil.example/skimmer.js',
+      'original-policy': "script-src 'self'",
+    },
+  }
+
+  const REPORT_TO_VIOLATION = {
+    type: 'csp-violation',
+    age: 12,
+    url: 'https://pay.example.com/checkout',
+    body: {
+      documentURL: 'https://pay.example.com/checkout?session=abc123',
+      effectiveDirective: 'script-src',
+      blockedURL: 'https://evil.example/skimmer.js',
+      disposition: 'enforce',
+    },
+  }
+
+  const EXPECTED_OBSERVATION = { kind: 'csp-violation', ts: NOW, route: '/checkout', directive: 'script-src', blockedUri: 'https://evil.example/skimmer.js' } as const
+
+  /** Structural mirror of queue-message.md (importing src/rum/drain.ts here is off-limits). */
+  const CspQueueMessageSchema = z.strictObject({
+    v: z.literal(1),
+    target_id: z.string().min(1),
+    target_type: z.enum(['inventory', 'detection']),
+    observation: CspViolationObservationSchema,
+    novelty: z.strictObject({ pk: z.string().min(1), first_seen: z.number().int().positive(), first_route: z.string() }),
+    received_at: z.number().int().positive(),
+    session_id: z.string().min(1),
+  })
+
+  it('ingests a legacy report-uri report through the full beacon pipeline', async () => {
+    const deps = makeDeps()
+    expectNoContent(await createHandler(makeConfig(), deps)(cspEvent(JSON.stringify(LEGACY_REPORT))))
+
+    // Archive: report in a marked envelope, distinguishable from beacons, with
+    // the document URL redacted to origin+pathname (query/fragment stripped).
+    const record = JSON.parse(deps.firehose.putRecord.mock.calls[0][0].data)
+    expect(record.stamp).toEqual({ target_id: '1.0', target_type: 'detection', received_at: NOW })
+    expect(record.cspReport).toEqual({ 'csp-report': { ...LEGACY_REPORT['csp-report'], 'document-uri': 'https://pay.example.com/checkout' } })
+    expect(record.beacon).toBeUndefined()
+
+    // Novelty pk must use novelty.ts's csp identity format exactly.
+    const expectedPk = buildNoveltyKey('1.0', { ...EXPECTED_OBSERVATION, kind: 'csp-violation' })
+    expect(expectedPk).toBe('1.0#csp:script-src:https://evil.example/skimmer.js#-')
+    expect(deps.dynamo.putItemIfAbsent).toHaveBeenCalledWith(expect.objectContaining({ table: 'novelty-table', item: expect.objectContaining({ pk: expectedPk, first_route: '/checkout', target_type: 'detection' }) }))
+
+    // Enqueued message: valid against the queue-message shape, route stripped
+    // of query and fragment, sentinel session id.
+    const { body, attributes } = deps.sqs.sendMessage.mock.calls[0][0]
+    expect(attributes).toEqual({ target_type: 'detection', kind: 'csp-violation' })
+    const message = CspQueueMessageSchema.parse(JSON.parse(body))
+    expect(message.observation).toEqual(EXPECTED_OBSERVATION)
+    expect(message.session_id).toBe('csp-report')
+    expect(message.novelty).toEqual({ pk: expectedPk, first_seen: NOW, first_route: '/checkout' })
+
+    expect(publishedMetrics(deps)).toContainEqual(expect.objectContaining({ name: 'rum_csp_reports_accepted', dimensions: { TargetId: '1.0' } }))
+    expect(metricNames(deps)).toContain('rum_first_sightings')
+    expect(metricNames(deps)).not.toContain('rum_csp_reports_rejected')
+  })
+
+  it('strips the query string and fragment from the archived document URL (PII must not enter the 1-year archive)', async () => {
+    const deps = makeDeps()
+    const report = { 'csp-report': { ...LEGACY_REPORT['csp-report'], 'document-uri': 'https://pay.example.com/checkout?token=secret-value&order=42#step-3' } }
+    expectNoContent(await createHandler(makeConfig(), deps)(cspEvent(JSON.stringify(report))))
+
+    const archived = JSON.parse(deps.firehose.putRecord.mock.calls[0][0].data)
+    const documentUri = archived.cspReport['csp-report']['document-uri']
+    expect(documentUri).toBe('https://pay.example.com/checkout')
+    // The whole serialised record must carry none of the PII.
+    const serialised = deps.firehose.putRecord.mock.calls[0][0].data
+    expect(serialised).not.toContain('secret-value')
+    expect(serialised).not.toContain('token=')
+    expect(serialised).not.toContain('#step-3')
+  })
+
+  it('ingests a report-to batch, skipping records of other report types without rejection', async () => {
+    const deps = makeDeps()
+    const batch = [{ type: 'deprecation', age: 3, url: 'https://pay.example.com/checkout', body: { id: 'websql' } }, REPORT_TO_VIOLATION]
+    expectNoContent(await createHandler(makeConfig(), deps)(cspEvent(JSON.stringify(batch))))
+
+    expect(deps.firehose.putRecord).toHaveBeenCalledTimes(1)
+    // documentURL is redacted to origin+pathname; every other field is preserved.
+    expect(JSON.parse(deps.firehose.putRecord.mock.calls[0][0].data).cspReport).toEqual({ ...REPORT_TO_VIOLATION, body: { ...REPORT_TO_VIOLATION.body, documentURL: 'https://pay.example.com/checkout' } })
+    const message = CspQueueMessageSchema.parse(JSON.parse(deps.sqs.sendMessage.mock.calls[0][0].body))
+    expect(message.observation).toEqual(EXPECTED_OBSERVATION)
+    expect(metricNames(deps)).not.toContain('rum_csp_reports_rejected')
+  })
+
+  it('falls back to the document URL origin when the Origin header is absent', async () => {
+    const deps = makeDeps()
+    const report = { 'csp-report': { ...LEGACY_REPORT['csp-report'], 'document-uri': `${STAGING_ORIGIN}/checkout?x=1` } }
+    expectNoContent(await createHandler(makeConfig(), deps)(cspEvent(JSON.stringify(report), {})))
+
+    expect(JSON.parse(deps.firehose.putRecord.mock.calls[0][0].data).stamp.target_type).toBe('inventory')
+    expect(publishedMetrics(deps)).toContainEqual(expect.objectContaining({ name: 'rum_csp_reports_accepted', dimensions: { TargetId: '1.0' } }))
+  })
+
+  it('drops and counts as unmapped when neither Origin nor document URL maps', async () => {
+    const deps = makeDeps()
+    const report = { 'csp-report': { ...LEGACY_REPORT['csp-report'], 'document-uri': 'https://unmapped.example.net/checkout' } }
+    expectNoContent(await createHandler(makeConfig(), deps)(cspEvent(JSON.stringify(report), {})))
+
+    expect(metricNames(deps)).toEqual(['rum_unmapped_origin'])
+    expect(deps.firehose.putRecord).not.toHaveBeenCalled()
+    expect(deps.dynamo.putItemIfAbsent).not.toHaveBeenCalled()
+    expect(deps.sqs.sendMessage).not.toHaveBeenCalled()
+  })
+
+  it('drops the whole request when a present Origin header is unmapped, ignoring the document URL', async () => {
+    const deps = makeDeps()
+    // The document URL maps — but a present Origin header is the sole authority.
+    expectNoContent(await createHandler(makeConfig(), deps)(cspEvent(JSON.stringify(LEGACY_REPORT), { Origin: 'https://unmapped.example.net' })))
+
+    expect(metricNames(deps)).toEqual(['rum_unmapped_origin'])
+    expect(deps.firehose.putRecord).not.toHaveBeenCalled()
+  })
+
+  it.each<[string, string, string]>([
+    ['size', 'x'.repeat(40000), 'size'],
+    ['json', '{not json', 'json'],
+    ['unrecognised shape', JSON.stringify({ weird: true }), 'schema'],
+    ['csp record missing its directive', JSON.stringify([{ type: 'csp-violation', body: { documentURL: 'https://pay.example.com/checkout' } }]), 'schema'],
+  ])('rejects a body with %s and stores nothing', async (_label, body, reason) => {
+    const deps = makeDeps()
+    expectNoContent(await createHandler(makeConfig(), deps)(cspEvent(body)))
+
+    expect(publishedMetrics(deps)).toEqual([expect.objectContaining({ name: 'rum_csp_reports_rejected', dimensions: { Reason: reason } })])
+    expect(deps.firehose.putRecord).not.toHaveBeenCalled()
+    expect(deps.dynamo.putItemIfAbsent).not.toHaveBeenCalled()
+    expect(deps.sqs.sendMessage).not.toHaveBeenCalled()
+  })
+
+  it('updates counters without enqueueing on a repeat sighting', async () => {
+    const deps = makeDeps()
+    deps.dynamo.putItemIfAbsent.mockRejectedValue(conditionalCheckFailed())
+    expectNoContent(await createHandler(makeConfig(), deps)(cspEvent(JSON.stringify(LEGACY_REPORT))))
+
+    expect(deps.dynamo.updateCounters).toHaveBeenCalledWith({ table: 'novelty-table', pk: '1.0#csp:script-src:https://evil.example/skimmer.js#-', lastSeen: NOW })
+    expect(deps.sqs.sendMessage).not.toHaveBeenCalled()
+    expect(metricNames(deps)).toContain('rum_observations_counted')
+  })
+
+  it('applies the same edge auth before touching the body', async () => {
+    const deps = makeDeps()
+    const config = makeConfig({ edgeAuthMode: 'shared_secret', edgeSharedSecret: 'edge-secret' })
+    expectNoContent(await createHandler(config, deps)(cspEvent(JSON.stringify(LEGACY_REPORT))))
+
+    expect(metricNames(deps)).toEqual(['rum_edge_auth_failure'])
+    expect(deps.firehose.putRecord).not.toHaveBeenCalled()
+  })
+
+  it('returns 204 and skips novelty processing when Firehose fails', async () => {
+    const deps = makeDeps()
+    deps.firehose.putRecord.mockRejectedValue(new Error('firehose down'))
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      expectNoContent(await createHandler(makeConfig(), deps)(cspEvent(JSON.stringify(LEGACY_REPORT))))
+    } finally {
+      consoleError.mockRestore()
+    }
+    expect(deps.dynamo.putItemIfAbsent).not.toHaveBeenCalled()
+    expect(deps.sqs.sendMessage).not.toHaveBeenCalled()
+  })
+
+  it('leaves the default path treating a CSP report body as an invalid beacon', async () => {
+    const deps = makeDeps()
+    expectNoContent(await createHandler(makeConfig(), deps)({ rawPath: '/', headers: { Origin: PROD_ORIGIN }, body: JSON.stringify(LEGACY_REPORT), isBase64Encoded: false }))
+
+    expect(publishedMetrics(deps)).toEqual([expect.objectContaining({ name: 'rum_beacons_rejected', dimensions: { Reason: 'schema' } })])
+    expect(deps.firehose.putRecord).not.toHaveBeenCalled()
   })
 })
 

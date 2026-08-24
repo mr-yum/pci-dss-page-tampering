@@ -9,3 +9,4 @@ dist/
 lib/
 build/
 coverage/
+test/fixtures/rum-page/agent.js

@@ -1,0 +1,5 @@
+# Review routing. Terraform module changes affect every adopter consuming
+# infra/ at a release tag, so they require infra review — see
+# specs/011-real-user-script/contracts/terraform-modules.md for the shared
+# module rules a reviewer holds changes against.
+/infra/ @redbeard

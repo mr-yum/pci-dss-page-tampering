@@ -8,7 +8,7 @@ import type { QueueSource, RawQueueEntry } from '../../src/rum/drain.js'
 import { drainQueue } from '../../src/rum/drain.js'
 import { normaliseMessage } from '../../src/rum/normalise.js'
 import type { RumRouteOutcome } from '../../src/rum/route.js'
-import { routeDetectionMessage } from '../../src/rum/route.js'
+import { routeMessage } from '../../src/rum/route.js'
 import { ScriptComparisonService } from '../../src/services/comparison/script.js'
 import type { RumAlertCategory, RumAlertContext } from '../../src/types/alert.js'
 import type { Beacon } from '../../src/types/beacon.js'
@@ -21,7 +21,7 @@ import type { Logger } from '../../src/utils/logger.js'
 /**
  * RUM tripwire end-to-end (feature 011, US1): drives the REAL pipeline
  * in-process — collector ingest handler → captured queue message → drainQueue
- * → normaliseMessage → routeDetectionMessage → real ScriptComparisonService —
+ * → normaliseMessage → routeMessage → real ScriptComparisonService —
  * with only the AWS transports (Firehose, DynamoDB, SQS) replaced by
  * in-memory fakes. No network, no Puppeteer.
  */
@@ -83,6 +83,9 @@ const makeCollectorHarness = () => {
           existing.last_seen = lastSeen
           existing.sessions += 1
         }
+      },
+      deleteItem: async ({ pk }) => {
+        noveltyStore.delete(pk)
       },
     },
     sqs: {
@@ -195,7 +198,7 @@ const drainRun = async (bodies: string[], seen: Set<string> = new Set(), extraSc
   const outcomes: RumRouteOutcome[] = []
 
   const counts = await drainQueue(source, async (message) => {
-    const outcome = await routeDetectionMessage(normaliseMessage(message), {
+    const outcome = await routeMessage(normaliseMessage(message), {
       scriptComparison: new ScriptComparisonService(),
       alertService: service,
       inventory,

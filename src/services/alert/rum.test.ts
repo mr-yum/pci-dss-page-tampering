@@ -48,14 +48,17 @@ describe('resolveRumAlertDestination', () => {
       expect(resolveRumAlertDestination(baseAlerts(), 'rum_mismatched_script_detected')).toEqual({ destination: 'script-mismatch-channel' })
     })
 
-    it('falls back to detection.headerMismatchDetected for CSP violations when configured', () => {
+    it('never falls back for rum_csp_violation_reported — the opt-in category throws without an explicit destination (T035)', () => {
+      // Extension noise means an implicit activation via the header-channel
+      // fallbacks would flood; routing records instead of alerting when the
+      // destination is absent, so reaching the resolver is a programming error.
       const alerts = baseAlerts()
       alerts.detection.headerMismatchDetected = { destination: 'header-mismatch-channel' }
-      expect(resolveRumAlertDestination(alerts, 'rum_csp_violation_reported')).toEqual({ destination: 'header-mismatch-channel' })
+      expect(() => resolveRumAlertDestination(alerts, 'rum_csp_violation_reported')).toThrow(/opt-in via alerts\.rum\.cspViolationReported/)
     })
 
-    it('falls back to detection.newHeaderDetected for CSP violations otherwise', () => {
-      expect(resolveRumAlertDestination(baseAlerts(), 'rum_csp_violation_reported')).toEqual({ destination: 'detection-header-channel' })
+    it('does not fall back to detection.newHeaderDetected for CSP violations either', () => {
+      expect(() => resolveRumAlertDestination(baseAlerts(), 'rum_csp_violation_reported')).toThrow(/opt-in via alerts\.rum\.cspViolationReported/)
     })
   })
 
@@ -90,6 +93,10 @@ describe('rumAlertContextLines', () => {
     inventoryRef: 'deadbeef',
     failureReason: 'content is null or empty',
     matcherDescription: 'hash:1 authorized hash',
+    metadataPath: [
+      { description: 'Accept either pinned version', authorised: true, date: new Date('2026-08-01T00:00:00.000Z') },
+      { description: 'Version 2 pinned hash', authorised: true, date: new Date('2026-08-01T00:00:00.000Z') },
+    ],
   }
 
   it('carries every context field the alert contract requires', () => {
@@ -107,6 +114,8 @@ describe('rumAlertContextLines', () => {
     expect(byLabel['Inventory Ref']).toBe('deadbeef')
     expect(byLabel['Failure Reason']).toBe('content is null or empty')
     expect(byLabel['Authorisation Matcher']).toBe('hash:1 authorized hash')
+    // Root → leaf, matching the comparison log's metadata-path rendering.
+    expect(byLabel['Authorisation Path']).toBe('Accept either pinned version > Version 2 pinned hash')
   })
 
   it('omits optional evidence that the observation did not carry', () => {
@@ -124,6 +133,7 @@ describe('rumAlertContextLines', () => {
     expect(labels).not.toContain('Last Seen')
     expect(labels).not.toContain('Sessions')
     expect(labels).not.toContain('Failure Reason')
+    expect(labels).not.toContain('Authorisation Path')
   })
 })
 

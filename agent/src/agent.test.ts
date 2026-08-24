@@ -6,9 +6,10 @@
  * round-trip — importing it in tests is fine; the agent runtime itself only
  * ever imports types from it.
  */
-import { type ExternalScriptObservation, parseBeacon } from '../../src/types/beacon.js'
-import { AGENT_VERSION, flushObservations, getOversizeDroppedCount, getPendingObservationCount, initAgent, processPendingCaptures, resetAgentCountersForTesting, splitObservations, stopAgent } from './agent.js'
+import { type AgentHealthObservation, type CspViolationObservation, type ExternalScriptObservation, type InlineScriptObservation, parseBeacon } from '../../src/types/beacon.js'
+import { AGENT_VERSION, flushObservations, getOversizeDroppedCount, getPendingObservationCount, initAgent, processInlineCaptures, processPendingCaptures, resetAgentCountersForTesting, splitObservations, stopAgent } from './agent.js'
 import { resetCaptureForTesting } from './capture.js'
+import { INLINE_HASH_CEILING_BYTES } from './fingerprint.js'
 import { resetSessionStateForTesting } from './session.js'
 
 const COLLECTOR_URL = 'https://collector.example/beacon'
@@ -67,6 +68,35 @@ function insertScript(src: string): void {
   document.body.appendChild(script)
 }
 
+function appendInline(source: string): void {
+  const script = document.createElement('script')
+  script.textContent = source
+  document.body.appendChild(script)
+}
+
+function setCurrentScript(script: HTMLScriptElement | null): void {
+  Object.defineProperty(document, 'currentScript', {
+    configurable: true,
+    get: () => script,
+  })
+}
+
+// Node's WebCrypto via jest.requireActual: the agent tsconfig deliberately
+// has no Node types, so a static `import from 'node:crypto'` must not appear.
+const { webcrypto } = jest.requireActual('node:crypto') as { webcrypto: Crypto }
+
+const originalCryptoDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'crypto')
+
+/** jsdom ships no crypto.subtle; Node's WebCrypto provides the real SHA-256 path. */
+function installWebCrypto(): void {
+  Object.defineProperty(globalThis, 'crypto', { configurable: true, value: webcrypto })
+}
+
+function restoreCrypto(): void {
+  if (originalCryptoDescriptor) Object.defineProperty(globalThis, 'crypto', originalCryptoDescriptor)
+  else Reflect.deleteProperty(globalThis, 'crypto')
+}
+
 /** Reads a Blob's text via FileReader (jsdom's Blob lacks .text()). */
 function blobText(blob: Blob): Promise<string> {
   const withText = blob as Blob & { text?: () => Promise<string> }
@@ -100,6 +130,8 @@ afterEach(() => {
   jest.useRealTimers()
   Reflect.deleteProperty(navigator, 'sendBeacon')
   Reflect.deleteProperty(document, 'visibilityState')
+  Reflect.deleteProperty(document, 'currentScript')
+  restoreCrypto()
   removeFetch()
 })
 
@@ -153,7 +185,9 @@ describe('idle processing', () => {
     expect(parsed.beacon.v).toBe(1)
     expect(parsed.beacon.session.agentVersion).toBe(AGENT_VERSION)
     expect(parsed.beacon.page.url).toBe(location.origin + location.pathname)
-    expect(parsed.beacon.observations).toHaveLength(1)
+    // The flushed script plus the per-flush-cycle agent-health observation.
+    expect(parsed.beacon.observations).toHaveLength(2)
+    expect(parsed.beacon.observations[1]?.kind).toBe('agent-health')
     const observation = parsed.beacon.observations[0] as ExternalScriptObservation
     expect(observation.kind).toBe('external-script')
     expect(observation.url).toBe('http://localhost/vendor.js')
@@ -168,6 +202,199 @@ describe('idle processing', () => {
     processPendingCaptures()
     expect(getPendingObservationCount()).toBe(0)
     expect(getOversizeDroppedCount()).toBe(1)
+  })
+})
+
+describe('inline scripts', () => {
+  const SOURCE = "window.dataLayer=window.dataLayer||[];function gtag(){window.dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-EXAMPLE01');"
+
+  it('fingerprints, hashes and ships an inline script end-to-end through the real schema', async () => {
+    installWebCrypto()
+    const beaconMock = mockSendBeacon()
+    installCollectorTag()
+    initAgent()
+    appendInline(SOURCE)
+    await processInlineCaptures()
+    expect(getPendingObservationCount()).toBe(1)
+    hidePage()
+    const parsed = parseBeacon(await sentBody(beaconMock))
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) throw new Error(parsed.detail)
+    const observation = parsed.beacon.observations[0] as InlineScriptObservation
+    expect(observation.kind).toBe('inline-script')
+    // Pinned to the shared fixture (test/fixtures/beacons/inline-valid.json).
+    expect(observation.hash).toBe('e6fd3e32432da11443aadf6bd83d5464588956cec02521e635d56f11f7bfcffb')
+    expect(observation.length).toBe(139)
+    expect(observation.head).toHaveLength(128)
+    expect(observation.tail).toHaveLength(128)
+    expect(SOURCE.startsWith(observation.head)).toBe(true)
+    expect(SOURCE.endsWith(observation.tail)).toBe(true)
+    expect(observation.oversize).toBeUndefined()
+    expect(observation.initiator).toBe(location.href)
+    expect(observation.route).toBe('/')
+  })
+
+  it('dedupes the same script within a session and hashes it exactly once', async () => {
+    installWebCrypto()
+    const digestSpy = jest.spyOn(webcrypto.subtle, 'digest')
+    try {
+      installCollectorTag()
+      initAgent()
+      appendInline('window.__dup = 1')
+      appendInline('window.__dup = 1') // second element, identical content
+      await processInlineCaptures()
+      appendInline('window.__dup = 1') // later capture round, same session
+      await processInlineCaptures()
+      expect(getPendingObservationCount()).toBe(1)
+      expect(digestSpy).toHaveBeenCalledTimes(1)
+    } finally {
+      digestSpy.mockRestore()
+    }
+  })
+
+  it('emits BOTH of two distinct scripts that share length+first64+last64 but differ mid-body (dedupe must not be coarser than the wire identity)', async () => {
+    installWebCrypto()
+    const beaconMock = mockSendBeacon()
+    installCollectorTag()
+    initAgent()
+    // Same length, identical first 64 and last 64 chars (so the cheap
+    // fingerprint collides), differing only in the middle — wrapped in a
+    // comment so both are valid JS for jsdom to execute.
+    const build = (mid: string): string => `/* ${'a'.repeat(80)} ${mid} ${'z'.repeat(80)} */`
+    const scriptA = build('AAAA')
+    const scriptB = build('BBBB')
+    expect(scriptA).toHaveLength(scriptB.length)
+    expect(scriptA.slice(0, 64)).toBe(scriptB.slice(0, 64))
+    expect(scriptA.slice(-64)).toBe(scriptB.slice(-64))
+    appendInline(scriptA)
+    appendInline(scriptB)
+    await processInlineCaptures()
+    // Before the fix the cheap-key collision dropped scriptB before hashing;
+    // now emission is gated on the true wire identity, so both survive.
+    expect(getPendingObservationCount()).toBe(2)
+    hidePage()
+    const parsed = parseBeacon(await sentBody(beaconMock))
+    if (!parsed.ok) throw new Error(parsed.detail)
+    const inline = parsed.beacon.observations.filter((observation): observation is InlineScriptObservation => observation.kind === 'inline-script')
+    expect(inline).toHaveLength(2)
+    expect(new Set(inline.map((observation) => observation.head)).size).toBe(2)
+  })
+
+  it('re-captures a known script injected by a NEW initiator (supply-chain signal)', async () => {
+    installWebCrypto()
+    installCollectorTag()
+    initAgent()
+    appendInline('window.__shared = 1')
+    const injector = document.createElement('script')
+    injector.src = 'https://evil.example/injector.js'
+    setCurrentScript(injector)
+    appendInline('window.__shared = 1')
+    setCurrentScript(null)
+    await processInlineCaptures()
+    expect(getPendingObservationCount()).toBe(2)
+    hidePage()
+  })
+
+  it('flags oversize content, skips hashing, and still ships the fingerprint', async () => {
+    installWebCrypto()
+    const digestSpy = jest.spyOn(webcrypto.subtle, 'digest')
+    try {
+      const beaconMock = mockSendBeacon()
+      installCollectorTag()
+      initAgent()
+      // A single block comment: valid JS (jsdom executes appended inline
+      // scripts) whose byte length exceeds the hashing ceiling.
+      const oversizeSource = `/*${'a'.repeat(INLINE_HASH_CEILING_BYTES)}*/`
+      appendInline(oversizeSource)
+      await processInlineCaptures()
+      expect(digestSpy).not.toHaveBeenCalled()
+      hidePage()
+      const parsed = parseBeacon(await sentBody(beaconMock))
+      expect(parsed.ok).toBe(true)
+      if (!parsed.ok) throw new Error(parsed.detail)
+      const observation = parsed.beacon.observations[0] as InlineScriptObservation
+      expect(observation.oversize).toBe(true)
+      expect(observation.hash).toBeUndefined()
+      expect(observation.length).toBe(oversizeSource.length)
+      expect(oversizeSource.startsWith(observation.head)).toBe(true)
+      expect(oversizeSource.endsWith(observation.tail)).toBe(true)
+    } finally {
+      digestSpy.mockRestore()
+    }
+  })
+
+  it('degrades to a hash-absent (un-flagged) observation when crypto.subtle is unavailable', async () => {
+    // Pristine jsdom global: no SubtleCrypto.
+    expect((globalThis.crypto as Crypto | undefined)?.subtle).toBeUndefined()
+    installCollectorTag()
+    initAgent()
+    appendInline('window.__degraded = 1')
+    await processInlineCaptures()
+    expect(getPendingObservationCount()).toBe(1)
+    const beaconMock = mockSendBeacon()
+    hidePage()
+    const parsed = parseBeacon(await sentBody(beaconMock))
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) throw new Error(parsed.detail)
+    const observation = parsed.beacon.observations[0] as InlineScriptObservation
+    expect(observation.hash).toBeUndefined()
+    expect(observation.oversize).toBeUndefined() // only the ceiling sets the flag
+    expect(observation.head).toBe('window.__degraded = 1')
+    expect(observation.tail).toBe('window.__degraded = 1')
+  })
+
+  it('converts queued inline captures on the idle fallback scheduler too', async () => {
+    jest.useFakeTimers()
+    installCollectorTag()
+    initAgent()
+    appendInline('window.__idle = 1')
+    expect(getPendingObservationCount()).toBe(0)
+    jest.advanceTimersByTime(200)
+    jest.useRealTimers()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(getPendingObservationCount()).toBe(1)
+  })
+
+  it('flushes still-queued inline captures at session end hash-absent rather than losing them', async () => {
+    installWebCrypto() // hashing IS available — the flush path just cannot await it
+    const beaconMock = mockSendBeacon()
+    installCollectorTag()
+    initAgent()
+    appendInline('window.__tail = 1')
+    hidePage() // no processInlineCaptures round before the hide
+    expect(beaconMock).toHaveBeenCalledTimes(1)
+    const parsed = parseBeacon(await sentBody(beaconMock))
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) throw new Error(parsed.detail)
+    const observation = parsed.beacon.observations[0] as InlineScriptObservation
+    expect(observation.kind).toBe('inline-script')
+    expect(observation.hash).toBeUndefined()
+    expect(observation.head).toBe('window.__tail = 1')
+  })
+
+  it('round-trips mixed external + inline observations through the 24-observation split', async () => {
+    installWebCrypto()
+    const beaconMock = mockSendBeacon()
+    installCollectorTag()
+    initAgent()
+    for (let i = 0; i < 20; i += 1) insertScript(`/mixed-${i}.js`)
+    for (let i = 0; i < 10; i += 1) appendInline(`window.__mixed${i} = ${i}`)
+    processPendingCaptures()
+    await processInlineCaptures()
+    hidePage()
+    expect(beaconMock).toHaveBeenCalledTimes(2)
+    const first = parseBeacon(await sentBody(beaconMock, 0))
+    const second = parseBeacon(await sentBody(beaconMock, 1))
+    if (!first.ok || !second.ok) throw new Error('beacon failed schema validation')
+    expect(first.beacon.observations).toHaveLength(24)
+    // 6 remaining scripts + the per-flush-cycle agent-health observation.
+    expect(second.beacon.observations).toHaveLength(7)
+    const all = [...first.beacon.observations, ...second.beacon.observations]
+    expect(all.filter((observation) => observation.kind === 'external-script')).toHaveLength(20)
+    expect(all.filter((observation) => observation.kind === 'agent-health')).toHaveLength(1)
+    const inline = all.filter((observation): observation is InlineScriptObservation => observation.kind === 'inline-script')
+    expect(inline).toHaveLength(10)
+    for (const observation of inline) expect(observation.hash).toMatch(/^[0-9a-f]{64}$/)
   })
 })
 
@@ -192,7 +419,8 @@ describe('flush and splitting', () => {
     const second = parseBeacon(await sentBody(beaconMock, 1))
     if (!first.ok || !second.ok) throw new Error('beacon failed schema validation')
     expect(first.beacon.observations).toHaveLength(24)
-    expect(second.beacon.observations).toHaveLength(6)
+    // 6 remaining scripts + the per-flush-cycle agent-health observation.
+    expect(second.beacon.observations).toHaveLength(7)
     expect(getPendingObservationCount()).toBe(0)
   })
 
@@ -200,8 +428,10 @@ describe('flush and splitting', () => {
     const beaconMock = mockSendBeacon()
     installCollectorTag()
     initAgent()
-    // 24 observations with ~2000-char URLs serialise to ~49 KB — over the
-    // 32 KB cap — so the flush must halve to two 12-observation beacons.
+    // 24 script observations with ~2000-char URLs serialise to ~49 KB — over
+    // the 32 KB cap — so the flush must halve the first chunk to 12; the
+    // remaining 12 scripts plus the appended agent-health observation fit in
+    // the second beacon.
     for (let i = 0; i < 24; i += 1) insertScript(`https://cdn.example.com/${'a'.repeat(1950)}-${i}.js`)
     processPendingCaptures()
     hidePage()
@@ -211,7 +441,7 @@ describe('flush and splitting', () => {
       expect(new TextEncoder().encode(body).byteLength).toBeLessThanOrEqual(MAX_BEACON_BYTES)
       const parsed = parseBeacon(body)
       if (!parsed.ok) throw new Error(parsed.detail)
-      expect(parsed.beacon.observations).toHaveLength(12)
+      expect(parsed.beacon.observations.filter((observation) => observation.kind === 'external-script')).toHaveLength(12)
     }
   })
 
@@ -266,6 +496,169 @@ describe('flush and splitting', () => {
     processPendingCaptures()
     window.dispatchEvent(new Event('pagehide'))
     expect(beaconMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+/** jsdom has no SecurityPolicyViolationEvent constructor; a plain Event carrying the same fields exercises the listener identically. */
+function dispatchViolation(effectiveDirective: string, blockedURI: string): void {
+  const event = new Event('securitypolicyviolation', { bubbles: true })
+  Object.assign(event, { effectiveDirective, blockedURI })
+  document.dispatchEvent(event)
+}
+
+/**
+ * Removes performance.now for the duration of a test (the method lives on
+ * Performance.prototype, so deleting the shadowing instance property
+ * restores it). Returns the restore function.
+ */
+function disablePerformanceNow(): () => void {
+  const perf = performance as unknown as Record<string, unknown>
+  Object.defineProperty(perf, 'now', { configurable: true, writable: true, value: undefined })
+  return () => {
+    Reflect.deleteProperty(perf, 'now')
+  }
+}
+
+describe('csp violations', () => {
+  it('round-trips a captured violation through the real beacon schema', async () => {
+    const beaconMock = mockSendBeacon()
+    installCollectorTag()
+    initAgent()
+    dispatchViolation('script-src', 'https://evil.example/skimmer.js')
+    processPendingCaptures()
+    expect(getPendingObservationCount()).toBe(1)
+    hidePage()
+    const parsed = parseBeacon(await sentBody(beaconMock))
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) throw new Error(parsed.detail)
+    const observation = parsed.beacon.observations[0] as CspViolationObservation
+    expect(observation.kind).toBe('csp-violation')
+    expect(observation.directive).toBe('script-src')
+    expect(observation.blockedUri).toBe('https://evil.example/skimmer.js')
+    expect(observation.route).toBe('/')
+  })
+
+  it("ships non-URL blockedURI values ('inline') through the schema unchanged", async () => {
+    const beaconMock = mockSendBeacon()
+    installCollectorTag()
+    initAgent()
+    dispatchViolation('script-src', 'inline')
+    processPendingCaptures()
+    hidePage()
+    const parsed = parseBeacon(await sentBody(beaconMock))
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) throw new Error(parsed.detail)
+    expect((parsed.beacon.observations[0] as CspViolationObservation).blockedUri).toBe('inline')
+  })
+
+  it('a clamped violation still yields a schema-valid beacon', async () => {
+    const beaconMock = mockSendBeacon()
+    installCollectorTag()
+    initAgent()
+    dispatchViolation('d'.repeat(500), `https://evil.example/${'a'.repeat(5000)}`)
+    processPendingCaptures()
+    hidePage()
+    const parsed = parseBeacon(await sentBody(beaconMock))
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) throw new Error(parsed.detail)
+    const observation = parsed.beacon.observations[0] as CspViolationObservation
+    expect(observation.directive).toHaveLength(128)
+    expect(observation.blockedUri).toHaveLength(2048)
+  })
+})
+
+describe('agent health', () => {
+  function healthObservations(observations: readonly { kind: string }[]): AgentHealthObservation[] {
+    return observations.filter((observation): observation is AgentHealthObservation => observation.kind === 'agent-health')
+  }
+
+  it('appends exactly one agent-health observation per flush cycle, with plausible values', async () => {
+    const beaconMock = mockSendBeacon()
+    installCollectorTag()
+    initAgent()
+    insertScript('/vendor.js')
+    processPendingCaptures()
+    processPendingCaptures() // several instrumented tasks feed the reservoir
+    hidePage()
+    const parsed = parseBeacon(await sentBody(beaconMock))
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) throw new Error(parsed.detail)
+    const health = healthObservations(parsed.beacon.observations)
+    expect(health).toHaveLength(1)
+    const observation = health[0] as AgentHealthObservation
+    expect(observation.p95TaskMs).toBeGreaterThanOrEqual(0)
+    expect(observation.p95TaskMs).toBeLessThan(10_000) // a plausible task span, not a timestamp
+    expect(observation.dropped).toBe(0)
+    expect(observation.route).toBe('/')
+  })
+
+  it('emits ONE health observation per flush cycle even when the flush splits across beacons', async () => {
+    const beaconMock = mockSendBeacon()
+    installCollectorTag()
+    initAgent()
+    for (let i = 0; i < 30; i += 1) insertScript(`/health-${i}.js`)
+    processPendingCaptures()
+    hidePage()
+    expect(beaconMock).toHaveBeenCalledTimes(2)
+    const first = parseBeacon(await sentBody(beaconMock, 0))
+    const second = parseBeacon(await sentBody(beaconMock, 1))
+    if (!first.ok || !second.ok) throw new Error('beacon failed schema validation')
+    expect(healthObservations([...first.beacon.observations, ...second.beacon.observations])).toHaveLength(1)
+  })
+
+  it('reports oversize drops in the health observation', async () => {
+    const beaconMock = mockSendBeacon()
+    installCollectorTag()
+    initAgent()
+    insertScript('/ok.js')
+    insertScript(`http://localhost/${'a'.repeat(3000)}.js`) // dropped: URL over the schema cap
+    processPendingCaptures()
+    expect(getOversizeDroppedCount()).toBe(1)
+    hidePage()
+    const parsed = parseBeacon(await sentBody(beaconMock))
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) throw new Error(parsed.detail)
+    const health = healthObservations(parsed.beacon.observations)
+    expect(health).toHaveLength(1)
+    expect((health[0] as AgentHealthObservation).dropped).toBe(1)
+  })
+
+  it('skips the health observation entirely when performance.now is unavailable (never lies)', async () => {
+    const restore = disablePerformanceNow()
+    try {
+      const beaconMock = mockSendBeacon()
+      installCollectorTag()
+      initAgent()
+      insertScript('/vendor.js')
+      processPendingCaptures()
+      hidePage()
+      const parsed = parseBeacon(await sentBody(beaconMock))
+      expect(parsed.ok).toBe(true)
+      if (!parsed.ok) throw new Error(parsed.detail)
+      expect(parsed.beacon.observations).toHaveLength(1)
+      expect(healthObservations(parsed.beacon.observations)).toHaveLength(0)
+    } finally {
+      restore()
+    }
+  })
+
+  it('does not re-pend the health observation when transport fails (a fresh one is appended next flush)', async () => {
+    mockSendBeacon(false)
+    removeFetch()
+    installCollectorTag()
+    initAgent()
+    insertScript('/vendor.js')
+    processPendingCaptures()
+    hidePage()
+    // Only the script observation survives the failed flush.
+    expect(getPendingObservationCount()).toBe(1)
+    const workingBeacon = mockSendBeacon(true)
+    flushObservations()
+    const parsed = parseBeacon(await sentBody(workingBeacon))
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) throw new Error(parsed.detail)
+    expect(healthObservations(parsed.beacon.observations)).toHaveLength(1)
+    expect(parsed.beacon.observations).toHaveLength(2)
   })
 })
 

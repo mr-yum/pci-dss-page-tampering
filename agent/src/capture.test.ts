@@ -1,9 +1,11 @@
 /**
- * jsdom unit tests for external-script capture: insertion-patch attribution,
+ * jsdom unit tests for script capture: insertion-patch attribution,
  * MutationObserver safety net, PerformanceObserver entries, cross-path
- * dedupe, and the queue cap.
+ * dedupe, the queue cap, inline-script capture (source reference +
+ * initiator; fingerprinting is agent.ts's concern, not capture's), and
+ * CSP-violation events (dedupe + clamping).
  */
-import { drainCaptures, getDroppedCount, resetCaptureForTesting, type ScriptCapture, startCapture } from './capture.js'
+import { type CspViolationCapture, drainCaptures, drainCspCaptures, drainInlineCaptures, getDroppedCount, type InlineScriptCapture, resetCaptureForTesting, type ScriptCapture, startCapture } from './capture.js'
 import { resetSessionStateForTesting } from './session.js'
 
 type ResourceEntryLike = { name: string; initiatorType: string }
@@ -103,11 +105,85 @@ describe('insertion patch', () => {
     expect((captures[0] as ScriptCapture).url).toBe('http://localhost/before.js')
   })
 
-  it('ignores inline scripts (no src) — a later task owns those', () => {
+  it('routes inline scripts (no src) to the inline queue, never the external one', () => {
     const script = document.createElement('script')
     script.textContent = 'void 0'
     document.body.appendChild(script)
     expect(drainCaptures()).toHaveLength(0)
+    expect(drainInlineCaptures()).toHaveLength(1)
+  })
+})
+
+describe('inline scripts', () => {
+  function appendInline(source: string): HTMLScriptElement {
+    const script = document.createElement('script')
+    script.textContent = source
+    document.body.appendChild(script)
+    return script
+  }
+
+  it('captures an appendChild-inserted inline script with source, route and document initiator', () => {
+    const before = Date.now()
+    appendInline('window.__inline = 1')
+    const captures = drainInlineCaptures()
+    expect(captures).toHaveLength(1)
+    const capture = captures[0] as InlineScriptCapture
+    expect(capture.source).toBe('window.__inline = 1')
+    expect(capture.initiator).toBe(location.href)
+    expect(capture.route).toBe('/')
+    expect(capture.ts).toBeGreaterThanOrEqual(before)
+  })
+
+  it('attributes to document.currentScript.src when a script is executing the insertion', () => {
+    const inserter = document.createElement('script')
+    inserter.src = 'https://cdn.example.com/loader.js'
+    setCurrentScript(inserter)
+    appendInline('window.__injected = true')
+    const captures = drainInlineCaptures()
+    expect(captures).toHaveLength(1)
+    expect((captures[0] as InlineScriptCapture).initiator).toBe('https://cdn.example.com/loader.js')
+  })
+
+  it('captures parser-path inline scripts (innerHTML) via the MutationObserver with the document URL as initiator', async () => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    container.innerHTML = '<script>window.__parser = 1</script>'
+    await nextTick()
+    const captures = drainInlineCaptures()
+    expect(captures).toHaveLength(1)
+    const capture = captures[0] as InlineScriptCapture
+    expect(capture.source).toBe('window.__parser = 1')
+    expect(capture.initiator).toBe(location.href)
+  })
+
+  it('skips whitespace-only content — nothing meaningful was observed', async () => {
+    appendInline(' \n\t  ')
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    container.innerHTML = '<script>  \n </script>'
+    await nextTick()
+    expect(drainInlineCaptures()).toHaveLength(0)
+  })
+
+  it('does not double-capture the same element when the patch and the MutationObserver both see it', async () => {
+    appendInline('window.__once = 1')
+    await nextTick() // let the MutationObserver deliver its records too
+    expect(drainInlineCaptures()).toHaveLength(1)
+  })
+
+  it('shares the queue cap with external captures and never burns dedupe state on a dropped capture', () => {
+    for (let i = 0; i < 500; i += 1) insertScript(`/fill-${i}.js`)
+    const overflow = appendInline('window.__overflow = 1') // at cap: dropped
+    expect(getDroppedCount()).toBe(1)
+    expect(drainInlineCaptures()).toHaveLength(0)
+    drainCaptures()
+
+    // Queue drained: re-inserting the SAME element captures it (it was never
+    // marked as captured when it was dropped at the cap).
+    document.body.appendChild(overflow)
+    const captures = drainInlineCaptures()
+    expect(captures).toHaveLength(1)
+    expect((captures[0] as InlineScriptCapture).source).toBe('window.__overflow = 1')
   })
 })
 
@@ -164,6 +240,76 @@ describe('dedupe across paths', () => {
     const captures = drainCaptures()
     expect(captures).toHaveLength(2)
     expect((captures[1] as ScriptCapture).initiator).toBe('https://evil.example/injector.js')
+  })
+})
+
+describe('CSP violations', () => {
+  /** jsdom has no SecurityPolicyViolationEvent constructor; a plain Event carrying the same fields exercises the listener identically. */
+  function dispatchViolation(effectiveDirective: string, blockedURI: string): void {
+    const event = new Event('securitypolicyviolation', { bubbles: true })
+    Object.assign(event, { effectiveDirective, blockedURI })
+    document.dispatchEvent(event)
+  }
+
+  it('captures a violation with directive, blocked URI, route and timestamp', () => {
+    const before = Date.now()
+    dispatchViolation('script-src', 'https://evil.example/skimmer.js')
+    const captures = drainCspCaptures()
+    expect(captures).toHaveLength(1)
+    const capture = captures[0] as CspViolationCapture
+    expect(capture.directive).toBe('script-src')
+    expect(capture.blockedUri).toBe('https://evil.example/skimmer.js')
+    expect(capture.route).toBe('/')
+    expect(capture.ts).toBeGreaterThanOrEqual(before)
+  })
+
+  it('dedupes per session on directive + blockedUri, but keeps distinct pairs', () => {
+    dispatchViolation('script-src', 'https://evil.example/skimmer.js')
+    dispatchViolation('script-src', 'https://evil.example/skimmer.js') // duplicate
+    dispatchViolation('script-src', 'https://other.example/x.js') // new URI
+    dispatchViolation('img-src', 'https://evil.example/skimmer.js') // new directive
+    const captures = drainCspCaptures()
+    expect(captures.map((capture) => `${capture.directive}|${capture.blockedUri}`)).toEqual(['script-src|https://evil.example/skimmer.js', 'script-src|https://other.example/x.js', 'img-src|https://evil.example/skimmer.js'])
+
+    // Dedupe spans capture rounds — the session seen-set persists.
+    dispatchViolation('script-src', 'https://evil.example/skimmer.js')
+    expect(drainCspCaptures()).toHaveLength(0)
+  })
+
+  it("passes non-URL blockedURI strings ('inline', 'eval') through verbatim", () => {
+    dispatchViolation('script-src', 'inline')
+    dispatchViolation('script-src', 'eval')
+    const captures = drainCspCaptures()
+    expect(captures.map((capture) => capture.blockedUri)).toEqual(['inline', 'eval'])
+  })
+
+  it('clamps the directive to 128 chars and the blocked URI to 2048 chars', () => {
+    dispatchViolation('d'.repeat(200), `https://evil.example/${'a'.repeat(3000)}`)
+    const captures = drainCspCaptures()
+    expect(captures).toHaveLength(1)
+    const capture = captures[0] as CspViolationCapture
+    expect(capture.directive).toBe('d'.repeat(128))
+    expect(capture.blockedUri).toHaveLength(2048)
+    expect(capture.blockedUri.startsWith('https://evil.example/')).toBe(true)
+  })
+
+  it('ignores events without an effective directive rather than shipping an empty observation', () => {
+    const event = new Event('securitypolicyviolation', { bubbles: true })
+    Object.assign(event, { blockedURI: 'https://evil.example/x.js' })
+    document.dispatchEvent(event)
+    expect(drainCspCaptures()).toHaveLength(0)
+  })
+
+  it('shares the queue cap and never burns the dedupe key on a dropped violation', () => {
+    for (let i = 0; i < 500; i += 1) insertScript(`/fill-${i}.js`)
+    dispatchViolation('script-src', 'https://evil.example/late.js') // at cap: dropped
+    expect(getDroppedCount()).toBe(1)
+    expect(drainCspCaptures()).toHaveLength(0)
+    drainCaptures()
+
+    // Queue drained: the SAME violation is capturable again.
+    dispatchViolation('script-src', 'https://evil.example/late.js')
+    expect(drainCspCaptures()).toHaveLength(1)
   })
 })
 

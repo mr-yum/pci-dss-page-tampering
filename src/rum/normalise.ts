@@ -11,12 +11,15 @@ import type { QueueMessage } from './drain.js'
  *
  * - `name`: external → `observation.url`; inline →
  *   `inline_script/rum:{hash | fingerprint}`.
- * - `content`: always `null`. The comparator never fetches or reconstructs
- *   script content from a RUM observation — external bodies are opaque
- *   client-side (research R8), and inline `head + "…" + tail` reconstruction
- *   is deliberately NOT used. Matching against head/tail as anchored windows
- *   is T029's refinement; until then every matcher that needs content fails
- *   secure ("content is null or empty"), which is the correct US1 behaviour.
+ * - `content`: external → always `null` (bodies are opaque client-side,
+ *   research R8). Inline → the head window IS the full source when the
+ *   whole source fits one window, so it is promoted to `content` and every
+ *   matcher evaluates it exactly as full content (US2 rule (a)); otherwise
+ *   `content` stays `null` — `head + "…" + tail` reconstruction is
+ *   deliberately NOT used — and the windows ride `Matchable.contentEvidence`
+ *   for ContentMatcher's anchored-window evaluation (T028): a sound anchored
+ *   match accepts, anything else fails secure with an explicit
+ *   bounded-excerpt reason.
  * - `hash`: the client-computed SHA-256, inline scripts only, when present.
  * - `url`: external → `observation.url` (the script's OWN URL — the same
  *   binding the synthetic path uses, so a domain-trust `urlMatcher` /
@@ -57,10 +60,11 @@ export type RumObservationContext = {
 }
 
 /**
- * Inline-script evidence preserved verbatim for T029's anchored-window
- * content matching (`head` is a strict prefix, `tail` a strict suffix of the
- * real content). Not consumed by US1 routing — carried so T029 needs no
- * schema change.
+ * Inline-script evidence preserved verbatim (`head` is a strict prefix,
+ * `tail` a strict suffix of the real content). The matching-relevant subset
+ * (length/head/tail) also rides `Matchable.contentEvidence` for the
+ * anchored-window evaluation (T028); this copy additionally carries the
+ * `oversize` flag as routing/alert context.
  */
 export type InlineScriptEvidence = {
   length: number
@@ -85,9 +89,9 @@ export type NormalisedScriptObservation = {
 
 /**
  * CSP violations are their own variant, not forced into `Matchable`: they
- * describe a policy event, not a resource with name/content. US1 routing
- * records them (counted in the run summary); alerting activates in phase 4
- * (T035).
+ * describe a policy event, not a resource with name/content. Routing records
+ * them (counted in the run summary) by default; alerting is opt-in per target
+ * via `alerts.rum.cspViolationReported` (T035), detection lane only.
  */
 export type NormalisedCspObservation = {
   kind: 'csp'
@@ -144,12 +148,20 @@ export function normaliseMessage(msg: QueueMessage): NormalisedObservation {
 
     case 'inline-script': {
       const identity = observation.hash ?? inlineFingerprint(observation)
+      // US2 rule (a): when the whole source fits one fingerprint window, the
+      // head IS the full content (strict-prefix invariant, cross-checked
+      // against the claimed length), so it is promoted to `content` and any
+      // pattern evaluates against it exactly as against full content. A
+      // whole source and its windows would be redundant, so `content` and
+      // `contentEvidence` are mutually exclusive.
+      const wholeSource = observation.head.length === observation.length && observation.tail === observation.head
       return {
         kind: 'script',
         identificationOnly: false,
         matchable: {
           name: `inline_script/rum:${identity}`,
-          content: null,
+          content: wholeSource ? observation.head : null,
+          ...(wholeSource ? {} : { contentEvidence: { length: observation.length, head: observation.head, tail: observation.tail } }),
           ...(observation.hash !== undefined ? { hash: { value: observation.hash } } : {}),
           // Inline scripts have no URL of their own: the initiator IS the
           // synthetic inline provenance semantics (Matchable.url docs).

@@ -5,12 +5,13 @@ import type { IAlertService } from '../interfaces/alert.js'
 import type { IScriptComparisonService } from '../interfaces/comparison.js'
 import type { IInventoryService } from '../interfaces/inventory.js'
 import type { RumAlertCategory } from '../types/alert.js'
-import { getInventoryWorkflows, type Inventory } from '../types/inventory/model.js'
+import type { UnknownScriptFound } from '../types/comparison/unknown-script-found.js'
+import { getInventoryWorkflows, type Inventory, type InventoryAlert, type InventoryDifferenceResult } from '../types/inventory/model.js'
 import { PullTarget, type Target } from '../types/target.js'
 import type { Logger } from '../utils/logger.js'
 import { drainQueue, type QueueSource } from './drain.js'
 import { normaliseMessage } from './normalise.js'
-import { routeDetectionMessage } from './route.js'
+import { routeMessage } from './route.js'
 
 /**
  * `--mode rum-compare` runner (feature 011, contracts/cli-rum-compare.md).
@@ -39,6 +40,16 @@ export type RumCompareDeps = {
   /** Directory for the run-summary artefact, or null when reporting is off. */
   reportDir: string | null
   log: Logger
+  /**
+   * Opens (or reuses) the inventory pull request after a candidate push,
+   * exactly as `--mode inventory` does — main.ts supplies a closure over
+   * `ensureInventoryPullRequest` with the real coordinators, so the skip
+   * conditions (file:// repos, non-GitHub hosts, same branch, no token) stay
+   * in one place. Returns the PR URL, or null when skipped. A throw fails the
+   * run (exit 2): the commit is already on the remote, so a missing PR is a
+   * compliance gap an operator must see.
+   */
+  ensurePullRequest: (commitMessage: string, alertDestinations: InventoryAlert | null) => Promise<string | null>
 }
 
 /** The inventory revision one pass read, as recorded in the run summary. */
@@ -62,12 +73,28 @@ export type RumCompareSummary = {
   outcomes: {
     alerted: number
     recorded: number
-    recordedPending: number
+    /** Inventory-pass messages routed to the candidate lane (US3). */
+    candidate: number
     duplicateSuppressed: number
   }
   alertedByCategory: Partial<Record<RumAlertCategory, number>>
   /** Alerts that could not be delivered (routing still completed). */
   alertDeliveryFailures: number
+  /** Inventory-candidate flow results for this run (US3, data-model §7). */
+  candidates: {
+    /** Candidate-lane messages per queue `target_id`. */
+    byTarget: Record<string, number>
+    /**
+     * Pending entries the diff actually appended — candidates already covered
+     * by an existing (authorised or pending) entry are deduplicated away, so
+     * this can be lower than the candidate outcome tally.
+     */
+    entriesAppended: number
+    /** Whether the appended entries were pushed to the inventory branch. */
+    pushed: boolean
+    /** PR opened/reused for the push, or null (not pushed, or PR skipped). */
+    prUrl: string | null
+  }
   inventoryRefs: {
     inventory: RumPassRef
     detection: RumPassRef
@@ -87,13 +114,18 @@ export async function runRumCompare(deps: RumCompareDeps): Promise<RumCompareSum
   // Load both passes' baselines exactly as the synthetic modes do: full
   // deserialization (Zod + createMatcher) via the inventory service. The
   // detection branch is what production observations are judged against; the
-  // inventory branch is what inventory-pass observations will feed (T031).
+  // inventory branch is what inventory-pass observations feed. Pull order is
+  // load-bearing: each pull re-clones, so pulling the inventory branch LAST
+  // leaves the working clone checked out on it — the same clone state
+  // `--mode inventory` pushes candidates from.
   log.log('Pulling inventory for the detection pass.')
   const detectionInventories = await deps.inventoryService.pull(PullTarget.Detection, deps.branches.detection)
   const detectionRef = passRef(deps, deps.branches.detection)
 
   log.log('Pulling inventory for the inventory pass.')
-  const inventoryInventories = await deps.inventoryService.pull(PullTarget.Inventory, deps.branches.inventory)
+  // Same base semantics as --mode inventory: a missing inventory branch is
+  // started from the detection branch, never a hardcoded default.
+  const inventoryInventories = await deps.inventoryService.pull(PullTarget.Inventory, deps.branches.inventory, { baseBranchName: deps.branches.detection })
   const inventoryRef = passRef(deps, deps.branches.inventory)
 
   const contexts: Record<'inventory' | 'detection', Map<string, RumTargetContext>> = {
@@ -107,15 +139,22 @@ export async function runRumCompare(deps: RumCompareDeps): Promise<RumCompareSum
     invalid: 0,
     failed: 0,
     unknownTargetIds: 0,
-    outcomes: { alerted: 0, recorded: 0, recordedPending: 0, duplicateSuppressed: 0 },
+    outcomes: { alerted: 0, recorded: 0, candidate: 0, duplicateSuppressed: 0 },
     alertedByCategory: {},
     alertDeliveryFailures: 0,
+    candidates: { byTarget: {}, entriesAppended: 0, pushed: false, prUrl: null },
     inventoryRefs: { inventory: inventoryRef, detection: detectionRef },
   }
 
   // One dedupe set per drain run — the (novelty pk, inventory ref) idempotency
-  // boundary routeDetectionMessage documents. Never reused across runs.
+  // boundary routeMessage documents. Never reused across runs.
   const seen = new Set<string>()
+
+  // Candidates from the inventory lane, batched per inventory file so the
+  // existing diff (which owns matcher generation and pending-entry
+  // idempotency) runs exactly once per inventory after the drain — mirroring
+  // how --mode inventory diffs the complete observation set per file.
+  const candidatesByInventory = new Map<Inventory, UnknownScriptFound[]>()
 
   log.log('Draining the novel-observations queue.')
   const counts = await drainQueue(
@@ -131,7 +170,7 @@ export async function runRumCompare(deps: RumCompareDeps): Promise<RumCompareSum
         return 'skip-dlq'
       }
 
-      const outcome = await routeDetectionMessage(normaliseMessage(message), {
+      const outcome = await routeMessage(normaliseMessage(message), {
         scriptComparison: deps.scriptComparison,
         alertService: deps.alertService,
         inventory: context.inventory,
@@ -151,9 +190,16 @@ export async function runRumCompare(deps: RumCompareDeps): Promise<RumCompareSum
         case 'recorded':
           summary.outcomes.recorded++
           break
-        case 'recorded-pending':
-          summary.outcomes.recordedPending++
+        case 'candidate': {
+          summary.outcomes.candidate++
+          summary.candidates.byTarget[message.target_id] = (summary.candidates.byTarget[message.target_id] ?? 0) + 1
+          if (outcome.candidate !== undefined) {
+            const pending = candidatesByInventory.get(context.inventory) ?? []
+            pending.push(outcome.candidate)
+            candidatesByInventory.set(context.inventory, pending)
+          }
           break
+        }
         case 'duplicate-suppressed':
           summary.outcomes.duplicateSuppressed++
           break
@@ -170,10 +216,65 @@ export async function runRumCompare(deps: RumCompareDeps): Promise<RumCompareSum
   summary.invalid = counts.invalid
   summary.failed = counts.failed
 
+  // The candidate flow may legitimately fail (push conflict, PR creation) —
+  // that must fail the run (exit 2, same as --mode inventory), but only after
+  // the summary is logged and persisted: the drained messages are already
+  // deleted from the queue, so the summary is the surviving evidence of what
+  // was routed.
+  let candidateFlowError: unknown = null
+  try {
+    await processCandidates(candidatesByInventory, summary, deps)
+  } catch (error) {
+    candidateFlowError = error
+  }
+
   logSummary(summary, log)
   await writeSummaryArtefact(summary, deps.reportDir, log)
 
+  if (candidateFlowError !== null) {
+    throw candidateFlowError
+  }
+
   return summary
+}
+
+/**
+ * Feed the drained candidates through the EXISTING inventory-candidate flow:
+ * `ScriptInventoryService.diff()` generates the matcher configs (exact-name
+ * identification; hash authorisation when the observation carried one) and
+ * skips scripts an existing entry — authorised or pending — already covers,
+ * then push + PR run with the same branch semantics as `--mode inventory`
+ * (commit to `--inventory-branch`, PR into `--detection-branch` for GitHub
+ * HTTPS repos; file:// repos push without a PR).
+ *
+ * Nothing on this path authorises anything: appended entries are always
+ * `authorised: false`, and no-op diffs (every candidate already covered)
+ * produce no commit at all — `push` detects the absence of material change
+ * and skips, which is what keeps repeat observations from re-opening PRs.
+ */
+async function processCandidates(candidatesByInventory: Map<Inventory, UnknownScriptFound[]>, summary: RumCompareSummary, deps: RumCompareDeps): Promise<void> {
+  if (candidatesByInventory.size === 0) return
+
+  const { log } = deps
+
+  const diffs: InventoryDifferenceResult[] = []
+  let alertDestinations: InventoryAlert | null = null
+  for (const [inventory, candidates] of candidatesByInventory) {
+    const diff = await deps.inventoryService.diff(inventory, candidates)
+    summary.candidates.entriesAppended += diff.appliedResults?.length ?? 0
+    diffs.push(diff)
+    alertDestinations ??= inventory.alerts
+  }
+
+  log.log(`RUM inventory candidates: ${summary.outcomes.candidate} observation(s) produced ${summary.candidates.entriesAppended} pending entrie(s) after dedupe against existing coverage.`)
+
+  const pushResult = await deps.inventoryService.push(diffs, deps.branches.inventory)
+  summary.candidates.pushed = pushResult.pushed
+
+  if (!pushResult.pushed) return
+
+  log.log(`RUM inventory candidates pushed to '${deps.branches.inventory}'.`)
+  summary.candidates.prUrl = await deps.ensurePullRequest(pushResult.commitMessage, alertDestinations)
 }
 
 /** Snapshot the ref of the pull that just completed. */
@@ -207,9 +308,15 @@ export function buildTargetContexts(inventories: Inventory[], pass: 'inventory' 
 
 function logSummary(summary: RumCompareSummary, log: Logger): void {
   log.log(`RUM run summary: processed=${summary.processed} routed=${summary.routed} invalid=${summary.invalid} failed=${summary.failed} (unknown target_ids: ${summary.unknownTargetIds})`)
-  log.log(`RUM outcomes: alerted=${summary.outcomes.alerted} recorded=${summary.outcomes.recorded} recorded-pending=${summary.outcomes.recordedPending} duplicate-suppressed=${summary.outcomes.duplicateSuppressed}`)
+  log.log(`RUM outcomes: alerted=${summary.outcomes.alerted} recorded=${summary.outcomes.recorded} candidate=${summary.outcomes.candidate} duplicate-suppressed=${summary.outcomes.duplicateSuppressed}`)
   for (const [category, count] of Object.entries(summary.alertedByCategory)) {
     log.log(`RUM alerts (${category}): ${count}`)
+  }
+  if (summary.outcomes.candidate > 0) {
+    const perTarget = Object.entries(summary.candidates.byTarget)
+      .map(([targetId, count]) => `${targetId}=${count}`)
+      .join(' ')
+    log.log(`RUM candidates: ${perTarget} | entries appended: ${summary.candidates.entriesAppended} | pushed: ${summary.candidates.pushed ? 'yes' : 'no'}${summary.candidates.prUrl === null ? '' : ` | PR: ${summary.candidates.prUrl}`}`)
   }
   if (summary.alertDeliveryFailures > 0) {
     log.error(`RUM alert delivery failures: ${summary.alertDeliveryFailures} alert(s) could not be delivered (messages were still routed)`)

@@ -710,6 +710,27 @@
           "date": "2025-10-20T03:12:14.445Z"
         }
       }
+    },
+    {
+      "identifyWith": {
+        "nameMatcher": "^https:\\/\\/static\\.checkout\\.example\\/monitoring\\/rum-agent\\.v1\\.js$"
+      },
+      "authoriseWith": {
+        "hashes": [
+          {
+            "timestamp": "2026-08-20T00:00:00.000Z",
+            "hash": {
+              "value": "4f9c2b1a8d3e6c5b7a0f1e2d3c4b5a69788796a5b4c3d2e1f0a9b8c7d6e5f4a3"
+            }
+          }
+        ],
+        "authorisationInfo": {
+          "description": "Real-user monitoring agent, hash-pinned; its absence from the payment page must alert (11.6.1 self-defeat interlock)",
+          "authorised": true,
+          "date": "2026-08-20T00:00:00.000Z"
+        }
+      },
+      "requiredOn": ["detection"]
     }
   ],
   "headers": [

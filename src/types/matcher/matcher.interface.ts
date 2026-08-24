@@ -35,6 +35,26 @@ export interface AuthorisationInfo {
 }
 
 /**
+ * Bounded content evidence for a resource whose full content was never
+ * transported (RUM inline scripts, feature 011 / data-model.md §6).
+ *
+ * Invariants (produced by `agent/src/fingerprint.ts`, validated by the beacon
+ * schema): `head` is a STRICT prefix and `tail` a STRICT suffix of the real
+ * content, each capped at 128 chars; `length` is the full content's length in
+ * UTF-16 code units. `head + "…" + tail` reconstruction is deliberately never
+ * used — matchers evaluate head and tail independently as anchored windows,
+ * failing secure when a pattern is not soundly evaluable against an excerpt.
+ */
+export interface ContentWindowEvidence {
+  /** Full content length in UTF-16 code units. */
+  length: number
+  /** Strict prefix of the content, ≤ 128 chars. */
+  head: string
+  /** Strict suffix of the content, ≤ 128 chars. */
+  tail: string
+}
+
+/**
  * Generic matchable resource (script or header).
  * Provides common structure for matcher operations.
  *
@@ -77,6 +97,18 @@ export interface Matchable {
    * is missing.
    */
   url?: string
+
+  /**
+   * Anchored head/tail window evidence, populated ONLY when `content` is null
+   * because the full content was never transported (RUM inline scripts whose
+   * source exceeds one window). When the whole source fits a window,
+   * normalisation promotes it to `content` instead and leaves this unset —
+   * so `content` and `contentEvidence` are mutually exclusive by
+   * construction. Consumed by `ContentMatcher`; every other matcher ignores
+   * it. Synthetic detections never set it, so synthetic behaviour is
+   * untouched.
+   */
+  contentEvidence?: ContentWindowEvidence
 
   /** Stable checkout workflow identifier (for example `workflow-a`). */
   workflowId?: string
@@ -194,6 +226,11 @@ export interface Matcher<T extends Matchable = Matchable> {
    * its OWN missing evidence —
    * - ContentMatcher/HeaderNameMatcher/CspDirectiveMatcher: null/empty
    *   resource.content → { authorized: false, reason: "content is null or empty" }
+   * - ContentMatcher only: when content is null but `contentEvidence` head/tail
+   *   windows are present, a `^`-anchored pattern is evaluated against the head
+   *   and a `$`-anchored one against the tail — a window MATCH is a sound
+   *   accept, a window non-match or non-evaluable pattern fails secure with an
+   *   explicit bounded-excerpt reason (never "content is null or empty")
    * - HashMatcher: missing/empty resource.hash → "hash is missing" (content is
    *   not pre-gated: RUM inline observations carry a hash but no content)
    * - HostMatcher/UrlMatcher: missing url; WorkflowMatcher: missing workflowId;

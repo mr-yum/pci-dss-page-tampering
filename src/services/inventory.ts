@@ -2,6 +2,7 @@ import type { IInventoryService, InventoryPullOptions, InventoryPushResult, IScr
 import type { ComparisonResultType, KnownScriptWithUnauthorisedContentFound, UnknownScriptFound } from '../types/comparison.js'
 import type { KnownHeaderWithUnauthorisedContentFound } from '../types/comparison/known-header-unauthorised-content-found.js'
 import type { UnknownHeaderFound } from '../types/comparison/unknown-header-found.js'
+import type { SHA256Hash } from '../types/hash.js'
 import type { Inventory, InventoryDifferenceResult, InventoryHeaderInfo, InventoryRef, InventoryScriptInfo } from '../types/inventory/model.js'
 import type { InventoryServiceProps } from '../types/inventory/props.js'
 import { ContentMatcher } from '../types/matcher/content-matcher.js'
@@ -95,9 +96,12 @@ export class ScriptInventoryService implements IInventoryService {
           }
           break
         }
+        // The missing-required results have nothing to add to the inventory —
+        // the entry already exists; the absence is purely an alert.
         case 'authorized_script':
         case 'authorized_header':
         case 'missing_required_header':
+        case 'missing_required_script':
           break
         default: {
           const _exhaustive: never = result
@@ -260,11 +264,34 @@ export class ScriptInventoryService implements IInventoryService {
     return createMatcher({ andMatcher: children })
   }
 
+  /**
+   * Builds the authorisation matcher for a newly discovered script.
+   *
+   * Synthetic observations always carry the fetched content's hash, so the
+   * pending entry pins it. RUM observations may not (external script bodies
+   * are opaque client-side; oversize inline scripts carry only a fingerprint
+   * baked into their name) — for those the pending entry is authorised by its
+   * exact name instead. That makes no false integrity claim, keeps the
+   * covered-entry check idempotent across repeat observations (the name is
+   * always present as evidence), and leaves the human reviewer to replace it
+   * with real trust (hashes, domain trust) when approving. Either way the
+   * entry is written `authorised: false` — this flow never authorises.
+   */
+  private buildNewScriptAuthoriser(result: UnknownScriptFound): InventoryScriptInfo['authoriseWith']['matcher'] {
+    // DetectedScript declares hash as required, but the RUM candidate lane
+    // legitimately produces hash-less scripts (see routeInventoryMessage).
+    const hash: SHA256Hash | undefined = result.script.hash
+    if (hash !== undefined) {
+      return createMatcher({ hashes: [{ timestamp: result.timestamp, hash }] })
+    }
+    return createMatcher({ nameMatcher: `^${this.escapeRegex(result.script.name)}$` })
+  }
+
   private addNewScript(result: UnknownScriptFound, inventory: Inventory, updateDate: Date): Inventory {
     const newScript: InventoryScriptInfo = {
       identifyWith: this.buildIdentifyMatcher(result),
       authoriseWith: {
-        matcher: createMatcher({ hashes: [{ timestamp: result.timestamp, hash: result.script.hash }] }),
+        matcher: this.buildNewScriptAuthoriser(result),
         authorisationInfo: {
           description: 'NO_DESCRIPTION',
           authorised: false,

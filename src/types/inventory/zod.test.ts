@@ -119,6 +119,32 @@ describe('Required header inventory validation', () => {
   })
 })
 
+describe('Required script inventory validation', () => {
+  const scriptAuthoriseWith = {
+    hashes: [{ timestamp: '2026-08-20T00:00:00.000Z', hash: { value: 'a'.repeat(64) } }],
+    authorisationInfo: { description: 'monitoring agent pinned by hash', authorised: true, date: '2026-08-20T00:00:00.000Z' },
+  }
+
+  it('accepts requiredOn naming one or both passes', () => {
+    for (const requiredOn of [['detection'], ['inventory'], ['inventory', 'detection']]) {
+      const result = RawInventoryScriptInfoSchema.safeParse({
+        identifyWith: { nameMatcher: '^https://monitor\\.example\\.com/agent\\.js$' },
+        authoriseWith: scriptAuthoriseWith,
+        requiredOn,
+      })
+
+      expect(result.success).toBe(true)
+    }
+  })
+
+  it('rejects unknown requiredOn pass names and empty arrays', () => {
+    const base = { identifyWith: { nameMatcher: '^https://monitor\\.example\\.com/agent\\.js$' }, authoriseWith: scriptAuthoriseWith }
+
+    expect(RawInventoryScriptInfoSchema.safeParse({ ...base, requiredOn: ['production'] }).success).toBe(false)
+    expect(RawInventoryScriptInfoSchema.safeParse({ ...base, requiredOn: [] }).success).toBe(false)
+  })
+})
+
 describe('MatcherConfigSchema', () => {
   describe('Invalid regex patterns (T027)', () => {
     it('should reject nameMatcher with invalid regex (unclosed bracket)', () => {
@@ -1252,5 +1278,30 @@ describe('InventoryAlertSchema rum block (Feature 011)', () => {
   it('rejects a rum category whose value is not a destination object', () => {
     const result = InventoryAlertSchema.safeParse(validAlerts({ uninventoriedScriptDetected: 'not-a-destination' }))
     expect(result.success).toBe(false)
+  })
+
+  describe('cspViolationReportedMinSessions (T035 prevalence floor)', () => {
+    it('accepts a positive integer alongside the opt-in destination', () => {
+      const result = InventoryAlertSchema.safeParse(validAlerts({ cspViolationReported: { destination: 'rum-csp-channel' }, cspViolationReportedMinSessions: 3 }))
+
+      expect(result.success).toBe(true)
+      if (result.success) {
+        expect(result.data.rum?.cspViolationReportedMinSessions).toBe(3)
+      }
+    })
+
+    it('is optional — the destination alone activates the category', () => {
+      const result = InventoryAlertSchema.safeParse(validAlerts({ cspViolationReported: { destination: 'rum-csp-channel' } }))
+
+      expect(result.success).toBe(true)
+      if (result.success) {
+        expect(result.data.rum?.cspViolationReportedMinSessions).toBeUndefined()
+      }
+    })
+
+    it.each([0, -1, 1.5, 'three'])('rejects %p', (value) => {
+      const result = InventoryAlertSchema.safeParse(validAlerts({ cspViolationReported: { destination: 'rum-csp-channel' }, cspViolationReportedMinSessions: value }))
+      expect(result.success).toBe(false)
+    })
   })
 })

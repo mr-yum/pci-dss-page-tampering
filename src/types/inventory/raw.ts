@@ -1,4 +1,5 @@
 import type { ResponseResourceType } from '../header.js'
+import type { TargetType } from '../target.js'
 import type { RawTargetDetection, RawTargetInventory } from '../target/raw.js'
 import type { RawMatcherConfig } from './matcher-config-schema.js'
 import type { Inventory } from './model.js'
@@ -21,6 +22,7 @@ export type RawAuthorizeWithConfig = RawMatcherConfig & {
 export type RawInventoryScriptInfo = {
   identifyWith: RawMatcherConfig
   authoriseWith: RawAuthorizeWithConfig
+  requiredOn?: TargetType[] | undefined
 }
 
 /**

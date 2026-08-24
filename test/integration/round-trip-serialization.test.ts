@@ -175,6 +175,13 @@ describe('Round-Trip Serialization Integration Tests', () => {
         expect(typeof script.authoriseWith.authorisationInfo.authorised).toBe('boolean')
         expect(script.authoriseWith.authorisationInfo.date).toBeTruthy()
       }
+
+      // A requiredOn clause (script presence pinning, e.g. the RUM agent)
+      // must survive the round trip — losing it would silently disable the
+      // missing-required-script tripwire on the next inventory push.
+      const requiredScript = serializedRaw.scripts.find((script) => 'nameMatcher' in script.identifyWith && script.identifyWith.nameMatcher.includes('rum-agent'))
+      expect(requiredScript).toBeDefined()
+      expect(requiredScript!.requiredOn).toEqual(['detection'])
     })
 
     it('SECURITY: should preserve individual authorization metadata for each array element', async () => {

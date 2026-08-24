@@ -65,3 +65,4 @@ scripts/run.sh
 # Consumer-side Terraform lock files (module dirs keep theirs committed)
 infra/examples/**/.terraform.lock.hcl
 infra/tests/.terraform.lock.hcl
+test/fixtures/rum-page/agent.js

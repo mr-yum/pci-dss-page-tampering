@@ -5,6 +5,7 @@ import type { ComparisonResultType } from '../../types/comparison.js'
 import type { KnownHeaderWithUnauthorisedContentFound } from '../../types/comparison/known-header-unauthorised-content-found.js'
 import type { KnownScriptWithUnauthorisedContentFound } from '../../types/comparison/known-script-unauthorised-content-found.js'
 import type { MissingRequiredHeader } from '../../types/comparison/missing-required-header.js'
+import type { MissingRequiredScript } from '../../types/comparison/missing-required-script.js'
 import type { UnknownHeaderFound } from '../../types/comparison/unknown-header-found.js'
 import type { UnknownScriptFound } from '../../types/comparison/unknown-script-found.js'
 import { ExecutionMode } from '../../types/config.js'
@@ -38,6 +39,7 @@ export class ConsoleAlertService implements IAlertService {
     const unknownHeaders = comparisonResults.filter((r): r is UnknownHeaderFound => r.type === 'unknown_header_found')
     const unauthorizedHeaders = comparisonResults.filter((r): r is KnownHeaderWithUnauthorisedContentFound => r.type === 'known_header_unauthorised_content')
     const missingHeaders = comparisonResults.filter((r): r is MissingRequiredHeader => r.type === 'missing_required_header')
+    const missingScripts = comparisonResults.filter((r): r is MissingRequiredScript => r.type === 'missing_required_script')
 
     // Log unknown scripts
     if (unknownScripts.length > 0) {
@@ -62,6 +64,11 @@ export class ConsoleAlertService implements IAlertService {
 
     if (missingHeaders.length > 0) {
       this.logMissingHeaders(missingHeaders, target)
+    }
+
+    // Required scripts absent from the page (e.g. a pinned monitoring agent removed).
+    if (missingScripts.length > 0) {
+      this.logMissingScripts(missingScripts, target)
     }
 
     // AuthorizedScriptFound and AuthorizedHeaderFound are no-ops (no alert needed)
@@ -165,6 +172,16 @@ export class ConsoleAlertService implements IAlertService {
       console.log(`    ${index + 1}. ${result.headerName}`)
       console.log(`       Response: ${redactUrl(result.url)}`)
       console.log(`       Resource Type: ${result.resourceType}`)
+    }
+    console.log()
+  }
+
+  private logMissingScripts(scripts: MissingRequiredScript[], target: Target): void {
+    this.log(AlertType.Script, `Required scripts missing for target: ${target.url}`)
+    for (const [index, result] of scripts.entries()) {
+      console.log(`    ${index + 1}. ${result.scriptDescription}`)
+      console.log(`       Required On: ${(result.inventoryEntry.requiredOn ?? []).join(', ')}`)
+      console.log(`       Justification: ${result.inventoryEntry.authoriseWith.authorisationInfo.description}`)
     }
     console.log()
   }

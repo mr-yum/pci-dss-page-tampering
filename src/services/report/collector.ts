@@ -124,7 +124,7 @@ export class ReportCollector implements IReportCollector {
       else section.rows.set(row.rowId, row)
 
       if ('inventoryEntry' in result) {
-        if (result.type === 'authorized_script' || result.type === 'known_script_unauthorised_content') section.matchedScripts.add(result.inventoryEntry)
+        if (result.type === 'authorized_script' || result.type === 'known_script_unauthorised_content' || result.type === 'missing_required_script') section.matchedScripts.add(result.inventoryEntry)
         else section.matchedHeaders.add(result.inventoryEntry)
       }
     }
