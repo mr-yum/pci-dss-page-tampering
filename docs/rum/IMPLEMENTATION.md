@@ -32,9 +32,8 @@ module "collector_core" {
   source = "github.com/mr-yum/pci-dss-page-tampering//infra/collector-core?ref=v1.0.0"
 
   name_prefix    = "rum"
-  github_repo    = "example-org/script-inventory" # repo whose workflow assumes the comparator role
-  origin_targets = var.origin_targets             # step 2
-  lambda_package = var.lambda_package             # released ingest zip (or a local build)
+  origin_targets = var.origin_targets # step 2
+  lambda_package = var.lambda_package # released ingest zip (or a local build)
 
   # Required: the exact OIDC subject(s) allowed to assume the queue-consumer
   # role. The comparator runs on the inventory repo's default branch (step 6);
@@ -256,7 +255,7 @@ jobs:
 
 Details that matter:
 
-- **`id-token: write`** is what lets `aws-actions/configure-aws-credentials` federate into core's `gha_role_arn`. That role trusts `repo:<github_repo>:*` — the `github_repo` you set in step 1 — and grants exactly SQS consume on the novel-observations queue plus CloudWatch metric read, and metric write scoped to the `metric_namespace`. Nothing else.
+- **`id-token: write`** is what lets `aws-actions/configure-aws-credentials` federate into core's `gha_role_arn`. That role trusts exactly the `oidc_subject_claims` you set in step 1 — nothing else in the repo can assume it — and grants exactly SQS consume on the novel-observations queue plus CloudWatch metric read, and metric write scoped to the `metric_namespace`. Nothing else.
 - **Ambient AWS credentials are a deliberate carve-out** from this project's CLI-parameters-only rule: `rum-compare` is the one mode that reads credentials and region from the environment, because credentials do not belong on command lines. Everything else is still a parameter.
 - **`--git-token` still does the Git work.** Inventory-pass observations open candidate pull requests, so the token needs `pull_requests: write`; the workflow's own `contents` permission is not what pushes.
 - **Pin the tool by tag**, not `main`. The comparator, the deployed ingest Lambda, and the embedded agent share a beacon schema; a floating checkout drifts away from the collector you deployed.

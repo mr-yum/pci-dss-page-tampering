@@ -26,7 +26,6 @@ mock_provider "aws" {
 
 variables {
   name_prefix         = "tst"
-  github_repo         = "example-org/script-inventory"
   lambda_package      = "./fixtures/placeholder.zip"
   oidc_subject_claims = ["repo:example-org/script-inventory:ref:refs/heads/main"]
 

@@ -15,7 +15,6 @@ module "collector_core" {
   source = "../../collector-core"
 
   name_prefix    = var.name_prefix
-  github_repo    = var.github_repo
   origin_targets = var.origin_targets
   lambda_package = var.lambda_package
 

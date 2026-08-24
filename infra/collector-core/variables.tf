@@ -41,19 +41,11 @@ variable "github_oidc_provider_arn" {
   default     = null
 }
 
-variable "github_repo" {
-  description = "GitHub repository (org/repo) trusted by the OIDC-federated role, e.g. \"org/inventory-repo\"."
-  type        = string
-}
-
-# SECURITY: the default below matches EVERY subject under the repo — every
-# ref, tag, PR, environment and reusable-workflow — so any id-token:write job
-# in the repo can assume the role and drain the SQS queue. It exists only to
-# preserve prior behaviour without assuming a default-branch name. Adopters
-# SHOULD restrict this to their comparator workflow's exact subject, e.g.
-# ["repo:ORG/REPO:ref:refs/heads/main"] for the scheduled run on the default
-# branch, or an environment claim ["repo:ORG/REPO:environment:production"] or a
-# reusable-workflow claim. Matched with StringLike in the trust policy.
+# SECURITY: matched with StringLike in the trust policy. The repository is
+# embedded in the claims themselves (e.g. ["repo:ORG/REPO:ref:refs/heads/main"]
+# for the scheduled run on the default branch, or an environment claim
+# ["repo:ORG/REPO:environment:production"], or a reusable-workflow claim) —
+# there is deliberately no separate repo variable and no permissive fallback.
 variable "oidc_subject_claims" {
   description = "OIDC token subject (`sub`) claims allowed to assume the comparator role, matched with StringLike. Required with no default: this role can consume and delete security observations, so the trust boundary must be an explicit operator decision. Use your comparator workflow's exact subject (e.g. \"repo:ORG/REPO:ref:refs/heads/main\", or an environment/reusable-workflow claim); a broad claim like \"repo:ORG/REPO:*\" trusts every ref/tag/PR/environment subject in the repo — legal, but a conscious choice you must write down."
   type        = list(string)
