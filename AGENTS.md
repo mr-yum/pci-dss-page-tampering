@@ -320,7 +320,7 @@ When reasoning about a run, three auditor-report fields have non-obvious semanti
 - `observed.contentExcerpt` is a truncated prefix (`CONTENT_EXCERPT_LIMIT`, `src/services/report/mapper.ts`), so replaying report rows through content or hash matchers produces false negatives.
 - `origin.url` is redacted as described above.
 
-**A symptom worth recognising:** if the inventory lane appends a fresh hash for the same script on every run, that entry identifies but never authorises. A payload that differs per request cannot be hash-pinned, so the accumulation is always a broken matcher — never a genuine change to review.
+**A symptom worth recognising:** appending a hash for a genuinely new release is the normal, intended path. What is not normal is an entry collecting a *fresh* hash on *every* run: that means it identifies a payload which differs per request, so no hash can ever authorise it and the list grows without bound while verifying nothing. The tell is unbounded growth with no corresponding deploy. Establish which of the two you are looking at before appending another hash — the fix for the second is a matcher that authorises on the stable part of the payload, not one more hash.
 
 #### Comparison Result Types (Enhanced 2025-10 with Metadata Paths)
 
