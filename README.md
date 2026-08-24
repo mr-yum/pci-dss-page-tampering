@@ -59,6 +59,17 @@ npm start -- \
   --slack-token <YOUR_SLACK_TOKEN>
 ```
 
+**Compare queued real-user observations against the inventory:**
+
+```bash
+npm start -- \
+  --mode rum-compare \
+  --repo https://github.com/org/inventory \
+  --git-token <YOUR_TOKEN> \
+  --rum-queue-url https://sqs.ap-southeast-2.amazonaws.com/123456789012/rum-novel-observations \
+  --slack-token <YOUR_SLACK_TOKEN>
+```
+
 **Use custom branches for inventory and detection:**
 
 ```bash
@@ -79,12 +90,13 @@ npm start -- \
 
 ## Workflows
 
-The system runs one of four modes via `--mode`:
+The system runs one of five modes via `--mode`:
 
 - **`inventory`** — visits staging/inventory URLs, discovers scripts and headers, pushes updates to the `inventory-updates` branch of the inventory repo, and opens a PR for review. Alerts on resources that need manual authorization.
 - **`detection`** — visits production/detection URLs, compares what's loaded against the approved inventory on `main`, and alerts on anything unauthorized. Read-only against the inventory repo.
 - **`all`** (default) — runs `inventory`, then `detection`.
 - **`validate`** — runs as a CI check inside the inventory repo. Fully deserializes every `targets/*.json` (Zod schema, `createMatcher()`, workflow resolution) so malformed inventory cannot merge. No browser, no alerts, no push.
+- **`rum-compare`** — drains first-sighting observations reported from real user sessions and evaluates them against the inventory with the same matcher pipeline: detection-pass observations raise `rum_*` alerts; inventory-pass observations feed the candidate PR flow. Read-only except for candidate PRs; hourly scheduling lives in the inventory repository. Requires `--rum-queue-url`. Browser-native CSP reports are **opt-in**: `rum_csp_violation_reported` fires only when the target's inventory configures `alerts.rum.cspViolationReported`; unset, CSP reports are recorded (archived and keyed for novelty) but raise no alert, because real-user CSP reports carry heavy browser-extension noise and there is no fallback destination for the category. Unlike every other mode, it reads ambient AWS credentials/region from the environment (e.g. an OIDC-assumed role in CI) — a deliberate carve-out from the CLI-parameters-only rule, since credentials do not belong on command lines. Deploying the browser agent and the collector that fill that queue is covered in [docs/rum/IMPLEMENTATION.md](docs/rum/IMPLEMENTATION.md); the scheduled canary that proves the pipeline is still alive is in [docs/rum/canary-workflow.md](docs/rum/canary-workflow.md).
 
 The intended day-to-day cycle:
 
@@ -194,18 +206,19 @@ See [Branch Usage](#branch-usage) for the branch model and [CI Validation for th
 
 ### Optional Parameters
 
-| Parameter                   | Description                                                    | Default                      |
-| --------------------------- | -------------------------------------------------------------- | ---------------------------- |
-| `--mode <mode>`             | Execution mode: `inventory`, `detection`, `all`, or `validate` | `all`                        |
-| `--target <name>`           | Process specific target (e.g., "1.0")                          | all targets                  |
-| `--slack-token <token>`     | Slack token for alerts (logs to console if omitted)            | -                            |
-| `--inventory-branch <name>` | Branch for inventory operations                                | `inventory-updates`          |
-| `--detection-branch <name>` | Branch for detection operations                                | `main`                       |
-| `--git-user-name <name>`    | Git committer name for inventory updates                       | `PCI DSS Page Tampering Bot` |
-| `--git-user-email <email>`  | Git committer email for inventory updates                      | `noreply@example.com`        |
-| `--totp-seed <name>=<seed>` | Named base32 TOTP seed for `totp` workflow steps (repeatable)  | -                            |
-| `--report-dir <path>`       | Directory for [auditor report](#auditor-report) artefacts      | - (no report written)        |
-| `--help`                    | Display help message and exit                                  | -                            |
+| Parameter                   | Description                                                                                                      | Default                      |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| `--mode <mode>`             | Execution mode: `inventory`, `detection`, `all`, `validate`, or `rum-compare`                                    | `all`                        |
+| `--target <name>`           | Process specific target (e.g., "1.0")                                                                            | all targets                  |
+| `--slack-token <token>`     | Slack token for alerts (logs to console if omitted)                                                              | -                            |
+| `--inventory-branch <name>` | Branch for inventory operations                                                                                  | `inventory-updates`          |
+| `--detection-branch <name>` | Branch for detection operations                                                                                  | `main`                       |
+| `--git-user-name <name>`    | Git committer name for inventory updates                                                                         | `PCI DSS Page Tampering Bot` |
+| `--git-user-email <email>`  | Git committer email for inventory updates                                                                        | `noreply@example.com`        |
+| `--totp-seed <name>=<seed>` | Named base32 TOTP seed for `totp` workflow steps (repeatable)                                                    | -                            |
+| `--rum-queue-url <url>`     | SQS queue URL (or `file://` dir for local testing) of novel RUM observations; required with `--mode rum-compare` | -                            |
+| `--report-dir <path>`       | Directory for [auditor report](#auditor-report) artefacts                                                        | - (no report written)        |
+| `--help`                    | Display help message and exit                                                                                    | -                            |
 
 ### TOTP Verification in Workflows
 
@@ -548,7 +561,7 @@ For GitHub Actions, pass secrets via CLI parameters:
 
 ### Bundled Workflows
 
-Three GitHub Actions workflows ship with this repo under [.github/workflows/](.github/workflows/):
+These GitHub Actions workflows ship with this repo under [.github/workflows/](.github/workflows/):
 
 #### [ci.yml](.github/workflows/ci.yml) — Continuous Integration
 
@@ -567,9 +580,17 @@ Both remaining triggers are still **full production runs** against the real inve
 
 Requires repo secrets `INVENTORY_REPO_PAT` and `SLACK_OAUTH_TOKEN`, and repo variables `INVENTORY_REPO_URL`, `GIT_USER_NAME`, `GIT_USER_EMAIL`. Installs Chrome system dependencies for Puppeteer before invoking `npm start`.
 
+#### [infra.yml](.github/workflows/infra.yml) — Terraform module checks
+
+Runs on manual dispatch and on pushes to `main` and pull requests that touch `infra/**` or `.tflint.hcl` — a paths filter, because every step downloads provider schemas from the registry and the Terraform sources change far less often than `src/`. Checks formatting (`terraform fmt -check -recursive`), lints with TFLint, then runs the mocked-provider `terraform test` suites for the modules and both example stacks, and finally the source-level no-VPC guard (`infra/tests/no-vpc-check.sh`). No cloud credentials are involved — nothing is planned against a real account.
+
 #### [auto-merge-renovate.yml](.github/workflows/auto-merge-renovate.yml) — Renovate auto-merge
 
 Listens for completed CI runs (via `workflow_run`) and, when the run was triggered by a `renovate[bot]` PR and succeeded, approves and squash-merges the PR. Gating on `workflow_run` (rather than `pull_request`) ensures CI has actually passed before merging — the previous `pull_request` setup let broken lockfiles land on `main`.
+
+#### [release.yml](.github/workflows/release.yml) — Versioned release artefacts
+
+Runs when a semver tag (`vX.Y.Z`) is pushed. Rebuilds the browser RUM agent with the tag version injected (so beacons report the real `agentVersion`), then creates a GitHub release carrying the agent bundle with its SHA-256 and SRI string, the collector package with its SHA-256, and a ready-to-paste inventory entry snippet (hash-pinned, `requiredOn` both passes, shipped `authorised: false` so the adopter reviews before enabling). The Terraform modules under `infra/` are consumed from this repository at the same tag. Every user-facing change should land with a [CHANGELOG.md](CHANGELOG.md) entry so the tag's changelog is complete — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 For wiring `--mode validate` into the **inventory repo's** CI (a separate repo), see [CI Validation for the Inventory Repo](#ci-validation-for-the-inventory-repo) below.
 
@@ -740,6 +761,49 @@ response resource types (for example `document`, `script`, and `stylesheet`),
 so misspellings fail inventory validation instead of silently disabling the
 check. `Set-Cookie` should not be blanket-required because many legitimate
 responses do not issue a cookie.
+
+### Required scripts
+
+A script entry can likewise declare the passes (`inventory` / `detection`) on
+which some detected script must be identified by its `identifyWith` matcher.
+When nothing on the page matches during a pass named in `requiredOn`, the run
+emits a `missing_required_script` finding and alerts. On the **detection** pass
+it routes to `missingScriptDetected`, falling back to `scriptMismatchDetected`
+— an absent pinned control reads as tampering, not as a discovery. On the
+**inventory** pass it routes to `newScriptIdentified` instead:
+
+```json
+{
+  "identifyWith": { "nameMatcher": "^https://static\\.checkout\\.example/monitoring/rum-agent\\.v1\\.js$" },
+  "authoriseWith": {
+    "hashes": [{ "timestamp": "2026-08-20T00:00:00.000Z", "hash": { "value": "4f9c2b1a…" } }],
+    "authorisationInfo": {
+      "description": "Real-user monitoring agent, hash-pinned; absence must alert",
+      "authorised": true,
+      "date": "2026-08-20T00:00:00.000Z"
+    }
+  },
+  "requiredOn": ["detection"]
+}
+```
+
+`requiredOn` only arms for **authorised** entries
+(`authorisationInfo.authorised === true`). A pending or unauthorised entry's
+`requiredOn` is inert: a candidate entry is flipped to `authorised: true` only
+after human review, and until then its absence is not treated as a control
+removal (otherwise every freshly proposed candidate would immediately alert as
+missing).
+
+Presence and integrity are separate checks on the same entry: `requiredOn`
+alerts when the script is gone; ordinary hash authorisation alerts when it is
+present but its bytes changed. The motivating use case is pinning the
+real-user monitoring agent so removing it from a payment page raises an alarm
+(PCI DSS 11.6.1 self-defeat interlock), but any script whose disappearance
+should alert can be pinned this way. Unlike required headers, `identifyWith`
+is unrestricted — presence is tested against fully observed scripts, so every
+matcher type keeps its normal semantics. Presence is judged against the entry
+itself, not first-match-wins attribution: an earlier entry identifying the
+same script does not make the required one look absent.
 
 Matcher fields always operate on what their name says: `nameMatcher` on the script URL / inline id (`headerNameMatcher` on the header name), `contentMatcher` on the actual content (external script response body, inline script source, or header value — never the URL), `hashes` on the SHA-256 of that content, `hostMatcher`/`urlMatcher` on the resource's provenance URL, and `workflowMatcher` on the configured workflow id. To authorize a script by where it comes from, use `urlMatcher` or `hostMatcher`, not a URL-shaped `contentMatcher`.
 

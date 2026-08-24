@@ -1,0 +1,187 @@
+{
+  "v": 1,
+  "session": {
+    "id": "0d1e2f3a-4b5c-4d6e-9f7a-8b9c0d1e2f3a",
+    "agentVersion": "1.0.0"
+  },
+  "page": {
+    "url": "https://pay.example.com/checkout"
+  },
+  "observations": [
+    {
+      "kind": "external-script",
+      "url": "https://cdn.example.net/chunk-00.js",
+      "initiator": "https://pay.example.com/checkout",
+      "route": "/checkout",
+      "ts": 1755600008000
+    },
+    {
+      "kind": "external-script",
+      "url": "https://cdn.example.net/chunk-01.js",
+      "initiator": "https://pay.example.com/checkout",
+      "route": "/checkout",
+      "ts": 1755600008001
+    },
+    {
+      "kind": "external-script",
+      "url": "https://cdn.example.net/chunk-02.js",
+      "initiator": "https://pay.example.com/checkout",
+      "route": "/checkout",
+      "ts": 1755600008002
+    },
+    {
+      "kind": "external-script",
+      "url": "https://cdn.example.net/chunk-03.js",
+      "initiator": "https://pay.example.com/checkout",
+      "route": "/checkout",
+      "ts": 1755600008003
+    },
+    {
+      "kind": "external-script",
+      "url": "https://cdn.example.net/chunk-04.js",
+      "initiator": "https://pay.example.com/checkout",
+      "route": "/checkout",
+      "ts": 1755600008004
+    },
+    {
+      "kind": "external-script",
+      "url": "https://cdn.example.net/chunk-05.js",
+      "initiator": "https://pay.example.com/checkout",
+      "route": "/checkout",
+      "ts": 1755600008005
+    },
+    {
+      "kind": "external-script",
+      "url": "https://cdn.example.net/chunk-06.js",
+      "initiator": "https://pay.example.com/checkout",
+      "route": "/checkout",
+      "ts": 1755600008006
+    },
+    {
+      "kind": "external-script",
+      "url": "https://cdn.example.net/chunk-07.js",
+      "initiator": "https://pay.example.com/checkout",
+      "route": "/checkout",
+      "ts": 1755600008007
+    },
+    {
+      "kind": "external-script",
+      "url": "https://cdn.example.net/chunk-08.js",
+      "initiator": "https://pay.example.com/checkout",
+      "route": "/checkout",
+      "ts": 1755600008008
+    },
+    {
+      "kind": "external-script",
+      "url": "https://cdn.example.net/chunk-09.js",
+      "initiator": "https://pay.example.com/checkout",
+      "route": "/checkout",
+      "ts": 1755600008009
+    },
+    {
+      "kind": "external-script",
+      "url": "https://cdn.example.net/chunk-10.js",
+      "initiator": "https://pay.example.com/checkout",
+      "route": "/checkout",
+      "ts": 1755600008010
+    },
+    {
+      "kind": "external-script",
+      "url": "https://cdn.example.net/chunk-11.js",
+      "initiator": "https://pay.example.com/checkout",
+      "route": "/checkout",
+      "ts": 1755600008011
+    },
+    {
+      "kind": "external-script",
+      "url": "https://cdn.example.net/chunk-12.js",
+      "initiator": "https://pay.example.com/checkout",
+      "route": "/checkout",
+      "ts": 1755600008012
+    },
+    {
+      "kind": "external-script",
+      "url": "https://cdn.example.net/chunk-13.js",
+      "initiator": "https://pay.example.com/checkout",
+      "route": "/checkout",
+      "ts": 1755600008013
+    },
+    {
+      "kind": "external-script",
+      "url": "https://cdn.example.net/chunk-14.js",
+      "initiator": "https://pay.example.com/checkout",
+      "route": "/checkout",
+      "ts": 1755600008014
+    },
+    {
+      "kind": "external-script",
+      "url": "https://cdn.example.net/chunk-15.js",
+      "initiator": "https://pay.example.com/checkout",
+      "route": "/checkout",
+      "ts": 1755600008015
+    },
+    {
+      "kind": "external-script",
+      "url": "https://cdn.example.net/chunk-16.js",
+      "initiator": "https://pay.example.com/checkout",
+      "route": "/checkout",
+      "ts": 1755600008016
+    },
+    {
+      "kind": "external-script",
+      "url": "https://cdn.example.net/chunk-17.js",
+      "initiator": "https://pay.example.com/checkout",
+      "route": "/checkout",
+      "ts": 1755600008017
+    },
+    {
+      "kind": "external-script",
+      "url": "https://cdn.example.net/chunk-18.js",
+      "initiator": "https://pay.example.com/checkout",
+      "route": "/checkout",
+      "ts": 1755600008018
+    },
+    {
+      "kind": "external-script",
+      "url": "https://cdn.example.net/chunk-19.js",
+      "initiator": "https://pay.example.com/checkout",
+      "route": "/checkout",
+      "ts": 1755600008019
+    },
+    {
+      "kind": "external-script",
+      "url": "https://cdn.example.net/chunk-20.js",
+      "initiator": "https://pay.example.com/checkout",
+      "route": "/checkout",
+      "ts": 1755600008020
+    },
+    {
+      "kind": "external-script",
+      "url": "https://cdn.example.net/chunk-21.js",
+      "initiator": "https://pay.example.com/checkout",
+      "route": "/checkout",
+      "ts": 1755600008021
+    },
+    {
+      "kind": "external-script",
+      "url": "https://cdn.example.net/chunk-22.js",
+      "initiator": "https://pay.example.com/checkout",
+      "route": "/checkout",
+      "ts": 1755600008022
+    },
+    {
+      "kind": "external-script",
+      "url": "https://cdn.example.net/chunk-23.js",
+      "initiator": "https://pay.example.com/checkout",
+      "route": "/checkout",
+      "ts": 1755600008023
+    },
+    {
+      "kind": "external-script",
+      "url": "https://cdn.example.net/chunk-24.js",
+      "initiator": "https://pay.example.com/checkout",
+      "route": "/checkout",
+      "ts": 1755600008024
+    }
+  ]
+}

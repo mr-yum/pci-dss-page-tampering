@@ -60,6 +60,22 @@ npm run fix:linting        # Auto-fix lint issues
 3. Ensure `npm run precommit` passes
 4. Submit a pull request with a clear description of the change
 
+## Releases
+
+Releases are cut by pushing a semver tag (`vX.Y.Z`). The release workflow
+([.github/workflows/release.yml](.github/workflows/release.yml)) rebuilds the
+agent with the tag version injected and publishes the versioned artefacts
+together: the agent bundle with its SHA-256 and SRI string, the collector
+package with its SHA-256, and a ready-to-paste inventory entry snippet. The
+Terraform modules under `infra/` ship no separate artefact — adopters consume
+them from this repository at that same tag.
+
+**CHANGELOG discipline**: every user-facing change lands with an entry under
+`## [Unreleased]` in [CHANGELOG.md](CHANGELOG.md) in the same pull request.
+Cutting a release renames that section to the new version before tagging.
+Because agent, collector, and Terraform modules version together at one tag,
+a change to any of them belongs in the CHANGELOG.
+
 ## Reporting Issues
 
 - **Bugs**: Open a GitHub issue with reproduction steps

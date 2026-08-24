@@ -1,0 +1,18 @@
+{
+  "v": 1,
+  "session": {
+    "id": "6f1e2c3d-4b5a-4c7d-8e9f-0a1b2c3d4e5f",
+    "agentVersion": "1.0.0"
+  },
+  "page": { "url": "https://pay.example.com/checkout" },
+  "userEmail": "shopper@example.com",
+  "observations": [
+    {
+      "kind": "external-script",
+      "url": "https://cdn.example.net/sdk.js",
+      "initiator": "https://pay.example.com/",
+      "route": "/checkout",
+      "ts": 1755600000000
+    }
+  ]
+}

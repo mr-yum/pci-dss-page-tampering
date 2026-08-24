@@ -14,6 +14,7 @@ import { CspDirectiveMatcher } from './csp-directive-matcher.js'
 import { HashMatcher } from './hash-matcher.js'
 import { HeaderNameMatcher } from './header-name-matcher.js'
 import { HostMatcher } from './host-matcher.js'
+import { InitiatorHostMatcher } from './initiator-host-matcher.js'
 import type { AuthorisationInfo, Matcher } from './matcher.interface.js'
 import { NameMatcher } from './name-matcher.js'
 import { OrMatcher } from './or-matcher.js'
@@ -64,6 +65,7 @@ export type MatcherConfig =
   | { headerNameMatcher: string }
   | { contentMatcher: string; authorisationInfo?: RawAuthorisationInfo }
   | { hostMatcher: string; authorisationInfo?: RawAuthorisationInfo }
+  | { initiatorHostMatcher: string; authorisationInfo?: RawAuthorisationInfo }
   | { urlMatcher: string; authorisationInfo?: RawAuthorisationInfo }
   | { workflowMatcher: string; authorisationInfo?: RawAuthorisationInfo }
   | { targetTypeMatcher: string; authorisationInfo?: RawAuthorisationInfo }
@@ -123,6 +125,10 @@ export function createMatcher(config: MatcherConfig): Matcher {
 
   if ('hostMatcher' in config) {
     return new HostMatcher(config.hostMatcher, convertAuthorisationInfo(config.authorisationInfo))
+  }
+
+  if ('initiatorHostMatcher' in config) {
+    return new InitiatorHostMatcher(config.initiatorHostMatcher, convertAuthorisationInfo(config.authorisationInfo))
   }
 
   if ('urlMatcher' in config) {

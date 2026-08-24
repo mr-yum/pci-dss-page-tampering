@@ -1,8 +1,8 @@
 import type { IScriptComparisonService } from '../../interfaces/comparison.js'
 import type { ComparisonResultType } from '../../types/comparison.js'
-import { AuthorizedScriptFound, KnownScriptWithUnauthorisedContentFound, UnknownScriptFound } from '../../types/comparison.js'
+import { AuthorizedScriptFound, KnownScriptWithUnauthorisedContentFound, MissingRequiredScript, UnknownScriptFound } from '../../types/comparison.js'
 import type { Inventory, InventoryScriptInfo } from '../../types/inventory/model.js'
-import type { DetectedScript } from '../../types/matcher/matcher.interface.js'
+import type { DetectedScript, Matchable } from '../../types/matcher/matcher.interface.js'
 import type { ScriptDetectionSummary, ScriptInfo } from '../../types/script.js'
 import type { Target } from '../../types/target.js'
 import { getScriptSource } from '../../utils/script.js'
@@ -24,8 +24,47 @@ export class ScriptComparisonService implements IScriptComparisonService {
 
     const externalScriptsResults = this.compareScriptWithInventory(detectedExternalScripts, inventoryScripts, target)
     const inlineScriptsResults = this.compareScriptWithInventory(detectedInlineScripts, inventoryScripts, target)
+    const missingRequiredResults = this.findMissingRequiredScripts([...detectedExternalScripts, ...detectedInlineScripts], inventoryScripts, target)
 
-    return Promise.resolve([...externalScriptsResults, ...inlineScriptsResults])
+    return Promise.resolve([...externalScriptsResults, ...inlineScriptsResults, ...missingRequiredResults])
+  }
+
+  /**
+   * Presence sweep for `requiredOn` entries — the script-side analogue of the
+   * header service's missing-required check (feature 011, FR-016 / R12).
+   *
+   * An entry that declares `requiredOn` for the current pass asserts that some
+   * detected script is identified by its `identifyWith`. When nothing on the
+   * page matches, the control is gone — e.g. the RUM monitoring agent removed
+   * from a payment page — and that absence is the finding. Integrity of a
+   * script that IS present stays with the entry's ordinary authorisation
+   * (hash) path; this sweep only ever answers "was it there at all".
+   *
+   * Synthetic pass only by construction: it runs from `compare()`, which the
+   * RUM evidence path never enters — a beacon stream can prove presence but
+   * never absence.
+   */
+  private findMissingRequiredScripts(detectedScripts: ScriptInfo[], inventoryScripts: InventoryScriptInfo[], target: Target): MissingRequiredScript[] {
+    const requiredEntries = inventoryScripts.filter((entry) => entry.authoriseWith.authorisationInfo.authorised && (entry.requiredOn?.includes(target.type) ?? false))
+
+    if (requiredEntries.length === 0) return []
+
+    const timestamp = new Date()
+    const detected = detectedScripts.map((script) => this.scriptInfoToDetectedScript(script, target))
+    const missing: MissingRequiredScript[] = []
+
+    for (const entry of requiredEntries) {
+      // Tested against the entry directly, not via first-match-wins: an
+      // earlier entry claiming the script for identification purposes must not
+      // make the required one look absent.
+      if (detected.some((script) => entry.identifyWith.identify(script))) continue
+
+      const description = entry.identifyWith.getDescription()
+      target.logger.log(`Required script '${description}' missing: no detected script identified by this entry on the ${target.type} pass.`)
+      missing.push(new MissingRequiredScript(target, timestamp, description, entry))
+    }
+
+    return missing
   }
 
   /**
@@ -60,6 +99,11 @@ export class ScriptComparisonService implements IScriptComparisonService {
     // always populated) and inline (initiator URL, optional). The discriminated
     // union narrows the type for us; no ternary needed.
     const url = scriptInfo.source.url
+    // The initiator, for InitiatorHostMatcher: external scripts carry it from
+    // the CDP request initiator; for inline scripts the source `url` IS the
+    // initiator (page-attribution shim), so the same value is exposed under
+    // both names — mirroring the RUM normalisation.
+    const initiator = scriptInfo.source.type === 'external' ? scriptInfo.source.initiator : scriptInfo.source.url
 
     return {
       name,
@@ -68,6 +112,7 @@ export class ScriptComparisonService implements IScriptComparisonService {
       workflowId: target.workflowId ?? 'default',
       targetType: target.type,
       ...(url !== undefined ? { url } : {}),
+      ...(initiator !== undefined ? { initiator } : {}),
     }
   }
 
@@ -96,11 +141,64 @@ export class ScriptComparisonService implements IScriptComparisonService {
     const scriptLabel = `Script '${extractHost(detectedScript.url)}':'${scriptSourceValue}'`
 
     // T055: Null/empty content handling - fail-secure (per clarification Q3)
+    // Applies to the synthetic path only: a script the tool fetched itself
+    // must have content, so its absence means the fetch failed and nothing
+    // can be safely matched. The RUM evidence path (compareScriptEvidence)
+    // enters evaluateDetectedScript directly because there content is
+    // structurally absent, not missing.
     if (!detectedScript.content || detectedScript.content.trim() === '') {
       target.logger.log(`${scriptLabel} has null/empty content, treating as new script.`)
       return new UnknownScriptFound(target, timestamp, detectedScript)
     }
 
+    return this.evaluateDetectedScript(detectedScript, inventoryScripts, target, scriptLabel, timestamp)
+  }
+
+  /**
+   * RUM evidence path (feature 011): identification-only lookup for a script
+   * observed in a real user's browser. External script bodies are opaque
+   * client-side (research R8), so the only question an external RUM
+   * observation can answer is "does any inventory entry identify this?" —
+   * first-match-wins over `identifyWith`, exactly like the synthetic path.
+   *
+   * Accepts a plain `Matchable` because RUM externals carry no hash and no
+   * content; matchers that need either (HashMatcher, ContentMatcher) simply
+   * return false, which is their documented fail-secure behaviour.
+   */
+  identifyScript(script: Matchable, inventoryScripts: InventoryScriptInfo[]): InventoryScriptInfo | undefined {
+    return this.findMatchingInventoryEntry(script, inventoryScripts)
+  }
+
+  /**
+   * RUM evidence path (feature 011): full identify → authorise evaluation for
+   * a script whose content the tool never fetched — the client-computed hash
+   * is the evidence (inline scripts).
+   *
+   * Deliberately skips the synthetic null-content pre-gate: content is
+   * structurally absent for RUM observations, and blanket-classifying every
+   * identified inline script as unknown would hide tampering behind the wrong
+   * alert category. Matchers are evidence-aware: a hash-based authoriser
+   * (HashMatcher, alone or inside a composite) compares the client-computed
+   * hash and can authorise — or report a hash mismatch — and ContentMatcher
+   * evaluates anchored head/tail window evidence (`Matchable.contentEvidence`,
+   * T028): a sound anchored match authorises, anything else fails secure with
+   * an explicit bounded-excerpt reason. Matchers whose evidence is truly
+   * absent (CspDirectiveMatcher, ContentMatcher with no windows) fail secure
+   * with their own reason, yielding KnownScriptWithUnauthorisedContentFound —
+   * a mismatched alert, the fail-secure outcome.
+   */
+  compareScriptEvidence(detectedScript: DetectedScript, inventoryScripts: InventoryScriptInfo[], target: Target): ComparisonResultType {
+    const scriptLabel = `Script '${extractHost(detectedScript.url)}':'${detectedScript.name}'`
+    return this.evaluateDetectedScript(detectedScript, inventoryScripts, target, scriptLabel, new Date())
+  }
+
+  /**
+   * Shared identify → authorise core: first-match-wins identification, then
+   * authorisation via the matched entry's authoriseWith matcher. Used by both
+   * the synthetic path (after its null-content gate) and the RUM evidence
+   * path (which has no such gate).
+   */
+  private evaluateDetectedScript(detectedScript: DetectedScript, inventoryScripts: InventoryScriptInfo[], target: Target, scriptLabel: string, timestamp: Date): ComparisonResultType {
     // First-match-wins identification using matcher pipeline
     const matchedEntry = this.findMatchingInventoryEntry(detectedScript, inventoryScripts)
 
@@ -150,11 +248,15 @@ export class ScriptComparisonService implements IScriptComparisonService {
    * Finds first inventory entry where identifyWith matcher returns true.
    * Implements first-match-wins logic per clarification Q1.
    *
-   * @param script - Detected script to match
+   * Accepts any Matchable: identification consults `identifyWith` matchers
+   * only, and every matcher fails secure on evidence the resource lacks
+   * (RUM external scripts, for instance, carry neither content nor hash).
+   *
+   * @param script - Detected resource to match
    * @param inventoryScripts - Array of inventory entries (iteration order determines priority)
    * @returns First matching entry or undefined if no match
    */
-  private findMatchingInventoryEntry(script: DetectedScript, inventoryScripts: InventoryScriptInfo[]): InventoryScriptInfo | undefined {
+  private findMatchingInventoryEntry(script: Matchable, inventoryScripts: InventoryScriptInfo[]): InventoryScriptInfo | undefined {
     for (const inventoryEntry of inventoryScripts) {
       // Skip non-authorized entries (legacy compatibility)
       if (!inventoryEntry.authoriseWith.authorisationInfo.authorised) {

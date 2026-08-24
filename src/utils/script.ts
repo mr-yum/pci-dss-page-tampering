@@ -48,6 +48,7 @@ export function rawInventoryScriptInfoToInventoryScriptInfo(rawInventoryScriptIn
   return {
     identifyWith: createMatcher(rawInventoryScriptInfo.identifyWith),
     authoriseWith: processAuthorizeWith(rawInventoryScriptInfo.authoriseWith),
+    ...(rawInventoryScriptInfo.requiredOn !== undefined ? { requiredOn: rawInventoryScriptInfo.requiredOn } : {}),
   }
 }
 
@@ -110,6 +111,14 @@ export function inventoryScriptInfoToRawInventoryScriptInfo(inventoryScriptInfo:
       }
       case 'host': {
         const config: any = { hostMatcher: pattern as string }
+        const authInfo = (matcher as any).getAuthorisationInfo?.()
+        if (authInfo) {
+          config.authorisationInfo = serializeAuthorisationInfo(authInfo)
+        }
+        return config
+      }
+      case 'initiator-host': {
+        const config: any = { initiatorHostMatcher: pattern as string }
         const authInfo = (matcher as any).getAuthorisationInfo?.()
         if (authInfo) {
           config.authorisationInfo = serializeAuthorisationInfo(authInfo)
@@ -198,6 +207,7 @@ export function inventoryScriptInfoToRawInventoryScriptInfo(inventoryScriptInfo:
       return {
         identifyWith: matcherToConfig(inventoryScriptInfo.identifyWith),
         authoriseWith: arrayConfig,
+        ...(inventoryScriptInfo.requiredOn !== undefined ? { requiredOn: inventoryScriptInfo.requiredOn } : {}),
       }
     }
     // Fall through to use orMatcher format (OrMatcher has its own authorisationInfo)
@@ -216,5 +226,6 @@ export function inventoryScriptInfoToRawInventoryScriptInfo(inventoryScriptInfo:
         date: inventoryScriptInfo.authoriseWith.authorisationInfo.date.toISOString(),
       },
     },
+    ...(inventoryScriptInfo.requiredOn !== undefined ? { requiredOn: inventoryScriptInfo.requiredOn } : {}),
   }
 }

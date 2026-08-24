@@ -7,6 +7,12 @@ on:
   pull_request:
     branches: ['**']
 
+# Read-only. This workflow only builds and tests the checked-out code; nothing
+# here writes to the repository or needs any cloud/Slack secrets. Scoping the
+# token down keeps the broad default out of the build steps that run repo code.
+permissions:
+  contents: read
+
 jobs:
   continuous-integration:
     runs-on: ubuntu-latest
@@ -19,6 +25,10 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+        with:
+          # No later step needs git auth; don't leave GITHUB_TOKEN in git config
+          # while build/test steps run repo code.
+          persist-credentials: false
 
       - name: Use Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v7
@@ -46,6 +56,19 @@ jobs:
           npm run check:linting
           npm run check:typing
           echo "✅ Formatting and linting commands completed"
+
+      # Bundling is a separate failure mode from type checking: esbuild resolves
+      # the real import graph and the collector bundle is what infra/ deploys.
+      # The unit suites for both already run in the next step: `npm run test:unit`
+      # selects the `unit` project (which matches collector/src) and `unit-agent`
+      # (agent/src, jsdom), so nothing is duplicated here.
+      - name: Build browser agent and collector bundles
+        timeout-minutes: 10
+        run: |
+          echo "▶️ Building browser agent and collector bundles..."
+          npm run build:agent
+          npm run build:collector
+          echo "✅ Bundles built successfully"
 
       - name: Run unit tests
         timeout-minutes: 30

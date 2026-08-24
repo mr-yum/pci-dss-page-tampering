@@ -119,6 +119,32 @@ describe('Required header inventory validation', () => {
   })
 })
 
+describe('Required script inventory validation', () => {
+  const scriptAuthoriseWith = {
+    hashes: [{ timestamp: '2026-08-20T00:00:00.000Z', hash: { value: 'a'.repeat(64) } }],
+    authorisationInfo: { description: 'monitoring agent pinned by hash', authorised: true, date: '2026-08-20T00:00:00.000Z' },
+  }
+
+  it('accepts requiredOn naming one or both passes', () => {
+    for (const requiredOn of [['detection'], ['inventory'], ['inventory', 'detection']]) {
+      const result = RawInventoryScriptInfoSchema.safeParse({
+        identifyWith: { nameMatcher: '^https://monitor\\.example\\.com/agent\\.js$' },
+        authoriseWith: scriptAuthoriseWith,
+        requiredOn,
+      })
+
+      expect(result.success).toBe(true)
+    }
+  })
+
+  it('rejects unknown requiredOn pass names and empty arrays', () => {
+    const base = { identifyWith: { nameMatcher: '^https://monitor\\.example\\.com/agent\\.js$' }, authoriseWith: scriptAuthoriseWith }
+
+    expect(RawInventoryScriptInfoSchema.safeParse({ ...base, requiredOn: ['production'] }).success).toBe(false)
+    expect(RawInventoryScriptInfoSchema.safeParse({ ...base, requiredOn: [] }).success).toBe(false)
+  })
+})
+
 describe('MatcherConfigSchema', () => {
   describe('Invalid regex patterns (T027)', () => {
     it('should reject nameMatcher with invalid regex (unclosed bracket)', () => {
@@ -1181,5 +1207,141 @@ describe('InventoryAlertSchema (Feature 010)', () => {
         expect(result.data.successNotification.destination).toBe('#my-custom-slack-channel')
       }
     })
+  })
+})
+
+/**
+ * Feature 011: `rum` alert destinations block.
+ * Same optional semantics as the optional detection categories — the whole
+ * block and every key inside it are optional so existing inventories parse
+ * unchanged, and destinations validate exactly like the synthetic categories.
+ */
+describe('InventoryAlertSchema rum block (Feature 011)', () => {
+  const validAlerts = (rum?: unknown) => ({
+    inventory: {
+      newScriptIdentified: { destination: 'inventory-script-channel' },
+      newHeaderIdentified: { destination: 'inventory-header-channel' },
+    },
+    detection: {
+      newScriptDetected: { destination: 'detection-script-channel' },
+      scriptMismatchDetected: { destination: 'script-mismatch-channel' },
+      newHeaderDetected: { destination: 'detection-header-channel' },
+    },
+    successNotification: { destination: 'success-channel' },
+    ...(rum !== undefined ? { rum } : {}),
+  })
+
+  it('accepts alerts without a rum block (existing inventories)', () => {
+    const result = InventoryAlertSchema.safeParse(validAlerts())
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.rum).toBeUndefined()
+    }
+  })
+
+  it('accepts a full rum block with a destination per category', () => {
+    const result = InventoryAlertSchema.safeParse(
+      validAlerts({
+        uninventoriedScriptDetected: { destination: 'rum-uninventoried-channel' },
+        mismatchedScriptDetected: { destination: 'rum-mismatched-channel' },
+        cspViolationReported: { destination: 'rum-csp-channel' },
+      }),
+    )
+
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.rum?.uninventoriedScriptDetected?.destination).toBe('rum-uninventoried-channel')
+      expect(result.data.rum?.mismatchedScriptDetected?.destination).toBe('rum-mismatched-channel')
+      expect(result.data.rum?.cspViolationReported?.destination).toBe('rum-csp-channel')
+    }
+  })
+
+  it('accepts a partial rum block (each category independently optional)', () => {
+    const result = InventoryAlertSchema.safeParse(validAlerts({ mismatchedScriptDetected: { destination: 'rum-mismatched-channel' } }))
+
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.rum?.mismatchedScriptDetected?.destination).toBe('rum-mismatched-channel')
+      expect(result.data.rum?.uninventoriedScriptDetected).toBeUndefined()
+    }
+  })
+
+  it('rejects an empty destination inside the rum block', () => {
+    const result = InventoryAlertSchema.safeParse(validAlerts({ cspViolationReported: { destination: '' } }))
+
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(result.error.issues.some((issue) => issue.message.includes('Alert destination cannot be empty'))).toBe(true)
+    }
+  })
+
+  it('rejects a rum category whose value is not a destination object', () => {
+    const result = InventoryAlertSchema.safeParse(validAlerts({ uninventoriedScriptDetected: 'not-a-destination' }))
+    expect(result.success).toBe(false)
+  })
+
+  describe('cspViolationReportedMinSessions (T035 prevalence floor)', () => {
+    it('accepts a positive integer alongside the opt-in destination', () => {
+      const result = InventoryAlertSchema.safeParse(validAlerts({ cspViolationReported: { destination: 'rum-csp-channel' }, cspViolationReportedMinSessions: 3 }))
+
+      expect(result.success).toBe(true)
+      if (result.success) {
+        expect(result.data.rum?.cspViolationReportedMinSessions).toBe(3)
+      }
+    })
+
+    it('is optional — the destination alone activates the category', () => {
+      const result = InventoryAlertSchema.safeParse(validAlerts({ cspViolationReported: { destination: 'rum-csp-channel' } }))
+
+      expect(result.success).toBe(true)
+      if (result.success) {
+        expect(result.data.rum?.cspViolationReportedMinSessions).toBeUndefined()
+      }
+    })
+
+    it.each([0, -1, 1.5, 'three'])('rejects %p', (value) => {
+      const result = InventoryAlertSchema.safeParse(validAlerts({ cspViolationReported: { destination: 'rum-csp-channel' }, cspViolationReportedMinSessions: value }))
+      expect(result.success).toBe(false)
+    })
+  })
+})
+
+describe('initiatorHostMatcher config (feature 011 — inventory-decided initiator constraint)', () => {
+  const scriptWith = (identifyWith: unknown) => ({
+    identifyWith,
+    authoriseWith: {
+      hashes: [{ timestamp: '2026-08-24T00:00:00.000Z', hash: { value: 'a'.repeat(64) } }],
+      authorisationInfo: { description: 'SDK loaded only by the checkout shell', authorised: true, date: '2026-08-24T00:00:00.000Z' },
+    },
+  })
+
+  it('accepts a standalone initiatorHostMatcher', () => {
+    expect(RawInventoryScriptInfoSchema.safeParse(scriptWith({ initiatorHostMatcher: '^pay\\.example\\.com$' })).success).toBe(true)
+  })
+
+  it('accepts it composed in an andMatcher beside a nameMatcher (the supply-chain pinning shape)', () => {
+    const result = RawInventoryScriptInfoSchema.safeParse(scriptWith({ andMatcher: [{ nameMatcher: '^https://cdn\\.example\\.net/sdk\\.js$' }, { initiatorHostMatcher: '^pay\\.example\\.com$' }] }))
+    expect(result.success).toBe(true)
+  })
+
+  it('accepts authorisationInfo alongside the pattern', () => {
+    const result = RawInventoryScriptInfoSchema.safeParse(scriptWith({ initiatorHostMatcher: '^pay\\.example\\.com$', authorisationInfo: { description: 'Checkout shell only', authorised: true, date: '2026-08-24T00:00:00.000Z' } }))
+    expect(result.success).toBe(true)
+  })
+
+  it('rejects an empty pattern', () => {
+    expect(RawInventoryScriptInfoSchema.safeParse(scriptWith({ initiatorHostMatcher: '' })).success).toBe(false)
+  })
+
+  it('rejects an invalid regex with the field named in the error', () => {
+    const result = RawInventoryScriptInfoSchema.safeParse(scriptWith({ initiatorHostMatcher: '[unclosed' }))
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(JSON.stringify(result.error.issues)).toContain('initiatorHostMatcher')
+    }
+  })
+
+  it('rejects unknown sibling keys (strict schema)', () => {
+    expect(RawInventoryScriptInfoSchema.safeParse(scriptWith({ initiatorHostMatcher: '^x$', extra: true })).success).toBe(false)
   })
 })

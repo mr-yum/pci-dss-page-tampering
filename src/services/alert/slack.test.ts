@@ -15,10 +15,11 @@ import { AuthorizedScriptFound } from '../../types/comparison/authorized-script-
 import { KnownHeaderWithUnauthorisedContentFound } from '../../types/comparison/known-header-unauthorised-content-found.js'
 import { KnownScriptWithUnauthorisedContentFound } from '../../types/comparison/known-script-unauthorised-content-found.js'
 import { MissingRequiredHeader } from '../../types/comparison/missing-required-header.js'
+import { MissingRequiredScript } from '../../types/comparison/missing-required-script.js'
 import { UnknownHeaderFound } from '../../types/comparison/unknown-header-found.js'
 import { UnknownScriptFound } from '../../types/comparison/unknown-script-found.js'
 import type { DetectedHeader } from '../../types/header.js'
-import type { InventoryAlert, InventoryHeaderInfo } from '../../types/inventory/model.js'
+import type { InventoryAlert, InventoryHeaderInfo, InventoryScriptInfo } from '../../types/inventory/model.js'
 import type { DetectedScript, Matcher } from '../../types/matcher/matcher.interface.js'
 import type { Target } from '../../types/target.js'
 import { createLogger } from '../../utils/logger.js'
@@ -142,6 +143,39 @@ describe('SlackAlertService - Typed Results Handling (Phase 4)', () => {
       expect(payload).toContain(`${mockTarget.url}/checkout`)
       expect(payload).not.toContain('super-secret')
       expect(payload).not.toContain('token=')
+    })
+
+    it('routes missing required scripts to the dedicated destination when configured', async () => {
+      mockAlertDestinations.detection.missingScriptDetected = { destination: 'missing-script-channel' }
+      const entry = {
+        identifyWith: { getDescription: () => "NameMatcher(pattern: '^https://monitor\\.example\\.com/agent\\.js$')" },
+        authoriseWith: { authorisationInfo: { description: 'Monitoring agent pinned by hash', authorised: true, date: new Date() } },
+        requiredOn: ['detection'],
+      } as unknown as InventoryScriptInfo
+      const result = new MissingRequiredScript(mockTarget, new Date(), entry.identifyWith.getDescription(), entry)
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertForTypedResults([result], mockTarget, mockAlertDestinations)
+
+      expect(sendMessageSpy).toHaveBeenCalledWith(expect.objectContaining({ channel: 'missing-script-channel' }))
+      const payload = JSON.stringify(sendMessageSpy.mock.calls[0]?.[0])
+      expect(payload).toContain('monitor\\\\.example\\\\.com')
+      expect(payload).toContain('Monitoring agent pinned by hash')
+    })
+
+    it('falls back to scriptMismatchDetected for missing required scripts without a dedicated destination', async () => {
+      const entry = {
+        identifyWith: { getDescription: () => 'agent entry' },
+        authoriseWith: { authorisationInfo: { description: 'Monitoring agent', authorised: true, date: new Date() } },
+        requiredOn: ['detection'],
+      } as unknown as InventoryScriptInfo
+      const result = new MissingRequiredScript(mockTarget, new Date(), 'agent entry', entry)
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertForTypedResults([result], mockTarget, mockAlertDestinations)
+
+      // An absent pinned control is closest to tampering, not to a discovery.
+      expect(sendMessageSpy).toHaveBeenCalledWith(expect.objectContaining({ channel: 'script-mismatch-channel' }))
     })
   })
 
@@ -1703,6 +1737,33 @@ describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
       await service.alertOnSuccess(summary, mockAlertDestinations)
 
       expect(consoleLogSpy).toHaveBeenCalledWith('[Alert → Success]: Workflow execution completed successfully')
+
+      consoleLogSpy.mockRestore()
+    })
+  })
+
+  describe('RUM alert mrkdwn safety', () => {
+    it('escapes backticks in attacker-influenced context values so they cannot break out of the code span', async () => {
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+      const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation()
+
+      await service.alertForRumObservation(
+        'rum_uninventoried_script_detected',
+        {
+          observation: { kind: 'external-script', identity: 'https://evil.example.org/skim.js?q=`*payload*`' },
+          prevalence: { first_seen: 1755600000123 },
+          first_route: '/checkout',
+          targetType: 'detection',
+          inventoryRef: 'abc1234',
+        },
+        mockAlertDestinations,
+      )
+
+      const payload = JSON.stringify(sendMessageSpy.mock.calls[0]?.[0])
+      // No raw backtick from the value survives inside the mrkdwn text: the
+      // only backticks left are the code-span delimiters the template adds.
+      expect(payload).not.toContain('?q=`')
+      expect(payload).toContain('?q=ˋ*payload*ˋ')
 
       consoleLogSpy.mockRestore()
     })

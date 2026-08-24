@@ -35,6 +35,8 @@ const NOT_OBSERVED_STATUS = 'not_observed'
 const KIND_LABELS: Record<string, string> = {
   external_script: 'External script',
   inline_script: 'Inline script',
+  // A required script that was never observed — external vs inline unknowable.
+  script: 'Script (absent)',
   header: 'Header',
 }
 

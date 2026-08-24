@@ -9,6 +9,8 @@ import { parseArguments } from './cli/parser.js'
 import type { IAlertService } from './interfaces/alert.js'
 import type { IReportCollector, ReportArtefactPaths } from './interfaces/report.js'
 import { ScriptInventoryRepository } from './repositories/inventory.js'
+import { createQueueSource } from './rum/drain.js'
+import { runRumCompare } from './rum/run.js'
 import { ConsoleAlertService } from './services/alert/console.js'
 import { SlackAlertService } from './services/alert/slack.js'
 import { HeaderComparisonService } from './services/comparison/header.js'
@@ -28,6 +30,7 @@ import { getInventoryWorkflows, type Inventory, type InventoryAlert, type Invent
 import type { ReportPass } from './types/report.js'
 import { PullTarget, type Target } from './types/target.js'
 import { mapGroupsSequentially } from './utils/concurrency.js'
+import { createLogger } from './utils/logger.js'
 import { getScriptContentMatchersFromInventory } from './utils/script/matcher.js'
 import { redactRepositoryTarget } from './utils/url.js'
 import { collectTotpSeedRefs } from './utils/workflow.js'
@@ -320,6 +323,47 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
     const inventory = await scriptInventoryService.pull(PullTarget.Inventory, config.branches.inventory)
     const fileList = inventory.map((i) => i.fileName).join(', ')
     log(`Successfully validated ${inventory.length} inventory file(s): ${fileList}`)
+    return
+  }
+
+  // RUM compare mode: drain the novel-observations queue and route each
+  // real-user observation against the inventory. No browser, no push — the
+  // whole mode lives in src/rum/run.ts so the integration test can drive it
+  // with the same entry point.
+  if (config.executionMode === ExecutionMode.RumCompare) {
+    // Guaranteed by CLI validation (--rum-queue-url is required with the mode);
+    // guarded here so a future config regression fails loudly, not with an
+    // undefined queue URL deep inside the drain.
+    if (config.rum.queueUrl === null) {
+      throw new Error('--mode rum-compare requires --rum-queue-url')
+    }
+
+    log('Preparing to run RUM comparison.')
+    await runRumCompare({
+      inventoryService: scriptInventoryService,
+      scriptComparison: scriptComparisonService,
+      alertService,
+      queueSource: createQueueSource(config.rum.queueUrl),
+      branches: { inventory: config.branches.inventory, detection: config.branches.detection },
+      reportDir,
+      log: createLogger('Main → RUM'),
+      // Inventory-pass observations feed the candidate flow (US3); when a
+      // candidate push lands, open the same PR --mode inventory would — its
+      // skip conditions (file://, non-GitHub, same branch, no token) and its
+      // failure semantics (throw → exit 2) live in the coordinator.
+      ensurePullRequest: (commitMessage, alertDestinations) =>
+        ensureInventoryPullRequest({
+          pullRequestService,
+          alertService,
+          repository: config.repository,
+          branches: config.branches,
+          gitToken: config.authentication.gitToken,
+          commitMessage,
+          alertDestinations,
+          log,
+        }),
+    })
+    log('RUM comparison completed successfully.')
     return
   }
 
@@ -657,6 +701,9 @@ function logConfiguration(config: RuntimeConfiguration): void {
   console.log(`[Main]:   Alerting: ${config.alerting.mode}${config.alerting.mode === 'slack' ? ` (token: ${redactToken(config.alerting.slackToken)})` : ''}`)
   // Log seed names only — the seed values are durable credentials.
   console.log(`[Main]:   TOTP Seeds: ${config.totp.seeds.size > 0 ? `${[...config.totp.seeds.keys()].join(', ')} (values redacted)` : '(none)'}`)
+  if (config.rum.queueUrl !== null) {
+    console.log(`[Main]:   RUM Queue: ${config.rum.queueUrl}`)
+  }
   console.log('')
 }
 

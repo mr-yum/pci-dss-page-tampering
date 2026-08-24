@@ -1,0 +1,108 @@
+name: Infrastructure
+
+# Same triggers as the Continuous Integration workflow, narrowed with a paths
+# filter: the Terraform sources under infra/ change far less often than src/,
+# and every step here downloads provider schemas from the registry.
+on:
+  workflow_dispatch:
+  push:
+    branches: ['main']
+    paths:
+      - 'infra/**'
+      - '.tflint.hcl'
+      - '.github/workflows/infra.yml'
+  pull_request:
+    branches: ['**']
+    paths:
+      - 'infra/**'
+      - '.tflint.hcl'
+      - '.github/workflows/infra.yml'
+
+# Read-only. Nothing here needs to write to the repository, and — by design —
+# nothing here needs AWS or Cloudflare credentials either: every `terraform
+# test` run is `command = plan` against `mock_provider` blocks, and `init` runs
+# with `-backend=false` so it only fetches provider schemas from the public
+# registry. There are no applies and no cloud secrets in this workflow.
+permissions:
+  contents: read
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          # No later step needs git auth; don't leave GITHUB_TOKEN in git config.
+          persist-credentials: false
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          # Latest 1.x. The modules require >= 1.7, and `override_during = plan`
+          # in the test suites requires >= 1.11.
+          terraform_version: '<2.0.0'
+          # The wrapper rewrites stdout/stderr into step outputs, which mangles
+          # `terraform test` progress reporting. We only need exit codes.
+          terraform_wrapper: false
+
+      - name: Check Terraform formatting
+        run: |
+          echo "▶️ Checking Terraform formatting..."
+          terraform fmt -check -recursive infra/
+          echo "✅ Terraform formatting is clean"
+
+      - name: Set up TFLint
+        uses: terraform-linters/setup-tflint@v6
+
+      # Runs before the `terraform init` steps so the recursive walk sees only
+      # source directories, not the provider caches `init` leaves behind. Only
+      # the bundled `terraform` ruleset is enabled (see .tflint.hcl), so `--init`
+      # downloads no plugins. TFLINT_CONFIG_FILE is used rather than `--config`
+      # because a relative `--config` is re-resolved inside each directory that
+      # `--recursive` descends into.
+      - name: Lint Terraform
+        working-directory: infra
+        env:
+          TFLINT_CONFIG_FILE: ${{ github.workspace }}/.tflint.hcl
+        run: |
+          echo "▶️ Linting Terraform..."
+          tflint --init
+          tflint --recursive --format compact
+          echo "✅ Terraform lint clean"
+
+      # The suites pin `lambda_package` to infra/tests/fixtures/placeholder.zip
+      # (a checked-in zip), so they are self-contained: no `npm run build:collector`
+      # is needed before this step. See infra/tests/README.md.
+      - name: Run module test suites
+        timeout-minutes: 15
+        run: |
+          echo "▶️ Testing Terraform modules..."
+          terraform -chdir=infra/tests init -backend=false
+          terraform -chdir=infra/tests test
+          echo "✅ Module test suites passed"
+
+      - name: Run CloudFront example test suite
+        timeout-minutes: 15
+        run: |
+          echo "▶️ Testing the CloudFront example stack..."
+          terraform -chdir=infra/examples/cloudfront-stack init -backend=false
+          terraform -chdir=infra/examples/cloudfront-stack test
+          echo "✅ CloudFront example passed"
+
+      - name: Run Cloudflare example test suite
+        timeout-minutes: 15
+        run: |
+          echo "▶️ Testing the Cloudflare example stack..."
+          terraform -chdir=infra/examples/cloudflare-stack init -backend=false
+          terraform -chdir=infra/examples/cloudflare-stack test
+          echo "✅ Cloudflare example passed"
+
+      # Source-level guard for the no-VPC contract: `terraform test` cannot
+      # assert the absence of a resource type across a plan.
+      - name: Check the no-VPC contract
+        run: |
+          echo "▶️ Checking the no-VPC contract..."
+          bash infra/tests/no-vpc-check.sh
+          echo "✅ No-VPC contract holds"

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    // Browser bundle: ES2020 IIFE built by esbuild. DOM lib, no Node types —
+    // the agent must never import Node built-ins, even transitively.
+    "target": "ES2020",
+    "lib": ["ES2020", "DOM"],
+    "types": ["jest"]
+  },
+  "include": ["src"]
+}

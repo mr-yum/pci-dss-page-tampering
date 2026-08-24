@@ -166,6 +166,10 @@ describe('Composite Matcher Integration Tests (T041-T043)', () => {
       expect(result.authorized).toBe(false)
     })
 
+    // ADAPTED (feature 011, evidence-aware matchers): these two previously
+    // asserted the composite's content pre-gate. The composite now delegates
+    // and the ContentMatcher child fails secure on its own missing evidence,
+    // so the decision stays DENIED with the delegation reason.
     it('should deny when header value is null', () => {
       const orMatcher = new OrMatcher<Matchable>([new ContentMatcher('.*')])
 
@@ -173,7 +177,7 @@ describe('Composite Matcher Integration Tests (T041-T043)', () => {
 
       const result = orMatcher.authorize(header)
       expect(result.authorized).toBe(false)
-      expect(result.reason).toBe('Resource content is null or empty')
+      expect(result.reason).toBe('No child matcher identified the resource')
     })
 
     it('should deny when header value is empty string', () => {
@@ -183,7 +187,7 @@ describe('Composite Matcher Integration Tests (T041-T043)', () => {
 
       const result = orMatcher.authorize(header)
       expect(result.authorized).toBe(false)
-      expect(result.reason).toBe('Resource content is null or empty')
+      expect(result.reason).toBe('No child matcher identified the resource')
     })
 
     it('should include top-level metadata path even when no alternatives match', () => {

@@ -21,6 +21,7 @@
 import type { EntryProvenance, SourceProvenance } from '../utils/provenance.js'
 import type { ExecutionMode } from './config.js'
 import type { ResponseResourceType } from './header.js'
+import type { TargetType } from './target.js'
 
 /**
  * Semantic version of the document shape.
@@ -29,16 +30,20 @@ import type { ResponseResourceType } from './header.js'
  * change in what an existing value means. Consumers should gate on the major
  * and tolerate unknown fields.
  */
-export const REPORT_SCHEMA_VERSION = '1.2.0'
+export const REPORT_SCHEMA_VERSION = '1.3.0'
 
 /** Which half of the system produced this document. */
 export type ReportPass = 'inventory' | 'detection'
 
 export type ReportRowStatus = 'authorised' | 'unauthorised_content' | 'unknown' | 'missing_required'
 
-export type ReportResourceKind = 'external_script' | 'inline_script' | 'header'
+/**
+ * `script` (added in 1.3.0) is the kind of a `missing_required` script row:
+ * the resource was never observed, so external vs inline cannot be stated.
+ */
+export type ReportResourceKind = 'external_script' | 'inline_script' | 'script' | 'header'
 
-export type ReportMatcherType = 'name' | 'header-name' | 'content' | 'hash' | 'host' | 'url' | 'workflow' | 'targetType' | 'csp-directive' | 'or' | 'and'
+export type ReportMatcherType = 'name' | 'header-name' | 'content' | 'hash' | 'host' | 'url' | 'workflow' | 'targetType' | 'csp-directive' | 'initiator-host' | 'or' | 'and'
 
 /** Authorisation metadata, with dates rendered as ISO-8601 UTC strings. */
 export type ReportAuthorisationInfo = {
@@ -117,8 +122,12 @@ export type ReportResourceRow = {
   identification: ReportMatcherRef | null
   authorisation: ReportAuthorisation
   inventoryEntry: ReportInventoryEntryRef | null
-  /** `missing_required` rows only. */
-  requiredOn: ResponseResourceType[] | null
+  /**
+   * `missing_required` rows only. Header rows carry response resource types
+   * (`document`, `script`, …); script rows carry the passes the control is
+   * required on (`inventory`, `detection`).
+   */
+  requiredOn: ResponseResourceType[] | TargetType[] | null
   responseResourceType: ResponseResourceType | null
 }
 

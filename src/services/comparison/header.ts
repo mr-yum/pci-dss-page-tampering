@@ -159,6 +159,20 @@ export class HeaderComparisonService implements IHeaderComparisonService {
     const identifyDescription = matchedEntry.identifyWith.getDescription()
     target.logger.log(`${headerLabel} identified using ${identifyDescription}.`)
 
+    // Fail-secure empty-value gate, symmetric with the synthetic script path
+    // (script.ts pre-gates null/empty content to UnknownScriptFound). A header
+    // value is always fully observed, so this path — not the matchers — owns
+    // the empty-content decision. Composite matchers are pure delegation
+    // (evidence-aware principle), and a provenance-only authoriser (host/url,
+    // which ignore content) would otherwise authorise an EMPTY security header
+    // — a neutralised control (an emptied content-security-policy disables
+    // enforcement). Treat an identified-but-empty header as unauthorised so it
+    // alerts rather than passing silently.
+    if (header.value.trim() === '') {
+      target.logger.log(`${headerLabel} identified but its value is empty — failing secure.`)
+      return new KnownHeaderWithUnauthorisedContentFound_Header(target, timestamp, header, matchedEntry, matchedEntry.authoriseWith.matcher, 'header value is empty', [])
+    }
+
     // T064: Authorize value using authoriseWith matcher (BR-4: case-sensitive value matching)
     // T031: Use Matchable interface (hash is optional, no type cast workaround needed)
     // Note: Matcher interface uses Matchable shape, so map header fields:

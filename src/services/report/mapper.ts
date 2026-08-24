@@ -104,6 +104,7 @@ const STATUS_BY_RESULT_TYPE: Record<string, ReportRowStatus> = {
   unknown_script_found: 'unknown',
   unknown_header_found: 'unknown',
   missing_required_header: 'missing_required',
+  missing_required_script: 'missing_required',
 }
 
 /**
@@ -147,6 +148,10 @@ function toAuthorisation(result: ComparisonResultType): ReportAuthorisation {
     return { matcher: toReportMatcherRefOrNull(result.inventoryEntry.authoriseWith.matcher), decision: 'not_applicable', failureReason: 'required header was absent from the response', metadataPath, effective }
   }
 
+  if (result.type === 'missing_required_script') {
+    return { matcher: toReportMatcherRefOrNull(result.inventoryEntry.authoriseWith.matcher), decision: 'not_applicable', failureReason: 'required script was absent from the page', metadataPath, effective }
+  }
+
   // Unknown resources were never identified, so nothing authorised or denied them.
   return { matcher: null, decision: 'not_applicable', failureReason: null, metadataPath, effective }
 }
@@ -155,7 +160,7 @@ function toInventoryEntryRef(result: ComparisonResultType, inventory: Inventory,
   if (!('inventoryEntry' in result)) return null
 
   const entry = result.inventoryEntry
-  const isScript = result.type === 'authorized_script' || result.type === 'known_script_unauthorised_content'
+  const isScript = result.type === 'authorized_script' || result.type === 'known_script_unauthorised_content' || result.type === 'missing_required_script'
   const index = isScript ? inventory.scripts.indexOf(entry as InventoryScriptInfo) : inventory.headers.indexOf(entry as InventoryHeaderInfo)
 
   return {
@@ -195,6 +200,11 @@ function describeResource(result: ComparisonResultType): { kind: ReportResourceK
       return { kind: 'header', name: result.header.name, value: result.header.value, url: result.header.url ?? null, content: result.header.value, hash: null }
     case 'missing_required_header':
       return { kind: 'header', name: result.headerName, value: null, url: result.url, content: null, hash: null }
+    case 'missing_required_script':
+      // Never observed, so there is no URL, content or hash — and external vs
+      // inline cannot be stated. The name is the entry's identify description,
+      // which is stable across runs (keeps the rowId stable too).
+      return { kind: 'script', name: result.scriptDescription, value: null, url: null, content: null, hash: null }
   }
 }
 
@@ -222,7 +232,9 @@ export function toReportRow(result: ComparisonResultType, inventory: Inventory, 
     identification,
     authorisation: toAuthorisation(result),
     inventoryEntry: toInventoryEntryRef(result, inventory, resolveProvenance),
-    requiredOn: result.type === 'missing_required_header' ? (result.inventoryEntry.requiredOn ?? null) : null,
+    // Both missing-required shapes carry the entry's requiredOn: header rows
+    // list response resource types, script rows list the passes it is pinned on.
+    requiredOn: result.type === 'missing_required_header' || result.type === 'missing_required_script' ? (result.inventoryEntry.requiredOn ?? null) : null,
     responseResourceType: result.type === 'missing_required_header' ? result.resourceType : null,
   }
 }

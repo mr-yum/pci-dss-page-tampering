@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    // AWS Lambda on the Node 24 runtime: Node types, no DOM.
+    "lib": ["ES2022"],
+    "types": ["jest", "node"]
+  },
+  "include": ["src", "dev-server.ts"]
+}

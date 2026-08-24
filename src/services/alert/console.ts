@@ -1,9 +1,11 @@
 import type { IAlertService, PullRequestFailureContext } from '../../interfaces/alert.js'
+import type { RumAlertCategory, RumAlertContext } from '../../types/alert.js'
 import { AlertType } from '../../types/alert.js'
 import type { ComparisonResultType } from '../../types/comparison.js'
 import type { KnownHeaderWithUnauthorisedContentFound } from '../../types/comparison/known-header-unauthorised-content-found.js'
 import type { KnownScriptWithUnauthorisedContentFound } from '../../types/comparison/known-script-unauthorised-content-found.js'
 import type { MissingRequiredHeader } from '../../types/comparison/missing-required-header.js'
+import type { MissingRequiredScript } from '../../types/comparison/missing-required-script.js'
 import type { UnknownHeaderFound } from '../../types/comparison/unknown-header-found.js'
 import type { UnknownScriptFound } from '../../types/comparison/unknown-script-found.js'
 import { ExecutionMode } from '../../types/config.js'
@@ -11,6 +13,7 @@ import type { ExecutionSummary } from '../../types/execution-summary.js'
 import type { InventoryAlert } from '../../types/inventory/model.js'
 import type { Target } from '../../types/target.js'
 import { extractHost, redactUrl } from '../../utils/url.js'
+import { resolveRumAlertDestination, rumAlertContextLines, rumAlertTitle } from './rum.js'
 
 /**
  * T042: Console-based alert service for local development and testing.
@@ -36,6 +39,7 @@ export class ConsoleAlertService implements IAlertService {
     const unknownHeaders = comparisonResults.filter((r): r is UnknownHeaderFound => r.type === 'unknown_header_found')
     const unauthorizedHeaders = comparisonResults.filter((r): r is KnownHeaderWithUnauthorisedContentFound => r.type === 'known_header_unauthorised_content')
     const missingHeaders = comparisonResults.filter((r): r is MissingRequiredHeader => r.type === 'missing_required_header')
+    const missingScripts = comparisonResults.filter((r): r is MissingRequiredScript => r.type === 'missing_required_script')
 
     // Log unknown scripts
     if (unknownScripts.length > 0) {
@@ -62,7 +66,28 @@ export class ConsoleAlertService implements IAlertService {
       this.logMissingHeaders(missingHeaders, target)
     }
 
+    // Required scripts absent from the page (e.g. a pinned monitoring agent removed).
+    if (missingScripts.length > 0) {
+      this.logMissingScripts(missingScripts, target)
+    }
+
     // AuthorizedScriptFound and AuthorizedHeaderFound are no-ops (no alert needed)
+  }
+
+  /**
+   * Log one real-user monitoring alert (feature 011) to the console.
+   * The destination is still resolved so a misconfigured category fails as
+   * loudly here as it would with Slack delivery enabled.
+   */
+  async alertForRumObservation(category: RumAlertCategory, context: RumAlertContext, alertDestinations: InventoryAlert): Promise<void> {
+    const destination = resolveRumAlertDestination(alertDestinations, category)
+
+    this.log(AlertType.Rum, rumAlertTitle(category))
+    console.log(`  Destination: ${destination.destination}`)
+    for (const line of rumAlertContextLines(category, context)) {
+      console.log(`  ${line.label}: ${line.value}`)
+    }
+    console.log()
   }
 
   private logUnknownScripts(scripts: UnknownScriptFound[], target: Target): void {
@@ -151,6 +176,16 @@ export class ConsoleAlertService implements IAlertService {
     console.log()
   }
 
+  private logMissingScripts(scripts: MissingRequiredScript[], target: Target): void {
+    this.log(AlertType.Script, `Required scripts missing for target: ${target.url}`)
+    for (const [index, result] of scripts.entries()) {
+      console.log(`    ${index + 1}. ${result.scriptDescription}`)
+      console.log(`       Required On: ${(result.inventoryEntry.requiredOn ?? []).join(', ')}`)
+      console.log(`       Justification: ${result.inventoryEntry.authoriseWith.authorisationInfo.description}`)
+    }
+    console.log()
+  }
+
   private log(alertType: AlertType, message: string): void {
     console.log(`[Console Alert -> ${alertType}]: ${message}`)
   }
@@ -222,7 +257,10 @@ export class ConsoleAlertService implements IAlertService {
         return summary.inventoryBranch ?? 'unknown'
       case ExecutionMode.Detection:
         return summary.detectionBranch ?? 'unknown'
+      // rum-compare reads both branches (detection targets from the detection
+      // branch, inventory targets from the inventory branch), so both are shown.
       case ExecutionMode.All:
+      case ExecutionMode.RumCompare:
         return `${summary.inventoryBranch ?? 'unknown'} (inventory), ${summary.detectionBranch ?? 'unknown'} (detection)`
     }
   }

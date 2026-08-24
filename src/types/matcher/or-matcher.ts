@@ -37,8 +37,12 @@ import type { AuthorisationInfo, AuthorisationMatcher, Matchable, Matcher } from
  *
  * Fail-secure behavior:
  * - Empty children array rejected at construction (FR-008, FR-012)
- * - Null/empty content triggers unauthorized result
  * - No matching child triggers unauthorized result
+ * - Every child fails secure on its own missing evidence (evidence-aware,
+ *   feature 011): ContentMatcher on null/empty content, HashMatcher on a
+ *   missing hash, HostMatcher/UrlMatcher on a missing url, and so on — the
+ *   composite adds no content pre-gate of its own, so evidence one child
+ *   needs cannot veto a sibling whose evidence is present
  * - Top-level authorised: false always denies (FR-011)
  */
 export class OrMatcher<T extends Matchable = Matchable> implements AuthorisationMatcher<T> {
@@ -111,11 +115,11 @@ export class OrMatcher<T extends Matchable = Matchable> implements Authorisation
    * Authorizes the resource using first-match-wins OR logic.
    *
    * Evaluation steps:
-   * 1. Validate resource content is not null/empty (fail-secure)
-   * 2. Find first child that identifies the resource (FR-013)
-   * 3. Get authorization result from matching child
-   * 4. Apply top-level authorisationInfo override if present (FR-004, FR-011)
-   * 5. Return result with metadata path from root to leaf (FR-009)
+   * 1. Find first child that identifies the resource (FR-013) — each child's
+   *    own evidence gate applies (evidence-aware, feature 011)
+   * 2. Get authorization result from matching child
+   * 3. Apply top-level authorisationInfo override if present (FR-004, FR-011)
+   * 4. Return result with metadata path from root to leaf (FR-009)
    *
    * @param resource - The resource to authorize
    * @returns AuthorizationResult with authorized flag, optional reason, and metadata path
@@ -129,12 +133,16 @@ export class OrMatcher<T extends Matchable = Matchable> implements Authorisation
       return { ...result, trace: { type: 'or', consulted } }
     }
 
-    // Fail-secure: null/empty content check
-    if (!resource || !resource.content || resource.content.trim() === '') {
+    // Evidence-aware (feature 011): no composite content pre-gate. Each child
+    // fails secure on its own missing evidence, so a HashMatcher alternative
+    // can authorise a RUM inline observation (hash present, content never
+    // transported) while a ContentMatcher alternative still denies on null
+    // content. A nullish resource remains fail-secure.
+    if (!resource) {
       return withTrace(
         {
           authorized: false,
-          reason: 'Resource content is null or empty',
+          reason: 'Resource is missing',
           metadataPath: this.authorisationInfo ? [this.authorisationInfo] : [],
         },
         [],

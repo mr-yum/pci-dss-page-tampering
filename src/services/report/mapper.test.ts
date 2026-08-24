@@ -4,7 +4,13 @@
  * @see ./mapper.ts
  */
 
-import { buildRowId, CONTENT_EXCERPT_LIMIT, redactForDisplay, sanitiseForDisplay, toObservedContent } from './mapper.js'
+import { MissingRequiredScript } from '../../types/comparison/missing-required-script.js'
+import type { Inventory } from '../../types/inventory/model.js'
+import { RawInventoryScriptInfoSchema } from '../../types/inventory/zod.js'
+import type { Target } from '../../types/target.js'
+import { createLogger } from '../../utils/logger.js'
+import { rawInventoryScriptInfoToInventoryScriptInfo } from '../../utils/script.js'
+import { buildRowId, CONTENT_EXCERPT_LIMIT, redactForDisplay, sanitiseForDisplay, toObservedContent, toReportRow } from './mapper.js'
 
 describe('sanitiseForDisplay', () => {
   it('leaves ordinary content untouched', () => {
@@ -102,6 +108,29 @@ describe('redaction is bounded', () => {
   it('still redacts a credential that appears within the bound', () => {
     expect(redactForDisplay('see https://user:hunter2@api.example.test/v1?k=SECRET').text).not.toContain('hunter2')
     expect(redactForDisplay('see https://user:hunter2@api.example.test/v1?k=SECRET').text).not.toContain('SECRET')
+  })
+})
+
+describe('toReportRow requiredOn', () => {
+  const mockTarget = { type: 'detection', url: 'https://example.com/checkout', workflow: { fileName: 'checkout.json', definition: { steps: [] } }, logger: createLogger('test') } as unknown as Target
+
+  it('populates requiredOn (the pinned passes) for a missing_required_script row', () => {
+    const entry = rawInventoryScriptInfoToInventoryScriptInfo(
+      RawInventoryScriptInfoSchema.parse({
+        identifyWith: { nameMatcher: '^https://static\\.example\\.com/agent\\.js$' },
+        authoriseWith: { hashes: [{ timestamp: '2026-08-20T00:00:00.000Z', hash: { value: 'a'.repeat(64) } }], authorisationInfo: { description: 'RUM agent', authorised: true, date: '2026-08-20T00:00:00.000Z' } },
+        requiredOn: ['inventory', 'detection'],
+      }),
+    )
+    const inventory = { scripts: [entry], headers: [] } as unknown as Inventory
+    const result = new MissingRequiredScript(mockTarget, new Date(), entry.identifyWith.getDescription(), entry)
+
+    const row = toReportRow(result, inventory, 'checkout', null)
+
+    expect(row.status).toBe('missing_required')
+    expect(row.requiredOn).toEqual(['inventory', 'detection'])
+    // The pass-scoped requiredOn is not a response resource type.
+    expect(row.responseResourceType).toBeNull()
   })
 })
 

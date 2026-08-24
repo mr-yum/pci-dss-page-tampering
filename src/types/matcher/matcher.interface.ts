@@ -35,6 +35,26 @@ export interface AuthorisationInfo {
 }
 
 /**
+ * Bounded content evidence for a resource whose full content was never
+ * transported (RUM inline scripts, feature 011 / data-model.md §6).
+ *
+ * Invariants (produced by `agent/src/fingerprint.ts`, validated by the beacon
+ * schema): `head` is a STRICT prefix and `tail` a STRICT suffix of the real
+ * content, each capped at 128 chars; `length` is the full content's length in
+ * UTF-16 code units. `head + "…" + tail` reconstruction is deliberately never
+ * used — matchers evaluate head and tail independently as anchored windows,
+ * failing secure when a pattern is not soundly evaluable against an excerpt.
+ */
+export interface ContentWindowEvidence {
+  /** Full content length in UTF-16 code units. */
+  length: number
+  /** Strict prefix of the content, ≤ 128 chars. */
+  head: string
+  /** Strict suffix of the content, ≤ 128 chars. */
+  tail: string
+}
+
+/**
  * Generic matchable resource (script or header).
  * Provides common structure for matcher operations.
  *
@@ -78,6 +98,18 @@ export interface Matchable {
    */
   url?: string
 
+  /**
+   * Anchored head/tail window evidence, populated ONLY when `content` is null
+   * because the full content was never transported (RUM inline scripts whose
+   * source exceeds one window). When the whole source fits a window,
+   * normalisation promotes it to `content` instead and leaves this unset —
+   * so `content` and `contentEvidence` are mutually exclusive by
+   * construction. Consumed by `ContentMatcher`; every other matcher ignores
+   * it. Synthetic detections never set it, so synthetic behaviour is
+   * untouched.
+   */
+  contentEvidence?: ContentWindowEvidence
+
   /** Stable checkout workflow identifier (for example `workflow-a`). */
   workflowId?: string
 
@@ -89,6 +121,28 @@ export interface Matchable {
    * trust a staging-only origin without also trusting it in production.
    */
   targetType?: string
+
+  /**
+   * URL of whatever inserted or loaded this script, when attributable —
+   * consumed by `InitiatorHostMatcher` so an inventory entry can constrain
+   * WHO may load a script, independent of the script's own `url`.
+   *
+   * Populated for:
+   *   - RUM external scripts: the inserting script's URL (agent insertion
+   *     patch), falling back to the document URL for parser-inserted tags.
+   *   - RUM inline scripts: the same initiator the observation carried (for
+   *     inline, `url` holds the identical value per the synthetic inline
+   *     semantics — this field exists so external scripts, whose `url` is
+   *     their OWN address, can still expose provenance to matchers).
+   *   - Synthetic inline scripts: the page-attribution shim's initiator.
+   *   - Synthetic external scripts: the CDP request initiator (script-stack
+   *     top frame URL, else the initiator/document URL) captured by the
+   *     response handlers.
+   *
+   * Undefined when attribution genuinely failed. `InitiatorHostMatcher`
+   * fails secure when it is missing or unparseable.
+   */
+  initiator?: string
 }
 
 /**
@@ -129,7 +183,7 @@ export interface Matcher<T extends Matchable = Matchable> {
    * Returns the matcher type discriminator.
    * Used for logging, debugging, and type narrowing.
    */
-  getType(): 'name' | 'header-name' | 'content' | 'hash' | 'host' | 'url' | 'workflow' | 'targetType' | 'csp-directive' | 'or' | 'and'
+  getType(): 'name' | 'header-name' | 'content' | 'hash' | 'host' | 'url' | 'workflow' | 'targetType' | 'csp-directive' | 'initiator-host' | 'or' | 'and'
 
   /**
    * Returns the pattern, hashes, or child matchers used by this matcher.
@@ -190,8 +244,21 @@ export interface Matcher<T extends Matchable = Matchable> {
    * - OrMatcher: Returns authorized if ANY child authorizes (first-match-wins)
    * - AndMatcher: Returns authorized if ALL children authorize (short-circuit on failure)
    *
-   * Edge cases:
-   * - Null/empty resource.content: returns { authorized: false, reason: "content is null or empty" }
+   * Edge cases (evidence-aware, feature 011): every matcher fails secure on
+   * its OWN missing evidence —
+   * - ContentMatcher/HeaderNameMatcher/CspDirectiveMatcher: null/empty
+   *   resource.content → { authorized: false, reason: "content is null or empty" }
+   * - ContentMatcher only: when content is null but `contentEvidence` head/tail
+   *   windows are present, a `^`-anchored pattern is evaluated against the head
+   *   and a `$`-anchored one against the tail — a window MATCH is a sound
+   *   accept, a window non-match or non-evaluable pattern fails secure with an
+   *   explicit bounded-excerpt reason (never "content is null or empty")
+   * - HashMatcher: missing/empty resource.hash → "hash is missing" (content is
+   *   not pre-gated: RUM inline observations carry a hash but no content)
+   * - HostMatcher/UrlMatcher: missing url; WorkflowMatcher: missing workflowId;
+   *   TargetTypeMatcher: missing targetType
+   * - OrMatcher/AndMatcher: delegate — no composite content pre-gate; each
+   *   child applies its own gate
    * - Top-level authorisationInfo.authorised: false always denies regardless of matcher result
    *
    * @param options - Opt-in extras. `{ collectTrace: true }` additionally

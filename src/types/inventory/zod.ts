@@ -3,10 +3,11 @@ import { z } from 'zod'
 import { RESPONSE_RESOURCE_TYPES } from '../header.js'
 import { createMatcher } from '../matcher/matcher-factory.js'
 import { OrMatcher } from '../matcher/or-matcher.js'
+import { TARGET_TYPES } from '../target.js'
 import type { RawTargetDetection, RawTargetInventory } from '../target/raw.js'
 import { SHA256HashSchema } from '../zod.js'
 import { MatcherConfigSchema } from './matcher-config-schema.js'
-import type { AlertDestination, AlertDetection, AlertInventory, AuthorizeWithConfig, InventoryAlert, InventoryAuthorisationInfo, InventoryScriptHashInfo } from './model.js'
+import type { AlertDestination, AlertDetection, AlertInventory, AlertRum, AuthorizeWithConfig, InventoryAlert, InventoryAuthorisationInfo, InventoryScriptHashInfo } from './model.js'
 import type { RawAuthorizeWithConfig, RawInventory, RawInventoryHeaderInfo, RawInventoryScriptInfo, RawInventoryTarget, RawInventoryWorkflow } from './raw.js'
 
 export const AlertDestinationSchema: z.ZodType<AlertDestination> = z.object({
@@ -24,11 +25,40 @@ export const AlertDetectionSchema: z.ZodType<AlertDetection> = z.object({
   newHeaderDetected: AlertDestinationSchema,
   headerMismatchDetected: AlertDestinationSchema.optional(),
   missingHeaderDetected: AlertDestinationSchema.optional(),
+  missingScriptDetected: AlertDestinationSchema.optional(),
+})
+
+/**
+ * Destinations for the `rum_*` alert categories (feature 011). Every key is
+ * optional so existing inventories parse unchanged. The two script categories
+ * fall back to the analogous synthetic detection destination at resolution
+ * time; `cspViolationReported` never falls back — the category is opt-in per
+ * target (T035): configuring the destination IS the activation switch, and
+ * omitting it keeps CSP violations recorded-only (extension noise would flood
+ * the header channels if the generic fallback chain applied).
+ */
+export const AlertRumSchema: z.ZodType<AlertRum> = z.object({
+  uninventoriedScriptDetected: AlertDestinationSchema.optional(),
+  mismatchedScriptDetected: AlertDestinationSchema.optional(),
+  cspViolationReported: AlertDestinationSchema.optional(),
+  cspViolationReportedMinSessions: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe(
+      'Prevalence floor for rum_csp_violation_reported: alert only when the observed session count meets this value. ' +
+        'Honest limitation: first-sighting queue messages carry no live session counters, so the available prevalence at drain time is always 1 — ' +
+        'a value of 1 (or omitting the field) alerts on first sighting, while any value above 1 gates every first sighting to recorded-only and ' +
+        'defers alerting to operator-driven re-evaluation of the archived counters. There is deliberately no collector-side re-enqueue when ' +
+        'counters later cross the threshold; that is the future refinement if thresholds prove needed.',
+    ),
 })
 
 export const InventoryAlertSchema: z.ZodType<InventoryAlert> = z.object({
   inventory: AlertInventorySchema,
   detection: AlertDetectionSchema,
+  rum: AlertRumSchema.optional(),
   successNotification: AlertDestinationSchema,
 })
 
@@ -153,6 +183,12 @@ export const RawInventoryScriptInfoSchema: z.ZodType<RawInventoryScriptInfo> = z
   .object({
     identifyWith: MatcherConfigSchema,
     authoriseWith: RawAuthorizeWithConfigSchema,
+    // Passes on which some detected script must be identified by this entry —
+    // absence yields a MissingRequiredScript alert. Unlike the header
+    // requiredOn, no identifyWith restriction is needed: presence is tested
+    // against real detected scripts (which carry name, content, hash, url), so
+    // every matcher type evaluates with its normal semantics.
+    requiredOn: z.array(z.enum(TARGET_TYPES)).min(1).optional(),
   })
   .superRefine((entry, ctx) => {
     // HeaderNameMatcher matches case-insensitively (RFC 7230 header names).

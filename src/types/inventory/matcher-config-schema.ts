@@ -80,6 +80,13 @@ const UrlMatcherConfigSchema = z
   })
   .strict()
 
+const InitiatorHostMatcherConfigSchema = z
+  .object({
+    initiatorHostMatcher: z.string().min(1, 'initiatorHostMatcher must not be empty'),
+    authorisationInfo: InventoryAuthorisationInfoRawSchema.optional(),
+  })
+  .strict()
+
 const WorkflowMatcherConfigSchema = z
   .object({
     workflowMatcher: z.string().min(1, 'workflowMatcher must not be empty'),
@@ -170,6 +177,7 @@ export const MatcherConfigSchema: z.ZodType<any> = z
     HeaderNameMatcherConfigSchema,
     ContentMatcherConfigSchema,
     HostMatcherConfigSchema,
+    InitiatorHostMatcherConfigSchema,
     UrlMatcherConfigSchema,
     WorkflowMatcherConfigSchema,
     TargetTypeMatcherConfigSchema,
@@ -231,6 +239,19 @@ export const MatcherConfigSchema: z.ZodType<any> = z
           code: 'custom',
           message: `Invalid regex in hostMatcher: "${val.hostMatcher}". Error: ${errorMessage}. Ensure all brackets are closed and escape sequences are valid.`,
           path: ['hostMatcher'],
+        })
+      }
+    }
+
+    if ('initiatorHostMatcher' in val) {
+      try {
+        new RegExp(val.initiatorHostMatcher)
+      } catch (e: unknown) {
+        const errorMessage = e instanceof Error ? e.message : 'Unknown regex error'
+        ctx.addIssue({
+          code: 'custom',
+          message: `Invalid regex in initiatorHostMatcher: "${val.initiatorHostMatcher}". Error: ${errorMessage}. Ensure all brackets are closed and escape sequences are valid.`,
+          path: ['initiatorHostMatcher'],
         })
       }
     }

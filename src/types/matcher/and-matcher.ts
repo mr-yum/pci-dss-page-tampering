@@ -39,9 +39,12 @@ import type { AuthorisationInfo, AuthorisationMatcher, Matchable, Matcher } from
  * Fail-secure behavior:
  * - Empty children array rejected at construction (FR-008, FR-012)
  *   CRITICAL: Prevents Array.every([]) === true (vacuous truth security violation)
- * - Null/empty content triggers unauthorized result
  * - Any child identification failure triggers unauthorized result
  * - Any child authorization failure triggers unauthorized result (short-circuit)
+ * - Every child fails secure on its own missing evidence (evidence-aware,
+ *   feature 011): the composite adds no content pre-gate of its own — a
+ *   conjunction of, say, targetTypeMatcher + hashes can authorise a RUM
+ *   observation that carries a hash but no content
  * - Top-level authorised: false always denies (FR-011)
  */
 export class AndMatcher<T extends Matchable = Matchable> implements AuthorisationMatcher<T> {
@@ -122,12 +125,12 @@ export class AndMatcher<T extends Matchable = Matchable> implements Authorisatio
    * Authorizes the resource using AND logic with short-circuit evaluation.
    *
    * Evaluation steps:
-   * 1. Validate resource content is not null/empty (fail-secure)
-   * 2. Verify all children identify the resource
-   * 3. Evaluate each child's authorization in sequence
-   * 4. Short-circuit on first authorization failure (FR-014)
-   * 5. Apply top-level authorisationInfo override if present (FR-004, FR-011)
-   * 6. Return result with metadata path from all evaluated children (FR-009)
+   * 1. Verify all children identify the resource — each child's own evidence
+   *    gate applies (evidence-aware, feature 011)
+   * 2. Evaluate each child's authorization in sequence
+   * 3. Short-circuit on first authorization failure (FR-014)
+   * 4. Apply top-level authorisationInfo override if present (FR-004, FR-011)
+   * 5. Return result with metadata path from all evaluated children (FR-009)
    *
    * @param resource - The resource to authorize
    * @returns AuthorizationResult with authorized flag, optional reason, and metadata path
@@ -141,12 +144,16 @@ export class AndMatcher<T extends Matchable = Matchable> implements Authorisatio
       return { ...result, trace: { type: 'and', consulted } }
     }
 
-    // Fail-secure: null/empty content check
-    if (!resource || !resource.content || resource.content.trim() === '') {
+    // Evidence-aware (feature 011): no composite content pre-gate. Each child
+    // fails secure on its own missing evidence — a conjunct that needs content
+    // still denies on null content with its own reason, while conjuncts whose
+    // evidence is present (hash, url, targetType, …) evaluate it. A nullish
+    // resource remains fail-secure.
+    if (!resource) {
       return withTrace(
         {
           authorized: false,
-          reason: 'Resource content is null or empty',
+          reason: 'Resource is missing',
           metadataPath: this.authorisationInfo ? [this.authorisationInfo] : [],
         },
         [],

@@ -2,7 +2,7 @@ import type { ComparisonResultType } from '../comparison.js'
 import type { SHA256Hash } from '../hash.js'
 import type { ResponseResourceType } from '../header.js'
 import type { Matcher } from '../matcher/matcher.interface.js'
-import type { TargetDetection, TargetInventory } from '../target.js'
+import type { TargetDetection, TargetInventory, TargetType } from '../target.js'
 import type { RawInventory } from './raw.js'
 
 export type InventoryAuthorisationInfo = {
@@ -32,6 +32,14 @@ export type InventoryScriptHashInfo = {
 export type InventoryScriptInfo = {
   identifyWith: Matcher
   authoriseWith: AuthorizeWithConfig
+  /**
+   * Passes (`inventory` / `detection`) on which some detected script must be
+   * identified by this entry's `identifyWith` — absence yields a
+   * MissingRequiredScript finding. The script-side analogue of the header
+   * `requiredOn`; used to pin monitoring controls (e.g. the RUM agent) so
+   * their removal from the page alerts.
+   */
+  requiredOn?: TargetType[] | undefined
 }
 
 /**
@@ -90,11 +98,51 @@ export type AlertDetection = {
   newHeaderDetected: AlertDestination
   headerMismatchDetected?: AlertDestination | undefined
   missingHeaderDetected?: AlertDestination | undefined
+  missingScriptDetected?: AlertDestination | undefined
+}
+
+/**
+ * Destinations for real-user monitoring alert categories (feature 011,
+ * data-model.md §8). Each key mirrors one `rum_*` category:
+ *
+ * - `uninventoriedScriptDetected` → `rum_uninventoried_script_detected`
+ * - `mismatchedScriptDetected` → `rum_mismatched_script_detected`
+ * - `cspViolationReported` → `rum_csp_violation_reported`
+ *
+ * Every key is optional, as is the whole block. The two script categories
+ * fall back to the analogous synthetic detection destination when
+ * unconfigured (see `resolveRumAlertDestination` in
+ * ../../services/alert/rum.ts) so a missing config line never silently drops
+ * an alert. `cspViolationReported` deliberately does NOT fall back: the
+ * category is opt-in per target (T035) — real-user CSP reports carry heavy
+ * browser-extension noise, so an implicit activation via the header-channel
+ * fallbacks would flood those channels the moment the feature ships. No
+ * configured destination means the violation is recorded and counted, never
+ * alerted (the phase-1..3 behaviour, now the permanent default).
+ */
+export type AlertRum = {
+  uninventoriedScriptDetected?: AlertDestination | undefined
+  mismatchedScriptDetected?: AlertDestination | undefined
+  cspViolationReported?: AlertDestination | undefined
+  /**
+   * Optional prevalence gate for `rum_csp_violation_reported` (positive
+   * integer): the alert fires only when the observation's available session
+   * count meets this floor. HONEST LIMITATION — first-sighting queue messages
+   * carry novelty context only, never live session counters, so the only
+   * prevalence available at drain time is the first sighting itself (one
+   * session). A value of 1 (or leaving this unset) alerts on first sighting;
+   * any value above 1 therefore gates every first sighting to recorded and
+   * effectively defers alerting to operator-driven re-evaluation of the
+   * archive/novelty counters. Collector-side re-enqueue once counters cross
+   * the threshold is the future refinement if thresholds prove needed.
+   */
+  cspViolationReportedMinSessions?: number | undefined
 }
 
 export type InventoryAlert = {
   inventory: AlertInventory
   detection: AlertDetection
+  rum?: AlertRum | undefined
   successNotification: AlertDestination
 }
 

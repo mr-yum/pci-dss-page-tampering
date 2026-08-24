@@ -26,13 +26,18 @@ REQUIRED PARAMETERS:
 
 OPTIONAL PARAMETERS:
   --mode <MODE>            Execution mode (default: all)
-                           Values: inventory, detection, all, validate
+                           Values: inventory, detection, all, validate, rum-compare
                            - inventory: Update baseline inventory (writes to Git)
                            - detection: Monitor against inventory (read-only)
                            - all: Run inventory first, then detection sequentially
                            - validate: Fully deserialize inventory (schema + matchers
                              + workflow resolution) and exit. No browser, no alerts,
                              no push. Intended for CI checks in the inventory repo.
+                           - rum-compare: Drain the real-user novel-observations
+                             queue (--rum-queue-url, required) and compare each
+                             observation against the inventory. No browser; AWS
+                             credentials come from the ambient environment,
+                             never from CLI parameters.
 
   --target <NAME>          Target configuration name to process
                            Default: process all targets in inventory
@@ -74,6 +79,11 @@ OPTIONAL PARAMETERS:
                            redacted — treat the output directory as having the
                            same sensitivity as the inventory repository, and
                            scope who can download it accordingly.
+
+  --rum-queue-url <URL>    Novel-observations queue to drain in rum-compare mode
+                           Required with --mode rum-compare; rejected in any
+                           other mode. Accepts an https:// SQS queue URL or a
+                           file:// directory (local development adapter).
 
   --help, -h               Display this help message and exit
 
@@ -165,12 +175,25 @@ WORKFLOW BEHAVIOR:
     exit-2 messages name the offending file; pre-read failures (clone, branch
     checkout) surface the underlying git error instead.
 
+  RUM Compare Mode (--mode rum-compare):
+  - Loads both passes' inventories, recording the commit SHA each pass is
+    judged against
+  - Drains --rum-queue-url until empty; malformed or unknown-target messages
+    are dead-lettered, never silently deleted
+  - Routes observations through the comparison services and the rum_*
+    alert categories; no inventory push
+  - Logs a run summary; with --report-dir, writes rum-compare/rum-summary.json
+  - Exit codes: 0 = success (empty queue and DLQ'd messages included),
+    1 = argument error, 2 = git/AWS failure
+
 ALERTING BEHAVIOR:
 
   With --slack-token:
   - Alerts sent to Slack channels configured in inventory JSON files
   - Categories: new_inventory_script_identified, uninventoried_script_detected,
     mismatched_script_detected
+  - RUM categories (rum-compare mode): rum_uninventoried_script_detected,
+    rum_mismatched_script_detected, rum_csp_violation_reported
 
   Without --slack-token:
   - Alerts logged to console (stdout)

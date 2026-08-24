@@ -1,0 +1,17 @@
+{
+  "v": 1,
+  "session": {
+    "id": "4d5e6f7a-8b9c-4d0e-9f1a-2b3c4d5e6f7a",
+    "agentVersion": "1.0.0"
+  },
+  "page": { "url": "https://pay.example.com/checkout" },
+  "observations": [
+    {
+      "kind": "csp-violation",
+      "directive": "script-src",
+      "blockedUri": "https://evil.example/x.js",
+      "route": "/checkout",
+      "ts": 1755600004000
+    }
+  ]
+}

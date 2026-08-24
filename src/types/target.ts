@@ -9,8 +9,15 @@ export type TargetDetection = Target & {
   type: 'detection'
 }
 
+/**
+ * Runtime counterpart to `Target['type']` for inventory validation — the two
+ * passes a script entry's `requiredOn` clause can pin presence to.
+ */
+export const TARGET_TYPES = ['inventory', 'detection'] as const
+export type TargetType = (typeof TARGET_TYPES)[number]
+
 export type Target = {
-  type: 'inventory' | 'detection'
+  type: TargetType
   /** Stable identifier for the checkout workflow this target exercises. */
   workflowId?: string | undefined
   name?: string | undefined

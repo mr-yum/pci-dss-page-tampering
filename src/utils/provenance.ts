@@ -67,7 +67,7 @@ export type EntryProvenance = {
   entry: SourceProvenance
   identifyWith: SourceProvenance
   authoriseWith: SourceProvenance
-  /** The `requiredOn` clause, for header entries that declare one. */
+  /** The `requiredOn` clause, for entries (header or script) that declare one. */
   requiredOn?: SourceProvenance | undefined
   /**
    * The node that actually authorised this resource.
@@ -119,7 +119,7 @@ type ScriptResultWithEntry = Extract<ComparisonResultType, { inventoryEntry: Inv
 type HeaderResultWithEntry = Extract<ComparisonResultType, { inventoryEntry: InventoryHeaderInfo }>
 type ResultWithEntry = ScriptResultWithEntry | HeaderResultWithEntry
 
-const SCRIPT_RESULT_TYPES = new Set(['known_script_unauthorised_content', 'authorized_script'])
+const SCRIPT_RESULT_TYPES = new Set(['known_script_unauthorised_content', 'authorized_script', 'missing_required_script'])
 const HEADER_RESULT_TYPES = new Set(['known_header_unauthorised_content', 'authorized_header', 'missing_required_header'])
 
 /** Results that were authorised, and so should have a resolvable authorising node. */
@@ -340,9 +340,9 @@ export function createProvenanceResolver(inventory: Inventory): ProvenanceResolv
 
     const unresolved = (reason: string): EntryProvenance => ({ entry, identifyWith, authoriseWith, authorisedBy: null, unresolvedReason: reason })
 
-    // A required header that never arrived was never authorised; the absence is
-    // the finding, and `requiredOn` is the clause that makes it one.
-    if (result.type === 'missing_required_header') {
+    // A required resource that never arrived was never authorised; the absence
+    // is the finding, and `requiredOn` is the clause that makes it one.
+    if (result.type === 'missing_required_header' || result.type === 'missing_required_script') {
       const requiredOn = locate(`${basePointer}/requiredOn`)
 
       return {
@@ -351,7 +351,7 @@ export function createProvenanceResolver(inventory: Inventory): ProvenanceResolv
         authoriseWith,
         ...(requiredOn !== null ? { requiredOn } : {}),
         authorisedBy: null,
-        unresolvedReason: 'required header absent from the response; no authorisation was evaluated',
+        unresolvedReason: result.type === 'missing_required_header' ? 'required header absent from the response; no authorisation was evaluated' : 'required script absent from the page; no authorisation was evaluated',
       }
     }
 

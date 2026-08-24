@@ -11,6 +11,7 @@ export enum ExecutionMode {
   Detection = 'detection',
   All = 'all',
   Validate = 'validate',
+  RumCompare = 'rum-compare',
 }
 
 /**
@@ -75,6 +76,17 @@ export type ReportingConfiguration = Readonly<{
 }>
 
 /**
+ * Real-user monitoring configuration (feature 011, `--mode rum-compare`).
+ *
+ * The queue URL is only ever set for that mode — the CLI schema rejects it
+ * everywhere else — so a null here simply means "not a RUM run".
+ */
+export type RumConfiguration = Readonly<{
+  /** Novel-observations queue URL (https:// SQS or file:// local adapter). */
+  queueUrl: string | null
+}>
+
+/**
  * Complete runtime configuration object
  * Passed to services for workflow execution
  */
@@ -87,6 +99,7 @@ export type RuntimeConfiguration = Readonly<{
   alerting: AlertingConfiguration
   totp: TotpConfiguration
   reporting: ReportingConfiguration
+  rum: RumConfiguration
 }>
 
 /**

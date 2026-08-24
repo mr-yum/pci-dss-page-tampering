@@ -136,6 +136,12 @@ describe('Fail-Secure Edge Cases (T065-T070)', () => {
     })
   })
 
+  // ADAPTED (feature 011, evidence-aware matchers): T067/T068 previously
+  // asserted the composites' own content pre-gate. Composites now delegate,
+  // and the ContentMatcher child fails secure on its own missing evidence
+  // (identify() returns false), so every decision below stays DENIED — only
+  // the reason changes to the delegation wording. The pre-gate had to go so
+  // hash-only RUM evidence can reach a HashMatcher child.
   describe('T067: Whitespace-only content triggering unauthorized', () => {
     it('should deny OrMatcher when content is only spaces', () => {
       const orMatcher = new OrMatcher([new ContentMatcher('.*')], authInfo('Should match anything'))
@@ -144,7 +150,7 @@ describe('Fail-Secure Edge Cases (T065-T070)', () => {
 
       const result = orMatcher.authorize(resource)
       expect(result.authorized).toBe(false)
-      expect(result.reason).toContain('Resource content is null or empty')
+      expect(result.reason).toContain('No child matcher identified')
     })
 
     it('should deny AndMatcher when content is only tabs', () => {
@@ -154,7 +160,7 @@ describe('Fail-Secure Edge Cases (T065-T070)', () => {
 
       const result = andMatcher.authorize(resource)
       expect(result.authorized).toBe(false)
-      expect(result.reason).toContain('Resource content is null or empty')
+      expect(result.reason).toContain('Not all child matchers identified')
     })
 
     it('should deny when content is newlines and spaces', () => {
@@ -164,7 +170,7 @@ describe('Fail-Secure Edge Cases (T065-T070)', () => {
 
       const result = orMatcher.authorize(resource)
       expect(result.authorized).toBe(false)
-      expect(result.reason).toContain('Resource content is null or empty')
+      expect(result.reason).toContain('No child matcher identified')
     })
 
     it('should authorize when content has actual characters with surrounding whitespace', () => {
@@ -185,7 +191,7 @@ describe('Fail-Secure Edge Cases (T065-T070)', () => {
 
       const result = orMatcher.authorize(resource)
       expect(result.authorized).toBe(false)
-      expect(result.reason).toContain('Resource content is null or empty')
+      expect(result.reason).toContain('No child matcher identified')
     })
 
     it('should deny AndMatcher when content is null', () => {
@@ -195,7 +201,7 @@ describe('Fail-Secure Edge Cases (T065-T070)', () => {
 
       const result = andMatcher.authorize(resource)
       expect(result.authorized).toBe(false)
-      expect(result.reason).toContain('Resource content is null or empty')
+      expect(result.reason).toContain('Not all child matchers identified')
     })
 
     it('should deny nested composite when content is null', () => {
@@ -207,7 +213,7 @@ describe('Fail-Secure Edge Cases (T065-T070)', () => {
 
       const result = orMatcher.authorize(resource)
       expect(result.authorized).toBe(false)
-      expect(result.reason).toContain('Resource content is null or empty')
+      expect(result.reason).toContain('No child matcher identified')
     })
 
     it('should deny when content is empty string', () => {
@@ -217,7 +223,7 @@ describe('Fail-Secure Edge Cases (T065-T070)', () => {
 
       const result = orMatcher.authorize(resource)
       expect(result.authorized).toBe(false)
-      expect(result.reason).toContain('Resource content is null or empty')
+      expect(result.reason).toContain('No child matcher identified')
     })
   })
 
@@ -340,7 +346,8 @@ describe('Fail-Secure Edge Cases (T065-T070)', () => {
 
       const result = orMatcher.authorize(resource)
       expect(result.authorized).toBe(false)
-      expect(result.reason).toContain('Resource content is null or empty')
+      // ADAPTED (feature 011): child evidence gates carry the denial now.
+      expect(result.reason).toContain('No child matcher identified')
     })
 
     it('should handle single-child composite with authorised: false', () => {
@@ -360,8 +367,9 @@ describe('Fail-Secure Edge Cases (T065-T070)', () => {
 
       const result = orMatcher.authorize(resource)
       expect(result.authorized).toBe(false)
-      expect(result.reason).toContain('Resource content is null or empty')
-      // Override doesn't apply because fail-secure check happens first
+      // ADAPTED (feature 011): child evidence gates carry the denial now.
+      expect(result.reason).toContain('No child matcher identified')
+      // Override doesn't apply because no child identified the resource
     })
   })
 })

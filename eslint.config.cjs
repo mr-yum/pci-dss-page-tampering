@@ -8,7 +8,7 @@ const globals = require('globals')
 
 module.exports = tseslint.config(
   {
-    ignores: ['node_modules/**', 'dist/**', '.swc/**', 'coverage/**'],
+    ignores: ['node_modules/**', 'dist/**', '.swc/**', 'coverage/**', 'test/fixtures/rum-page/**'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
@@ -41,6 +41,16 @@ module.exports = tseslint.config(
           ],
         },
       ],
+    },
+  },
+  {
+    // Browser agent code: DOM globals, and never any Node built-ins — the
+    // bundle ships into customer pages and must stay dependency-free.
+    files: ['agent/**/*.ts'],
+    languageOptions: {
+      globals: {
+        ...globals.browser,
+      },
     },
   },
   {
