@@ -23,7 +23,7 @@ Both edges authenticate to the origin with an edge-injected shared-secret header
 
 ## Processing pipeline (per accepted request)
 
-1. Edge auth (above) → 2. `Origin` → `origin_targets` lookup → stamp `target_id`, `target_type` → 3. strict Zod parse → 4. Firehose `PutRecord` (verbatim beacon + stamp + `received_at`) → 5. per observation (except `agent-health`): novelty conditional write → first sighting? enqueue SQS message (queue-message.md) : update counters.
+1. Edge auth (above) → 2. `Origin` → `origin_targets` lookup → stamp `target_id`, `target_type` → 3. strict Zod parse → 4. Firehose `PutRecord` (beacon + stamp + `received_at`; `page.url` is redacted to origin + pathname before archival — query and fragment stripped, the same privacy rule as agent routes and CSP document URLs — so tokens/order ids never enter the one-year archive; observations are otherwise archived verbatim) → 5. per observation (except `agent-health`): novelty conditional write → first sighting? enqueue SQS message (queue-message.md) : update counters.
 
 Failure semantics: steps 4–5 are at-least-once; a crash between them can re-deliver on retry — downstream idempotency (novelty pk, routing) absorbs it. A Firehose failure fails the request internally (retry via client resend is acceptable loss — coverage is statistical) but never changes the 204.
 

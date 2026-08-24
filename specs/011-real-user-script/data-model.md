@@ -16,7 +16,13 @@ The unit of transport and archival. One session emits one or more beacons per fl
 
 **Global caps** (enforced by Zod and by edge/Lambda body limits): total serialized body ≤ 32 KB; every string field individually capped; unknown keys anywhere → reject whole beacon.
 
-**Privacy invariant (structural)**: no field can carry free-form page content except `head`/`tail` (bounded 128 chars each) — no cookies, no form values, no customer identifiers exist in the schema.
+**Privacy invariant (bounded exposure, not semantic exclusion)**: the schema **bounds** how much content any field can carry, rather than guaranteeing none of it is sensitive. `head`/`tail` are bounded (128 chars each) but arbitrary — the first/last bytes of an inline script — and URL fields, though capped, could otherwise carry query strings that routinely hold tokens or order ids. So bounding is backed by redaction at capture/ingest, describing the intended end state:
+
+- `page.url` and CSP document URLs are reduced to `origin + pathname` before archival — query string and fragment dropped.
+- `route` strips its query and fragment (SPA route path only).
+- novelty identities that would exceed the key bound are hashed rather than stored verbatim.
+
+There are still no cookie, form-value, or customer-identifier fields in the schema; the honest claim is that exposure is **capped and redacted**, not that sensitive bytes are structurally impossible.
 
 ## 2. Observation (discriminated union on `kind`)
 
@@ -103,6 +109,8 @@ Self-contained: the comparator never reads DynamoDB.
 }
 ```
 
+**Prevalence in the message is first-sighting only**: the `novelty` block carries `first_seen` (and `pk`, `first_route`) — **not** `sessions` or `last_seen`. Those live in DynamoDB (§4), and the comparator never reads it, so they cannot appear in an alert. `first_seen` is therefore the one guaranteed prevalence datum, captured at the first sighting; `sessions`/`last_seen` are optional context that is simply absent for RUM first-sightings.
+
 Consumption: visibility timeout > workflow run; delete only after the outcome is routed (alert sent / candidate produced / recorded); `maxReceiveCount` → DLQ (alarmed). Duplicate delivery is harmless: routing is idempotent on `novelty.pk` + inventory ref.
 
 ## 6. Comparator normalisation (queue message → `Matchable`)
@@ -130,7 +138,7 @@ External scripts short-circuit to identification-only evaluation (research R8): 
 | inventory | identified + authorised                   | recorded                                                                                                                            |
 | any       | evaluation error                          | retry; then DLQ (alarmed)                                                                                                           |
 
-Every routed outcome records the inventory ref (commit) it was judged against (SC-005). Alerts carry: observation, prevalence snapshot (`sessions`, `first_seen`, `last_seen` at drain time from the message + counters context), `first_route`, target, inventory ref.
+Every routed outcome records the inventory ref (commit) it was judged against (SC-005). Alerts carry: observation, prevalence (`first_seen` — the guaranteed first-sighting datum; `sessions`/`last_seen` are optional and absent for RUM first-sightings, since the queue message omits them and the comparator never reads DynamoDB — §5), `first_route`, target, inventory ref.
 
 ## 8. Alert categories (extends existing alert config)
 

@@ -46,6 +46,25 @@ variable "github_repo" {
   type        = string
 }
 
+# SECURITY: the default below matches EVERY subject under the repo — every
+# ref, tag, PR, environment and reusable-workflow — so any id-token:write job
+# in the repo can assume the role and drain the SQS queue. It exists only to
+# preserve prior behaviour without assuming a default-branch name. Adopters
+# SHOULD restrict this to their comparator workflow's exact subject, e.g.
+# ["repo:ORG/REPO:ref:refs/heads/main"] for the scheduled run on the default
+# branch, or an environment claim ["repo:ORG/REPO:environment:production"] or a
+# reusable-workflow claim. Matched with StringLike in the trust policy.
+variable "oidc_subject_claims" {
+  description = "OIDC token subject (`sub`) claims allowed to assume the comparator role, matched with StringLike. SECURITY: leave null and you inherit the permissive \"repo:<github_repo>:*\" default, which trusts every ref/tag/PR/environment/reusable-workflow subject in the repo — restrict this to your comparator workflow's exact subject (e.g. \"repo:ORG/REPO:ref:refs/heads/main\", or an environment/reusable-workflow claim)."
+  type        = list(string)
+  default     = null
+
+  validation {
+    condition     = var.oidc_subject_claims == null || length(coalesce(var.oidc_subject_claims, [])) > 0
+    error_message = "oidc_subject_claims must be null (to use the default) or a non-empty list."
+  }
+}
+
 variable "edge_auth" {
   description = "Edge-to-origin authentication: mode \"shared_secret\" (the edge injects the x-collector-edge-key header; secret required — used by both provided edge modules) or \"aws_iam\" (SigV4-signed callers; not usable behind the provided edges, since sendBeacon POSTs cannot carry the x-amz-content-sha256 header OAC signing requires)."
   type = object({

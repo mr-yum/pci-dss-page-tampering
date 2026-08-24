@@ -84,6 +84,40 @@ describe('buildNoveltyKey', () => {
     }
   })
 
+  it('hashes an over-long external URL identity so the pk stays within the 2048-byte DynamoDB cap, stably', () => {
+    const url = `https://cdn.example.net/${'a'.repeat(2048 - 'https://cdn.example.net/'.length)}`
+    expect(url).toHaveLength(2048)
+    const observation = externalObservation({ url })
+    const key = buildNoveltyKey('1.0', observation)
+    expect(Buffer.byteLength(key, 'utf8')).toBeLessThanOrEqual(2048)
+    expect(key).toContain('#sha256:')
+    expect(key).not.toContain('aaaa')
+    // Stable across calls: same inputs → same pk.
+    expect(buildNoveltyKey('1.0', externalObservation({ url }))).toBe(key)
+  })
+
+  it('hashes an over-long CSP blockedUri identity so the pk stays within the 2048-byte cap, stably', () => {
+    const blockedUri = `https://evil.example/${'x'.repeat(2048 - 'https://evil.example/'.length)}`
+    expect(blockedUri).toHaveLength(2048)
+    const key = buildNoveltyKey('1.0', cspObservation({ blockedUri }))
+    expect(Buffer.byteLength(key, 'utf8')).toBeLessThanOrEqual(2048)
+    expect(key).toContain('#sha256:')
+    expect(key).not.toContain('xxxx')
+    expect(buildNoveltyKey('1.0', cspObservation({ blockedUri }))).toBe(key)
+  })
+
+  it('distinguishes two different over-long identities (the digest is of the identity, not a constant)', () => {
+    const base = `https://cdn.example.net/${'a'.repeat(2048 - 'https://cdn.example.net/'.length - 1)}`
+    const a = buildNoveltyKey('1.0', externalObservation({ url: `${base}1` }))
+    const b = buildNoveltyKey('1.0', externalObservation({ url: `${base}2` }))
+    expect(a).not.toBe(b)
+  })
+
+  it('keeps short identities human-readable (no hashing below the threshold)', () => {
+    expect(buildNoveltyKey('1.0', externalObservation())).toBe('1.0#https://cdn.example.net/sdk.js#pay.example.com')
+    expect(buildNoveltyKey('1.0', cspObservation())).not.toContain('sha256:')
+  })
+
   it('throws for an observation kind that must never be keyed', () => {
     const agentHealth = { kind: 'agent-health', ts: 1, route: '/', p95TaskMs: 2, dropped: 0 }
     expect(() => buildNoveltyKey('1.0', agentHealth as never)).toThrow('agent-health')

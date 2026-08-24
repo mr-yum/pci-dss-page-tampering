@@ -78,6 +78,28 @@ run "record_rulesets_and_endpoint" {
     error_message = "The transform rule must inject edge_shared_secret as x-collector-edge-key."
   }
 
+  # The origin rule rewrites Host/origin to the Function URL host so the Lambda
+  # Function URL accepts the request and Full (Strict) TLS validates the SNI.
+  assert {
+    condition     = cloudflare_ruleset.origin.phase == "http_request_origin"
+    error_message = "The origin ruleset must claim the http_request_origin phase."
+  }
+
+  assert {
+    condition     = cloudflare_ruleset.origin.rules[0].action == "route"
+    error_message = "The origin rule must use the route action."
+  }
+
+  assert {
+    condition     = cloudflare_ruleset.origin.rules[0].action_parameters.host_header == "mock0000000000000000000000000.lambda-url.eu-west-1.on.aws"
+    error_message = "The origin rule must rewrite the Host header to the Function URL host."
+  }
+
+  assert {
+    condition     = cloudflare_ruleset.origin.rules[0].action_parameters.origin.host == "mock0000000000000000000000000.lambda-url.eu-west-1.on.aws"
+    error_message = "The origin rule must pin the origin host to the Function URL host."
+  }
+
   # Endpoint is https://<record_name>, fully known at plan.
   assert {
     condition     = output.collector_endpoint == "https://collect.example.com"

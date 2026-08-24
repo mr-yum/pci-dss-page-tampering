@@ -39,6 +39,33 @@ resource "cloudflare_ruleset" "rate_limit" {
   }]
 }
 
+# Rewrites the origin Host header (and pins the origin hostname) to the Lambda
+# Function URL's generated host. A Lambda Function URL rejects any request whose
+# Host header is not its own `*.lambda-url.<region>.on.aws` name, and Full
+# (Strict) TLS validates the certificate against that same SNI/host — so without
+# this, every proxied beacon would 403 at the origin. Claims the zone's
+# http_request_origin phase (a distinct entrypoint from the other two).
+resource "cloudflare_ruleset" "origin" {
+  zone_id = var.zone_id
+  name    = "collector-origin"
+  kind    = "zone"
+  phase   = "http_request_origin"
+
+  rules = [{
+    description = "Rewrite Host/origin to the Function URL host for collector requests"
+    expression  = local.host_expression
+    action      = "route"
+    enabled     = true
+
+    action_parameters = {
+      host_header = local.origin_host
+      origin = {
+        host = local.origin_host
+      }
+    }
+  }]
+}
+
 # Injects the edge key on requests to the collector host so the origin can
 # reject traffic that bypassed Cloudflare. Claims the zone's
 # http_request_late_transform phase (see README).

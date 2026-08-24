@@ -37,6 +37,50 @@ run "rejects_non_https_origin" {
   expect_failures = [var.origin_function_url]
 }
 
+# An HTTPS host that is not a Lambda Function URL must be rejected: CloudFront
+# would otherwise inject the shared secret to an arbitrary origin.
+run "rejects_non_lambda_origin" {
+  command = plan
+
+  module {
+    source = "../edge-cloudfront"
+  }
+
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
+
+  variables {
+    origin_function_url = "https://collector.example.com/"
+  }
+
+  expect_failures = [var.origin_function_url]
+}
+
+# A viewer certificate outside us-east-1 must be rejected at plan time rather
+# than failing only at apply.
+run "rejects_non_us_east_1_acm" {
+  command = plan
+
+  module {
+    source = "../edge-cloudfront"
+  }
+
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
+
+  variables {
+    acm_certificate_arn = "arn:aws:acm:eu-west-1:111111111111:certificate/abc-123"
+    route53_zone_id     = "Z0123456789ABCDEFGHIJ"
+    domain_name         = "collect.example.com"
+  }
+
+  expect_failures = [var.acm_certificate_arn]
+}
+
 # The shared secret is required: an empty value would leave the Function URL
 # open to direct traffic (pairs with collector-core edge_auth "shared_secret").
 run "rejects_empty_edge_shared_secret" {

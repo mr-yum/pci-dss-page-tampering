@@ -55,23 +55,37 @@ The collector always answers `204` (no-oracle contract), so the curl proves reac
 
 In the hourly `rum-compare` workflow, after the compare step (which writes `--report-dir` artefacts), assert the canary alert fired and emit a heartbeat metric. The alert routes to the ops channel by the canary target's own alerts config — the assertion checks the run summary, the humans see the Slack message.
 
+Bind the assertion to the **canary target specifically**, not the aggregate.
+The summary's `alertedByCategory` is a run-wide count: another target's
+`rum_uninventoried_script_detected` alert in the same cycle would satisfy it
+while the canary path is actually broken — a false pass that defeats the whole
+dead-man's switch. `alertedByTarget["canary"]` is populated only when an alert
+for `target_id = canary` fired, so it is the field the assertion must read.
+
 ```yaml
 # …after the `npm start -- --mode rum-compare … --report-dir report` step:
 - name: Assert the canary alert fired this cycle
   run: |
-    COUNT=$(jq '.alertedByCategory.rum_uninventoried_script_detected // 0' \
+    # Per-target, not the aggregate: alertedByCategory could be satisfied by a
+    # different target's alert while the canary is silently broken.
+    COUNT=$(jq '.alertedByTarget["canary"].rum_uninventoried_script_detected // 0' \
       report/rum-compare/rum-summary.json)
     if [ "$COUNT" -lt 1 ]; then
-      echo "canary: no rum_uninventoried_script_detected alert in this cycle" >&2
+      echo "canary: no rum_uninventoried_script_detected alert for target_id=canary in this cycle" >&2
       exit 1
     fi
 
 - name: Emit the canary heartbeat metric
   env:
-    # collector-core's `metric_namespace` output ("<name_prefix>/rum"). The
-    # comparator role's PutMetricData permission is scoped to exactly this
-    # namespace, so any other value is denied.
-    METRIC_NAMESPACE: rum/rum
+    # collector-core's `metric_namespace` output ("<name_prefix>/rum"), passed
+    # through a repository/workflow variable (see wiring below). The comparator
+    # role's PutMetricData permission is scoped to exactly this namespace, and
+    # the dead-man alarm reads module.collector_core.metric_namespace — so a
+    # non-default name_prefix must reach both sides from the one Terraform
+    # output. Hard-coding "rum/rum" here would silently break the alarm on any
+    # non-default prefix (the heartbeat would land in a namespace the alarm
+    # never watches).
+    METRIC_NAMESPACE: ${{ vars.RUM_METRIC_NAMESPACE }}
   run: |
     aws cloudwatch put-metric-data \
       --namespace "$METRIC_NAMESPACE" \
@@ -79,6 +93,24 @@ In the hourly `rum-compare` workflow, after the compare step (which writes `--re
       --dimensions TargetId=canary \
       --value 1
 ```
+
+### Wiring the metric namespace
+
+`RUM_METRIC_NAMESPACE` must equal the collector's `metric_namespace`
+(`${name_prefix}/rum`) exactly — it is the single source of truth read by both
+the heartbeat `put-metric-data` above and the dead-man alarm below. Publish the
+Terraform output into the repository (or environment) variable so the two never
+drift:
+
+```bash
+# After `terraform apply`, from the collector infra directory:
+gh variable set RUM_METRIC_NAMESPACE \
+  --repo <org>/<inventory-repo> \
+  --body "$(terraform output -raw collector_core_metric_namespace)"
+```
+
+With the default `name_prefix = "rum"` this resolves to `rum/rum`; a deployment
+that sets a different prefix gets its own namespace on both sides automatically.
 
 ## Alarm on absence (dead-man's switch)
 

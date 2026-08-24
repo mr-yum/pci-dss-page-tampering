@@ -9,7 +9,7 @@
  * in via `jest.requireActual` because the agent tsconfig deliberately has no
  * Node types — the page bundle must never touch Node built-ins.
  */
-import { cheapInlineFingerprint, exceedsHashCeiling, FINGERPRINT_WINDOW_CHARS, fingerprintInline, hashInline, INLINE_HASH_CEILING_BYTES, utf8ByteLength } from './fingerprint.js'
+import { exceedsHashCeiling, FINGERPRINT_WINDOW_CHARS, fingerprintInline, hashInline, INLINE_HASH_CEILING_BYTES, utf8ByteLength } from './fingerprint.js'
 
 const { webcrypto } = jest.requireActual('node:crypto') as { webcrypto: Crypto }
 
@@ -65,21 +65,6 @@ describe('fingerprintInline', () => {
     expect(tail).toHaveLength(128)
     expect(source.startsWith(head)).toBe(true)
     expect(source.endsWith(tail)).toBe(true)
-  })
-})
-
-describe('cheapInlineFingerprint', () => {
-  it('is deterministic and cheap-window sensitive', () => {
-    expect(cheapInlineFingerprint(FIXTURE_SOURCE)).toBe(cheapInlineFingerprint(FIXTURE_SOURCE))
-    expect(cheapInlineFingerprint(`X${FIXTURE_SOURCE.slice(1)}`)).not.toBe(cheapInlineFingerprint(FIXTURE_SOURCE))
-    expect(cheapInlineFingerprint(`${FIXTURE_SOURCE.slice(0, -1)}X`)).not.toBe(cheapInlineFingerprint(FIXTURE_SOURCE))
-    expect(cheapInlineFingerprint(`${FIXTURE_SOURCE}!`)).not.toBe(cheapInlineFingerprint(FIXTURE_SOURCE))
-  })
-
-  it('embeds the length so equal windows with different middles of different sizes never collide', () => {
-    const a = `${'x'.repeat(64)}${'-'.repeat(10)}${'y'.repeat(64)}`
-    const b = `${'x'.repeat(64)}${'-'.repeat(20)}${'y'.repeat(64)}`
-    expect(cheapInlineFingerprint(a)).not.toBe(cheapInlineFingerprint(b))
   })
 })
 

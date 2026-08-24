@@ -12,7 +12,8 @@ version: 3
 # runs `terraform plan`, which fails on the modules' required variables and is
 # pure noise on this repo. Disable discovery and declare no projects so
 # Atlantis leaves this repo alone. The modules are exercised by CI
-# (`terraform test` with mocked providers) in .github/workflows/infra.yml.
+# (`terraform test` with mocked providers) in .github/workflows/infra.yml, and
+# an external deployment wrapper consumes them by tag.
 autodiscover:
   mode: disabled
 

@@ -2,9 +2,14 @@ variable "origin_function_url" {
   description = "collector-core function_url output (e.g. \"https://abc.lambda-url.ap-southeast-2.on.aws/\"). Requires core edge_auth.mode = \"shared_secret\"."
   type        = string
 
+  # Pinned to the Lambda Function URL shape rather than any HTTPS host:
+  # CloudFront injects edge_shared_secret as a custom header to whatever origin
+  # host is parsed from this URL, so a misconfigured origin would receive (and
+  # could replay) the secret. Constraining the shape keeps the secret bound to a
+  # genuine Function URL.
   validation {
-    condition     = can(regex("^https://[^/]+", var.origin_function_url))
-    error_message = "origin_function_url must be an https:// URL."
+    condition     = can(regex("^https://[a-z0-9]+\\.lambda-url\\.[a-z0-9-]+\\.on\\.aws/?$", var.origin_function_url))
+    error_message = "origin_function_url must be a Lambda Function URL: https://<id>.lambda-url.<region>.on.aws/ (no path)."
   }
 }
 
@@ -34,6 +39,14 @@ variable "acm_certificate_arn" {
   description = "ACM certificate ARN (us-east-1) for the custom domain. Set together with route53_zone_id and domain_name, or leave all null."
   type        = string
   default     = null
+
+  # CloudFront viewer certificates must live in us-east-1 regardless of the
+  # distribution's own provider region; a cert from any other region is rejected
+  # only at apply time, so fail fast here.
+  validation {
+    condition     = var.acm_certificate_arn == null || can(regex("^arn:aws:acm:us-east-1:[0-9]{12}:certificate/.+$", var.acm_certificate_arn))
+    error_message = "acm_certificate_arn must be a us-east-1 ACM certificate ARN (arn:aws:acm:us-east-1:<account>:certificate/<id>) — CloudFront viewer certs must be in us-east-1."
+  }
 }
 
 variable "route53_zone_id" {

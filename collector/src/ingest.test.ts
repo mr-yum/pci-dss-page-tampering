@@ -79,6 +79,26 @@ describe('createHandler', () => {
     expect(metricNames(deps)).toContain('rum_beacons_accepted')
   })
 
+  it('redacts page.url query string and fragment before archival (PII must not enter the 1-year archive)', async () => {
+    const deps = makeDeps()
+    const beacon = JSON.parse(fixture('external-unknown.json')) as Beacon
+    beacon.page.url = 'https://pay.example.com/checkout?token=secret-abc&order=42#step-3'
+    const result = await createHandler(makeConfig(), deps)(makeEvent(JSON.stringify(beacon)))
+
+    expectNoContent(result)
+    const serialised = deps.firehose.putRecord.mock.calls[0][0].data as string
+    // Neither the token nor the fragment survives anywhere in the archived line.
+    expect(serialised).not.toContain('secret-abc')
+    expect(serialised).not.toContain('step-3')
+    const record = JSON.parse(serialised)
+    expect(record.beacon.page.url).toBe('https://pay.example.com/checkout')
+    // Pipeline behaviour is otherwise unchanged: observations still flow.
+    expect(deps.dynamo.putItemIfAbsent).toHaveBeenCalledTimes(1)
+    expect(deps.sqs.sendMessage).toHaveBeenCalledTimes(1)
+    const queued = JSON.parse(deps.sqs.sendMessage.mock.calls[0][0].body)
+    expect(JSON.stringify(queued)).not.toContain('secret-abc')
+  })
+
   it('drops and counts an unmapped origin without storing anything', async () => {
     const deps = makeDeps()
     const result = await createHandler(makeConfig(), deps)(makeEvent(fixture('canonical.json'), { Origin: 'https://unmapped.example.net' }))

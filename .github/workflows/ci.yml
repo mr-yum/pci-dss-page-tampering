@@ -7,6 +7,12 @@ on:
   pull_request:
     branches: ['**']
 
+# Read-only. This workflow only builds and tests the checked-out code; nothing
+# here writes to the repository or needs any cloud/Slack secrets. Scoping the
+# token down keeps the broad default out of the build steps that run repo code.
+permissions:
+  contents: read
+
 jobs:
   continuous-integration:
     runs-on: ubuntu-latest
@@ -19,6 +25,10 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+        with:
+          # No later step needs git auth; don't leave GITHUB_TOKEN in git config
+          # while build/test steps run repo code.
+          persist-credentials: false
 
       - name: Use Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v7

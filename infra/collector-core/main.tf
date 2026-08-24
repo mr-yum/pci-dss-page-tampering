@@ -5,6 +5,11 @@ locals {
   kms_key_arn       = var.kms_key_arn != null ? var.kms_key_arn : aws_kms_key.this[0].arn
   sns_topic_arn     = var.alert_sns_topic_arn != null ? var.alert_sns_topic_arn : aws_sns_topic.alerts[0].arn
   oidc_provider_arn = var.github_oidc_provider_arn != null ? var.github_oidc_provider_arn : aws_iam_openid_connect_provider.github[0].arn
+
+  # Falls back to the permissive repo-wide subject only when the adopter has not
+  # narrowed it. A variable default cannot reference var.github_repo, so the
+  # fallback is computed here. See variable "oidc_subject_claims".
+  oidc_subject_claims = var.oidc_subject_claims != null ? var.oidc_subject_claims : ["repo:${var.github_repo}:*"]
 }
 
 resource "aws_kms_key" "this" {

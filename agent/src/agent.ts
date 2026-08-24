@@ -17,7 +17,7 @@
 
 import type { AgentHealthObservation, Beacon, CspViolationObservation, ExternalScriptObservation, InlineScriptObservation } from '../../src/types/beacon.js'
 import { drainCaptures, drainCspCaptures, drainInlineCaptures, getDroppedCount, initiatorHost, type InlineScriptCapture, type ScriptCapture, startCapture } from './capture.js'
-import { cheapInlineFingerprint, exceedsHashCeiling, fingerprintInline, hashInline, utf8ByteLength } from './fingerprint.js'
+import { exceedsHashCeiling, fingerprintInline, hashInline, utf8ByteLength } from './fingerprint.js'
 import { getRoute, getSessionId, initRouteTracking, markSeenIfNew, persistSeen } from './session.js'
 
 /** The observation kinds this agent produces. */
@@ -170,16 +170,29 @@ export function processPendingCaptures(): void {
 }
 
 /**
- * Pre-hash reservation key: cheap fingerprint + initiator host. Reserves the
- * SHA-256 work so an inline script is hashed at most once per (cheap
- * fingerprint, initiator) per session. A collision here only skips a redundant
- * re-hash — it NEVER suppresses emission, which is decided by
- * {@link markInlineEmitted} on the true wire identity. Initiator is included
- * so a KNOWN script injected by a NEW initiator is re-hashed and re-emitted
+ * Per-session SHA-256 memo, keyed by {@link inlineMemoKey} (initiator host +
+ * EXACT source). It replaces the old cheap-fingerprint reservation, which was
+ * unsound: a cheap fingerprint (length + 64-char windows) collides for two
+ * DISTINCT scripts that share those windows, so reserving hashing on it skipped
+ * the second script's hash entirely, sent it hash-absent, and let the wire-key
+ * fallback drop it — a crafted skimmer padded to a legit script's length and
+ * windows would never be reported. Memoising on the exact source instead means
+ * identical content is hashed at most once (the common repeat case stays cheap)
+ * while any byte-difference — anywhere, not just in the windows — produces its
+ * own hash and is judged on its own wire identity. Host is in the key so a
+ * KNOWN script injected by a NEW initiator is re-hashed and re-emitted
  * (supply-chain signal), mirroring the collector's novelty identity.
+ *
+ * Bounded so a session with many distinct inline scripts cannot grow it without
+ * limit: past the cap the memo simply stops caching (content is still hashed,
+ * just not memoised — correctness never depends on a cache hit). Oversize
+ * sources are never hashed and never entered here.
  */
-function inlineHashedKey(host: string, source: string): string {
-  return `inl-hashed:${cheapInlineFingerprint(source)}|${host}`
+const MAX_INLINE_HASH_MEMO = 512
+const inlineHashMemo = new Map<string, string>()
+
+function inlineMemoKey(host: string, source: string): string {
+  return `${host} ${source}`
 }
 
 /**
@@ -203,17 +216,21 @@ function inlineHashKey(host: string, hash: string): string {
  * script before it was ever sent). Returns true when the observation is novel
  * and must be emitted.
  *
- * With a hash it gates on the SHA-256 (the finest identity) and also reserves
- * the fallback identity, so a later hash-absent capture of the same script is
- * suppressed too. Without a hash (degraded / oversize / a cheap-key collision
- * that skipped re-hashing) it gates on the fallback identity — matching what
- * the collector can distinguish.
+ * The gate mirrors the collector's PER-KIND novelty identity exactly
+ * (`collector/src/novelty.ts`): a hash-present observation is keyed on
+ * `inline:{hash}`, a hash-absent one on the length/head/tail fallback. These
+ * are distinct collector keys, so the two kinds must dedupe independently —
+ * with a hash it gates on the SHA-256 ALONE (never also reserving the fallback
+ * key: two distinct scripts sharing length+head+tail but differing beyond
+ * those windows have different SHA-256s, so both are novel on the wire and the
+ * collector keys them apart — `&& wireFresh` would wrongly drop the second and
+ * pollute the fallback-key namespace); without a hash (degraded / oversize / a
+ * cheap-key collision that skipped re-hashing) it gates on the fallback
+ * identity — matching what the collector can distinguish.
  */
 function markInlineEmitted(host: string, fp: { length: number; head: string; tail: string }, hash: string | undefined): boolean {
   if (hash !== undefined) {
-    const shaFresh = markSeenIfNew(inlineHashKey(host, hash))
-    const wireFresh = markSeenIfNew(inlineWireKey(host, fp))
-    return shaFresh && wireFresh
+    return markSeenIfNew(inlineHashKey(host, hash))
   }
   return markSeenIfNew(inlineWireKey(host, fp))
 }
@@ -240,12 +257,27 @@ function toInlineObservation(capture: InlineScriptCapture, hash: string | undefi
 }
 
 /**
- * Idle-time inline processing. The CHEAP fingerprint reserves SHA-256 work
- * (hash at most once per cheap fingerprint per session); emission is then
- * gated on the TRUE wire identity by {@link markInlineEmitted}, so a distinct
- * script that merely shares length+prefix+suffix with an already-hashed one is
- * still emitted (hash-absent) rather than silently dropped. Async because
- * crypto.subtle is; exported so tests can await it deterministically.
+ * SHA-256 of the exact source, memoised per (host, source) for the session.
+ * Returns undefined when hashing is unavailable (never cached, so a later
+ * capture retries). The digest is what lets {@link markInlineEmitted} tell two
+ * distinct scripts apart even when they share the 128-char wire windows.
+ */
+async function memoisedHashInline(host: string, source: string): Promise<string | undefined> {
+  const key = inlineMemoKey(host, source)
+  const cached = inlineHashMemo.get(key)
+  if (cached !== undefined) return cached
+  const hash = await hashInline(source)
+  if (hash !== undefined && inlineHashMemo.size < MAX_INLINE_HASH_MEMO) inlineHashMemo.set(key, hash)
+  return hash
+}
+
+/**
+ * Idle-time inline processing. Each distinct source is hashed at most once
+ * (memoised by {@link memoisedHashInline}); emission is then gated by
+ * {@link markInlineEmitted} on the SHA-256 when present — so two distinct
+ * scripts sharing the 128-char windows both emit — and on the length+windows
+ * wire fallback only when hashing was impossible. Async because crypto.subtle
+ * is; exported so tests can await it deterministically.
  */
 export async function processInlineCaptures(): Promise<void> {
   if (!state) return
@@ -256,10 +288,9 @@ export async function processInlineCaptures(): Promise<void> {
     const host = initiatorHost(capture.initiator)
     const fp = fingerprintInline(capture.source)
     const oversize = exceedsHashCeiling(capture.source)
-    // Reserve the (expensive) hash at most once per cheap fingerprint; a
-    // cheap-key collision only skips the re-hash, never the emission below.
-    const mayHash = !oversize && markSeenIfNew(inlineHashedKey(host, capture.source))
-    const hash = mayHash ? await hashInline(capture.source) : undefined
+    // Hash the exact source at most once per session (memoised); identical
+    // repeats reuse the digest, distinct content each gets its own.
+    const hash = oversize ? undefined : await memoisedHashInline(host, capture.source)
     if (!state) return
     if (!markInlineEmitted(host, fp, hash)) continue
     state.pending.push(toInlineObservation(capture, hash, oversize))
@@ -278,13 +309,17 @@ function processInlineCapturesForFlush(): void {
   if (!state) return
   const startedAt = hasPerformanceNow() ? performance.now() : null
   for (const capture of drainInlineCaptures()) {
-    // Sync path cannot hash: gate emission on the wire fallback identity
-    // (length + 128-char head/tail), never the coarser cheap key, so a distinct
-    // script is never dropped before it is sent.
+    // Sync path cannot await a fresh digest, but it can REUSE one memoised by
+    // an earlier idle round: doing so lets a script already emitted (hashed)
+    // dedupe on the SHA rather than re-emitting hash-absent (which the
+    // collector would key separately and treat as a fresh first sighting). A
+    // source never hashed this session falls back to the length+windows wire
+    // identity — best effort when no hash exists.
     const host = initiatorHost(capture.initiator)
     const fp = fingerprintInline(capture.source)
-    if (!markInlineEmitted(host, fp, undefined)) continue
-    state.pending.push(toInlineObservation(capture, undefined, exceedsHashCeiling(capture.source)))
+    const hash = inlineHashMemo.get(inlineMemoKey(host, capture.source))
+    if (!markInlineEmitted(host, fp, hash)) continue
+    state.pending.push(toInlineObservation(capture, hash, exceedsHashCeiling(capture.source)))
   }
   if (startedAt !== null) recordTaskSpan(startedAt)
 }
@@ -512,6 +547,7 @@ export function resetAgentCountersForTesting(): void {
   droppedOversize = 0
   healthSamples.length = 0
   healthOverwriteIndex = 0
+  inlineHashMemo.clear()
 }
 
 // Self-invoking guard: only start in a real browser context with a

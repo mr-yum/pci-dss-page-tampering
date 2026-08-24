@@ -78,6 +78,15 @@ export type RumCompareSummary = {
     duplicateSuppressed: number
   }
   alertedByCategory: Partial<Record<RumAlertCategory, number>>
+  /**
+   * Per-target alert breakdown, populated alongside `alertedByCategory`.
+   * Keyed by the message's `target_id`, then by category. The aggregate
+   * `alertedByCategory` cannot be bound to a single target — one target's
+   * alert satisfies it while another (e.g. the canary) is silently broken —
+   * so a consumer that must assert one target fired reads this field
+   * (docs/rum/canary-workflow.md).
+   */
+  alertedByTarget: Record<string, Partial<Record<RumAlertCategory, number>>>
   /** Alerts that could not be delivered (routing still completed). */
   alertDeliveryFailures: number
   /** Inventory-candidate flow results for this run (US3, data-model §7). */
@@ -141,6 +150,7 @@ export async function runRumCompare(deps: RumCompareDeps): Promise<RumCompareSum
     unknownTargetIds: 0,
     outcomes: { alerted: 0, recorded: 0, candidate: 0, duplicateSuppressed: 0 },
     alertedByCategory: {},
+    alertedByTarget: {},
     alertDeliveryFailures: 0,
     candidates: { byTarget: {}, entriesAppended: 0, pushed: false, prUrl: null },
     inventoryRefs: { inventory: inventoryRef, detection: detectionRef },
@@ -185,6 +195,8 @@ export async function runRumCompare(deps: RumCompareDeps): Promise<RumCompareSum
           summary.outcomes.alerted++
           if (outcome.category !== undefined) {
             summary.alertedByCategory[outcome.category] = (summary.alertedByCategory[outcome.category] ?? 0) + 1
+            const byCategory = (summary.alertedByTarget[message.target_id] ??= {})
+            byCategory[outcome.category] = (byCategory[outcome.category] ?? 0) + 1
           }
           break
         case 'recorded':
@@ -311,6 +323,12 @@ function logSummary(summary: RumCompareSummary, log: Logger): void {
   log.log(`RUM outcomes: alerted=${summary.outcomes.alerted} recorded=${summary.outcomes.recorded} candidate=${summary.outcomes.candidate} duplicate-suppressed=${summary.outcomes.duplicateSuppressed}`)
   for (const [category, count] of Object.entries(summary.alertedByCategory)) {
     log.log(`RUM alerts (${category}): ${count}`)
+  }
+  for (const [targetId, byCategory] of Object.entries(summary.alertedByTarget)) {
+    const perCategory = Object.entries(byCategory)
+      .map(([category, count]) => `${category}=${count}`)
+      .join(' ')
+    log.log(`RUM alerts by target (${targetId}): ${perCategory}`)
   }
   if (summary.outcomes.candidate > 0) {
     const perTarget = Object.entries(summary.candidates.byTarget)

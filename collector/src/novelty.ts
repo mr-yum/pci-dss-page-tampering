@@ -18,6 +18,26 @@ export type KeyableObservation = ExternalScriptObservation | InlineScriptObserva
 const sha256Hex8 = (value: string): string => createHash('sha256').update(value, 'utf8').digest('hex').slice(0, 8)
 
 /**
+ * A DynamoDB partition key is capped at 2048 bytes, but an identity component
+ * can approach that on its own (an external URL ≤ 2048 chars, or a CSP
+ * `csp:{directive}:{blockedUri}` whose blockedUri is ≤ 2048), and once
+ * `{target_id}#…#{initiator_host}` is wrapped around it the raw pk can exceed
+ * the cap — PutItem would then throw and the first sighting would be silently
+ * lost behind the always-204 contract.
+ *
+ * Rule: an identity whose UTF-8 length is within {@link IDENTITY_HASH_THRESHOLD}
+ * is kept verbatim (human-readable pks, unchanged for every existing short
+ * value); a longer one is replaced by `sha256:{64-hex}` of the identity. The
+ * digest is deterministic (same identity → same pk across sightings), and the
+ * threshold keeps the compacted component ≤ 71 bytes so the assembled pk stays
+ * well under 2048 for any realistic target id and initiator host. The full
+ * fields still travel verbatim in the queued observation — only the pk changes.
+ */
+const IDENTITY_HASH_THRESHOLD = 256
+
+const compactIdentity = (identity: string): string => (Buffer.byteLength(identity, 'utf8') > IDENTITY_HASH_THRESHOLD ? `sha256:${createHash('sha256').update(identity, 'utf8').digest('hex')}` : identity)
+
+/**
  * Inline-script identity when the agent could not hash the content (hashing
  * unavailable or the 512 KB ceiling was hit). Chosen fallback format, stable
  * by contract — changing it would re-key every unhashed inline script and
@@ -63,7 +83,7 @@ export const initiatorHostOf = (initiator: string | undefined): string => {
 /** Builds the DynamoDB novelty partition key per data-model.md §4. */
 export const buildNoveltyKey = (targetId: string, observation: KeyableObservation): string => {
   const initiator = observation.kind === 'csp-violation' ? undefined : observation.initiator
-  return `${targetId}#${identityOf(observation)}#${initiatorHostOf(initiator)}`
+  return `${targetId}#${compactIdentity(identityOf(observation))}#${initiatorHostOf(initiator)}`
 }
 
 /** TTL attribute value: expiry in epoch seconds, `ttlDays` after `nowMs`. */

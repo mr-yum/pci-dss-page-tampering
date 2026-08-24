@@ -28,17 +28,6 @@ export const FINGERPRINT_WINDOW_CHARS = 128
  */
 export const INLINE_HASH_CEILING_BYTES = 512 * 1024
 
-/**
- * Window size of the cheap pre-hash dedupe fingerprint. Narrower than the
- * beacon windows on purpose: this key ONLY reserves SHA-256 work (hash at most
- * once per cheap-fingerprint per session). It never gates whether an
- * observation is emitted — that decision is made on the true wire identity
- * (the SHA-256, or the 128-char head/tail windows), so a cheap-key collision
- * between two distinct scripts skips a redundant re-hash but never suppresses
- * emission. See `inlineHashedKey` / `markInlineEmitted` in agent.ts.
- */
-const CHEAP_WINDOW_CHARS = 64
-
 /** The schema-shaped inline fingerprint: content length plus anchored windows. */
 export interface InlineFingerprint {
   /** Source length in UTF-16 code units (what the schema's `length` means). */
@@ -59,23 +48,6 @@ export function fingerprintInline(source: string): InlineFingerprint {
     head: source.slice(0, FINGERPRINT_WINDOW_CHARS),
     tail: source.slice(-FINGERPRINT_WINDOW_CHARS),
   }
-}
-
-/**
- * Cheap synchronous fingerprint used only to reserve SHA-256 work: length plus
- * narrow first/last windows, computed without hashing so observer-adjacent
- * code can decide BEFORE any SHA-256 work whether this cheap-fingerprint has
- * already been hashed this session. Two sources collide only when they share
- * length, 64-char prefix and 64-char suffix — acceptable for hashing dedupe
- * because emission is gated separately on the true wire identity, never on
- * this key (never used as the wire identity).
- *
- * The window separator is written as a '\u0000' escape, not a raw NUL byte: a
- * raw NUL in the source makes git classify the whole file as binary and drop
- * it from every diff.
- */
-export function cheapInlineFingerprint(source: string): string {
-  return `${source.length}:${source.slice(0, CHEAP_WINDOW_CHARS)}\u0000${source.slice(-CHEAP_WINDOW_CHARS)}`
 }
 
 /**

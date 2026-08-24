@@ -257,9 +257,9 @@ describe('inline scripts', () => {
     const beaconMock = mockSendBeacon()
     installCollectorTag()
     initAgent()
-    // Same length, identical first 64 and last 64 chars (so the cheap
-    // fingerprint collides), differing only in the middle — wrapped in a
-    // comment so both are valid JS for jsdom to execute.
+    // Same length, identical first 64 and last 64 chars, differing only in
+    // the middle — wrapped in a comment so both are valid JS for jsdom to
+    // execute. Each has a distinct source, so each is hashed and emitted.
     const build = (mid: string): string => `/* ${'a'.repeat(80)} ${mid} ${'z'.repeat(80)} */`
     const scriptA = build('AAAA')
     const scriptB = build('BBBB')
@@ -269,8 +269,8 @@ describe('inline scripts', () => {
     appendInline(scriptA)
     appendInline(scriptB)
     await processInlineCaptures()
-    // Before the fix the cheap-key collision dropped scriptB before hashing;
-    // now emission is gated on the true wire identity, so both survive.
+    // Distinct sources → distinct SHA-256s → distinct collector keys, so both
+    // survive; the dedupe must never be coarser than that wire identity.
     expect(getPendingObservationCount()).toBe(2)
     hidePage()
     const parsed = parseBeacon(await sentBody(beaconMock))
@@ -278,6 +278,63 @@ describe('inline scripts', () => {
     const inline = parsed.beacon.observations.filter((observation): observation is InlineScriptObservation => observation.kind === 'inline-script')
     expect(inline).toHaveLength(2)
     expect(new Set(inline.map((observation) => observation.head)).size).toBe(2)
+  })
+
+  it('emits BOTH of two distinct scripts that share length+head+tail (128-char windows) but differ beyond them (distinct SHA → distinct collector keys)', async () => {
+    installWebCrypto()
+    const beaconMock = mockSendBeacon()
+    installCollectorTag()
+    initAgent()
+    // Same length, identical first 128 and last 128 chars (so BOTH the cheap
+    // fingerprint AND the wire fallback identity collide), differing only in
+    // the middle. The hashes differ, so the collector keys them apart on
+    // `inline:{hash}` — the agent must not dedupe more coarsely than that.
+    const build = (mid: string): string => `/*${'a'.repeat(200)}${mid}${'z'.repeat(200)}*/`
+    const scriptA = build('AAAA')
+    const scriptB = build('BBBB')
+    expect(scriptA).toHaveLength(scriptB.length)
+    expect(scriptA.slice(0, 128)).toBe(scriptB.slice(0, 128))
+    expect(scriptA.slice(-128)).toBe(scriptB.slice(-128))
+    appendInline(scriptA)
+    appendInline(scriptB)
+    await processInlineCaptures()
+    // Before the fix `shaFresh && wireFresh` dropped scriptB (its wire key was
+    // already reserved by scriptA); now the hash-present gate is on the SHA
+    // alone, so both survive.
+    expect(getPendingObservationCount()).toBe(2)
+    hidePage()
+    const parsed = parseBeacon(await sentBody(beaconMock))
+    if (!parsed.ok) throw new Error(parsed.detail)
+    const inline = parsed.beacon.observations.filter((observation): observation is InlineScriptObservation => observation.kind === 'inline-script')
+    expect(inline).toHaveLength(2)
+    expect(new Set(inline.map((observation) => observation.hash)).size).toBe(2)
+  })
+
+  it('emits a byte-identical inline duplicate (same SHA) exactly once', async () => {
+    installWebCrypto()
+    installCollectorTag()
+    initAgent()
+    const source = `/*${'a'.repeat(200)}SAME${'z'.repeat(200)}*/`
+    appendInline(source)
+    appendInline(source)
+    await processInlineCaptures()
+    expect(getPendingObservationCount()).toBe(1)
+    hidePage()
+  })
+
+  it('dedupes two hash-absent captures that collide on the wire fallback identity', async () => {
+    // No web crypto installed: both captures ship hash-absent and are gated on
+    // the length/head/tail fallback identity — the collector cannot tell them
+    // apart, so the agent must not emit both.
+    expect((globalThis.crypto as Crypto | undefined)?.subtle).toBeUndefined()
+    installCollectorTag()
+    initAgent()
+    const source = 'window.__collide = 1'
+    appendInline(source)
+    appendInline(source)
+    await processInlineCaptures()
+    expect(getPendingObservationCount()).toBe(1)
+    hidePage()
   })
 
   it('re-captures a known script injected by a NEW initiator (supply-chain signal)', async () => {

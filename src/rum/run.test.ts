@@ -169,6 +169,7 @@ describe('runRumCompare', () => {
       unknownTargetIds: 0,
       outcomes: { alerted: 0, recorded: 0, candidate: 0, duplicateSuppressed: 0 },
       alertedByCategory: {},
+      alertedByTarget: {},
       alertDeliveryFailures: 0,
       candidates: { byTarget: {}, entriesAppended: 0, pushed: false, prUrl: null },
       inventoryRefs: {
@@ -191,6 +192,21 @@ describe('runRumCompare', () => {
     expect(summary.routed).toBe(1)
     expect(summary.outcomes.alerted).toBe(1)
     expect(summary.alertedByCategory).toEqual({ rum_uninventoried_script_detected: 1 })
+  })
+
+  it('breaks the alert count down per target so a single target can be bound', async () => {
+    // A detection alert for target X must increment alertedByTarget[X][category],
+    // not only the aggregate — the canary assertion binds on the per-target
+    // field so another target's alert cannot satisfy it (FIX 6).
+    const inventoryService = makeInventoryService([makeInventory('canary.json', [], { inventory: 'stg-canary', detection: 'canary' })], [makeInventory('canary.json', [], { inventory: 'stg-canary', detection: 'canary' })])
+    const queueSource = new FakeQueueSource([[entryOf(queueMessage({ target_id: 'canary' }))]])
+    const { deps, alertMock } = makeDeps({ inventoryService: inventoryService.service, queueSource })
+
+    const summary = await runRumCompare(deps)
+
+    expect(alertMock).toHaveBeenCalledTimes(1)
+    expect(summary.alertedByCategory).toEqual({ rum_uninventoried_script_detected: 1 })
+    expect(summary.alertedByTarget).toEqual({ canary: { rum_uninventoried_script_detected: 1 } })
   })
 
   it('records an identified external script without alerting', async () => {

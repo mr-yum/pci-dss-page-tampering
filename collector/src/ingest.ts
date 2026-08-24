@@ -486,13 +486,22 @@ const processEvent = async (event: FunctionUrlEvent, config: CollectorConfig, de
   // intake and is not confounded by a Firehose outage.
   metrics.count('rum_beacons_accepted', { TargetId: target.target_id })
 
-  // 4. Archive the verbatim beacon plus the stamp envelope as a JSON line.
+  // 4. Archive the beacon plus the stamp envelope as a JSON line. `page.url`
+  // is redacted to origin + pathname before archival — the SAME PII rule the
+  // CSP path applies to document URLs. The agent already strips query/fragment
+  // client-side, but a version-skewed or hostile client can still send a full
+  // URL (the schema accepts any URL ≤ 2048), and the archive has a one-year
+  // retention, so tokens/order ids/PII in the query must never enter it.
+  // page.url is not read downstream (novelty/queue key off observations and
+  // session id), so only the archived copy is redacted. The URL always parses:
+  // parseBeacon validated it as a URL.
+  const archivedBeacon = { ...beacon, page: { ...beacon.page, url: redactDocumentUrl(new URL(beacon.page.url)) } }
   // A Firehose failure aborts novelty processing for this beacon: the
   // contract prefers losing one beacon (client resend / statistical
   // coverage) over enqueueing observations that were never archived.
   await deps.firehose.putRecord({
     streamName: config.firehoseStream,
-    data: `${JSON.stringify({ stamp: { target_id: target.target_id, target_type: target.target_type, received_at: receivedAt }, beacon })}\n`,
+    data: `${JSON.stringify({ stamp: { target_id: target.target_id, target_type: target.target_type, received_at: receivedAt }, beacon: archivedBeacon })}\n`,
   })
 
   // 5. Novelty write + first-sighting enqueue per observation. One failing

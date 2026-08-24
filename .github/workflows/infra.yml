@@ -33,6 +33,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+        with:
+          # No later step needs git auth; don't leave GITHUB_TOKEN in git config.
+          persist-credentials: false
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v4

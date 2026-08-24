@@ -1,7 +1,7 @@
 # Contract: Beacon Wire Schema
 
 **Parties**: browser agent (producer) ⇄ ingest Lambda (validator) ⇄ comparator (consumer, via archive/queue)
-**Implementation**: `src/types/beacon.ts` — one Zod schema, imported by all three. No party may define its own variant.
+**Implementation**: `src/types/beacon.ts` — one Zod schema, imported by all three. No party may define its own variant. The browser agent imports the beacon **types only** (`import type`), so Zod never enters the page bundle; the runtime consumers (collector, comparator) import the shared Zod schemas and validate against them.
 
 ## Obligations
 

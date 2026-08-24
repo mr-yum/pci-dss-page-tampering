@@ -74,6 +74,53 @@ run "rejects_invalid_target_type" {
   expect_failures = [var.origin_targets]
 }
 
+run "rejects_empty_oidc_subject_claims" {
+  command = plan
+
+  module {
+    source = "../collector-core"
+  }
+
+  variables {
+    oidc_subject_claims = []
+  }
+
+  expect_failures = [var.oidc_subject_claims]
+}
+
+# The default (oidc_subject_claims = null) must preserve the permissive
+# repo-wide subject, and a custom list must feed the trust policy condition
+# verbatim. The mocked aws_iam_policy_document overrides its rendered `json`,
+# so we assert on the data source's configured statement input instead.
+run "oidc_subject_claims_feed_trust_policy" {
+  command = plan
+
+  module {
+    source = "../collector-core"
+  }
+
+  variables {
+    oidc_subject_claims = ["repo:example-org/script-inventory:ref:refs/heads/main"]
+  }
+
+  assert {
+    condition = contains([
+      for c in data.aws_iam_policy_document.gha_assume.statement[0].condition :
+      c.variable if c.test == "StringLike"
+    ], "token.actions.githubusercontent.com:sub")
+    error_message = "The comparator role trust policy must gate the OIDC subject with StringLike."
+  }
+
+  assert {
+    condition = anytrue([
+      for c in data.aws_iam_policy_document.gha_assume.statement[0].condition :
+      contains(tolist(c.values), "repo:example-org/script-inventory:ref:refs/heads/main")
+      if c.variable == "token.actions.githubusercontent.com:sub"
+    ])
+    error_message = "oidc_subject_claims must feed the trust policy's subject condition values."
+  }
+}
+
 run "rejects_invalid_edge_auth_mode" {
   command = plan
 

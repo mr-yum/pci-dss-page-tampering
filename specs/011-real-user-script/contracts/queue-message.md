@@ -17,6 +17,7 @@
 ```
 
 - Self-contained: the consumer never reads DynamoDB or S3 to route an outcome.
+- `novelty` carries `first_seen` only (with `pk` and `first_route`) — **never** `sessions` or `last_seen`. Those counters live in DynamoDB, which the consumer does not read, so they cannot reach an alert. `first_seen` is the guaranteed prevalence datum, captured at first sighting; `sessions`/`last_seen` are optional context and are absent for RUM first-sightings.
 - `target_type` is the ingest-stamped pass — the consumer trusts it as the routing authority and never re-derives it.
 - `agent-health` observations are never enqueued.
 
