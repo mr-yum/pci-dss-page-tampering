@@ -201,10 +201,24 @@ export function resetAttributedAgentVersionsForTesting(): void {
   attributedAgentVersions.clear()
 }
 
-const boundAgentVersion = (candidate: unknown): string => {
+/**
+ * Slot ALLOCATION is reserved for accepted beacons: a schema-rejected body is
+ * unauthenticated garbage, and letting it allocate would hand an attacker the
+ * cheapest possible exhaustion (eight invalid bodies with distinct
+ * valid-shaped versions on a fresh container would push the real release
+ * into "other"). Rejects therefore attribute read-only: a claimed version
+ * only attributes once accepted traffic has established it — a version with
+ * zero accepted beacons is a claim, not a release. The residual race
+ * (schema-VALID spray through the edge racing legitimate traffic for slots
+ * on a cold container) is bounded by the edge rate limit, by container
+ * recycling, and by legitimate beacons winning the race at real traffic
+ * volume; its worst case is "other"-inflation, which the operator guidance
+ * reads as noise/abuse, never as a rollout signal.
+ */
+const boundAgentVersion = (candidate: unknown, allocate: boolean): string => {
   if (typeof candidate !== 'string' || candidate.length > 32 || !/^\d+\.\d+\.\d+$/.test(candidate)) return 'unknown'
   if (attributedAgentVersions.has(candidate)) return candidate
-  if (attributedAgentVersions.size >= MAX_ATTRIBUTED_AGENT_VERSIONS) return 'other'
+  if (!allocate || attributedAgentVersions.size >= MAX_ATTRIBUTED_AGENT_VERSIONS) return 'other'
   attributedAgentVersions.add(candidate)
   return candidate
 }
@@ -212,12 +226,13 @@ const boundAgentVersion = (candidate: unknown): string => {
 /**
  * Best-effort agent version for a REJECTED beacon's metric dimension. Only a
  * schema-reason reject has parseable JSON to read; size/json rejects (and any
- * parse surprise) collapse to "unknown".
+ * parse surprise) collapse to "unknown". Never allocates a version slot —
+ * see {@link boundAgentVersion}.
  */
 const claimedAgentVersion = (rawBody: string, reason: 'size' | 'json' | 'schema'): string => {
   if (reason !== 'schema') return 'unknown'
   try {
-    return boundAgentVersion((JSON.parse(rawBody) as { session?: { agentVersion?: unknown } })?.session?.agentVersion)
+    return boundAgentVersion((JSON.parse(rawBody) as { session?: { agentVersion?: unknown } })?.session?.agentVersion, false)
   } catch {
     return 'unknown'
   }
@@ -550,7 +565,7 @@ const processEvent = async (event: FunctionUrlEvent, config: CollectorConfig, de
   // version-cohort observability (rollout share, candidate-vs-current).
   // Schema-valid versions are still attacker-chosen values, so the same
   // cardinality bound applies here as everywhere the version is a dimension.
-  const boundedVersion = boundAgentVersion(beacon.session.agentVersion)
+  const boundedVersion = boundAgentVersion(beacon.session.agentVersion, true)
   metrics.count('rum_beacons_accepted_by_version', { TargetId: target.target_id, AgentVersion: boundedVersion })
 
   // 4. Archive the beacon plus the stamp envelope as a JSON line. `page.url`

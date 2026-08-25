@@ -59,6 +59,10 @@ const expectNoContent = (result: FunctionUrlResult): void => {
 const conditionalCheckFailed = (): Error => Object.assign(new Error('The conditional request failed'), { name: 'ConditionalCheckFailedException' })
 
 describe('createHandler', () => {
+  // The attributed-version set is container-lifetime state; reset it so no
+  // test depends on which earlier test established a version.
+  beforeEach(() => resetAttributedAgentVersionsForTesting())
+
   it('stamps a staging-origin beacon as the inventory pass', async () => {
     const deps = makeDeps()
     const result = await createHandler(makeConfig(), deps)(makeEvent(fixture('external-unknown.json'), { origin: STAGING_ORIGIN }))
@@ -160,17 +164,41 @@ describe('createHandler', () => {
   })
 
   describe('beacon rejection', () => {
-    it('counts a schema-invalid beacon with its reason and the claimed agent version, archiving nothing', async () => {
+    it('counts a schema-invalid beacon with its reason, attributing the claimed version only once accepted traffic has established it', async () => {
       const deps = makeDeps()
-      const result = await createHandler(makeConfig(), deps)(makeEvent(fixture('invalid/unknown-key.json')))
+      const handler = createHandler(makeConfig(), deps)
+      // Establish 1.0.0 via an accepted beacon: attribution is EARNED by
+      // accepted traffic — a rejected body never allocates a version slot.
+      await handler(makeEvent(fixture('external-unknown.json')))
+      const result = await handler(makeEvent(fixture('invalid/unknown-key.json')))
 
       expectNoContent(result)
-      // A schema reject still has parseable JSON, so the reject is attributed
-      // to the sensor version that produced it — the release promotion gate
-      // is "zero rejects for the candidate version".
-      expect(publishedMetrics(deps)).toEqual([expect.objectContaining({ name: 'rum_beacons_rejected', dimensions: { Reason: 'schema', AgentVersion: '1.0.0' } })])
-      expect(deps.firehose.putRecord).not.toHaveBeenCalled()
-      expect(deps.dynamo.putItemIfAbsent).not.toHaveBeenCalled()
+      expect(publishedMetrics(deps)).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'rum_beacons_rejected', dimensions: { Reason: 'schema', AgentVersion: '1.0.0' } })]))
+      expect(deps.dynamo.putItemIfAbsent).toHaveBeenCalledTimes(1) // only the accepted beacon
+    })
+
+    it('never lets rejected bodies allocate version slots: eight garbage claims then a real candidate — the candidate still attributes', async () => {
+      // CodeRabbit regression case: on a fresh container, eight
+      // schema-invalid bodies with distinct valid-shaped versions must NOT
+      // consume the attribution budget ahead of legitimate traffic.
+      const deps = makeDeps()
+      const handler = createHandler(makeConfig(), deps)
+      for (let i = 0; i < 8; i++) {
+        const garbage = JSON.parse(fixture('invalid/unknown-key.json'))
+        garbage.session.agentVersion = `66.6.${i}`
+        await handler(makeEvent(JSON.stringify(garbage)))
+      }
+      // Unestablished claims read as "other" (a version with zero accepted
+      // beacons is a claim, not a release)...
+      const rejects = publishedMetrics(deps).filter((d) => d.name === 'rum_beacons_rejected')
+      expect(rejects).toHaveLength(8)
+      for (const datum of rejects) expect(datum.dimensions['AgentVersion']).toBe('other')
+
+      // ...and the real candidate arriving afterwards attributes normally.
+      const candidate = JSON.parse(fixture('external-unknown.json'))
+      candidate.session.agentVersion = '2.0.0'
+      await handler(makeEvent(JSON.stringify(candidate)))
+      expect(publishedMetrics(deps)).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'rum_beacons_accepted_by_version', dimensions: { TargetId: '1.0', AgentVersion: '2.0.0' } })]))
     })
 
     it.each([
