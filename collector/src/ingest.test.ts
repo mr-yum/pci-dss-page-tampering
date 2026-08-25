@@ -6,7 +6,7 @@ import { z } from 'zod'
 import type { Beacon } from '../../src/types/beacon.js'
 import { CspViolationObservationSchema } from '../../src/types/beacon.js'
 import type { CollectorConfig, CollectorDeps, FunctionUrlEvent, FunctionUrlResult, MetricDatum } from './ingest.js'
-import { createHandler, loadConfigFromEnv } from './ingest.js'
+import { createHandler, loadConfigFromEnv, resetAttributedAgentVersionsForTesting } from './ingest.js'
 import { buildNoveltyKey } from './novelty.js'
 
 const FIXTURES = join(__dirname, '../../test/fixtures/beacons')
@@ -59,6 +59,10 @@ const expectNoContent = (result: FunctionUrlResult): void => {
 const conditionalCheckFailed = (): Error => Object.assign(new Error('The conditional request failed'), { name: 'ConditionalCheckFailedException' })
 
 describe('createHandler', () => {
+  // The attributed-version set is container-lifetime state; reset it so no
+  // test depends on which earlier test established a version.
+  beforeEach(() => resetAttributedAgentVersionsForTesting())
+
   it('stamps a staging-origin beacon as the inventory pass', async () => {
     const deps = makeDeps()
     const result = await createHandler(makeConfig(), deps)(makeEvent(fixture('external-unknown.json'), { origin: STAGING_ORIGIN }))
@@ -77,6 +81,10 @@ describe('createHandler', () => {
     const record = JSON.parse(deps.firehose.putRecord.mock.calls[0][0].data)
     expect(record.stamp.target_type).toBe('detection')
     expect(metricNames(deps)).toContain('rum_beacons_accepted')
+    // Version-cohort observability rides a SEPARATE metric name: an extra
+    // dimension on rum_beacons_accepted would change that series' identity
+    // and silently detach the per-target volume anomaly alarms.
+    expect(publishedMetrics(deps)).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'rum_beacons_accepted_by_version', dimensions: { TargetId: '1.0', AgentVersion: '1.0.0' } })]))
   })
 
   it('redacts page.url query string and fragment before archival (PII must not enter the 1-year archive)', async () => {
@@ -156,24 +164,85 @@ describe('createHandler', () => {
   })
 
   describe('beacon rejection', () => {
-    it('counts a schema-invalid beacon with its reason and archives nothing', async () => {
+    it('counts a schema-invalid beacon with its reason, attributing the claimed version only once accepted traffic has established it', async () => {
       const deps = makeDeps()
-      const result = await createHandler(makeConfig(), deps)(makeEvent(fixture('invalid/unknown-key.json')))
+      const handler = createHandler(makeConfig(), deps)
+      // Establish 1.0.0 via an accepted beacon: attribution is EARNED by
+      // accepted traffic — a rejected body never allocates a version slot.
+      await handler(makeEvent(fixture('external-unknown.json')))
+      const result = await handler(makeEvent(fixture('invalid/unknown-key.json')))
 
       expectNoContent(result)
-      expect(publishedMetrics(deps)).toEqual([expect.objectContaining({ name: 'rum_beacons_rejected', dimensions: { Reason: 'schema' } })])
-      expect(deps.firehose.putRecord).not.toHaveBeenCalled()
-      expect(deps.dynamo.putItemIfAbsent).not.toHaveBeenCalled()
+      expect(publishedMetrics(deps)).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'rum_beacons_rejected', dimensions: { Reason: 'schema', AgentVersion: '1.0.0' } })]))
+      expect(deps.dynamo.putItemIfAbsent).toHaveBeenCalledTimes(1) // only the accepted beacon
+    })
+
+    it('never lets rejected bodies allocate version slots: eight garbage claims then a real candidate — the candidate still attributes', async () => {
+      // CodeRabbit regression case: on a fresh container, eight
+      // schema-invalid bodies with distinct valid-shaped versions must NOT
+      // consume the attribution budget ahead of legitimate traffic.
+      const deps = makeDeps()
+      const handler = createHandler(makeConfig(), deps)
+      for (let i = 0; i < 8; i++) {
+        const garbage = JSON.parse(fixture('invalid/unknown-key.json'))
+        garbage.session.agentVersion = `66.6.${i}`
+        await handler(makeEvent(JSON.stringify(garbage)))
+      }
+      // Unestablished claims read as "other" (a version with zero accepted
+      // beacons is a claim, not a release)...
+      const rejects = publishedMetrics(deps).filter((d) => d.name === 'rum_beacons_rejected')
+      expect(rejects).toHaveLength(8)
+      for (const datum of rejects) expect(datum.dimensions['AgentVersion']).toBe('other')
+
+      // ...and the real candidate arriving afterwards attributes normally.
+      const candidate = JSON.parse(fixture('external-unknown.json'))
+      candidate.session.agentVersion = '2.0.0'
+      await handler(makeEvent(JSON.stringify(candidate)))
+      expect(publishedMetrics(deps)).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'rum_beacons_accepted_by_version', dimensions: { TargetId: '1.0', AgentVersion: '2.0.0' } })]))
     })
 
     it.each([
       ['size', 'x'.repeat(40000)],
       ['json', '{not json'],
-    ])('counts a %s rejection', async (reason, body) => {
+    ])('counts a %s rejection with version unknown (nothing parseable to attribute)', async (reason, body) => {
       const deps = makeDeps()
       expectNoContent(await createHandler(makeConfig(), deps)(makeEvent(body)))
-      expect(publishedMetrics(deps)).toEqual([expect.objectContaining({ name: 'rum_beacons_rejected', dimensions: { Reason: reason } })])
+      expect(publishedMetrics(deps)).toEqual([expect.objectContaining({ name: 'rum_beacons_rejected', dimensions: { Reason: reason, AgentVersion: 'unknown' } })])
       expect(deps.firehose.putRecord).not.toHaveBeenCalled()
+    })
+
+    it('collapses a non-semver claimed version to "unknown" (metric-dimension cardinality guard)', async () => {
+      const deps = makeDeps()
+      const beacon = JSON.parse(fixture('invalid/unknown-key.json'))
+      beacon.session.agentVersion = '<script>alert(1)</script>'
+      expectNoContent(await createHandler(makeConfig(), deps)(makeEvent(JSON.stringify(beacon))))
+      expect(publishedMetrics(deps)).toEqual([expect.objectContaining({ name: 'rum_beacons_rejected', dimensions: { Reason: 'schema', AgentVersion: 'unknown' } })])
+    })
+
+    it('bounds the ATTRIBUTED version value space: semver-shaped spray collapses to "other" past the per-container cap, while known versions keep attributing', async () => {
+      // Format alone is not a bound — every distinct valid-shaped semver
+      // would mint its own CloudWatch series across three metrics. The
+      // first-seen set caps distinct attributed versions per container.
+      resetAttributedAgentVersionsForTesting()
+      const deps = makeDeps()
+      const handler = createHandler(makeConfig(), deps)
+      const withVersion = (version: string) => {
+        const beacon = JSON.parse(fixture('external-unknown.json'))
+        beacon.session.agentVersion = version
+        return JSON.stringify(beacon)
+      }
+
+      // Fill the cap with distinct valid versions (all accepted beacons).
+      for (let i = 0; i < 8; i++) await handler(makeEvent(withVersion(`1.0.${i}`)))
+      // The 9th distinct version exceeds the budget → "other".
+      await handler(makeEvent(withVersion('9.9.9')))
+      // A version already in the set still attributes normally.
+      await handler(makeEvent(withVersion('1.0.0')))
+
+      const byVersion = publishedMetrics(deps).filter((datum) => datum.name === 'rum_beacons_accepted_by_version')
+      expect(byVersion.at(-2)?.dimensions).toEqual({ TargetId: '1.0', AgentVersion: 'other' })
+      expect(byVersion.at(-1)?.dimensions).toEqual({ TargetId: '1.0', AgentVersion: '1.0.0' })
+      resetAttributedAgentVersionsForTesting()
     })
   })
 
@@ -259,7 +328,10 @@ describe('createHandler', () => {
     const kinds = deps.sqs.sendMessage.mock.calls.map(([input]: [{ attributes: { kind: string } }]) => input.attributes.kind)
     expect(kinds).not.toContain('agent-health')
     expect(publishedMetrics(deps)).toEqual(
-      expect.arrayContaining([expect.objectContaining({ name: 'rum_agent_p95_task_ms', value: 2, dimensions: { TargetId: '1.0' } }), expect.objectContaining({ name: 'rum_agent_dropped', value: 0, dimensions: { TargetId: '1.0' } })]),
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'rum_agent_p95_task_ms', value: 2, dimensions: { TargetId: '1.0', AgentVersion: '1.0.0' } }),
+        expect.objectContaining({ name: 'rum_agent_dropped', value: 0, dimensions: { TargetId: '1.0', AgentVersion: '1.0.0' } }),
+      ]),
     )
   })
 
@@ -498,7 +570,7 @@ describe('CSP report ingestion (/csp-reports)', () => {
     const deps = makeDeps()
     expectNoContent(await createHandler(makeConfig(), deps)({ rawPath: '/', headers: { Origin: PROD_ORIGIN }, body: JSON.stringify(LEGACY_REPORT), isBase64Encoded: false }))
 
-    expect(publishedMetrics(deps)).toEqual([expect.objectContaining({ name: 'rum_beacons_rejected', dimensions: { Reason: 'schema' } })])
+    expect(publishedMetrics(deps)).toEqual([expect.objectContaining({ name: 'rum_beacons_rejected', dimensions: { Reason: 'schema', AgentVersion: 'unknown' } })])
     expect(deps.firehose.putRecord).not.toHaveBeenCalled()
   })
 })

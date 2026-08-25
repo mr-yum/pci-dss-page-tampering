@@ -172,13 +172,83 @@ const decodeBody = (event: FunctionUrlEvent): string => {
 
 const isConditionalCheckFailed = (error: unknown): boolean => error instanceof Error && error.name === 'ConditionalCheckFailedException'
 
-const processObservation = async (observation: Observation, sessionId: string, target: OriginTarget, receivedAt: number, config: CollectorConfig, deps: CollectorDeps, metrics: MetricsBatch): Promise<void> => {
+/**
+ * Cardinality bound for the AgentVersion metric dimension, applied uniformly
+ * wherever a version becomes a dimension (agent-health, accepted-by-version,
+ * rejects). Two layers, because the dimension is attacker-influenceable on a
+ * public endpoint:
+ *
+ *  1. Shape: only strict `X.Y.Z` semver (≤32 chars) passes; anything else is
+ *     "unknown" (also the value for absent/unreadable versions).
+ *  2. Value space: the semver filter alone still leaves an unbounded space of
+ *     valid-SHAPED values ("1.2.3", "9.9.9", …), each of which would mint a
+ *     new CloudWatch series. A per-container first-seen set caps distinct
+ *     attributed versions at {@link MAX_ATTRIBUTED_AGENT_VERSIONS}; overflow
+ *     collapses to "other". Legitimate traffic carries 1–3 live versions
+ *     (current release, a rollout candidate, stragglers), so real versions
+ *     land in the set long before an attacker can crowd them out of a warm
+ *     container, and total series stay bounded by containers × (cap + 2).
+ *
+ * A configured release allowlist was considered and rejected: it would couple
+ * every sensor release to a collector config deploy, breaking the
+ * one-released-artefact property, for no additional bound in practice.
+ */
+const MAX_ATTRIBUTED_AGENT_VERSIONS = 8
+const attributedAgentVersions = new Set<string>()
+
+/** Test-only: the first-seen set is container-lifetime state. */
+export function resetAttributedAgentVersionsForTesting(): void {
+  attributedAgentVersions.clear()
+}
+
+/**
+ * Slot ALLOCATION is reserved for accepted beacons: a schema-rejected body is
+ * unauthenticated garbage, and letting it allocate would hand an attacker the
+ * cheapest possible exhaustion (eight invalid bodies with distinct
+ * valid-shaped versions on a fresh container would push the real release
+ * into "other"). Rejects therefore attribute read-only: a claimed version
+ * only attributes once accepted traffic has established it — a version with
+ * zero accepted beacons is a claim, not a release. The residual race
+ * (schema-VALID spray through the edge racing legitimate traffic for slots
+ * on a cold container) is bounded by the edge rate limit, by container
+ * recycling, and by legitimate beacons winning the race at real traffic
+ * volume; its worst case is "other"-inflation, which the operator guidance
+ * reads as noise/abuse, never as a rollout signal.
+ */
+const boundAgentVersion = (candidate: unknown, allocate: boolean): string => {
+  if (typeof candidate !== 'string' || candidate.length > 32 || !/^\d+\.\d+\.\d+$/.test(candidate)) return 'unknown'
+  if (attributedAgentVersions.has(candidate)) return candidate
+  if (!allocate || attributedAgentVersions.size >= MAX_ATTRIBUTED_AGENT_VERSIONS) return 'other'
+  attributedAgentVersions.add(candidate)
+  return candidate
+}
+
+/**
+ * Best-effort agent version for a REJECTED beacon's metric dimension. Only a
+ * schema-reason reject has parseable JSON to read; size/json rejects (and any
+ * parse surprise) collapse to "unknown". Never allocates a version slot —
+ * see {@link boundAgentVersion}.
+ */
+const claimedAgentVersion = (rawBody: string, reason: 'size' | 'json' | 'schema'): string => {
+  if (reason !== 'schema') return 'unknown'
+  try {
+    return boundAgentVersion((JSON.parse(rawBody) as { session?: { agentVersion?: unknown } })?.session?.agentVersion, false)
+  } catch {
+    return 'unknown'
+  }
+}
+
+const processObservation = async (observation: Observation, sessionId: string, target: OriginTarget, receivedAt: number, config: CollectorConfig, deps: CollectorDeps, metrics: MetricsBatch, agentVersion = 'unknown'): Promise<void> => {
   const targetDimension = { TargetId: target.target_id }
 
   if (observation.kind === 'agent-health') {
     // Never keyed, never enqueued — metrics only (data-model.md §2d).
-    metrics.millis('rum_agent_p95_task_ms', observation.p95TaskMs, targetDimension)
-    metrics.count('rum_agent_dropped', targetDimension, observation.dropped)
+    // Dimensioned by agent version so a release-candidate cohort's overhead
+    // and drop rate compare against the current release on a dashboard
+    // (SC-003 promotion gate) instead of an archive query.
+    const healthDimension = { ...targetDimension, AgentVersion: agentVersion }
+    metrics.millis('rum_agent_p95_task_ms', observation.p95TaskMs, healthDimension)
+    metrics.count('rum_agent_dropped', healthDimension, observation.dropped)
     return
   }
 
@@ -473,9 +543,13 @@ const processEvent = async (event: FunctionUrlEvent, config: CollectorConfig, de
   }
 
   // 3. Strict parse (shared size/JSON/schema semantics from src/types/beacon.ts).
-  const parsed = parseBeacon(decodeBody(event))
+  const rawBody = decodeBody(event)
+  const parsed = parseBeacon(rawBody)
   if (!parsed.ok) {
-    metrics.count('rum_beacons_rejected', { Reason: parsed.reason })
+    // Rejects attribute the claimed agent version where one is readable, so a
+    // misbehaving release shows up as ITS OWN reject series — the promotion
+    // gate for a candidate sensor is "zero rejects for that version".
+    metrics.count('rum_beacons_rejected', { Reason: parsed.reason, AgentVersion: claimedAgentVersion(rawBody, parsed.reason) })
     return
   }
   const beacon = parsed.beacon
@@ -485,6 +559,14 @@ const processEvent = async (event: FunctionUrlEvent, config: CollectorConfig, de
   // per-target volume signal (anomaly alarms hang off it) reflects real
   // intake and is not confounded by a Firehose outage.
   metrics.count('rum_beacons_accepted', { TargetId: target.target_id })
+  // Separate metric name, NOT an extra dimension on rum_beacons_accepted:
+  // adding a dimension changes the metric series identity and would silently
+  // detach the per-target volume anomaly alarms. This series exists for
+  // version-cohort observability (rollout share, candidate-vs-current).
+  // Schema-valid versions are still attacker-chosen values, so the same
+  // cardinality bound applies here as everywhere the version is a dimension.
+  const boundedVersion = boundAgentVersion(beacon.session.agentVersion, true)
+  metrics.count('rum_beacons_accepted_by_version', { TargetId: target.target_id, AgentVersion: boundedVersion })
 
   // 4. Archive the beacon plus the stamp envelope as a JSON line. `page.url`
   // is redacted to origin + pathname before archival — the SAME PII rule the
@@ -507,7 +589,7 @@ const processEvent = async (event: FunctionUrlEvent, config: CollectorConfig, de
   // 5. Novelty write + first-sighting enqueue per observation. One failing
   // observation must not starve its siblings, so failures are collected and
   // logged rather than short-circuiting the loop.
-  const outcomes = await Promise.allSettled(beacon.observations.map((observation) => processObservation(observation, beacon.session.id, target, receivedAt, config, deps, metrics)))
+  const outcomes = await Promise.allSettled(beacon.observations.map((observation) => processObservation(observation, beacon.session.id, target, receivedAt, config, deps, metrics, boundedVersion)))
   for (const outcome of outcomes) {
     if (outcome.status === 'rejected') {
       console.error('collector: observation processing failed', outcome.reason)
