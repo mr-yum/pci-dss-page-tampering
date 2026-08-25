@@ -172,13 +172,35 @@ const decodeBody = (event: FunctionUrlEvent): string => {
 
 const isConditionalCheckFailed = (error: unknown): boolean => error instanceof Error && error.name === 'ConditionalCheckFailedException'
 
-const processObservation = async (observation: Observation, sessionId: string, target: OriginTarget, receivedAt: number, config: CollectorConfig, deps: CollectorDeps, metrics: MetricsBatch): Promise<void> => {
+/**
+ * Best-effort agent version for a REJECTED beacon's metric dimension. Only a
+ * schema-reason reject has parseable JSON to read; size/json rejects (and any
+ * parse surprise) collapse to "unknown". The strict semver filter is a
+ * security guard, not pedantry: metric dimensions are attacker-influenceable
+ * here, and accepting arbitrary strings would let a hostile client explode
+ * CloudWatch series cardinality — junk versions all collapse to "unknown".
+ */
+const claimedAgentVersion = (rawBody: string, reason: 'size' | 'json' | 'schema'): string => {
+  if (reason !== 'schema') return 'unknown'
+  try {
+    const candidate = (JSON.parse(rawBody) as { session?: { agentVersion?: unknown } })?.session?.agentVersion
+    return typeof candidate === 'string' && /^\d+\.\d+\.\d+$/.test(candidate) && candidate.length <= 32 ? candidate : 'unknown'
+  } catch {
+    return 'unknown'
+  }
+}
+
+const processObservation = async (observation: Observation, sessionId: string, target: OriginTarget, receivedAt: number, config: CollectorConfig, deps: CollectorDeps, metrics: MetricsBatch, agentVersion = 'unknown'): Promise<void> => {
   const targetDimension = { TargetId: target.target_id }
 
   if (observation.kind === 'agent-health') {
     // Never keyed, never enqueued — metrics only (data-model.md §2d).
-    metrics.millis('rum_agent_p95_task_ms', observation.p95TaskMs, targetDimension)
-    metrics.count('rum_agent_dropped', targetDimension, observation.dropped)
+    // Dimensioned by agent version so a release-candidate cohort's overhead
+    // and drop rate compare against the current release on a dashboard
+    // (SC-003 promotion gate) instead of an archive query.
+    const healthDimension = { ...targetDimension, AgentVersion: agentVersion }
+    metrics.millis('rum_agent_p95_task_ms', observation.p95TaskMs, healthDimension)
+    metrics.count('rum_agent_dropped', healthDimension, observation.dropped)
     return
   }
 
@@ -473,9 +495,13 @@ const processEvent = async (event: FunctionUrlEvent, config: CollectorConfig, de
   }
 
   // 3. Strict parse (shared size/JSON/schema semantics from src/types/beacon.ts).
-  const parsed = parseBeacon(decodeBody(event))
+  const rawBody = decodeBody(event)
+  const parsed = parseBeacon(rawBody)
   if (!parsed.ok) {
-    metrics.count('rum_beacons_rejected', { Reason: parsed.reason })
+    // Rejects attribute the claimed agent version where one is readable, so a
+    // misbehaving release shows up as ITS OWN reject series — the promotion
+    // gate for a candidate sensor is "zero rejects for that version".
+    metrics.count('rum_beacons_rejected', { Reason: parsed.reason, AgentVersion: claimedAgentVersion(rawBody, parsed.reason) })
     return
   }
   const beacon = parsed.beacon
@@ -485,6 +511,11 @@ const processEvent = async (event: FunctionUrlEvent, config: CollectorConfig, de
   // per-target volume signal (anomaly alarms hang off it) reflects real
   // intake and is not confounded by a Firehose outage.
   metrics.count('rum_beacons_accepted', { TargetId: target.target_id })
+  // Separate metric name, NOT an extra dimension on rum_beacons_accepted:
+  // adding a dimension changes the metric series identity and would silently
+  // detach the per-target volume anomaly alarms. This series exists for
+  // version-cohort observability (rollout share, candidate-vs-current).
+  metrics.count('rum_beacons_accepted_by_version', { TargetId: target.target_id, AgentVersion: beacon.session.agentVersion })
 
   // 4. Archive the beacon plus the stamp envelope as a JSON line. `page.url`
   // is redacted to origin + pathname before archival — the SAME PII rule the
@@ -507,7 +538,7 @@ const processEvent = async (event: FunctionUrlEvent, config: CollectorConfig, de
   // 5. Novelty write + first-sighting enqueue per observation. One failing
   // observation must not starve its siblings, so failures are collected and
   // logged rather than short-circuiting the loop.
-  const outcomes = await Promise.allSettled(beacon.observations.map((observation) => processObservation(observation, beacon.session.id, target, receivedAt, config, deps, metrics)))
+  const outcomes = await Promise.allSettled(beacon.observations.map((observation) => processObservation(observation, beacon.session.id, target, receivedAt, config, deps, metrics, beacon.session.agentVersion)))
   for (const outcome of outcomes) {
     if (outcome.status === 'rejected') {
       console.error('collector: observation processing failed', outcome.reason)

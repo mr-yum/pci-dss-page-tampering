@@ -29,7 +29,7 @@ Failure semantics: steps 4–5 are at-least-once; a crash between them can re-de
 
 ## Metrics (CloudWatch, dimensioned by target where applicable)
 
-`rum_beacons_accepted`, `rum_beacons_rejected` (reason: schema|size|version), `rum_unmapped_origin`, `rum_edge_auth_failure`, `rum_first_sightings`, `rum_observations_counted`. Beacon-volume anomaly alarms hang off `rum_beacons_accepted` per target.
+`rum_beacons_accepted` (dimension TargetId only — the series the volume anomaly alarms consume), `rum_beacons_accepted_by_version` (dimensions TargetId + AgentVersion — a separate metric name, because an extra dimension on `rum_beacons_accepted` would change that series' identity and silently detach the alarms), `rum_beacons_rejected` (dimensions Reason: schema|size|json + AgentVersion — the claimed version when a schema reject's JSON is readable and strictly semver, else `unknown`; the semver filter guards CloudWatch cardinality against attacker-chosen strings), `rum_unmapped_origin`, `rum_edge_auth_failure`, `rum_first_sightings`, `rum_observations_counted`, and the agent-health metrics (`rum_agent_p95_task_ms`, `rum_agent_dropped`, dimensions TargetId + AgentVersion). Beacon-volume anomaly alarms hang off `rum_beacons_accepted` per target; the AgentVersion dimensions exist for sensor-release verification — a candidate version's rejects, overhead, and traffic share read directly off the metrics.
 
 ## Addendum: browser-native CSP reports — `POST /csp-reports`
 
