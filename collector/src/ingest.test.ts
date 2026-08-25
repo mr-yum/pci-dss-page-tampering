@@ -6,7 +6,7 @@ import { z } from 'zod'
 import type { Beacon } from '../../src/types/beacon.js'
 import { CspViolationObservationSchema } from '../../src/types/beacon.js'
 import type { CollectorConfig, CollectorDeps, FunctionUrlEvent, FunctionUrlResult, MetricDatum } from './ingest.js'
-import { createHandler, loadConfigFromEnv } from './ingest.js'
+import { createHandler, loadConfigFromEnv, resetAttributedAgentVersionsForTesting } from './ingest.js'
 import { buildNoveltyKey } from './novelty.js'
 
 const FIXTURES = join(__dirname, '../../test/fixtures/beacons')
@@ -189,6 +189,32 @@ describe('createHandler', () => {
       beacon.session.agentVersion = '<script>alert(1)</script>'
       expectNoContent(await createHandler(makeConfig(), deps)(makeEvent(JSON.stringify(beacon))))
       expect(publishedMetrics(deps)).toEqual([expect.objectContaining({ name: 'rum_beacons_rejected', dimensions: { Reason: 'schema', AgentVersion: 'unknown' } })])
+    })
+
+    it('bounds the ATTRIBUTED version value space: semver-shaped spray collapses to "other" past the per-container cap, while known versions keep attributing', async () => {
+      // Format alone is not a bound — every distinct valid-shaped semver
+      // would mint its own CloudWatch series across three metrics. The
+      // first-seen set caps distinct attributed versions per container.
+      resetAttributedAgentVersionsForTesting()
+      const deps = makeDeps()
+      const handler = createHandler(makeConfig(), deps)
+      const withVersion = (version: string) => {
+        const beacon = JSON.parse(fixture('external-unknown.json'))
+        beacon.session.agentVersion = version
+        return JSON.stringify(beacon)
+      }
+
+      // Fill the cap with distinct valid versions (all accepted beacons).
+      for (let i = 0; i < 8; i++) await handler(makeEvent(withVersion(`1.0.${i}`)))
+      // The 9th distinct version exceeds the budget → "other".
+      await handler(makeEvent(withVersion('9.9.9')))
+      // A version already in the set still attributes normally.
+      await handler(makeEvent(withVersion('1.0.0')))
+
+      const byVersion = publishedMetrics(deps).filter((datum) => datum.name === 'rum_beacons_accepted_by_version')
+      expect(byVersion.at(-2)?.dimensions).toEqual({ TargetId: '1.0', AgentVersion: 'other' })
+      expect(byVersion.at(-1)?.dimensions).toEqual({ TargetId: '1.0', AgentVersion: '1.0.0' })
+      resetAttributedAgentVersionsForTesting()
     })
   })
 
