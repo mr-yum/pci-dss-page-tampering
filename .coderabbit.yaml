@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://storage.googleapis.com/coderabbit_public_assets/schema.v2.json
+#
+# This file takes precedence over the CodeRabbit UI configuration — while it
+# exists, org/repo dashboard settings no longer apply here (except settings an
+# org admin has marked as global overrides, which still win), so any setting
+# this repository relies on must be declared in this file.
+reviews:
+  # Carried over from the organisation UI configuration (also the default).
+  profile: chill
+  # Submit each round as Request Changes while actionable comments are open,
+  # and flip to an approving review once every comment is resolved, the latest
+  # commit has been reviewed, and no pre-merge checks are failing. Also
+  # enables the top-level `@coderabbitai approve` / `@coderabbitai resolve`
+  # commands used to close out review threads (see AGENTS.md).
+  request_changes_workflow: true
