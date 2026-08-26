@@ -109,8 +109,14 @@ variable "canary_no_data_minutes" {
   default     = 120
 }
 
-variable "short_evaluation_window" {
-  description = "Datadog query window for the threshold monitors (queue age, Lambda error rate, DLQ depth). last_15m approximates the CloudWatch alarms' 5-minute periods with multi-period evaluation."
+variable "threshold_evaluation_window" {
+  description = "Datadog query window for the single-period threshold monitors (queue age, DLQ depth). last_5m mirrors the CloudWatch alarms' one 5-minute evaluation period, so a recovered transient breach stops paging within ~5 minutes rather than being retained by a longer max() window."
+  type        = string
+  default     = "last_5m"
+}
+
+variable "error_rate_evaluation_window" {
+  description = "Datadog query window for the Lambda error-rate monitor. Datadog metric monitors have no M-of-N evaluation, so a single traffic-weighted last_15m window approximates CloudWatch's 3×5-minute periods with 2-to-alarm: both require elevated errors sustained across the same span; the Datadog form smooths a single bad 5-minute burst slightly more. Documented in the README as a conscious semantic difference, not parity."
   type        = string
   default     = "last_15m"
 }

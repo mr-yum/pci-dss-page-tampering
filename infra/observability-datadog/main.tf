@@ -37,7 +37,7 @@ resource "datadog_monitor" "queue_age" {
     Notify: ${var.notification_handle}
   EOT
 
-  query = "max(${var.short_evaluation_window}):max:aws.sqs.approximate_age_of_oldest_message{queuename:${var.queue_name}} > ${var.queue_age_alarm_hours * 3600}"
+  query = "max(${var.threshold_evaluation_window}):max:aws.sqs.approximate_age_of_oldest_message{queuename:${var.queue_name}} > ${var.queue_age_alarm_hours * 3600}"
 
   monitor_thresholds {
     critical = var.queue_age_alarm_hours * 3600
@@ -93,6 +93,12 @@ resource "datadog_monitor" "beacon_volume" {
 # (c) Ingest Lambda error rate — beacons are being lost.
 # Mirrors: aws_cloudwatch_metric_alarm.lambda_errors
 # (IF(invocations > 0, 100 * errors / invocations, 0) > 5).
+# Semantic difference vs CloudWatch, by necessity: the CW alarm evaluates
+# 3×5-minute periods with 2-to-alarm, and Datadog metric monitors have no
+# M-of-N evaluation. A single traffic-weighted window over the same span is
+# the closest sound equivalent — both require errors sustained across
+# ~15 minutes; this form smooths one bad 5-minute burst slightly more.
+# Documented in the README; window tunable via error_rate_evaluation_window.
 resource "datadog_monitor" "lambda_error_rate" {
   name    = "${var.name_prefix}-ingest-error-rate"
   type    = "query alert"
@@ -104,7 +110,7 @@ resource "datadog_monitor" "lambda_error_rate" {
     Notify: ${var.notification_handle}
   EOT
 
-  query = "sum(${var.short_evaluation_window}):100 * sum:aws.lambda.errors{functionname:${var.lambda_function_name}}.as_count() / sum:aws.lambda.invocations{functionname:${var.lambda_function_name}}.as_count() > ${var.lambda_error_rate_percent}"
+  query = "sum(${var.error_rate_evaluation_window}):100 * sum:aws.lambda.errors{functionname:${var.lambda_function_name}}.as_count() / sum:aws.lambda.invocations{functionname:${var.lambda_function_name}}.as_count() > ${var.lambda_error_rate_percent}"
 
   monitor_thresholds {
     critical = var.lambda_error_rate_percent
@@ -132,7 +138,7 @@ resource "datadog_monitor" "dlq_depth" {
     Notify: ${var.notification_handle}
   EOT
 
-  query = "max(${var.short_evaluation_window}):max:aws.sqs.approximate_number_of_messages_visible{queuename:${var.dlq_name}} > 0"
+  query = "max(${var.threshold_evaluation_window}):max:aws.sqs.approximate_number_of_messages_visible{queuename:${var.dlq_name}} > 0"
 
   monitor_thresholds {
     critical = 0

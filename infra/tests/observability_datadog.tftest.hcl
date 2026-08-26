@@ -79,8 +79,8 @@ run "monitors_thresholds_and_no_data" {
   # (a) Queue age: threshold in seconds from queue_age_alarm_hours (default 3),
   # scoped to the queue's lowercased queuename tag.
   assert {
-    condition     = datadog_monitor.queue_age.query == "max(last_15m):max:aws.sqs.approximate_age_of_oldest_message{queuename:rum-novel-observations} > 10800"
-    error_message = "queue_age_alarm_hours default (3) must drive the queue-age monitor query (10800s)."
+    condition     = datadog_monitor.queue_age.query == "max(last_5m):max:aws.sqs.approximate_age_of_oldest_message{queuename:rum-novel-observations} > 10800"
+    error_message = "queue_age_alarm_hours default (3) must drive the queue-age monitor query (10800s) over the single 5-minute period CloudWatch evaluates."
   }
 
   assert {
@@ -135,7 +135,7 @@ run "monitors_thresholds_and_no_data" {
 
   # (d) DLQ: any visible message.
   assert {
-    condition     = datadog_monitor.dlq_depth.query == "max(last_15m):max:aws.sqs.approximate_number_of_messages_visible{queuename:rum-novel-observations-dlq} > 0"
+    condition     = datadog_monitor.dlq_depth.query == "max(last_5m):max:aws.sqs.approximate_number_of_messages_visible{queuename:rum-novel-observations-dlq} > 0"
     error_message = "The DLQ monitor must fire as soon as the DLQ is non-empty."
   }
 

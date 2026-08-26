@@ -302,7 +302,7 @@ module "collector_core" {
 }
 
 module "observability_datadog" {
-  source = "github.com/example-org/pci-dss-page-tampering//infra/observability-datadog"
+  source = "github.com/mr-yum/pci-dss-page-tampering//infra/observability-datadog?ref=v1.0.0"
 
   metric_namespace     = module.collector_core.metric_namespace
   queue_name           = "rum-novel-observations"
