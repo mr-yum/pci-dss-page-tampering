@@ -182,24 +182,24 @@ run "defaults_alarms_and_aws_iam_pairing" {
 
   # queue_age_alarm_hours default 3 → alarm threshold in seconds.
   assert {
-    condition     = aws_cloudwatch_metric_alarm.queue_age.threshold == 3 * 3600
+    condition     = aws_cloudwatch_metric_alarm.queue_age[0].threshold == 3 * 3600
     error_message = "queue_age_alarm_hours default (3) must drive the queue-age alarm threshold (10800s)."
   }
 
   # DLQ alarm fires on any visible message.
   assert {
-    condition     = aws_cloudwatch_metric_alarm.dlq_depth.threshold == 0
+    condition     = aws_cloudwatch_metric_alarm.dlq_depth[0].threshold == 0
     error_message = "The DLQ alarm must fire as soon as the DLQ is non-empty (threshold 0, GreaterThanThreshold)."
   }
 
   assert {
-    condition     = aws_cloudwatch_metric_alarm.dlq_depth.comparison_operator == "GreaterThanThreshold"
+    condition     = aws_cloudwatch_metric_alarm.dlq_depth[0].comparison_operator == "GreaterThanThreshold"
     error_message = "The DLQ alarm must use GreaterThanThreshold."
   }
 
   # Lambda error-rate alarm exists.
   assert {
-    condition     = aws_cloudwatch_metric_alarm.lambda_errors.threshold == 5
+    condition     = aws_cloudwatch_metric_alarm.lambda_errors[0].threshold == 5
     error_message = "The ingest Lambda error-rate alarm must fire above 5%."
   }
 
@@ -226,6 +226,43 @@ run "defaults_alarms_and_aws_iam_pairing" {
   assert {
     condition     = aws_lambda_function_url.ingest.authorization_type == "AWS_IAM"
     error_message = "edge_auth.mode \"aws_iam\" must produce a Function URL with authorization_type AWS_IAM."
+  }
+}
+
+# --- create_alarms toggle -----------------------------------------------------
+
+# create_alarms = false hands the monitors to an external system (e.g. the
+# observability-datadog module): every alarm family must vanish, while the SNS
+# topic logic is untouched (other consumers may still publish to it).
+run "create_alarms_false_creates_none" {
+  command = plan
+
+  module {
+    source = "../collector-core"
+  }
+
+  variables {
+    create_alarms = false
+  }
+
+  assert {
+    condition     = length(aws_cloudwatch_metric_alarm.queue_age) == 0
+    error_message = "create_alarms = false must not create the queue-age alarm."
+  }
+
+  assert {
+    condition     = length(aws_cloudwatch_metric_alarm.beacon_volume) == 0
+    error_message = "create_alarms = false must not create any beacon-volume anomaly alarm."
+  }
+
+  assert {
+    condition     = length(aws_cloudwatch_metric_alarm.lambda_errors) == 0
+    error_message = "create_alarms = false must not create the Lambda error-rate alarm."
+  }
+
+  assert {
+    condition     = length(aws_cloudwatch_metric_alarm.dlq_depth) == 0
+    error_message = "create_alarms = false must not create the DLQ alarm."
   }
 }
 

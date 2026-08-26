@@ -1,6 +1,6 @@
 # Terraform test suites
 
-Mocked-provider `terraform test` suites for the three modules and both examples (contracts/terraform-modules.md §Test obligations). No credentials, no API calls, no applies: every run is `command = plan` against `mock_provider` blocks. The modules themselves require Terraform >= 1.7, but this harness root and both example roots pin `required_version = ">= 1.11"` because their suites use `override_during = plan`, which needs >= 1.11.
+Mocked-provider `terraform test` suites for the four modules and both examples (contracts/terraform-modules.md §Test obligations). No credentials, no API calls, no applies: every run is `command = plan` against `mock_provider` blocks. The modules themselves require Terraform >= 1.7, but this harness root and both example roots pin `required_version = ">= 1.11"` because their suites use `override_during = plan`, which needs >= 1.11.
 
 ## Layout
 
@@ -10,9 +10,10 @@ Mocked-provider `terraform test` suites for the three modules and both examples 
   - `collector_core.tftest.hcl` — input validation, defaults, alarms, `edge_auth` → Function URL pairing
   - `edge_cloudfront.tftest.hcl` — input validation (including the required shared secret), custom-domain trio precondition, WAF defaults, shared-secret origin header, CachingDisabled cache policy
   - `edge_cloudflare.tftest.hcl` — input validation, proxied record, rate limit, header injection, endpoint output
+  - `observability_datadog.tftest.hcl` — input validation, monitor queries/thresholds wired from variables, per-target `for_each`, `notify_no_data` on the volume tripwire and canary dead-man (silence is the signal), canary omission when `canary_metric = null`, `custom_metric_prefix` derivation and override
 - **`infra/examples/<stack>/tests/stack.tftest.hcl`** — each example's composition test, run from the example directory so the example itself is the configuration under test.
 
-This keeps the module directories free of test scaffolding while still exercising all three modules and both examples.
+This keeps the module directories free of test scaffolding while still exercising all four modules and both examples.
 
 ## Invocation (CI runs exactly this — `.github/workflows/infra.yml`)
 
@@ -41,7 +42,7 @@ infra/tests/no-vpc-check.sh
    _Gap_: a run that simply omits a required variable is a hard error `terraform test` cannot `expect_failures` on — that guarantee is Terraform core behaviour, not assertable per-run.
 2. **Edge/`edge_auth` pairing** — pairing is semantic (core cannot know which edge fronts it), so it is asserted where it is observable: each example's suite plans the full composition with its documented mode and asserts `aws_lambda_function_url.ingest.authorization_type` (`NONE` for both stacks — both edges inject the shared-secret header the handler verifies) via a `module`-override run against collector-core with the exact `edge_auth` shape the example passes — test assertions cannot reach into a child module's resources. `collector_core.tftest.hcl` asserts both mode → authorization mappings independently (`aws_iam` → `AWS_IAM` stays covered there for SigV4-capable, non-beacon consumers), and `edge_cloudfront.tftest.hcl` asserts the distribution plans the `x-collector-edge-key` origin header.
 3. **No-VPC contract** — `no-vpc-check.sh` greps all Terraform sources under `infra/` for `aws_vpc` / `aws_subnet` / `aws_security_group` resource declarations and exits non-zero on a match. A plan-level tftest assertion is not practical: run assertions evaluate expressions against named values and cannot enumerate "all resource types in this plan", so absence of a type is not expressible.
-4. **Alarm presence** — `collector_core.tftest.hcl` asserts the queue-age alarm (threshold `queue_age_alarm_hours * 3600`), DLQ alarm (`> 0`), Lambda error-rate alarm (5%), and exactly one beacon-volume anomaly alarm per distinct `target_id` (keyed set from `for_each`).
+4. **Alarm presence** — `collector_core.tftest.hcl` asserts the queue-age alarm (threshold `queue_age_alarm_hours * 3600`), DLQ alarm (`> 0`), Lambda error-rate alarm (5%), exactly one beacon-volume anomaly alarm per distinct `target_id` (keyed set from `for_each`), and that `create_alarms = false` plans none of them. `observability_datadog.tftest.hcl` asserts the mirrored Datadog monitors the same way (thresholds, anomaly query, no-data behaviour).
 5. **Output wiring** — both example suites assert `collector_endpoint`, `gha_role_arn`, and `queue_url` at plan time. Computed values are made known at plan by pinning them in `mock_resource` defaults with `override_during = plan` (Function URL, distribution domain, role ARN, queue URL); the Cloudflare endpoint is config-derived (`https://<record_name>`) and needs no mock.
 
 ## Known plan-time gaps (deliberate, not vacuous assertions)
