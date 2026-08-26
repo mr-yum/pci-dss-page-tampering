@@ -1,4 +1,6 @@
 resource "aws_cloudwatch_metric_alarm" "queue_age" {
+  count = var.create_alarms ? 1 : 0
+
   alarm_name          = "${var.name_prefix}-novel-observations-age"
   alarm_description   = "Oldest novel-observations message older than ${var.queue_age_alarm_hours}h — comparator drain is stalled."
   namespace           = "AWS/SQS"
@@ -20,7 +22,7 @@ resource "aws_cloudwatch_metric_alarm" "queue_age" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "beacon_volume" {
-  for_each = local.target_ids
+  for_each = var.create_alarms ? local.target_ids : toset([])
 
   alarm_name          = "${var.name_prefix}-beacon-volume-${each.value}"
   alarm_description   = "Beacon volume for target ${each.value} outside its anomaly band — agent rollout regression or telemetry loss."
@@ -58,6 +60,8 @@ resource "aws_cloudwatch_metric_alarm" "beacon_volume" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
+  count = var.create_alarms ? 1 : 0
+
   alarm_name          = "${var.name_prefix}-ingest-error-rate"
   alarm_description   = "Ingest Lambda error rate above 5% — beacons are being lost."
   comparison_operator = "GreaterThanThreshold"
@@ -109,6 +113,8 @@ resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "dlq_depth" {
+  count = var.create_alarms ? 1 : 0
+
   alarm_name          = "${var.name_prefix}-novel-observations-dlq"
   alarm_description   = "Novel-observations DLQ is non-empty — observations failed evaluation and need manual replay."
   namespace           = "AWS/SQS"

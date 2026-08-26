@@ -291,6 +291,30 @@ What arrives, with `<prefix>` = your `name_prefix`:
 
 The volume alarm treats missing data as breaching by design, so it fires on total silence and not just on a dip.
 
+### Datadog instead of CloudWatch alarms (optional)
+
+If your on-call rotation watches Datadog, keep the emission exactly as it is — the ingest Lambda carries no vendor SDKs, no egress, no runtime keys, and AWS-native metrics (SQS age, Lambda errors, DLQ depth) only exist in CloudWatch — and move just the monitors:
+
+```hcl
+module "collector_core" {
+  # ...
+  create_alarms = false # running CloudWatch alarms nobody watches is worse than none
+}
+
+module "observability_datadog" {
+  source = "github.com/example-org/pci-dss-page-tampering//infra/observability-datadog"
+
+  metric_namespace     = module.collector_core.metric_namespace
+  queue_name           = "rum-novel-observations"
+  dlq_name             = "rum-novel-observations-dlq"
+  lambda_function_name = "rum-ingest"
+  target_ids           = ["checkout"]
+  notification_handle  = "@slack-ops-channel"
+}
+```
+
+The module mirrors all five rows of the table above as Datadog monitors, runbook pointers included. Metrics reach Datadog through the AWS integration; **CloudWatch Metric Streams filtered to include the collector's `metric_namespace` is a prerequisite for the volume tripwire and the canary dead-man monitor** — both alert on the _absence_ of data, and polling's ~10-minute cadence makes absence indistinguishable from lag. Polling is acceptable-but-degraded for the other three. Datadog API/app keys exist only at terraform-apply time. See `infra/observability-datadog/README.md`, including how to verify the streamed metric-name prefix in Metrics Explorer. The CloudWatch path above remains the default.
+
 ---
 
 ## Step 8 — Verify end-to-end with the canary

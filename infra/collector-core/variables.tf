@@ -87,6 +87,12 @@ variable "novelty_ttl_days" {
   default     = 90
 }
 
+variable "create_alarms" {
+  description = "Create the CloudWatch alarms (queue age, per-target beacon-volume anomaly, Lambda error rate, DLQ depth). Disable when the monitors live elsewhere — e.g. the observability-datadog module — because running CloudWatch alarms nobody watches is worse than none: they page no one and their green state reads as cover."
+  type        = bool
+  default     = true
+}
+
 variable "queue_age_alarm_hours" {
   description = "Alarm threshold, in hours, for the age of the oldest unconsumed novel-observations message."
   type        = number
