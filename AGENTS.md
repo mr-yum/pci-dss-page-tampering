@@ -428,6 +428,7 @@ The daily run is scheduled from the **inventory repository**, not from this one.
 - **Inventory pass** runs first to update baselines
 - **Detection pass** follows to monitor against updated inventory
 - Only one repository should hold the schedule: two would run concurrently against the same inventory, and two `--mode inventory` passes would each push `inventory-updates` and open a PR
+- **The `ghcr.io/puppeteer/puppeteer` image tag must track the `puppeteer` version in the tool's `package-lock.json`**, not its `package.json` caret range: the image ships exactly one Chrome build, and a mismatch kills the run at browser launch — roughly a minute in, with `Could not find Chrome (ver. <n>)` naming a cache path that is present but holds a different build. Because the scheduled run's workflow lives in the inventory repository while the lockfile lives here, that repository's Renovate cannot see the bump that invalidates its pin, so every tool-side Puppeteer upgrade turns the schedule red until someone bumps the tag by hand. Derive the container tag from the tool's lockfile at run time (a small `needs:` job whose output feeds `container.image`) and check out the tool at the same commit the version was read from, rather than pinning the tag in two repositories and hoping they move together
 
 ## Build System
 
