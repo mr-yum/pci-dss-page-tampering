@@ -207,6 +207,9 @@ describe('RUM inventory candidates end-to-end (US3): staging observations → pe
     // Git evidence: the pending entry is committed on the inventory branch...
     shaAfterFirstRun = git(repoPath, ['rev-parse', 'inventory-updates'])
     const pushed = inventoryBranchPayload()
+    // ...written with a trailing newline, like every human-curated commit, so an
+    // automated update never flips the last line of files it did not change.
+    expect(execFileSync('git', ['show', 'inventory-updates:targets/1.0.json'], { cwd: repoPath, env: gitEnv, encoding: 'utf8' })).toMatch(/\}\n$/)
     expect(pushed.scripts).toHaveLength(3)
 
     const appended = pushed.scripts[2]
