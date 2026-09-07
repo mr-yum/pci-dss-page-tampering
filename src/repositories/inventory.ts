@@ -123,7 +123,10 @@ export class ScriptInventoryRepository implements IScriptInventoryRepository {
         await rm(filePath)
 
         console.log(`[Inventory → Repository] Writing new inventory payload '${inventory.fileName}'.`)
-        await writeFile(filePath, jsonString)
+        // Curated commits in the inventory repo end with a newline (editors and
+        // Prettier add one), so emit one too — otherwise every automated update
+        // flips the last line of every target file, even the untouched ones.
+        await writeFile(filePath, `${jsonString}\n`)
       }),
     )
 
