@@ -118,47 +118,52 @@ describe('partial run: one failed variation does not cost the run its other targ
    * Asynchronous on purpose: the page server lives in this process, and a
    * blocking spawnSync would freeze the event loop so the child's navigation
    * could never be served.
+   *
+   * stdout and stderr are merged by the shell (`2>&1`) into one pipe, so the
+   * combined output preserves the order the process wrote in — which is what
+   * lets the test assert that the run summary went out before the failure.
    */
-  const executeCli = (args: string[]): Promise<{ status: number | null; stdout: string; stderr: string }> =>
+  const executeCli = (args: string[]): Promise<{ status: number | null; output: string }> =>
     new Promise((resolve, reject) => {
-      const child = spawn(TSX_BIN, [MAIN_PATH, ...args], { env: { ...process.env, NODE_ENV: 'test' }, cwd: workDir })
-      let stdout = ''
-      let stderr = ''
-      child.stdout.setEncoding('utf8').on('data', (chunk: string) => (stdout += chunk))
-      child.stderr.setEncoding('utf8').on('data', (chunk: string) => (stderr += chunk))
+      const command = [TSX_BIN, MAIN_PATH, ...args].map((part) => `'${part.replaceAll("'", String.raw`'\''`)}'`).join(' ')
+      const child = spawn('sh', ['-c', `${command} 2>&1`], { env: { ...process.env, NODE_ENV: 'test' }, cwd: workDir })
+      let output = ''
+      child.stdout.setEncoding('utf8').on('data', (chunk: string) => (output += chunk))
       const timer = setTimeout(() => child.kill('SIGKILL'), 200_000)
       child.on('error', reject)
       child.on('close', (status) => {
         clearTimeout(timer)
-        resolve({ status, stdout, stderr })
+        resolve({ status, output })
       })
     })
 
   it('finishes both passes, summarises what failed, marks the report partial, and exits 2', async () => {
     const result = await executeCli(['--mode', 'all', '--repo', `file://${repoPath}`, '--git-token', 'dummy-token', '--report-dir', reportDir])
 
-    const { stdout, stderr } = result
+    const { output } = result
 
     // The exit code is still the failure signal.
     expect(result.status).toBe(ExitCode.ExecutionError)
 
     // The broken target failed in each pass, and the run kept going.
-    expect(stdout).toContain("Target 'Broken staging' failed during the inventory pass; continuing with the remaining targets.")
-    expect(stdout).toContain("Target 'Broken production' failed during the detection pass; continuing with the remaining targets.")
-    expect(stdout).toContain('Inventory workflow completed with 1 failed target(s)')
-    expect(stdout).toContain('Preparing to run detection workflow.')
-    expect(stdout).toContain('Detection workflow completed with 1 failed target(s).')
+    expect(output).toContain("Target 'Broken staging' failed during the inventory pass; continuing with the remaining targets.")
+    expect(output).toContain("Target 'Broken production' failed during the detection pass; continuing with the remaining targets.")
+    expect(output).toContain('Inventory workflow completed with 1 failed target(s)')
+    expect(output).toContain('Preparing to run detection workflow.')
+    expect(output).toContain('Detection workflow completed with 1 failed target(s).')
 
     // The run summary went out (console alerter, no --slack-token) and names both sides.
-    expect(stdout).toContain('[Console Alert -> Partial Failure]: Workflow execution completed, but 2 target(s) failed and were not monitored')
-    expect(stdout).toContain('  Targets Processed: Healthy staging, Healthy production')
-    expect(stdout).toContain('  Targets Failed: 2')
-    expect(stdout).toMatch(/ {4}- Broken staging \(inventory\): .*TOTP seed\(s\) that were not provided: never-supplied/)
-    expect(stdout).toMatch(/ {4}- Broken production \(detection\): .*TOTP seed\(s\) that were not provided: never-supplied/)
+    expect(output).toContain('[Console Alert -> Partial Failure]: Workflow execution completed, but 2 target(s) failed and were not monitored')
+    expect(output).toContain('  Targets Processed: Healthy staging, Healthy production')
+    expect(output).toContain('  Targets Failed: 2')
+    expect(output).toMatch(/ {4}- Broken staging \(inventory\): .*TOTP seed\(s\) that were not provided: never-supplied/)
+    expect(output).toMatch(/ {4}- Broken production \(detection\): .*TOTP seed\(s\) that were not provided: never-supplied/)
 
-    // The summary is the last thing the run says before failing, and the failure names the targets.
-    expect(stdout.lastIndexOf('[Console Alert -> Partial Failure]')).toBeGreaterThan(stdout.lastIndexOf('Detection workflow completed'))
-    expect(stderr).toContain('2 target run(s) failed: Broken staging (inventory), Broken production (detection)')
+    // Ordering: the summary goes out after the last pass and before the process fails, and the failure names the targets.
+    const summaryAt = output.lastIndexOf('[Console Alert -> Partial Failure]')
+    expect(summaryAt).toBeGreaterThan(output.lastIndexOf('Detection workflow completed'))
+    expect(summaryAt).toBeLessThan(output.lastIndexOf('[Main]: Application execution failed'))
+    expect(output).toContain('2 target run(s) failed: Broken staging (inventory), Broken production (detection)')
 
     // The auditor report records the gap for each pass.
     for (const pass of ['inventory', 'detection'] as const) {
