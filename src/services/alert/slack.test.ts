@@ -1464,6 +1464,29 @@ describe('SlackAlertService - alertOnRunCompletion (Phase 3)', () => {
       expect(failedBlock).not.toContain('<!channel>')
     })
 
+    it('names undelivered alerts in the headline and in their own section', async () => {
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+      const undelivered = [{ alert: 'unauthorized header alerts', target: 'https://pay.example.com/checkout?return=<x>', reason: 'Slack rejected the message: invalid_blocks' }]
+
+      await service.alertOnRunCompletion(createSummary({ targetsFailed: [failedToast], alertsUndelivered: undelivered }), mockAlertDestinations)
+
+      const texts = (sendMessageSpy.mock.calls[0]![0] as any).blocks.map((block: any) => block.text?.text ?? '') as string[]
+      expect(texts[0]).toBe(':warning: *Workflow Execution Completed With 1 Failed Target And 1 Undelivered Alert* :warning:')
+      const block = texts.find((text) => text.startsWith('*Alert Not Delivered (1)*')) as string
+      expect(block).toContain('*never reached Slack*')
+      expect(block).toContain('• unauthorized header alerts for `https://pay.example.com/checkout?return=&lt;x&gt;`: Slack rejected the message: invalid_blocks')
+    })
+
+    it('uses the warning headline for undelivered alerts alone, with every target succeeded', async () => {
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertOnRunCompletion(createSummary({ alertsUndelivered: [{ alert: 'missing header alerts', target: null, reason: 'boom' }] }), mockAlertDestinations)
+
+      const texts = (sendMessageSpy.mock.calls[0]![0] as any).blocks.map((block: any) => block.text?.text ?? '') as string[]
+      expect(texts[0]).toBe(':warning: *Workflow Execution Completed With 1 Undelivered Alert* :warning:')
+      expect(texts).toContain('*Targets Processed*: 1.0, 2.0')
+    })
+
     it('clips an overlong reason per entry rather than dropping the entry', async () => {
       const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
 
@@ -1817,7 +1840,7 @@ describe('SlackAlertService - alertOnRunCompletion (Phase 3)', () => {
 
       await expect(service.alertOnRunCompletion(summary, mockAlertDestinations)).resolves.not.toThrow()
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith('[Alert Error] Failed to send the run summary notification:', expect.any(Error))
+      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('[Alert Error] Failed to send the run summary notification: '))
 
       consoleErrorSpy.mockRestore()
     })
@@ -1829,7 +1852,7 @@ describe('SlackAlertService - alertOnRunCompletion (Phase 3)', () => {
 
       await expect(service.alertOnRunCompletion(summary, mockAlertDestinations)).resolves.not.toThrow()
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith('[Alert Error] Failed to send the run summary notification:', expect.objectContaining({ message: 'Slack rejected the message: invalid_blocks' }))
+      expect(consoleErrorSpy).toHaveBeenCalledWith('[Alert Error] Failed to send the run summary notification: Slack rejected the message: invalid_blocks')
 
       consoleErrorSpy.mockRestore()
     })
@@ -1872,5 +1895,220 @@ describe('SlackAlertService - alertOnRunCompletion (Phase 3)', () => {
 
       consoleLogSpy.mockRestore()
     })
+  })
+})
+
+describe('SlackAlertService - delivery accountability', () => {
+  const destinations: InventoryAlert = {
+    inventory: { newScriptIdentified: { destination: '#inv' }, newHeaderIdentified: { destination: '#inv' } },
+    detection: { newScriptDetected: { destination: '#det' }, scriptMismatchDetected: { destination: '#det' }, newHeaderDetected: { destination: '#det' } },
+    successNotification: { destination: '#ok' },
+  }
+  const target = { type: 'detection', url: 'https://book.example.com/venue?view=times', workflow: { fileName: 'w.json', definition: { steps: [] } } } as unknown as Target
+
+  /** One unauthorised CSP header row shaped like the production finding that Slack rejected. */
+  const unauthorisedCsp = (index: number): KnownHeaderWithUnauthorisedContentFound => {
+    const matcher = { getType: () => 'or', getPattern: () => ['^form-action .*$'], identify: () => true, authorize: () => ({ authorized: false, reason: 'No child matcher identified the resource' }) } as unknown as Matcher
+    const header = {
+      name: 'content-security-policy',
+      value: `form-action 'self' https://pixel.example.net; frame-src 'self' https://wallet.example.org https://tags.example.com https://pixel.example.net #${index}`,
+      url: `https://book.example.com/page-${index}`,
+    } as unknown as DetectedHeader
+    const entry = { identifyWith: matcher, authoriseWith: { matcher, authorisationInfo: { description: 'x', authorised: true, date: '2026-01-01T00:00:00.000Z' } } } as unknown as InventoryHeaderInfo
+    return new KnownHeaderWithUnauthorisedContentFound(target, new Date('2026-09-14T00:00:00.000Z'), header, entry, matcher, 'No child matcher identified the resource')
+  }
+
+  const tableChars = (payload: any): number => {
+    const walk = (node: any): number =>
+      node && typeof node === 'object' ? (typeof node.text === 'string' ? node.text.length : 0) + (Array.isArray(node.elements) ? node.elements.reduce((sum: number, child: any) => sum + walk(child), 0) : 0) : 0
+    return payload.blocks
+      .filter((block: any) => block.type === 'table')
+      .flatMap((block: any) => block.rows.flat())
+      .reduce((sum: number, cell: any) => sum + walk(cell), 0)
+  }
+
+  it("keeps a 14-row unauthorised-header table under Slack's 10,000-character cap and says how many rows were cut", async () => {
+    const service = new SlackAlertService('t', 'https://github.com/example/inv', 'inventory-updates')
+    const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+    await service.alertForTypedResults(
+      Array.from({ length: 14 }, (_, index) => unauthorisedCsp(index)),
+      target,
+      destinations,
+    )
+
+    const payload = sendMessageSpy.mock.calls[0]![0] as any
+    expect(tableChars(payload)).toBeLessThanOrEqual(10000)
+    const table = payload.blocks.find((block: any) => block.type === 'table')
+    const shown = table.rows.length - 1
+    expect(shown).toBeGreaterThan(0)
+    expect(shown).toBeLessThan(14)
+    const note = payload.blocks.map((block: any) => block.text?.text ?? '').find((text: string) => text.startsWith('_Showing'))
+    expect(note).toBe(`_Showing ${shown} of 14. The full list is in the auditor report._`)
+    expect(service.getDeliveryFailures()).toEqual([])
+  })
+
+  it('clips one oversize cell instead of losing the whole table', async () => {
+    const service = new SlackAlertService('t', 'https://github.com/example/inv', 'inventory-updates')
+    const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+    const huge = unauthorisedCsp(0)
+    ;(huge.header as { value: string }).value = 'x'.repeat(20000)
+
+    await service.alertForTypedResults([huge], target, destinations)
+
+    const payload = sendMessageSpy.mock.calls[0]![0] as any
+    expect(tableChars(payload)).toBeLessThanOrEqual(10000)
+    const table = payload.blocks.find((block: any) => block.type === 'table')
+    expect(table.rows).toHaveLength(2)
+    const valueCell = table.rows[1][1]
+    expect(valueCell.elements[0].elements[0].text.endsWith('…')).toBe(true)
+  })
+
+  it('records a rejected run summary as an undelivered alert, without throwing', async () => {
+    const service = new SlackAlertService('t', 'https://github.com/example/inv', 'inventory-updates')
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation()
+    ;(axios.post as jest.Mock).mockResolvedValueOnce({ data: { ok: false, error: 'channel_not_found' } })
+    const summary: ExecutionSummary = {
+      mode: ExecutionMode.Detection,
+      targetsProcessed: ['1.0'],
+      repositoryUrl: 'https://github.example.com/org/inv',
+      inventoryBranch: null,
+      detectionBranch: 'main',
+      resourceCount: 1,
+      completedAt: new Date('2026-09-14T00:00:00.000Z'),
+    }
+
+    await expect(service.alertOnRunCompletion(summary, destinations)).resolves.toBeUndefined()
+
+    expect(service.getDeliveryFailures()).toEqual([{ alert: 'the run summary notification', target: null, reason: 'Slack rejected the message: channel_not_found' }])
+    consoleErrorSpy.mockRestore()
+  })
+
+  it('records a rejected pull-request-failure notice as an undelivered alert', async () => {
+    const service = new SlackAlertService('t', 'https://github.com/example/inv', 'inventory-updates')
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation()
+    ;(axios.post as jest.Mock).mockResolvedValueOnce({ data: { ok: false, error: 'invalid_blocks' } })
+
+    await expect(service.alertOnPullRequestFailure({ error: new Error('422'), repoUrl: 'https://github.example.com/org/inv', headBranch: 'inventory-updates', baseBranch: 'main' }, destinations)).resolves.toBeUndefined()
+
+    expect(service.getDeliveryFailures()).toEqual([{ alert: 'PR-failure notification', target: null, reason: 'Slack rejected the message: invalid_blocks' }])
+    consoleErrorSpy.mockRestore()
+  })
+
+  it('redacts credentials from a recorded delivery reason', async () => {
+    const service = new SlackAlertService('t', 'https://github.com/example/inv', 'inventory-updates')
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation()
+    ;(axios.post as jest.Mock).mockRejectedValueOnce(new Error('connect failed for https://user:hunter2@slack.example.com/api?token=abc'))
+
+    await service.alertForTypedResults([unauthorisedCsp(0)], target, destinations)
+
+    const [failure] = service.getDeliveryFailures()
+    expect(failure?.reason).not.toContain('hunter2')
+    expect(failure?.reason).not.toContain('token=abc')
+    expect(failure?.reason).toContain('slack.example.com')
+    consoleErrorSpy.mockRestore()
+  })
+
+  it('escapes and clips undelivered-alert reasons and targets, and splits a long list across sections', async () => {
+    const service = new SlackAlertService('t', 'https://github.com/example/inv', 'inventory-updates')
+    const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+    const undelivered = [
+      { alert: 'unknown script alerts', target: `https://pay.example.com/${'p'.repeat(1000)}`, reason: `<!channel> ${'r'.repeat(1000)}` },
+      ...Array.from({ length: 12 }, (_, index) => ({ alert: `alert-${index}`, target: `https://t${index}.example.com/${'q'.repeat(280)}`, reason: 's'.repeat(320) })),
+    ]
+    const summary: ExecutionSummary = {
+      mode: ExecutionMode.Detection,
+      targetsProcessed: ['1.0'],
+      alertsUndelivered: undelivered,
+      repositoryUrl: 'https://github.example.com/org/inv',
+      inventoryBranch: null,
+      detectionBranch: 'main',
+      resourceCount: 1,
+      completedAt: new Date('2026-09-14T00:00:00.000Z'),
+    }
+
+    await service.alertOnRunCompletion(summary, destinations)
+
+    const texts = (sendMessageSpy.mock.calls[0]![0] as any).blocks.map((block: any) => block.text?.text ?? '') as string[]
+    const sections = texts.filter((text) => text.startsWith('*Alerts Not Delivered'))
+    expect(sections.length).toBeGreaterThan(1)
+    for (const section of sections) expect(section.length).toBeLessThanOrEqual(3000)
+    const first = sections[0] as string
+    expect(first).toContain('&lt;!channel&gt;')
+    expect(first).not.toContain('<!channel>')
+    // The whole target URL is clipped to 300 characters, scheme and host included.
+    expect(first).toContain(`https://pay.example.com/${'p'.repeat(276)}…\``)
+    expect(first).not.toContain('p'.repeat(277))
+    // The reason is clipped to 300 characters including its escaped prefix.
+    expect(first).toContain(`&lt;!channel&gt; ${'r'.repeat(289)}…`)
+    expect(first).not.toContain('r'.repeat(290))
+    expect(sections.join('\n')).toContain('alert-11')
+  })
+
+  it('still sends the manual-review variant when the inventory-updated variant was rejected, recording each on its own', async () => {
+    const service = new SlackAlertService('t', 'https://github.com/example/inv', 'inventory-updates')
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation()
+    const inventoryTarget = { ...target, type: 'inventory' } as unknown as Target
+    const applied = unauthorisedCsp(0)
+    const skipped = unauthorisedCsp(1)
+    ;(axios.post as jest.Mock).mockResolvedValueOnce({ data: { ok: false, error: 'invalid_blocks' } }).mockResolvedValueOnce({ data: { ok: true } })
+    const postsBefore = (axios.post as jest.Mock).mock.calls.length
+
+    await service.alertForTypedResults([applied, skipped], inventoryTarget, destinations, new Set([applied]))
+
+    expect((axios.post as jest.Mock).mock.calls.length - postsBefore).toBe(2)
+    expect(service.getDeliveryFailures()).toEqual([{ alert: 'unauthorized header alerts', target: inventoryTarget.url, reason: 'Slack rejected the message: invalid_blocks' }])
+    consoleErrorSpy.mockRestore()
+  })
+
+  it('never logs the raw transport error, which can carry the Authorization header', async () => {
+    const service = new SlackAlertService('secret-token-xyz', 'https://github.com/example/inv', 'inventory-updates')
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation()
+    const axiosError = Object.assign(new Error('Request failed with status code 500'), { config: { headers: { Authorization: 'Bearer secret-token-xyz' } } })
+    ;(axios.post as jest.Mock).mockRejectedValueOnce(axiosError)
+
+    await service.alertForTypedResults([unauthorisedCsp(0)], target, destinations)
+
+    const logged = consoleErrorSpy.mock.calls.map((call) => call.map((arg) => (typeof arg === 'string' ? arg : JSON.stringify(arg))).join(' ')).join('\n')
+    expect(logged).toContain('[Alert Error] Failed to send unauthorized header alerts: Request failed with status code 500')
+    expect(logged).not.toContain('secret-token-xyz')
+    expect(consoleErrorSpy.mock.calls.every((call) => call.length === 1)).toBe(true)
+    consoleErrorSpy.mockRestore()
+  })
+
+  it('bounds a list line after escaping so entity expansion cannot push a section past 3,000 characters', async () => {
+    const service = new SlackAlertService('t', 'https://github.com/example/inv', 'inventory-updates')
+    const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+    const summary: ExecutionSummary = {
+      mode: ExecutionMode.Detection,
+      targetsProcessed: ['1.0'],
+      targetsFailed: [{ name: '&'.repeat(600), pass: 'detection', reason: '<'.repeat(300) }],
+      alertsUndelivered: [{ alert: '&'.repeat(600), target: '<'.repeat(300), reason: '>'.repeat(300) }],
+      repositoryUrl: 'https://github.example.com/org/inv',
+      inventoryBranch: null,
+      detectionBranch: 'main',
+      resourceCount: 1,
+      completedAt: new Date('2026-09-14T00:00:00.000Z'),
+    }
+
+    await service.alertOnRunCompletion(summary, destinations)
+
+    const texts = (sendMessageSpy.mock.calls[0]![0] as any).blocks.map((block: any) => block.text?.text ?? '') as string[]
+    for (const text of texts) expect(text.length).toBeLessThanOrEqual(3000)
+    const lists = texts.filter((text) => text.startsWith('*Target Failed') || text.startsWith('*Alert Not Delivered'))
+    expect(lists).toHaveLength(2)
+    for (const list of lists) for (const line of list.split('\n').slice(1)) expect(line.length).toBeLessThanOrEqual(1401)
+  })
+
+  it('records a Slack rejection as a delivery failure naming the alert and target, without throwing', async () => {
+    const service = new SlackAlertService('t', 'https://github.com/example/inv', 'inventory-updates')
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation()
+    ;(axios.post as jest.Mock).mockResolvedValueOnce({ data: { ok: false, error: 'invalid_blocks' } })
+
+    await expect(service.alertForTypedResults([unauthorisedCsp(0)], target, destinations)).resolves.toBeUndefined()
+
+    expect(service.getDeliveryFailures()).toEqual([{ alert: 'unauthorized header alerts', target: 'https://book.example.com/venue?view=times', reason: 'Slack rejected the message: invalid_blocks' }])
+    expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('[Alert Error] Failed to send unauthorized header alerts: '))
+    consoleErrorSpy.mockRestore()
   })
 })

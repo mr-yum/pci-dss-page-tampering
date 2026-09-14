@@ -1,6 +1,6 @@
 import type { RumAlertCategory, RumAlertContext } from '../types/alert.js'
 import type { ComparisonResultType } from '../types/comparison.js'
-import type { ExecutionSummary } from '../types/execution-summary.js'
+import type { AlertDeliveryFailure, ExecutionSummary } from '../types/execution-summary.js'
 import type { InventoryAlert } from '../types/inventory/model.js'
 import type { Target } from '../types/target.js'
 
@@ -55,6 +55,19 @@ export interface IAlertService {
    * - Error handling: Errors logged to console, method returns normally (non-blocking)
    */
   alertOnRunCompletion(summary: ExecutionSummary, alertDestinations: InventoryAlert): Promise<void>
+
+  /**
+   * Alerts this service tried to send and could not, in order.
+   *
+   * The per-finding alert paths of the synthetic passes swallow their own
+   * delivery errors so one bad message cannot block the next; this is where
+   * those errors are kept so the run can still account for them — in the run
+   * summary and in its exit code. A finding whose alert never arrived must not
+   * leave the run looking clean. The RUM lane is different by design: its
+   * alerts propagate delivery errors to the router, which counts them in its
+   * own summary and keeps draining, so they do not appear here.
+   */
+  getDeliveryFailures(): readonly AlertDeliveryFailure[]
 
   /**
    * Alert that the inventory push succeeded but the follow-up GitHub PR could

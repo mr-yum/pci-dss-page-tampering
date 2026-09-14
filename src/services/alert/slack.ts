@@ -11,13 +11,14 @@ import type { MissingRequiredScript } from '../../types/comparison/missing-requi
 import type { UnknownHeaderFound } from '../../types/comparison/unknown-header-found.js'
 import type { UnknownScriptFound } from '../../types/comparison/unknown-script-found.js'
 import { ExecutionMode } from '../../types/config.js'
-import { type ExecutionSummary, type FailedTarget, getExecutionOutcome } from '../../types/execution-summary.js'
+import { type AlertDeliveryFailure, type ExecutionSummary, type FailedTarget, getExecutionOutcome } from '../../types/execution-summary.js'
 import type { HeaderInfo } from '../../types/header.js'
 import type { AlertDestination, InventoryAlert } from '../../types/inventory/model.js'
 import type { DetectedScript } from '../../types/matcher/matcher.interface.js'
 import type { ScriptInfo } from '../../types/script.js'
 import type { Target } from '../../types/target.js'
 import { extractHost, redactUrl } from '../../utils/url.js'
+import { redactForDisplay } from '../report/mapper.js'
 import { resolveRumAlertDestination, rumAlertContextLines, rumAlertTitle } from './rum.js'
 
 /**
@@ -27,6 +28,61 @@ import { resolveRumAlertDestination, rumAlertContextLines, rumAlertTitle } from 
  * `urlMatcher` regexes.
  */
 type HeaderAlertRow = HeaderInfo & { url?: string; detectedTarget: Target }
+
+/**
+ * Slack rejects a message whose table cells total more than 10,000 characters
+ * (HTTP 200, `ok: false`, `invalid_blocks`) — and a rejected alert is a
+ * finding nobody hears about. Tables are therefore fitted to a budget below
+ * that cap before sending, with headroom for the header row and encoding.
+ */
+const TABLE_CHAR_BUDGET = 9500
+/** No single cell may eat the budget: keeps at least a handful of rows visible. */
+const TABLE_CELL_CHAR_CAP = 1200
+
+type TextNode = { text?: unknown; elements?: unknown }
+
+/** Sum the text carried by a table cell (rich_text nesting included). */
+function tableCellChars(cell: unknown): number {
+  if (cell === null || typeof cell !== 'object') return 0
+  const node = cell as TextNode
+  let total = typeof node.text === 'string' ? node.text.length : 0
+  if (Array.isArray(node.elements)) for (const child of node.elements) total += tableCellChars(child)
+  return total
+}
+
+/** Return a copy of the cell whose text totals at most `cap` characters. */
+function clipTableCell(cell: unknown, cap: number): unknown {
+  let remaining = cap
+  const clip = (value: unknown): unknown => {
+    if (value === null || typeof value !== 'object') return value
+    const node = value as TextNode
+    const copy: TextNode = { ...node }
+    if (typeof node.text === 'string') {
+      if (node.text.length <= remaining) {
+        remaining -= node.text.length
+      } else {
+        copy.text = remaining > 1 ? `${node.text.slice(0, remaining - 1)}…` : ''
+        remaining = 0
+      }
+    }
+    if (Array.isArray(node.elements)) copy.elements = node.elements.map(clip)
+    return copy
+  }
+  return clip(cell)
+}
+
+/** Headroom under Slack's 3,000-character cap on a section's text. */
+const SECTION_CHAR_LIMIT = 2900
+/**
+ * Longest single list line, measured *after* escaping: `&` becomes `&amp;`,
+ * so a raw clip alone cannot promise a line fits, and a continuation section
+ * starts with whatever line overflowed the previous one.
+ */
+const LINE_CHAR_LIMIT = 1400
+
+function boundLine(line: string): string {
+  return line.length > LINE_CHAR_LIMIT ? `${line.slice(0, LINE_CHAR_LIMIT)}…` : line
+}
 
 /** Escape the three characters Slack's mrkdwn treats as control syntax. */
 function escapeMrkdwn(text: string): string {
@@ -38,6 +94,9 @@ export class SlackAlertService implements IAlertService {
   private readonly repositoryUrl: string
   private readonly inventoryBranch: string
   private readonly maxStringLength = 100
+
+  /** Alerts this service could not deliver; see {@link getDeliveryFailures}. */
+  private readonly deliveryFailures: AlertDeliveryFailure[] = []
   private reviewUrlOverride: string | null = null
 
   constructor(slackToken: string, repositoryUrl: string, inventoryBranch: string) {
@@ -105,28 +164,26 @@ export class SlackAlertService implements IAlertService {
         await this.alertOnUnknownScripts(unknownScripts, target, destination)
       }
     } catch (error) {
-      console.error('[Alert Error] Failed to send unknown script alerts:', error)
+      this.recordDeliveryFailure('unknown script alerts', target.url, error)
     }
 
-    try {
-      // Handle scripts that were identified but had unauthorised content. In
-      // inventory mode the inventory service may have auto-added the new hash
-      // — and may not (e.g. AndMatcher entries, non-hash authorisers). Use the
-      // applied/skipped split to keep the message truthful: "Inventory updated"
-      // only for the applied subset, "manual review required" for the rest.
-      // In detection mode this is always a potential tampering event.
-      if (unauthorizedScripts.length > 0) {
-        const destination = isInventoryMode ? alertDestinations.inventory.newScriptIdentified : alertDestinations.detection.scriptMismatchDetected
-        const { applied, skipped } = splitByApplied(unauthorizedScripts)
-        if (applied.length > 0) {
-          await this.alertOnUnauthorizedScripts(applied, target, destination, 'updated')
-        }
-        if (skipped.length > 0) {
-          await this.alertOnUnauthorizedScripts(skipped, target, destination, 'manual-review')
-        }
+    // Handle scripts that were identified but had unauthorised content. In
+    // inventory mode the inventory service may have auto-added the new hash
+    // — and may not (e.g. AndMatcher entries, non-hash authorisers). Use the
+    // applied/skipped split to keep the message truthful: "Inventory updated"
+    // only for the applied subset, "manual review required" for the rest.
+    // In detection mode this is always a potential tampering event. Each
+    // variant is sent under its own guard so a rejected first message never
+    // costs the second, and each rejection is recorded on its own.
+    if (unauthorizedScripts.length > 0) {
+      const destination = isInventoryMode ? alertDestinations.inventory.newScriptIdentified : alertDestinations.detection.scriptMismatchDetected
+      const { applied, skipped } = splitByApplied(unauthorizedScripts)
+      if (applied.length > 0) {
+        await this.sendRecorded('unauthorized script alerts', target.url, () => this.alertOnUnauthorizedScripts(applied, target, destination, 'updated'))
       }
-    } catch (error) {
-      console.error('[Alert Error] Failed to send unauthorized script alerts:', error)
+      if (skipped.length > 0) {
+        await this.sendRecorded('unauthorized script alerts (manual review)', target.url, () => this.alertOnUnauthorizedScripts(skipped, target, destination, 'manual-review'))
+      }
     }
 
     try {
@@ -136,26 +193,22 @@ export class SlackAlertService implements IAlertService {
         await this.alertOnUnknownHeaders(unknownHeaders, target, destination)
       }
     } catch (error) {
-      console.error('[Alert Error] Failed to send unknown header alerts:', error)
+      this.recordDeliveryFailure('unknown header alerts', target.url, error)
     }
 
-    try {
-      // Headers identified but with unauthorised content — same split as
-      // scripts. "Inventory updated" only fires for results the diff actually
-      // appended a new content matcher for; the rest get a manual-review
-      // message so operators aren't told the inventory changed when it didn't.
-      if (unauthorizedHeaders.length > 0) {
-        const destination = isInventoryMode ? alertDestinations.inventory.newHeaderIdentified : (alertDestinations.detection.headerMismatchDetected ?? alertDestinations.detection.newHeaderDetected)
-        const { applied, skipped } = splitByApplied(unauthorizedHeaders)
-        if (applied.length > 0) {
-          await this.alertOnUnauthorizedHeaders(applied, target, destination, 'updated')
-        }
-        if (skipped.length > 0) {
-          await this.alertOnUnauthorizedHeaders(skipped, target, destination, 'manual-review')
-        }
+    // Headers identified but with unauthorised content — same split as
+    // scripts. "Inventory updated" only fires for results the diff actually
+    // appended a new content matcher for; the rest get a manual-review
+    // message so operators aren't told the inventory changed when it didn't.
+    if (unauthorizedHeaders.length > 0) {
+      const destination = isInventoryMode ? alertDestinations.inventory.newHeaderIdentified : (alertDestinations.detection.headerMismatchDetected ?? alertDestinations.detection.newHeaderDetected)
+      const { applied, skipped } = splitByApplied(unauthorizedHeaders)
+      if (applied.length > 0) {
+        await this.sendRecorded('unauthorized header alerts', target.url, () => this.alertOnUnauthorizedHeaders(applied, target, destination, 'updated'))
       }
-    } catch (error) {
-      console.error('[Alert Error] Failed to send unauthorized header alerts:', error)
+      if (skipped.length > 0) {
+        await this.sendRecorded('unauthorized header alerts (manual review)', target.url, () => this.alertOnUnauthorizedHeaders(skipped, target, destination, 'manual-review'))
+      }
     }
 
     try {
@@ -166,7 +219,7 @@ export class SlackAlertService implements IAlertService {
         await this.alertOnMissingHeaders(missingHeaders, target, destination)
       }
     } catch (error) {
-      console.error('[Alert Error] Failed to send missing header alerts:', error)
+      this.recordDeliveryFailure('missing header alerts', target.url, error)
     }
 
     try {
@@ -179,7 +232,7 @@ export class SlackAlertService implements IAlertService {
         await this.alertOnMissingScripts(missingScripts, target, destination)
       }
     } catch (error) {
-      console.error('[Alert Error] Failed to send missing script alerts:', error)
+      this.recordDeliveryFailure('missing script alerts', target.url, error)
     }
 
     // T030: AuthorizedScriptFound and AuthorizedHeaderFound are no-ops (no alert)
@@ -310,11 +363,7 @@ export class SlackAlertService implements IAlertService {
       blocks: [
         { type: 'section', text: { type: 'mrkdwn', text: `:warning: *${message}* :warning:` } },
         { type: 'section', text: { type: 'mrkdwn', text: `*Target*: \`${target.url}\`` } },
-        {
-          type: 'table',
-          column_settings: [{ is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }],
-          rows: [[this.buildBoldHeaderCell('Header Name'), this.buildBoldHeaderCell('Host'), this.buildBoldHeaderCell('Resource Type'), this.buildBoldHeaderCell('Response URL')], ...rows],
-        },
+        ...this.boundedTable([[this.buildBoldHeaderCell('Header Name'), this.buildBoldHeaderCell('Host'), this.buildBoldHeaderCell('Resource Type'), this.buildBoldHeaderCell('Response URL')], ...rows], missingHeaders.length),
       ],
     }
 
@@ -336,11 +385,7 @@ export class SlackAlertService implements IAlertService {
       blocks: [
         { type: 'section', text: { type: 'mrkdwn', text: `:warning: *${message}* :warning:` } },
         { type: 'section', text: { type: 'mrkdwn', text: `*Target*: \`${target.url}\`` } },
-        {
-          type: 'table',
-          column_settings: [{ is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }],
-          rows: [[this.buildBoldHeaderCell('Identified By'), this.buildBoldHeaderCell('Required On'), this.buildBoldHeaderCell('Justification')], ...rows],
-        },
+        ...this.boundedTable([[this.buildBoldHeaderCell('Identified By'), this.buildBoldHeaderCell('Required On'), this.buildBoldHeaderCell('Justification')], ...rows], missingScripts.length),
       ],
     }
 
@@ -453,14 +498,13 @@ export class SlackAlertService implements IAlertService {
             text: `*Detection Summary (Max of 20)*`,
           },
         },
-        {
-          type: 'table',
-          column_settings: [{ is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }],
-          rows: [
+        ...this.boundedTable(
+          [
             [this.buildBoldHeaderCell('Identifier'), this.buildBoldHeaderCell('Hash'), this.buildBoldHeaderCell('Content Snippet'), this.buildBoldHeaderCell('Host'), this.buildBoldHeaderCell('Suggested AI Prompt')],
             ...scripts.slice(0, 19).map((scriptInfo) => [...this.scriptInfoToTableItem(scriptInfo), this.buildRichTextCell(extractHost(this.getScriptUrl(scriptInfo))), this.buildRichTextCell(this.buildScriptAiPrompt(scriptInfo, target))]),
           ],
-        },
+          scripts.length,
+        ),
         ...(target.type === 'inventory'
           ? [
               {
@@ -537,10 +581,8 @@ export class SlackAlertService implements IAlertService {
             text: `*Detection Summary with Matcher Details (Max of 20)*`,
           },
         },
-        {
-          type: 'table',
-          column_settings: [{ is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }],
-          rows: [
+        ...this.boundedTable(
+          [
             [
               this.buildBoldHeaderCell('Identifier'),
               this.buildBoldHeaderCell('Hash'),
@@ -555,7 +597,8 @@ export class SlackAlertService implements IAlertService {
               return [...row.slice(0, 3), this.buildRichTextCell(extractHost(result.script.url)), ...row.slice(3), this.buildRichTextCell(this.buildUnauthorizedScriptAiPrompt(result))]
             }),
           ],
-        },
+          unauthorizedScripts.length,
+        ),
         ...(target.type === 'inventory'
           ? [
               {
@@ -711,14 +754,13 @@ export class SlackAlertService implements IAlertService {
             text: `*Detection Summary with Matcher Details (Max of 20)*`,
           },
         },
-        {
-          type: 'table',
-          column_settings: [{ is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }],
-          rows: [
+        ...this.boundedTable(
+          [
             [this.buildBoldHeaderCell('Header Name'), this.buildBoldHeaderCell('Value'), this.buildBoldHeaderCell('Host'), this.buildBoldHeaderCell('Failure Reason'), this.buildBoldHeaderCell('Suggested AI Prompt')],
             ...unauthorizedHeaders.slice(0, 19).map((result) => [...this.unauthorizedHeaderToTableItem(result), this.buildRichTextCell(this.buildUnauthorizedHeaderAiPrompt(result))]),
           ],
-        },
+          unauthorizedHeaders.length,
+        ),
         ...(target.type === 'inventory'
           ? [
               {
@@ -845,14 +887,13 @@ export class SlackAlertService implements IAlertService {
             text: `*Detection Summary (Max of 20)*`,
           },
         },
-        {
-          type: 'table',
-          column_settings: [{ is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }, { is_wrapped: true }],
-          rows: [
+        ...this.boundedTable(
+          [
             [this.buildBoldHeaderCell('Header Name'), this.buildBoldHeaderCell('Value'), this.buildBoldHeaderCell('Host'), this.buildBoldHeaderCell('Suggested AI Prompt')],
             ...headers.slice(0, 19).map((row) => [...this.headerInfoToTableItem({ name: row.name, value: row.value }), this.buildRichTextCell(extractHost(row.url)), this.buildRichTextCell(this.buildHeaderAiPrompt(row, target))]),
           ],
-        },
+          headers.length,
+        ),
         ...(target.type === 'inventory'
           ? [
               {
@@ -1114,7 +1155,7 @@ export class SlackAlertService implements IAlertService {
       this.log(AlertType.Success, failed === 0 ? 'Workflow execution completed successfully' : `Workflow execution completed with ${failed} failed target(s)`)
       await this.sendMessage(messagePayload)
     } catch (error) {
-      console.error('[Alert Error] Failed to send the run summary notification:', error)
+      this.recordDeliveryFailure('the run summary notification', null, error)
     }
   }
 
@@ -1127,10 +1168,14 @@ export class SlackAlertService implements IAlertService {
    */
   private createRunCompletionMessagePayload(summary: ExecutionSummary, destination: AlertDestination): object {
     const failed = summary.targetsFailed ?? []
+    const undelivered = summary.alertsUndelivered ?? []
     const outcome = getExecutionOutcome(summary)
+    const problems = [failed.length > 0 ? `${failed.length} Failed Target${failed.length === 1 ? '' : 's'}` : null, undelivered.length > 0 ? `${undelivered.length} Undelivered Alert${undelivered.length === 1 ? '' : 's'}` : null].filter(
+      (part): part is string => part !== null,
+    )
     const headline = {
       success: ':white_check_mark: *Workflow Execution Completed Successfully* :white_check_mark:',
-      partial: `:warning: *Workflow Execution Completed With ${failed.length} Failed Target${failed.length === 1 ? '' : 's'}* :warning:`,
+      partial: `:warning: *Workflow Execution Completed With ${problems.join(' And ')}* :warning:`,
       failure: ':red_circle: *Workflow Execution Failed For Every Target* :red_circle:',
     }[outcome]
 
@@ -1162,6 +1207,13 @@ export class SlackAlertService implements IAlertService {
           },
         },
         ...this.formatFailedTargets(failed).map((text) => ({
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text,
+          },
+        })),
+        ...this.formatUndeliveredAlerts(undelivered).map((text) => ({
           type: 'section',
           text: {
             type: 'mrkdwn',
@@ -1257,6 +1309,95 @@ export class SlackAlertService implements IAlertService {
   /**
    * Format target label (singular/plural).
    */
+  getDeliveryFailures(): readonly AlertDeliveryFailure[] {
+    return this.deliveryFailures
+  }
+
+  /**
+   * Log a delivery error and keep it for the run summary.
+   *
+   * The per-finding paths deliberately swallow their errors so one bad message
+   * cannot block the next alert; recording them here is what stops that
+   * swallowing from turning into silence at the end of the run.
+   */
+  private recordDeliveryFailure(alert: string, target: string | null, error: unknown): void {
+    // Only the redacted message is logged: an axios error carries the request
+    // config, Authorization header included, and this line lands in CI logs.
+    const reason = redactForDisplay(error instanceof Error ? error.message : String(error)).text
+    console.error(`[Alert Error] Failed to send ${alert}: ${reason}`)
+    this.deliveryFailures.push({ alert, target, reason })
+  }
+
+  /** Run one send under its own guard, recording a failure without letting it escape. */
+  private async sendRecorded(alert: string, target: string | null, send: () => Promise<void>): Promise<void> {
+    try {
+      await send()
+    } catch (error) {
+      this.recordDeliveryFailure(alert, target, error)
+    }
+  }
+
+  /**
+   * A table block fitted to Slack's character budget, plus a note when rows had to go.
+   *
+   * `rows[0]` is the header row. Cells are clipped individually first, then
+   * rows are kept in order until the budget is spent; what could not be shown
+   * is named by count and pointed at the auditor report, which holds the full
+   * census. An unbounded table is rejected wholesale, which is worse than a
+   * shortened one.
+   */
+  private boundedTable(rows: object[][], totalItems: number): object[] {
+    const [header, ...data] = rows
+    if (header === undefined) return []
+
+    const kept: object[][] = [header]
+    let used = header.reduce((sum, cell) => sum + tableCellChars(cell), 0)
+    for (const row of data) {
+      const clipped = row.map((cell) => clipTableCell(cell, TABLE_CELL_CHAR_CAP) as object)
+      const size = clipped.reduce((sum, cell) => sum + tableCellChars(cell), 0)
+      if (used + size > TABLE_CHAR_BUDGET) break
+      kept.push(clipped)
+      used += size
+    }
+
+    const shown = kept.length - 1
+    const blocks: object[] = [{ type: 'table', column_settings: header.map(() => ({ is_wrapped: true })), rows: kept }]
+    if (shown < totalItems) {
+      // Rows can be cut by the caller's row cap or by the character budget; the
+      // note states the effect, not a cause it cannot know.
+      blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `_Showing ${shown} of ${totalItems}. The full list is in the auditor report._` } })
+    }
+    return blocks
+  }
+
+  /**
+   * Name every alert that could not be delivered, as bounded section texts.
+   * Same rules as the failed-target list: nothing dropped, escaped, split.
+   */
+  private formatUndeliveredAlerts(undelivered: AlertDeliveryFailure[]): string[] {
+    if (undelivered.length === 0) return []
+
+    const reasonLimit = 300
+    const targetLimit = 300
+    const label = undelivered.length === 1 ? 'Alert Not Delivered' : 'Alerts Not Delivered'
+    const header = `*${label} (${undelivered.length})* — these findings were raised but *never reached Slack*; read them in the auditor report:`
+
+    const clip = (text: string, limit: number): string => (text.length > limit ? `${text.slice(0, limit)}…` : text)
+    const sections: string[] = []
+    let current = header
+    for (const failure of undelivered) {
+      const target = failure.target === null ? '' : ` for \`${escapeMrkdwn(clip(failure.target, targetLimit))}\``
+      const line = boundLine(`• ${escapeMrkdwn(failure.alert)}${target}: ${escapeMrkdwn(clip(failure.reason, reasonLimit))}`)
+      if (current.length + 1 + line.length > SECTION_CHAR_LIMIT) {
+        sections.push(current)
+        current = `*${label} (continued)*`
+      }
+      current += `\n${line}`
+    }
+    sections.push(current)
+    return sections
+  }
+
   private formatTargetLabel(count: number, alongsideFailures = false): string {
     // "Processed" reads as "all of them" when nothing failed; beside a failure
     // list it has to say which side of the line these targets are on.
@@ -1279,7 +1420,6 @@ export class SlackAlertService implements IAlertService {
     if (failed.length === 0) return []
 
     const reasonLimit = 300
-    const sectionLimit = 2900 // headroom under Slack's 3000-character section text cap
     const label = failed.length === 1 ? 'Target Failed' : 'Targets Failed'
     const header = `*${label} (${failed.length})* — no observations were recorded for these, so they were *not monitored* in this run:`
 
@@ -1287,8 +1427,8 @@ export class SlackAlertService implements IAlertService {
     let current = header
     for (const target of failed) {
       const reason = target.reason.length > reasonLimit ? `${target.reason.slice(0, reasonLimit)}…` : target.reason
-      const line = `• \`${escapeMrkdwn(target.name)}\` (${target.pass}): ${escapeMrkdwn(reason)}`
-      if (current.length + 1 + line.length > sectionLimit) {
+      const line = boundLine(`• \`${escapeMrkdwn(target.name)}\` (${target.pass}): ${escapeMrkdwn(reason)}`)
+      if (current.length + 1 + line.length > SECTION_CHAR_LIMIT) {
         sections.push(current)
         current = `*${label} (continued)*`
       }
@@ -1388,7 +1528,7 @@ export class SlackAlertService implements IAlertService {
     } catch (error) {
       // Swallow: the caller is already exiting non-zero with the original PR
       // error; a broken alert call should not replace the useful error.
-      console.error('[Alert Error] Failed to send PR-failure notification:', error)
+      this.recordDeliveryFailure('PR-failure notification', null, error)
     }
   }
 

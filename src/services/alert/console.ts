@@ -9,7 +9,7 @@ import type { MissingRequiredScript } from '../../types/comparison/missing-requi
 import type { UnknownHeaderFound } from '../../types/comparison/unknown-header-found.js'
 import type { UnknownScriptFound } from '../../types/comparison/unknown-script-found.js'
 import { ExecutionMode } from '../../types/config.js'
-import { type ExecutionSummary, getExecutionOutcome } from '../../types/execution-summary.js'
+import { type AlertDeliveryFailure, type ExecutionSummary, getExecutionOutcome } from '../../types/execution-summary.js'
 import type { InventoryAlert } from '../../types/inventory/model.js'
 import type { Target } from '../../types/target.js'
 import { extractHost, redactUrl } from '../../utils/url.js'
@@ -204,13 +204,18 @@ export class ConsoleAlertService implements IAlertService {
    */
   async alertOnRunCompletion(summary: ExecutionSummary, _alertDestinations: InventoryAlert): Promise<void> {
     const failed = summary.targetsFailed ?? []
+    const undelivered = summary.alertsUndelivered ?? []
     switch (getExecutionOutcome(summary)) {
       case 'success':
         console.log(`[Console Alert -> Success]: Workflow execution completed successfully`)
         break
-      case 'partial':
-        console.log(`[Console Alert -> Partial Failure]: Workflow execution completed, but ${failed.length} target(s) failed and were not monitored`)
+      case 'partial': {
+        const problems = [failed.length > 0 ? `${failed.length} target(s) failed and were not monitored` : null, undelivered.length > 0 ? `${undelivered.length} alert(s) could not be delivered` : null].filter(
+          (part): part is string => part !== null,
+        )
+        console.log(`[Console Alert -> Partial Failure]: Workflow execution completed, but ${problems.join(' and ')}`)
         break
+      }
       case 'failure':
         console.log(`[Console Alert -> Failure]: Workflow execution failed for every target; nothing was monitored`)
         break
@@ -227,6 +232,13 @@ export class ConsoleAlertService implements IAlertService {
       console.log(`  Targets Failed: ${failed.length}`)
       for (const target of failed) {
         console.log(`    - ${target.name} (${target.pass}): ${target.reason}`)
+      }
+    }
+
+    if (undelivered.length > 0) {
+      console.log(`  Alerts Not Delivered: ${undelivered.length}`)
+      for (const failure of undelivered) {
+        console.log(`    - ${failure.alert}${failure.target === null ? '' : ` for ${failure.target}`}: ${failure.reason}`)
       }
     }
 
@@ -323,5 +335,10 @@ export class ConsoleAlertService implements IAlertService {
     const minutes = Math.floor(seconds / 60)
     const remainingSeconds = seconds % 60
     return `${minutes}m ${remainingSeconds}s`
+  }
+
+  /** Console output cannot fail to deliver, so there is never anything to report. */
+  getDeliveryFailures(): readonly AlertDeliveryFailure[] {
+    return []
   }
 }
