@@ -145,6 +145,20 @@ describe('ConsoleAlertService - alertOnRunCompletion (Phase 3)', () => {
       expect(consoleSpy).toHaveBeenCalledWith('  Targets Processed: (none)')
     })
 
+    it('lists alerts that could not be delivered and says so in the header', async () => {
+      const summary = createSummary({ alertsUndelivered: [{ alert: 'unauthorized header alerts', target: 'https://pay.example.com/checkout', reason: 'Slack rejected the message: invalid_blocks' }] })
+
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
+
+      expect(consoleSpy).toHaveBeenCalledWith('[Console Alert -> Partial Failure]: Workflow execution completed, but 1 alert(s) could not be delivered')
+      expect(consoleSpy).toHaveBeenCalledWith('  Alerts Not Delivered: 1')
+      expect(consoleSpy).toHaveBeenCalledWith('    - unauthorized header alerts for https://pay.example.com/checkout: Slack rejected the message: invalid_blocks')
+    })
+
+    it('reports never having failed a delivery', () => {
+      expect(service.getDeliveryFailures()).toEqual([])
+    })
+
     it('does not print a failed-targets line on a clean run', async () => {
       await service.alertOnRunCompletion(createSummary(), mockAlertDestinations)
 

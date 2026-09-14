@@ -303,6 +303,8 @@ A single target's workflow failing does not stop the run. The other variations i
 - named in the end-of-run Slack summary under **Targets Failed**, with its pass and the error message, while the headline switches from :white_check_mark: to :warning: (some targets failed) or :red_circle: (every target failed),
 - and reflected in the exit code: the process exits `2` after the summary has been sent, so a scheduled run with an unmonitored payment page still shows red.
 
+The same rule applies to alerts the run produced but could not deliver. Slack rejects an oversize or malformed payload with HTTP 200 and `ok: false`; the tool records each such rejection, lists them in the summary under **Alerts Not Delivered** (alert kind, target, reason), and exits `2` for them too, because a finding nobody was told about is indistinguishable from a quiet run. This applies to the synthetic inventory and detection passes; `--mode rum-compare` reports delivery failures in its own summary and, by design, does not change its exit code for them. Table-based alerts are fitted to Slack's 10,000-character table budget before sending, with a note saying how many rows were cut and pointing at the auditor report for the full list.
+
 Only run-level failures abort the whole run: the inventory pull, the push or pull-request step, and the browser launch.
 
 ### Interacting with Embedded Payment Frames

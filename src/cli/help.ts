@@ -90,7 +90,8 @@ OPTIONAL PARAMETERS:
 EXIT CODES:
   0    Success - all workflows completed successfully
   1    Validation error - invalid CLI arguments or configuration
-  2    Execution error - Git, network, or workflow failure (partial runs too)
+  2    Execution error - Git, network, or workflow failure (partial runs or
+       undelivered alerts too)
 
 EXAMPLES:
 

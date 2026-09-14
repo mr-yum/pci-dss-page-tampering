@@ -1,7 +1,8 @@
 import type { IAlertService } from '../interfaces/alert.js'
 import { ExecutionMode } from '../types/config.js'
+import type { AlertDeliveryFailure } from '../types/execution-summary.js'
 import type { InventoryAlert } from '../types/inventory/model.js'
-import { RunLedger, TargetRunFailuresError } from './run-ledger.js'
+import { RunFailuresError, RunLedger } from './run-ledger.js'
 
 const destinations: InventoryAlert = {
   inventory: { newScriptIdentified: { destination: '#alerts' }, newHeaderIdentified: { destination: '#alerts' } },
@@ -9,12 +10,13 @@ const destinations: InventoryAlert = {
   successNotification: { destination: '#alerts' },
 }
 
-function makeAlertService(events: string[], behaviour: 'ok' | 'throw' = 'ok'): IAlertService {
+function makeAlertService(events: string[], behaviour: 'ok' | 'throw' = 'ok', deliveryFailures: AlertDeliveryFailure[] = []): IAlertService {
   return {
     alertOnRunCompletion: jest.fn(async () => {
       events.push('summary-sent')
       if (behaviour === 'throw') throw new Error('slack down')
     }),
+    getDeliveryFailures: () => deliveryFailures,
   } as unknown as IAlertService
 }
 
@@ -70,7 +72,7 @@ describe('RunLedger', () => {
     }
 
     expect(events).toEqual(['summary-sent', 'thrown'])
-    expect(thrown).toBeInstanceOf(TargetRunFailuresError)
+    expect(thrown).toBeInstanceOf(RunFailuresError)
     expect((thrown as Error).message).toBe('2 target run(s) failed: 1.0 Toast staging (inventory), 2.0 Paystack production (detection). The remaining targets were processed; see the run summary and the auditor report.')
     const summary = (alertService.alertOnRunCompletion as jest.Mock).mock.calls[0][0]
     expect(summary.targetsProcessed).toEqual(['1.0 Stripe staging'])
@@ -86,7 +88,7 @@ describe('RunLedger', () => {
     const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation()
     ledger.recordFailure('1.0 Toast staging', 'inventory', new Error('boom'))
 
-    await expect(ledger.finish(finishInput(alertService))).rejects.toBeInstanceOf(TargetRunFailuresError)
+    await expect(ledger.finish(finishInput(alertService))).rejects.toBeInstanceOf(RunFailuresError)
 
     expect(events).toEqual(['summary-sent'])
     expect(consoleErrorSpy).toHaveBeenCalledWith('[Main]: Failed to send the run summary notification:', expect.any(Error))
@@ -97,7 +99,7 @@ describe('RunLedger', () => {
     const alertService = makeAlertService([])
     ledger.recordFailure('1.0', 'detection', new Error('browser crashed'))
 
-    await expect(ledger.finish(finishInput(alertService))).rejects.toBeInstanceOf(TargetRunFailuresError)
+    await expect(ledger.finish(finishInput(alertService))).rejects.toBeInstanceOf(RunFailuresError)
 
     const summary = (alertService.alertOnRunCompletion as jest.Mock).mock.calls[0][0]
     expect(summary.targetsProcessed).toEqual([])
@@ -127,8 +129,66 @@ describe('RunLedger', () => {
     const alertService = makeAlertService([])
     ledger.recordFailure('1.0', 'inventory', new Error('boom'))
 
-    await expect(ledger.finish(finishInput(alertService, null))).rejects.toBeInstanceOf(TargetRunFailuresError)
+    await expect(ledger.finish(finishInput(alertService, null))).rejects.toBeInstanceOf(RunFailuresError)
 
     expect(alertService.alertOnRunCompletion).not.toHaveBeenCalled()
+  })
+
+  it('fails the run for an undelivered alert even when every target succeeded, and names it in the summary first', async () => {
+    const events: string[] = []
+    const rejected: AlertDeliveryFailure = { alert: 'unauthorized header alerts', target: 'https://pay.example.com/checkout', reason: 'Slack rejected the message: invalid_blocks' }
+    const alertService = makeAlertService(events, 'ok', [rejected])
+    ledger.recordSuccess('reservations production', 300)
+
+    let thrown: unknown
+    try {
+      await ledger.finish(finishInput(alertService))
+    } catch (error) {
+      events.push('thrown')
+      thrown = error
+    }
+
+    expect(events).toEqual(['summary-sent', 'thrown'])
+    expect(thrown).toBeInstanceOf(RunFailuresError)
+    expect((thrown as Error).message).toContain('1 alert(s) could not be delivered: unauthorized header alerts for https://pay.example.com/checkout')
+    const summary = (alertService.alertOnRunCompletion as jest.Mock).mock.calls[0][0]
+    expect(summary.targetsFailed).toEqual([])
+    expect(summary.alertsUndelivered).toEqual([rejected])
+    expect(logs.some((line) => line.includes('Alert could not be delivered (unauthorized header alerts for https://pay.example.com/checkout)'))).toBe(true)
+  })
+
+  it('does not double count a delivery failure handed over twice', () => {
+    const failure: AlertDeliveryFailure = { alert: 'x', target: null, reason: 'boom' }
+    ledger.recordUndeliveredAlerts([failure])
+    ledger.recordUndeliveredAlerts([failure])
+
+    expect(ledger.alertsUndelivered).toHaveLength(1)
+  })
+
+  it('counts a run summary that could not be sent as an undelivered alert and exits non-zero for it', async () => {
+    const alertService = makeAlertService([], 'throw')
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation()
+    ledger.recordSuccess('1.0', 1)
+
+    await expect(ledger.finish(finishInput(alertService))).rejects.toMatchObject({ name: 'RunFailuresError', message: expect.stringContaining('run summary') })
+
+    expect(ledger.alertsUndelivered).toEqual([{ alert: 'run summary', target: null, reason: 'slack down' }])
+    consoleErrorSpy.mockRestore()
+  })
+
+  it('picks up a delivery failure the service records while sending the summary itself', async () => {
+    const recorded: AlertDeliveryFailure[] = []
+    const alertService = {
+      alertOnRunCompletion: jest.fn(async () => {
+        // Mirrors SlackAlertService: a rejected summary is caught and recorded, never thrown.
+        recorded.push({ alert: 'the run summary notification', target: null, reason: 'Slack rejected the message: invalid_blocks' })
+      }),
+      getDeliveryFailures: () => recorded,
+    } as unknown as IAlertService
+    ledger.recordSuccess('1.0', 1)
+
+    await expect(ledger.finish(finishInput(alertService))).rejects.toMatchObject({ name: 'RunFailuresError', message: expect.stringContaining('the run summary notification') })
+
+    expect(ledger.alertsUndelivered).toEqual(recorded)
   })
 })

@@ -16,7 +16,24 @@ export type FailedTarget = {
   reason: string
 }
 
-/** How the run went, derived from which targets succeeded and which failed. */
+/**
+ * An alert the run produced but could not deliver.
+ *
+ * Counted, not swallowed: Slack answers a rejected payload with HTTP 200 and
+ * `ok: false`, and a finding whose alert never arrived is an unmonitored
+ * finding as far as the operator can tell. The run summary names these and
+ * the process exits non-zero for them, exactly as for a failed target.
+ */
+export type AlertDeliveryFailure = {
+  /** What was being sent, e.g. `unauthorised header alert`. */
+  alert: string
+  /** The target the alert concerned, or null for run-level notices. */
+  target: string | null
+  /** The delivery error, already redacted for display. */
+  reason: string
+}
+
+/** How the run went, derived from which targets succeeded, which failed, and what could not be alerted. */
 export type ExecutionOutcome = 'success' | 'partial' | 'failure'
 
 /**
@@ -39,6 +56,12 @@ export type ExecutionSummary = {
    * Omitted or empty on a clean run.
    */
   targetsFailed?: FailedTarget[]
+
+  /**
+   * Alerts the run produced but could not deliver, in the order they failed.
+   * Omitted or empty on a clean run.
+   */
+  alertsUndelivered?: AlertDeliveryFailure[]
 
   /** Git repository URL that was monitored */
   repositoryUrl: string
@@ -121,9 +144,17 @@ export function validateExecutionSummary(summary: ExecutionSummary): void {
   }
 }
 
-/** Classify a run from its per-target results. */
-export function getExecutionOutcome(summary: Pick<ExecutionSummary, 'targetsProcessed' | 'targetsFailed'>): ExecutionOutcome {
+/**
+ * Classify a run from its per-target results and its alert deliveries.
+ *
+ * A run is a success only when every target completed AND every alert it
+ * produced was delivered; an undelivered alert degrades it to partial, since
+ * the finding exists but nobody was told.
+ */
+export function getExecutionOutcome(summary: Pick<ExecutionSummary, 'targetsProcessed' | 'targetsFailed' | 'alertsUndelivered'>): ExecutionOutcome {
   const failed = summary.targetsFailed?.length ?? 0
-  if (failed === 0) return 'success'
-  return summary.targetsProcessed.length === 0 ? 'failure' : 'partial'
+  const undelivered = summary.alertsUndelivered?.length ?? 0
+  if (failed === 0 && undelivered === 0) return 'success'
+  if (failed > 0 && summary.targetsProcessed.length === 0) return 'failure'
+  return 'partial'
 }

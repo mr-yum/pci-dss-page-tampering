@@ -182,6 +182,10 @@ describe('validateExecutionSummary', () => {
       expect(getExecutionOutcome({ targetsProcessed: ['1.0'], targetsFailed: [{ name: '2.0', pass: 'detection', reason: 'boom' }] })).toBe('partial')
     })
 
+    it('is partial when every target succeeded but an alert was not delivered', () => {
+      expect(getExecutionOutcome({ targetsProcessed: ['1.0'], alertsUndelivered: [{ alert: 'unauthorized header alerts', target: 'https://pay.example.com', reason: 'invalid_blocks' }] })).toBe('partial')
+    })
+
     it('is failure when every attempted target failed', () => {
       expect(getExecutionOutcome({ targetsProcessed: [], targetsFailed: [{ name: '2.0', pass: 'detection', reason: 'boom' }] })).toBe('failure')
     })
