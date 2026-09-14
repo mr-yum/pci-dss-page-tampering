@@ -90,8 +90,8 @@ OPTIONAL PARAMETERS:
 EXIT CODES:
   0    Success - all workflows completed successfully
   1    Validation error - invalid CLI arguments or configuration
-  2    Execution error - Git, network, or workflow failure (partial runs or
-       undelivered alerts too)
+  2    Execution error - Git, network, or workflow failure (partial runs and
+       undelivered alerts; not rum-compare)
 
 EXAMPLES:
 
@@ -162,8 +162,8 @@ WORKFLOW BEHAVIOR:
 
   All Mode (--mode all, default):
   - Runs inventory workflow first, then detection workflow
-  - A failed target is skipped: the rest, the push and detection still run,
-    the summary names it, then the process exits 2
+  - A failed target is skipped: the rest still run, the summary names it,
+    exit code 2
   - Useful for scheduled monitoring jobs
 
   Validate Mode (--mode validate):
@@ -186,7 +186,7 @@ WORKFLOW BEHAVIOR:
     alert categories; no inventory push
   - Logs a run summary; with --report-dir, writes rum-compare/rum-summary.json
   - Exit codes: 0 = success (empty queue and DLQ'd messages included),
-    1 = argument error, 2 = git/AWS failure
+    1 = argument error, 2 = git/AWS failure (not undelivered alerts)
 
 ALERTING BEHAVIOR:
 

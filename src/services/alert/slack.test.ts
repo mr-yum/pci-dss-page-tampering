@@ -1840,7 +1840,7 @@ describe('SlackAlertService - alertOnRunCompletion (Phase 3)', () => {
 
       await expect(service.alertOnRunCompletion(summary, mockAlertDestinations)).resolves.not.toThrow()
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith('[Alert Error] Failed to send the run summary notification:', expect.any(Error))
+      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('[Alert Error] Failed to send the run summary notification: '))
 
       consoleErrorSpy.mockRestore()
     })
@@ -1852,7 +1852,7 @@ describe('SlackAlertService - alertOnRunCompletion (Phase 3)', () => {
 
       await expect(service.alertOnRunCompletion(summary, mockAlertDestinations)).resolves.not.toThrow()
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith('[Alert Error] Failed to send the run summary notification:', expect.objectContaining({ message: 'Slack rejected the message: invalid_blocks' }))
+      expect(consoleErrorSpy).toHaveBeenCalledWith('[Alert Error] Failed to send the run summary notification: Slack rejected the message: invalid_blocks')
 
       consoleErrorSpy.mockRestore()
     })
@@ -2045,6 +2045,61 @@ describe('SlackAlertService - delivery accountability', () => {
     expect(sections.join('\n')).toContain('alert-11')
   })
 
+  it('still sends the manual-review variant when the inventory-updated variant was rejected, recording each on its own', async () => {
+    const service = new SlackAlertService('t', 'https://github.com/example/inv', 'inventory-updates')
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation()
+    const inventoryTarget = { ...target, type: 'inventory' } as unknown as Target
+    const applied = unauthorisedCsp(0)
+    const skipped = unauthorisedCsp(1)
+    ;(axios.post as jest.Mock).mockResolvedValueOnce({ data: { ok: false, error: 'invalid_blocks' } }).mockResolvedValueOnce({ data: { ok: true } })
+    const postsBefore = (axios.post as jest.Mock).mock.calls.length
+
+    await service.alertForTypedResults([applied, skipped], inventoryTarget, destinations, new Set([applied]))
+
+    expect((axios.post as jest.Mock).mock.calls.length - postsBefore).toBe(2)
+    expect(service.getDeliveryFailures()).toEqual([{ alert: 'unauthorized header alerts', target: inventoryTarget.url, reason: 'Slack rejected the message: invalid_blocks' }])
+    consoleErrorSpy.mockRestore()
+  })
+
+  it('never logs the raw transport error, which can carry the Authorization header', async () => {
+    const service = new SlackAlertService('secret-token-xyz', 'https://github.com/example/inv', 'inventory-updates')
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation()
+    const axiosError = Object.assign(new Error('Request failed with status code 500'), { config: { headers: { Authorization: 'Bearer secret-token-xyz' } } })
+    ;(axios.post as jest.Mock).mockRejectedValueOnce(axiosError)
+
+    await service.alertForTypedResults([unauthorisedCsp(0)], target, destinations)
+
+    const logged = consoleErrorSpy.mock.calls.map((call) => call.map((arg) => (typeof arg === 'string' ? arg : JSON.stringify(arg))).join(' ')).join('\n')
+    expect(logged).toContain('[Alert Error] Failed to send unauthorized header alerts: Request failed with status code 500')
+    expect(logged).not.toContain('secret-token-xyz')
+    expect(consoleErrorSpy.mock.calls.every((call) => call.length === 1)).toBe(true)
+    consoleErrorSpy.mockRestore()
+  })
+
+  it('bounds a list line after escaping so entity expansion cannot push a section past 3,000 characters', async () => {
+    const service = new SlackAlertService('t', 'https://github.com/example/inv', 'inventory-updates')
+    const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+    const summary: ExecutionSummary = {
+      mode: ExecutionMode.Detection,
+      targetsProcessed: ['1.0'],
+      targetsFailed: [{ name: '&'.repeat(600), pass: 'detection', reason: '<'.repeat(300) }],
+      alertsUndelivered: [{ alert: '&'.repeat(600), target: '<'.repeat(300), reason: '>'.repeat(300) }],
+      repositoryUrl: 'https://github.example.com/org/inv',
+      inventoryBranch: null,
+      detectionBranch: 'main',
+      resourceCount: 1,
+      completedAt: new Date('2026-09-14T00:00:00.000Z'),
+    }
+
+    await service.alertOnRunCompletion(summary, destinations)
+
+    const texts = (sendMessageSpy.mock.calls[0]![0] as any).blocks.map((block: any) => block.text?.text ?? '') as string[]
+    for (const text of texts) expect(text.length).toBeLessThanOrEqual(3000)
+    const lists = texts.filter((text) => text.startsWith('*Target Failed') || text.startsWith('*Alert Not Delivered'))
+    expect(lists).toHaveLength(2)
+    for (const list of lists) for (const line of list.split('\n').slice(1)) expect(line.length).toBeLessThanOrEqual(1401)
+  })
+
   it('records a Slack rejection as a delivery failure naming the alert and target, without throwing', async () => {
     const service = new SlackAlertService('t', 'https://github.com/example/inv', 'inventory-updates')
     const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation()
@@ -2053,7 +2108,7 @@ describe('SlackAlertService - delivery accountability', () => {
     await expect(service.alertForTypedResults([unauthorisedCsp(0)], target, destinations)).resolves.toBeUndefined()
 
     expect(service.getDeliveryFailures()).toEqual([{ alert: 'unauthorized header alerts', target: 'https://book.example.com/venue?view=times', reason: 'Slack rejected the message: invalid_blocks' }])
-    expect(consoleErrorSpy).toHaveBeenCalledWith('[Alert Error] Failed to send unauthorized header alerts:', expect.any(Error))
+    expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('[Alert Error] Failed to send unauthorized header alerts: '))
     consoleErrorSpy.mockRestore()
   })
 })

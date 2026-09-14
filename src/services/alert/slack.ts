@@ -71,6 +71,19 @@ function clipTableCell(cell: unknown, cap: number): unknown {
   return clip(cell)
 }
 
+/** Headroom under Slack's 3,000-character cap on a section's text. */
+const SECTION_CHAR_LIMIT = 2900
+/**
+ * Longest single list line, measured *after* escaping: `&` becomes `&amp;`,
+ * so a raw clip alone cannot promise a line fits, and a continuation section
+ * starts with whatever line overflowed the previous one.
+ */
+const LINE_CHAR_LIMIT = 1400
+
+function boundLine(line: string): string {
+  return line.length > LINE_CHAR_LIMIT ? `${line.slice(0, LINE_CHAR_LIMIT)}…` : line
+}
+
 /** Escape the three characters Slack's mrkdwn treats as control syntax. */
 function escapeMrkdwn(text: string): string {
   return text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
@@ -154,25 +167,23 @@ export class SlackAlertService implements IAlertService {
       this.recordDeliveryFailure('unknown script alerts', target.url, error)
     }
 
-    try {
-      // Handle scripts that were identified but had unauthorised content. In
-      // inventory mode the inventory service may have auto-added the new hash
-      // — and may not (e.g. AndMatcher entries, non-hash authorisers). Use the
-      // applied/skipped split to keep the message truthful: "Inventory updated"
-      // only for the applied subset, "manual review required" for the rest.
-      // In detection mode this is always a potential tampering event.
-      if (unauthorizedScripts.length > 0) {
-        const destination = isInventoryMode ? alertDestinations.inventory.newScriptIdentified : alertDestinations.detection.scriptMismatchDetected
-        const { applied, skipped } = splitByApplied(unauthorizedScripts)
-        if (applied.length > 0) {
-          await this.alertOnUnauthorizedScripts(applied, target, destination, 'updated')
-        }
-        if (skipped.length > 0) {
-          await this.alertOnUnauthorizedScripts(skipped, target, destination, 'manual-review')
-        }
+    // Handle scripts that were identified but had unauthorised content. In
+    // inventory mode the inventory service may have auto-added the new hash
+    // — and may not (e.g. AndMatcher entries, non-hash authorisers). Use the
+    // applied/skipped split to keep the message truthful: "Inventory updated"
+    // only for the applied subset, "manual review required" for the rest.
+    // In detection mode this is always a potential tampering event. Each
+    // variant is sent under its own guard so a rejected first message never
+    // costs the second, and each rejection is recorded on its own.
+    if (unauthorizedScripts.length > 0) {
+      const destination = isInventoryMode ? alertDestinations.inventory.newScriptIdentified : alertDestinations.detection.scriptMismatchDetected
+      const { applied, skipped } = splitByApplied(unauthorizedScripts)
+      if (applied.length > 0) {
+        await this.sendRecorded('unauthorized script alerts', target.url, () => this.alertOnUnauthorizedScripts(applied, target, destination, 'updated'))
       }
-    } catch (error) {
-      this.recordDeliveryFailure('unauthorized script alerts', target.url, error)
+      if (skipped.length > 0) {
+        await this.sendRecorded('unauthorized script alerts (manual review)', target.url, () => this.alertOnUnauthorizedScripts(skipped, target, destination, 'manual-review'))
+      }
     }
 
     try {
@@ -185,23 +196,19 @@ export class SlackAlertService implements IAlertService {
       this.recordDeliveryFailure('unknown header alerts', target.url, error)
     }
 
-    try {
-      // Headers identified but with unauthorised content — same split as
-      // scripts. "Inventory updated" only fires for results the diff actually
-      // appended a new content matcher for; the rest get a manual-review
-      // message so operators aren't told the inventory changed when it didn't.
-      if (unauthorizedHeaders.length > 0) {
-        const destination = isInventoryMode ? alertDestinations.inventory.newHeaderIdentified : (alertDestinations.detection.headerMismatchDetected ?? alertDestinations.detection.newHeaderDetected)
-        const { applied, skipped } = splitByApplied(unauthorizedHeaders)
-        if (applied.length > 0) {
-          await this.alertOnUnauthorizedHeaders(applied, target, destination, 'updated')
-        }
-        if (skipped.length > 0) {
-          await this.alertOnUnauthorizedHeaders(skipped, target, destination, 'manual-review')
-        }
+    // Headers identified but with unauthorised content — same split as
+    // scripts. "Inventory updated" only fires for results the diff actually
+    // appended a new content matcher for; the rest get a manual-review
+    // message so operators aren't told the inventory changed when it didn't.
+    if (unauthorizedHeaders.length > 0) {
+      const destination = isInventoryMode ? alertDestinations.inventory.newHeaderIdentified : (alertDestinations.detection.headerMismatchDetected ?? alertDestinations.detection.newHeaderDetected)
+      const { applied, skipped } = splitByApplied(unauthorizedHeaders)
+      if (applied.length > 0) {
+        await this.sendRecorded('unauthorized header alerts', target.url, () => this.alertOnUnauthorizedHeaders(applied, target, destination, 'updated'))
       }
-    } catch (error) {
-      this.recordDeliveryFailure('unauthorized header alerts', target.url, error)
+      if (skipped.length > 0) {
+        await this.sendRecorded('unauthorized header alerts (manual review)', target.url, () => this.alertOnUnauthorizedHeaders(skipped, target, destination, 'manual-review'))
+      }
     }
 
     try {
@@ -1314,8 +1321,20 @@ export class SlackAlertService implements IAlertService {
    * swallowing from turning into silence at the end of the run.
    */
   private recordDeliveryFailure(alert: string, target: string | null, error: unknown): void {
-    console.error(`[Alert Error] Failed to send ${alert}:`, error)
-    this.deliveryFailures.push({ alert, target, reason: redactForDisplay(error instanceof Error ? error.message : String(error)).text })
+    // Only the redacted message is logged: an axios error carries the request
+    // config, Authorization header included, and this line lands in CI logs.
+    const reason = redactForDisplay(error instanceof Error ? error.message : String(error)).text
+    console.error(`[Alert Error] Failed to send ${alert}: ${reason}`)
+    this.deliveryFailures.push({ alert, target, reason })
+  }
+
+  /** Run one send under its own guard, recording a failure without letting it escape. */
+  private async sendRecorded(alert: string, target: string | null, send: () => Promise<void>): Promise<void> {
+    try {
+      await send()
+    } catch (error) {
+      this.recordDeliveryFailure(alert, target, error)
+    }
   }
 
   /**
@@ -1360,7 +1379,6 @@ export class SlackAlertService implements IAlertService {
 
     const reasonLimit = 300
     const targetLimit = 300
-    const sectionLimit = 2900
     const label = undelivered.length === 1 ? 'Alert Not Delivered' : 'Alerts Not Delivered'
     const header = `*${label} (${undelivered.length})* — these findings were raised but *never reached Slack*; read them in the auditor report:`
 
@@ -1369,8 +1387,8 @@ export class SlackAlertService implements IAlertService {
     let current = header
     for (const failure of undelivered) {
       const target = failure.target === null ? '' : ` for \`${escapeMrkdwn(clip(failure.target, targetLimit))}\``
-      const line = `• ${escapeMrkdwn(failure.alert)}${target}: ${escapeMrkdwn(clip(failure.reason, reasonLimit))}`
-      if (current.length + 1 + line.length > sectionLimit) {
+      const line = boundLine(`• ${escapeMrkdwn(failure.alert)}${target}: ${escapeMrkdwn(clip(failure.reason, reasonLimit))}`)
+      if (current.length + 1 + line.length > SECTION_CHAR_LIMIT) {
         sections.push(current)
         current = `*${label} (continued)*`
       }
@@ -1402,7 +1420,6 @@ export class SlackAlertService implements IAlertService {
     if (failed.length === 0) return []
 
     const reasonLimit = 300
-    const sectionLimit = 2900 // headroom under Slack's 3000-character section text cap
     const label = failed.length === 1 ? 'Target Failed' : 'Targets Failed'
     const header = `*${label} (${failed.length})* — no observations were recorded for these, so they were *not monitored* in this run:`
 
@@ -1410,8 +1427,8 @@ export class SlackAlertService implements IAlertService {
     let current = header
     for (const target of failed) {
       const reason = target.reason.length > reasonLimit ? `${target.reason.slice(0, reasonLimit)}…` : target.reason
-      const line = `• \`${escapeMrkdwn(target.name)}\` (${target.pass}): ${escapeMrkdwn(reason)}`
-      if (current.length + 1 + line.length > sectionLimit) {
+      const line = boundLine(`• \`${escapeMrkdwn(target.name)}\` (${target.pass}): ${escapeMrkdwn(reason)}`)
+      if (current.length + 1 + line.length > SECTION_CHAR_LIMIT) {
         sections.push(current)
         current = `*${label} (continued)*`
       }
