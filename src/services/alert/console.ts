@@ -9,7 +9,7 @@ import type { MissingRequiredScript } from '../../types/comparison/missing-requi
 import type { UnknownHeaderFound } from '../../types/comparison/unknown-header-found.js'
 import type { UnknownScriptFound } from '../../types/comparison/unknown-script-found.js'
 import { ExecutionMode } from '../../types/config.js'
-import type { ExecutionSummary } from '../../types/execution-summary.js'
+import { type ExecutionSummary, getExecutionOutcome } from '../../types/execution-summary.js'
 import type { InventoryAlert } from '../../types/inventory/model.js'
 import type { Target } from '../../types/target.js'
 import { extractHost, redactUrl } from '../../utils/url.js'
@@ -202,13 +202,33 @@ export class ConsoleAlertService implements IAlertService {
    * Logs structured text to console with execution details.
    * Parallel implementation to SlackAlertService for local testing.
    */
-  async alertOnSuccess(summary: ExecutionSummary, _alertDestinations: InventoryAlert): Promise<void> {
-    console.log(`[Console Alert -> Success]: Workflow execution completed successfully`)
+  async alertOnRunCompletion(summary: ExecutionSummary, _alertDestinations: InventoryAlert): Promise<void> {
+    const failed = summary.targetsFailed ?? []
+    switch (getExecutionOutcome(summary)) {
+      case 'success':
+        console.log(`[Console Alert -> Success]: Workflow execution completed successfully`)
+        break
+      case 'partial':
+        console.log(`[Console Alert -> Partial Failure]: Workflow execution completed, but ${failed.length} target(s) failed and were not monitored`)
+        break
+      case 'failure':
+        console.log(`[Console Alert -> Failure]: Workflow execution failed for every target; nothing was monitored`)
+        break
+    }
     console.log(`  Mode: ${summary.mode}`)
 
     // Format target list (truncate if > 5)
-    const targetDisplay = this.formatTargetList(summary.targetsProcessed)
+    const targetDisplay = summary.targetsProcessed.length === 0 ? '(none)' : this.formatTargetList(summary.targetsProcessed)
     console.log(`  Targets Processed: ${targetDisplay}`)
+
+    // Every failure is listed in full: a truncated list would hide exactly the
+    // information this line exists to carry.
+    if (failed.length > 0) {
+      console.log(`  Targets Failed: ${failed.length}`)
+      for (const target of failed) {
+        console.log(`    - ${target.name} (${target.pass}): ${target.reason}`)
+      }
+    }
 
     console.log(`  Repository: ${summary.repositoryUrl}`)
 

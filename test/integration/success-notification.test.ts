@@ -4,9 +4,9 @@
  * End-to-end integration tests for success notifications after workflow completion.
  * Tests the full workflow from execution through success notification delivery.
  *
- * @see src/main.ts - sendSuccessNotification()
- * @see src/services/alert/slack.ts - alertOnSuccess()
- * @see src/services/alert/console.ts - alertOnSuccess()
+ * @see src/main.ts - sendRunCompletionNotification()
+ * @see src/services/alert/slack.ts - alertOnRunCompletion()
+ * @see src/services/alert/console.ts - alertOnRunCompletion()
  * @see specs/009-emit-slack-notification/spec.md
  */
 

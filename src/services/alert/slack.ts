@@ -11,7 +11,7 @@ import type { MissingRequiredScript } from '../../types/comparison/missing-requi
 import type { UnknownHeaderFound } from '../../types/comparison/unknown-header-found.js'
 import type { UnknownScriptFound } from '../../types/comparison/unknown-script-found.js'
 import { ExecutionMode } from '../../types/config.js'
-import type { ExecutionSummary } from '../../types/execution-summary.js'
+import { type ExecutionSummary, type FailedTarget, getExecutionOutcome } from '../../types/execution-summary.js'
 import type { HeaderInfo } from '../../types/header.js'
 import type { AlertDestination, InventoryAlert } from '../../types/inventory/model.js'
 import type { DetectedScript } from '../../types/matcher/matcher.interface.js'
@@ -27,6 +27,11 @@ import { resolveRumAlertDestination, rumAlertContextLines, rumAlertTitle } from 
  * `urlMatcher` regexes.
  */
 type HeaderAlertRow = HeaderInfo & { url?: string; detectedTarget: Target }
+
+/** Escape the three characters Slack's mrkdwn treats as control syntax. */
+function escapeMrkdwn(text: string): string {
+  return text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+}
 
 export class SlackAlertService implements IAlertService {
   private readonly oAuthToken: string
@@ -390,9 +395,20 @@ export class SlackAlertService implements IAlertService {
     return scriptInfo.source.type === 'external' ? scriptInfo.source.url : scriptInfo.source.url
   }
 
+  /**
+   * Post to Slack and fail loudly when Slack refuses the message.
+   *
+   * `chat.postMessage` answers HTTP 200 with `{ ok: false, error }` for a
+   * rejected payload (an oversize block, an unknown channel), so a bare await
+   * on the request would count a dropped alert as delivered. Throwing here
+   * lets every caller's existing catch log the rejection instead.
+   */
   private async sendMessage(messagePayload: object): Promise<void> {
     const postMessageEndpoint = 'https://slack.com/api/chat.postMessage'
-    await axios.post(postMessageEndpoint, messagePayload, { headers: { Authorization: `Bearer ${this.oAuthToken}`, 'Content-Type': 'application/json' } })
+    const response = await axios.post<{ ok?: boolean; error?: string }>(postMessageEndpoint, messagePayload, { headers: { Authorization: `Bearer ${this.oAuthToken}`, 'Content-Type': 'application/json' } })
+    if (response.data !== undefined && response.data !== null && response.data.ok === false) {
+      throw new Error(`Slack rejected the message: ${response.data.error ?? 'unknown error'}`)
+    }
   }
 
   private createScriptMessagePayload(title: string, scripts: ScriptInfo[], target: Target, destination: AlertDestination): object {
@@ -1081,31 +1097,43 @@ export class SlackAlertService implements IAlertService {
   }
 
   /**
-   * Alert for successful workflow execution.
-   * Sends informational Slack notification when workflows complete without errors.
+   * Summarise a completed run in Slack: what was monitored, what failed, and where the evidence is.
    *
-   * Feature 010: Uses alertDestinations.successNotification directly for all modes.
-   * This routes success notifications to a dedicated destination separate from violation alerts.
+   * Feature 010: Uses alertDestinations.successNotification directly for all modes and outcomes.
+   * The headline changes with the outcome so a partial run cannot be mistaken for a clean one
+   * at a glance, and every failed target is named with its pass and reason.
    */
-  async alertOnSuccess(summary: ExecutionSummary, alertDestinations: InventoryAlert): Promise<void> {
+  async alertOnRunCompletion(summary: ExecutionSummary, alertDestinations: InventoryAlert): Promise<void> {
     try {
       // Feature 010: Direct access to dedicated success destination
       const destination = alertDestinations.successNotification
 
       // Create and send message
-      const messagePayload = this.createSuccessMessagePayload(summary, destination)
-      this.log(AlertType.Success, 'Workflow execution completed successfully')
+      const messagePayload = this.createRunCompletionMessagePayload(summary, destination)
+      const failed = summary.targetsFailed?.length ?? 0
+      this.log(AlertType.Success, failed === 0 ? 'Workflow execution completed successfully' : `Workflow execution completed with ${failed} failed target(s)`)
       await this.sendMessage(messagePayload)
     } catch (error) {
-      console.error('[Alert Error] Failed to send success notification:', error)
+      console.error('[Alert Error] Failed to send the run summary notification:', error)
     }
   }
 
   /**
-   * Create Slack Block Kit payload for success notification.
-   * Uses green check mark emoji for visual distinction from violation alerts.
+   * Create the Slack Block Kit payload for the run summary.
+   *
+   * Green check for a clean run, warning for a partial one, red circle when
+   * every target failed — the emoji is the first thing a reader scanning the
+   * channel sees, so it has to carry the verdict on its own.
    */
-  private createSuccessMessagePayload(summary: ExecutionSummary, destination: AlertDestination): object {
+  private createRunCompletionMessagePayload(summary: ExecutionSummary, destination: AlertDestination): object {
+    const failed = summary.targetsFailed ?? []
+    const outcome = getExecutionOutcome(summary)
+    const headline = {
+      success: ':white_check_mark: *Workflow Execution Completed Successfully* :white_check_mark:',
+      partial: `:warning: *Workflow Execution Completed With ${failed.length} Failed Target${failed.length === 1 ? '' : 's'}* :warning:`,
+      failure: ':red_circle: *Workflow Execution Failed For Every Target* :red_circle:',
+    }[outcome]
+
     return {
       channel: destination.destination,
       blocks: [
@@ -1113,7 +1141,7 @@ export class SlackAlertService implements IAlertService {
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: ':white_check_mark: *Workflow Execution Completed Successfully* :white_check_mark:',
+            text: headline,
           },
         },
         {
@@ -1130,9 +1158,16 @@ export class SlackAlertService implements IAlertService {
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `*${this.formatTargetLabel(summary.targetsProcessed.length)}*: ${this.formatTargetList(summary.targetsProcessed)}`,
+            text: `*${this.formatTargetLabel(summary.targetsProcessed.length, failed.length > 0)}*: ${summary.targetsProcessed.length === 0 ? '(none)' : this.formatTargetList(summary.targetsProcessed)}`,
           },
         },
+        ...this.formatFailedTargets(failed).map((text) => ({
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text,
+          },
+        })),
         {
           type: 'section',
           text: {
@@ -1222,8 +1257,45 @@ export class SlackAlertService implements IAlertService {
   /**
    * Format target label (singular/plural).
    */
-  private formatTargetLabel(count: number): string {
-    return count === 1 ? 'Target Processed' : 'Targets Processed'
+  private formatTargetLabel(count: number, alongsideFailures = false): string {
+    // "Processed" reads as "all of them" when nothing failed; beside a failure
+    // list it has to say which side of the line these targets are on.
+    const noun = count === 1 ? 'Target' : 'Targets'
+    return `${noun} ${alongsideFailures ? 'Succeeded' : 'Processed'}`
+  }
+
+  /**
+   * Name every failed target with its pass and reason, as one or more section texts.
+   *
+   * Never truncated to "and N more": the whole point of this block is that a
+   * reader learns exactly which payment pages went unmonitored. Slack caps a
+   * section's text at 3000 characters and answers an oversize block with
+   * `ok: false`, dropping the whole message — so the list is split across as
+   * many sections as it needs, each reason clipped per entry, and the text is
+   * escaped: the reason is an error message a tampered page can influence, and
+   * raw `<!channel>` or `<url|label>` inside mrkdwn would ping or spoof.
+   */
+  private formatFailedTargets(failed: FailedTarget[]): string[] {
+    if (failed.length === 0) return []
+
+    const reasonLimit = 300
+    const sectionLimit = 2900 // headroom under Slack's 3000-character section text cap
+    const label = failed.length === 1 ? 'Target Failed' : 'Targets Failed'
+    const header = `*${label} (${failed.length})* — no observations were recorded for these, so they were *not monitored* in this run:`
+
+    const sections: string[] = []
+    let current = header
+    for (const target of failed) {
+      const reason = target.reason.length > reasonLimit ? `${target.reason.slice(0, reasonLimit)}…` : target.reason
+      const line = `• \`${escapeMrkdwn(target.name)}\` (${target.pass}): ${escapeMrkdwn(reason)}`
+      if (current.length + 1 + line.length > sectionLimit) {
+        sections.push(current)
+        current = `*${label} (continued)*`
+      }
+      current += `\n${line}`
+    }
+    sections.push(current)
+    return sections
   }
 
   /**

@@ -53,13 +53,16 @@ describe('mapGroupsSequentially', () => {
     expect(started).toEqual(['a-1', 'a-2', 'b-1', 'b-2'])
 
     gates['b-2'].resolve()
-    await expect(execution).resolves.toEqual([
-      ['a-1', 'a-2'],
-      ['b-1', 'b-2'],
-    ])
+    await expect(execution).resolves.toEqual({
+      results: [
+        ['a-1', 'a-2'],
+        ['b-1', 'b-2'],
+      ],
+      failures: [],
+    })
   })
 
-  it('continues later items and groups before reporting collected failures', async () => {
+  it('continues later items and groups and returns the failures beside the results', async () => {
     const started: string[] = []
     const firstError = new Error('first failed')
     const secondError = new Error('second failed')
@@ -79,16 +82,33 @@ describe('mapGroupsSequentially', () => {
       },
     )
 
-    let aggregateError: AggregateError | undefined
-    try {
-      await execution
-    } catch (error) {
-      aggregateError = error as AggregateError
-    }
+    const outcome = await execution
 
-    expect(aggregateError).toBeInstanceOf(AggregateError)
-    expect(aggregateError?.message).toBe('2 sequential workflow execution(s) failed')
-    expect(aggregateError?.errors).toEqual([firstError, secondError])
     expect(started).toEqual(['a-1', 'a-2', 'b-1', 'b-2'])
+    // Groups keep their position even when an item in them failed, so callers
+    // can still pair results with their inputs by index.
+    expect(outcome.results).toEqual([['a-2'], ['b-2']])
+    expect(outcome.failures).toEqual([
+      { group: { id: 'a', items: ['1', '2'] }, item: '1', error: firstError },
+      { group: { id: 'b', items: ['1', '2'] }, item: '1', error: secondError },
+    ])
+  })
+
+  it('returns an empty group when every item in it failed, keeping later groups intact', async () => {
+    const outcome = await mapGroupsSequentially(
+      [
+        { id: 'a', items: ['1'] },
+        { id: 'b', items: ['1'] },
+      ],
+      (group) => group.items,
+      async (group, item) => {
+        if (group.id === 'a') throw new Error(`${group.id}-${item} failed`)
+        return `${group.id}-${item}`
+      },
+    )
+
+    expect(outcome.results).toEqual([[], ['b-1']])
+    expect(outcome.failures).toHaveLength(1)
+    expect(outcome.failures[0]?.group.id).toBe('a')
   })
 })

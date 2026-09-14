@@ -37,19 +37,24 @@ export interface IAlertService {
   alertForRumObservation(category: RumAlertCategory, context: RumAlertContext, alertDestinations: InventoryAlert): Promise<void>
 
   /**
-   * Alert for successful workflow execution.
-   * Sends informational notification when workflows complete without errors.
+   * Summarise a completed run: which targets were monitored, which failed and
+   * why, and where the evidence is.
    *
-   * @param summary - Aggregated execution context (mode, targets, branches, counts, timestamp)
-   * @param alertDestinations - Inventory alert configuration containing successNotification destination
+   * Sent at the end of every run that attempted at least one target — clean,
+   * partially failed, or failed on every target. A partial run is the one this
+   * message matters most for: the per-finding alerts only speak for the targets
+   * that completed, so this is the only place a reader learns that a payment
+   * page went unmonitored. Implementations must make the outcome unmistakable
+   * in the headline and name each failed target with its pass and reason.
+   *
+   * @param summary - Aggregated execution context (mode, targets succeeded and failed, branches, counts, timestamp)
+   * @param alertDestinations - Inventory alert configuration containing the successNotification destination
    *
    * Behavior:
-   * - Uses alertDestinations.successNotification for all modes (Feature 010)
-   * - Routes to dedicated success destination separate from violation alerts
-   * - Formats success message with execution details
+   * - Uses alertDestinations.successNotification for all modes and all outcomes (Feature 010)
    * - Error handling: Errors logged to console, method returns normally (non-blocking)
    */
-  alertOnSuccess(summary: ExecutionSummary, alertDestinations: InventoryAlert): Promise<void>
+  alertOnRunCompletion(summary: ExecutionSummary, alertDestinations: InventoryAlert): Promise<void>
 
   /**
    * Alert that the inventory push succeeded but the follow-up GitHub PR could

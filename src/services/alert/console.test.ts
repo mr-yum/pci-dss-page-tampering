@@ -1,8 +1,8 @@
 /**
- * Unit tests for ConsoleAlertService.alertOnSuccess()
+ * Unit tests for ConsoleAlertService.alertOnRunCompletion()
  *
  * Tests for Phase 3 (User Story 1):
- * - T007: ConsoleAlertService.alertOnSuccess() output verification
+ * - T007: ConsoleAlertService.alertOnRunCompletion() output verification
  *   - Logs execution mode
  *   - Logs target list (with truncation for > 5 targets)
  *   - Logs repository URL
@@ -22,7 +22,7 @@ import type { Target } from '../../types/target.js'
 import { createLogger } from '../../utils/logger.js'
 import { ConsoleAlertService } from './console.js'
 
-describe('ConsoleAlertService - alertOnSuccess (Phase 3)', () => {
+describe('ConsoleAlertService - alertOnRunCompletion (Phase 3)', () => {
   let service: ConsoleAlertService
   let consoleSpy: jest.SpyInstance
   let mockAlertDestinations: InventoryAlert
@@ -62,7 +62,7 @@ describe('ConsoleAlertService - alertOnSuccess (Phase 3)', () => {
 
   describe('auditor report line', () => {
     const output = async (summary: ExecutionSummary): Promise<string> => {
-      await service.alertOnSuccess(summary, {} as never)
+      await service.alertOnRunCompletion(summary, {} as never)
       return consoleSpy.mock.calls.flat().join('\n')
     }
 
@@ -87,7 +87,7 @@ describe('ConsoleAlertService - alertOnSuccess (Phase 3)', () => {
     it('should log success header', async () => {
       const summary = createSummary()
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       expect(consoleSpy).toHaveBeenCalledWith('[Console Alert -> Success]: Workflow execution completed successfully')
     })
@@ -95,7 +95,7 @@ describe('ConsoleAlertService - alertOnSuccess (Phase 3)', () => {
     it('should log execution mode', async () => {
       const summary = createSummary({ mode: ExecutionMode.Detection })
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       expect(consoleSpy).toHaveBeenCalledWith('  Mode: detection')
     })
@@ -103,7 +103,7 @@ describe('ConsoleAlertService - alertOnSuccess (Phase 3)', () => {
     it('should log repository URL', async () => {
       const summary = createSummary({ repositoryUrl: 'https://github.com/test/repo' })
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       expect(consoleSpy).toHaveBeenCalledWith('  Repository: https://github.com/test/repo')
     })
@@ -111,9 +111,45 @@ describe('ConsoleAlertService - alertOnSuccess (Phase 3)', () => {
     it('should log completion timestamp in ISO format', async () => {
       const summary = createSummary({ completedAt: new Date('2025-12-17T14:30:00.000Z') })
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       expect(consoleSpy).toHaveBeenCalledWith('  Completed At: 2025-12-17T14:30:00.000Z')
+    })
+  })
+
+  describe('Run outcome output', () => {
+    it('reports a partial run in the header and lists every failed target with pass and reason', async () => {
+      const summary = createSummary({
+        targetsProcessed: ['1.0 Stripe staging'],
+        targetsFailed: [
+          { name: '1.0 Toast staging', pass: 'inventory', reason: 'Timed out waiting for selector' },
+          { name: '2.0 Paystack production', pass: 'detection', reason: 'net::ERR_NAME_NOT_RESOLVED' },
+        ],
+      })
+
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
+
+      expect(consoleSpy).toHaveBeenCalledWith('[Console Alert -> Partial Failure]: Workflow execution completed, but 2 target(s) failed and were not monitored')
+      expect(consoleSpy).toHaveBeenCalledWith('  Targets Processed: 1.0 Stripe staging')
+      expect(consoleSpy).toHaveBeenCalledWith('  Targets Failed: 2')
+      expect(consoleSpy).toHaveBeenCalledWith('    - 1.0 Toast staging (inventory): Timed out waiting for selector')
+      expect(consoleSpy).toHaveBeenCalledWith('    - 2.0 Paystack production (detection): net::ERR_NAME_NOT_RESOLVED')
+    })
+
+    it('reports a total failure when nothing was processed', async () => {
+      const summary = createSummary({ targetsProcessed: [], targetsFailed: [{ name: '1.0', pass: 'detection', reason: 'boom' }] })
+
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
+
+      expect(consoleSpy).toHaveBeenCalledWith('[Console Alert -> Failure]: Workflow execution failed for every target; nothing was monitored')
+      expect(consoleSpy).toHaveBeenCalledWith('  Targets Processed: (none)')
+    })
+
+    it('does not print a failed-targets line on a clean run', async () => {
+      await service.alertOnRunCompletion(createSummary(), mockAlertDestinations)
+
+      expect(consoleSpy).toHaveBeenCalledWith('[Console Alert -> Success]: Workflow execution completed successfully')
+      expect(consoleSpy.mock.calls.some(([line]) => String(line).includes('Targets Failed'))).toBe(false)
     })
   })
 
@@ -121,7 +157,7 @@ describe('ConsoleAlertService - alertOnSuccess (Phase 3)', () => {
     it('should display all targets when <= 5', async () => {
       const summary = createSummary({ targetsProcessed: ['1.0', '2.0', '3.0'] })
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       expect(consoleSpy).toHaveBeenCalledWith('  Targets Processed: 1.0, 2.0, 3.0')
     })
@@ -129,7 +165,7 @@ describe('ConsoleAlertService - alertOnSuccess (Phase 3)', () => {
     it('should display exactly 5 targets without truncation', async () => {
       const summary = createSummary({ targetsProcessed: ['1.0', '2.0', '3.0', '4.0', '5.0'] })
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       expect(consoleSpy).toHaveBeenCalledWith('  Targets Processed: 1.0, 2.0, 3.0, 4.0, 5.0')
     })
@@ -139,7 +175,7 @@ describe('ConsoleAlertService - alertOnSuccess (Phase 3)', () => {
         targetsProcessed: ['1.0', '2.0', '3.0', '4.0', '5.0', '6.0', '7.0', '8.0', '9.0', '10.0'],
       })
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       expect(consoleSpy).toHaveBeenCalledWith('  Targets Processed: 1.0, 2.0, 3.0, and 7 more')
     })
@@ -147,7 +183,7 @@ describe('ConsoleAlertService - alertOnSuccess (Phase 3)', () => {
     it('should display single target', async () => {
       const summary = createSummary({ targetsProcessed: ['1.0'] })
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       expect(consoleSpy).toHaveBeenCalledWith('  Targets Processed: 1.0')
     })
@@ -161,7 +197,7 @@ describe('ConsoleAlertService - alertOnSuccess (Phase 3)', () => {
         detectionBranch: null,
       })
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       expect(consoleSpy).toHaveBeenCalledWith('  Branch: updates/scripts')
     })
@@ -173,7 +209,7 @@ describe('ConsoleAlertService - alertOnSuccess (Phase 3)', () => {
         detectionBranch: 'main',
       })
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       expect(consoleSpy).toHaveBeenCalledWith('  Branch: main')
     })
@@ -185,7 +221,7 @@ describe('ConsoleAlertService - alertOnSuccess (Phase 3)', () => {
         detectionBranch: 'main',
       })
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       expect(consoleSpy).toHaveBeenCalledWith('  Branches: updates/scripts (inventory), main (detection)')
     })
@@ -197,7 +233,7 @@ describe('ConsoleAlertService - alertOnSuccess (Phase 3)', () => {
         detectionBranch: null,
       })
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       expect(consoleSpy).toHaveBeenCalledWith('  Branch: unknown')
     })
@@ -209,7 +245,7 @@ describe('ConsoleAlertService - alertOnSuccess (Phase 3)', () => {
         detectionBranch: null,
       })
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       expect(consoleSpy).toHaveBeenCalledWith('  Branch: unknown')
     })
@@ -219,7 +255,7 @@ describe('ConsoleAlertService - alertOnSuccess (Phase 3)', () => {
     it('should display positive resource count', async () => {
       const summary = createSummary({ resourceCount: 42 })
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       expect(consoleSpy).toHaveBeenCalledWith('  Resources Monitored: 42 scripts and headers')
     })
@@ -227,7 +263,7 @@ describe('ConsoleAlertService - alertOnSuccess (Phase 3)', () => {
     it('should display zero resource count with warning', async () => {
       const summary = createSummary({ resourceCount: 0 })
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       expect(consoleSpy).toHaveBeenCalledWith('  Resources Monitored: 0 scripts and headers (This may warrant investigation)')
     })
@@ -238,7 +274,7 @@ describe('ConsoleAlertService - alertOnSuccess (Phase 3)', () => {
       // Don't pass executionDuration at all - it's optional
       const summary = createSummary({})
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       // Verify no call contains "Execution Duration"
       const calls = consoleSpy.mock.calls.map((call) => call[0]).filter((call) => typeof call === 'string')
@@ -248,7 +284,7 @@ describe('ConsoleAlertService - alertOnSuccess (Phase 3)', () => {
     it('should not display executionDuration when null', async () => {
       const summary = createSummary({ executionDuration: null })
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       const calls = consoleSpy.mock.calls.map((call) => call[0]).filter((call) => typeof call === 'string')
       expect(calls.some((call: string) => call.includes('Execution Duration'))).toBe(false)
@@ -257,7 +293,7 @@ describe('ConsoleAlertService - alertOnSuccess (Phase 3)', () => {
     it('should display executionDuration in milliseconds when < 1000ms', async () => {
       const summary = createSummary({ executionDuration: 500 })
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       expect(consoleSpy).toHaveBeenCalledWith('  Execution Duration: 500ms')
     })
@@ -265,7 +301,7 @@ describe('ConsoleAlertService - alertOnSuccess (Phase 3)', () => {
     it('should display executionDuration in seconds when >= 1000ms and < 60s', async () => {
       const summary = createSummary({ executionDuration: 5000 })
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       expect(consoleSpy).toHaveBeenCalledWith('  Execution Duration: 5s')
     })
@@ -273,7 +309,7 @@ describe('ConsoleAlertService - alertOnSuccess (Phase 3)', () => {
     it('should display executionDuration in minutes and seconds when >= 60s', async () => {
       const summary = createSummary({ executionDuration: 125000 })
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       expect(consoleSpy).toHaveBeenCalledWith('  Execution Duration: 2m 5s')
     })
@@ -292,7 +328,7 @@ describe('ConsoleAlertService - alertOnSuccess (Phase 3)', () => {
         executionDuration: 5000,
       }
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       // Filter out the empty console.log() call which produces undefined
       const calls = consoleSpy.mock.calls.map((call) => call[0]).filter((call) => call !== undefined)
@@ -320,7 +356,7 @@ describe('ConsoleAlertService - alertOnSuccess (Phase 3)', () => {
         completedAt: new Date('2025-12-17T14:30:00.000Z'),
       }
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       // Filter out the empty console.log() call which produces undefined
       const calls = consoleSpy.mock.calls.map((call) => call[0]).filter((call) => call !== undefined)
