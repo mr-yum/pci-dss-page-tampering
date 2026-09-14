@@ -2039,8 +2039,9 @@ describe('SlackAlertService - delivery accountability', () => {
     // The whole target URL is clipped to 300 characters, scheme and host included.
     expect(first).toContain(`https://pay.example.com/${'p'.repeat(276)}…\``)
     expect(first).not.toContain('p'.repeat(277))
-    expect(first).toContain(`${'r'.repeat(300)}…`)
-    expect(first).not.toContain('r'.repeat(301))
+    // The reason is clipped to 300 characters including its escaped prefix.
+    expect(first).toContain(`&lt;!channel&gt; ${'r'.repeat(289)}…`)
+    expect(first).not.toContain('r'.repeat(290))
     expect(sections.join('\n')).toContain('alert-11')
   })
 
