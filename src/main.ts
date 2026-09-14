@@ -21,11 +21,12 @@ import { assertInventoryBranchReplacementSafe, prepareInventoryBranch } from './
 import { ensureInventoryPullRequest } from './services/inventory-pr-coordinator.js'
 import { PullRequestService } from './services/pull-request.js'
 import { FileReportWriter, NoopReportCollector, ReportCollector, writeStepSummary } from './services/report/index.js'
+import { RunLedger } from './services/run-ledger.js'
 import { GitInventoryStore } from './stores/inventory/git.js'
 import { CliArgsSchema, ExitCode } from './types/cli.js'
 import type { ComparisonResultType } from './types/comparison.js'
 import { ExecutionMode, type RuntimeConfiguration } from './types/config.js'
-import type { AuditorReportLocation, ExecutionSummary } from './types/execution-summary.js'
+import type { AuditorReportLocation, ExecutionPass } from './types/execution-summary.js'
 import { getInventoryWorkflows, type Inventory, type InventoryAlert, type InventoryDifferenceResult, type InventoryWorkflow } from './types/inventory/model.js'
 import type { ReportPass } from './types/report.js'
 import { PullTarget, type Target } from './types/target.js'
@@ -145,10 +146,47 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
   // Ties the inventory and detection documents of one invocation together.
   const reportCorrelationId = randomUUID()
 
-  // T009: Track execution context for success notification
-  let totalResourceCount = 0
-  const processedTargets: string[] = []
+  // T009: Track execution context for the end-of-run summary
+  const ledger = new RunLedger(log)
   let alertDestinations: InventoryAlert | null = null
+
+  /**
+   * Display name for a target: its configured name, else `<file>/<workflow> (<pass>)`.
+   *
+   * The fallback carries the pass because under `--mode all` one workflow owns
+   * both an inventory and a detection target; without it the same string could
+   * appear under "succeeded" and "failed" in the summary at once.
+   */
+  const targetDisplayName = (inventory: Inventory, workflow: InventoryWorkflow, target: Target): string => target.name ?? `${inventory.fileName.replace(/\.json$/, '')}/${workflow.id} (${target.type})`
+
+  /** Fold the targets a pass could not complete into the run summary. */
+  const recordTargetFailures = (pass: ExecutionPass, failures: readonly { group: Inventory; item: InventoryWorkflow; error: unknown }[]): void => {
+    for (const failure of failures) {
+      ledger.recordFailure(targetDisplayName(failure.group, failure.item, failure.item[pass]), pass, failure.error)
+    }
+  }
+
+  /**
+   * Send the run summary, then fail the process if any target did not complete.
+   *
+   * Order matters: the summary is the operator's account of what was and was
+   * not monitored, so it goes out even when the exit code is about to be
+   * non-zero. The throw keeps CI red — a run with an unmonitored payment page
+   * must never look green — while the targets that did complete have already
+   * been alerted on, diffed and pushed.
+   */
+  const finishRun = async (): Promise<void> => {
+    await ledger.finish({
+      alertService,
+      alertDestinations,
+      mode: config.executionMode,
+      repositoryUrl: config.repository.url,
+      inventoryBranch: config.executionMode === ExecutionMode.Detection ? null : config.branches.inventory,
+      detectionBranch: config.executionMode === ExecutionMode.Inventory ? null : config.branches.detection,
+      executionStartTime,
+      auditorReport: buildAuditorReportLocation(reportsWritten),
+    })
+  }
 
   type PendingAlerts = {
     scriptComparisonResults: ComparisonResultType[]
@@ -404,17 +442,22 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
         // and payment backends. Run them serially to avoid one synthetic user
         // starving or rate-limiting another. Inventory files are also serial so
         // independent hosted-payment frames cannot starve the shared browser.
-        const targetRunResults = await mapGroupsSequentially(
+        //
+        // A failed variation is recorded and skipped, not fatal: the diff below
+        // is additive, so it is safe to run on the observations that were made,
+        // and the detection pass that follows must not be forfeited because a
+        // staging backend was down.
+        const inventoryRun = await mapGroupsSequentially(
           filteredInventory,
           (inventory) => getWorkflowsForTargetFilter(inventory, config.targetFilter.targetName),
           async (inventory, workflow) => {
             const result = await runForTargetAsync(browser, inventory, workflow.inventory)
-            totalResourceCount += result.resourceCount
-            const targetName = workflow.inventory.name ?? `${inventory.fileName.replace(/\.json$/, '')}/${workflow.id}`
-            if (!processedTargets.includes(targetName)) processedTargets.push(targetName)
+            ledger.recordSuccess(targetDisplayName(inventory, workflow, workflow.inventory), result.resourceCount)
             return result
           },
         )
+        recordTargetFailures('inventory', inventoryRun.failures)
+        const targetRunResults = inventoryRun.results
 
         const diffResults = await Promise.all(
           filteredInventory.map(async (inventory, index) => {
@@ -440,7 +483,7 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
           const inventoriesToPush: InventoryDifferenceResult[] = diffResults.map((result) => result.diffResult)
           const pushResult = await scriptInventoryService.push(inventoriesToPush, config.branches.inventory)
 
-          log('Inventory workflow completed successfully.')
+          log(inventoryRun.failures.length === 0 ? 'Inventory workflow completed successfully.' : `Inventory workflow completed with ${inventoryRun.failures.length} failed target(s); the others were diffed and pushed.`)
 
           // Open a PR so the inventory repo's CI (`--mode validate`) runs and humans
           // can review the change. Skip conditions are handled inside the service
@@ -483,14 +526,13 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
           throw prError
         }
 
-        // T022: If mode is 'inventory', send success notification and stop here
+        // T022: If mode is 'inventory', send the run summary and stop here
         if (config.executionMode === ExecutionMode.Inventory) {
           await emitReportSafely('inventory')
           await browser.close()
 
-          // T010: Send success notification with try-catch error handling
-          // T021: Pass execution start time for duration calculation
-          await sendSuccessNotification(alertService, config, processedTargets, totalResourceCount, alertDestinations, executionStartTime, log, buildAuditorReportLocation(reportsWritten))
+          // T010, T021: summary first, then a non-zero exit if any target failed
+          await finishRun()
           return
         }
 
@@ -518,21 +560,22 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
           alertDestinations = filteredDetectionInventory[0]!.alerts
         }
 
-        // Run detection workflow
+        // Run detection workflow. Detection targets alert as they go, so a
+        // failed target here has already been recorded for the report; it is
+        // named in the run summary and fails the exit code, nothing more.
         log('Preparing to run detection workflow.')
-        await mapGroupsSequentially(
+        const detectionRun = await mapGroupsSequentially(
           filteredDetectionInventory,
           (inventory) => getWorkflowsForTargetFilter(inventory, config.targetFilter.targetName),
           async (inventory, workflow) => {
             const result = await runForTargetAsync(browser, inventory, workflow.detection)
-            totalResourceCount += result.resourceCount
-            const targetName = workflow.detection.name ?? `${inventory.fileName.replace(/\.json$/, '')}/${workflow.id}`
-            if (!processedTargets.includes(targetName)) processedTargets.push(targetName)
+            ledger.recordSuccess(targetDisplayName(inventory, workflow, workflow.detection), result.resourceCount)
             return result
           },
         )
+        recordTargetFailures('detection', detectionRun.failures)
 
-        log('Detection workflow completed successfully.')
+        log(detectionRun.failures.length === 0 ? 'Detection workflow completed successfully.' : `Detection workflow completed with ${detectionRun.failures.length} failed target(s).`)
       } finally {
         await emitReportSafely('detection')
       }
@@ -542,16 +585,11 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
     await browser.close()
   }
 
-  // T010: Send success notification with try-catch error handling (for detection and all modes)
-  // T021: Pass execution start time for duration calculation
-  await sendSuccessNotification(alertService, config, processedTargets, totalResourceCount, alertDestinations, executionStartTime, log, buildAuditorReportLocation(reportsWritten))
+  // T010, T021: run summary for detection and all modes, then a non-zero exit
+  // if any target failed. The summary goes first so it is sent even then.
+  await finishRun()
 }
 
-/**
- * T009, T010, T011: Send success notification after workflow completion
- * T020, T021: Calculates execution duration from start time
- * Constructs ExecutionSummary and calls alertOnSuccess() with non-blocking error handling
- */
 /**
  * Identify the CI run that produced a report, so an assessor can trace the
  * artefact back to the job that generated it.
@@ -592,54 +630,6 @@ function buildAuditorReportLocation(written: readonly { paths: ReportArtefactPat
   const runUrl = ci === null || ci.repository === '' ? null : `${server}/${ci.repository}/actions/runs/${ci.runId}`
 
   return { runUrl, htmlPaths: written.map((entry) => entry.paths.htmlPath) }
-}
-
-async function sendSuccessNotification(
-  alertService: IAlertService,
-  config: RuntimeConfiguration,
-  processedTargets: string[],
-  totalResourceCount: number,
-  alertDestinations: InventoryAlert | null,
-  executionStartTime: number,
-  log: (message: string) => void,
-  auditorReport: AuditorReportLocation | null = null,
-): Promise<void> {
-  // Skip if no targets were processed (should not happen, but fail-safe)
-  if (processedTargets.length === 0) {
-    log('No targets processed, skipping success notification.')
-    return
-  }
-
-  // Skip if no alert destinations available (should not happen, but fail-safe)
-  if (alertDestinations === null) {
-    log('No alert destinations available, skipping success notification.')
-    return
-  }
-
-  // T021: Calculate execution duration
-  const executionDuration = Date.now() - executionStartTime
-
-  // T009: Construct ExecutionSummary from config and execution results
-  // T021: Include calculated execution duration
-  const summary: ExecutionSummary = {
-    mode: config.executionMode,
-    targetsProcessed: processedTargets,
-    repositoryUrl: config.repository.url,
-    inventoryBranch: config.executionMode === ExecutionMode.Detection ? null : config.branches.inventory,
-    detectionBranch: config.executionMode === ExecutionMode.Inventory ? null : config.branches.detection,
-    resourceCount: totalResourceCount,
-    completedAt: new Date(),
-    executionDuration,
-    auditorReport,
-  }
-
-  // T010: Call alertOnSuccess() with try-catch error handling (non-blocking per FR-009)
-  try {
-    await alertService.alertOnSuccess(summary, alertDestinations)
-  } catch (error) {
-    // Log error but don't fail workflow - success notification is informational only
-    console.error('[Main]: Failed to send success notification:', error)
-  }
 }
 
 /**

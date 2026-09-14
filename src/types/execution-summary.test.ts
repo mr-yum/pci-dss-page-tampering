@@ -11,7 +11,7 @@
  */
 
 import { ExecutionMode } from './config.js'
-import { type ExecutionSummary, validateExecutionSummary } from './execution-summary.js'
+import { type ExecutionSummary, getExecutionOutcome, validateExecutionSummary } from './execution-summary.js'
 
 describe('validateExecutionSummary', () => {
   // Use a past date to avoid "future timestamp" validation errors
@@ -160,6 +160,30 @@ describe('validateExecutionSummary', () => {
       })
 
       expect(() => validateExecutionSummary(summary)).toThrow('targetsProcessed cannot be empty')
+    })
+
+    it('should pass with no processed targets when failed targets name what was attempted', () => {
+      const summary = createValidSummary({
+        targetsProcessed: [],
+        targetsFailed: [{ name: '1.0 Toast staging', pass: 'inventory', reason: 'Timed out waiting for selector' }],
+      })
+
+      expect(() => validateExecutionSummary(summary)).not.toThrow()
+    })
+  })
+
+  describe('getExecutionOutcome', () => {
+    it('is success when nothing failed', () => {
+      expect(getExecutionOutcome({ targetsProcessed: ['1.0'] })).toBe('success')
+      expect(getExecutionOutcome({ targetsProcessed: ['1.0'], targetsFailed: [] })).toBe('success')
+    })
+
+    it('is partial when some targets succeeded and some failed', () => {
+      expect(getExecutionOutcome({ targetsProcessed: ['1.0'], targetsFailed: [{ name: '2.0', pass: 'detection', reason: 'boom' }] })).toBe('partial')
+    })
+
+    it('is failure when every attempted target failed', () => {
+      expect(getExecutionOutcome({ targetsProcessed: [], targetsFailed: [{ name: '2.0', pass: 'detection', reason: 'boom' }] })).toBe('failure')
     })
   })
 

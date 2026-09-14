@@ -83,11 +83,15 @@ npm start -- --mode validate --repo file://$PWD --inventory-branch $GITHUB_HEAD_
 
 ### Exit Codes
 
-| Code | Meaning                                          |
-| ---- | ------------------------------------------------ |
-| 0    | Success (including --help)                       |
-| 1    | Validation error (invalid arguments)             |
-| 2    | Execution error (Git, network, workflow failure) |
+| Code | Meaning                                                                                                                                     |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0    | Success (including --help)                                                                                                                  |
+| 1    | Validation error (invalid arguments)                                                                                                        |
+| 2    | Execution error (Git, network, workflow failure) — including a run in which one or more targets failed while the rest completed (see below) |
+
+### Partial runs
+
+A target whose workflow fails (timeout, missing element, backend error) does **not** abort the run. The remaining variations in that pass still execute, the inventory diff and push still happen for the observations that were made (the diff is additive, so a partial observation set is safe), and under `--mode all` the detection pass still runs. The failure is recorded in the auditor report (`run.status: "partial"`) and named in the end-of-run Slack summary, whose headline switches from :white_check_mark: to :warning: (some targets failed) or :red_circle: (every target failed) and lists each failed target with its pass and reason under _Targets Failed_. The process then exits 2 so CI stays red — a run with an unmonitored payment page must never look green. Only run-level failures (inventory pull, push, PR creation, browser launch) abort the run outright. The rule for a notification design: the per-finding alerts speak only for targets that were observed, so the summary is the one place a reader learns which page went unmonitored, and it must name them rather than count them.
 
 ### Execution Modes
 
@@ -163,7 +167,7 @@ act push --container-architecture linux/amd64 --secret-file .env.secrets
    - New scripts are identified by exact name (URL / inline id) — except inline scripts carrying the shared `inline_script/id_not_found` fallback, which get a provenance-based matcher instead: `andMatcher` of the initiator host (`hostMatcher`) and an anchored 64-char content snippet (`contentMatcher`, both ends anchored when the whole body fits the window). Two exceptions: content-only matching when the initiator URL is missing/unparseable, and the exact-name matcher (degenerate) for whitespace-only content — never a universal matcher
    - Array syntax conversion preserves original authorization metadata
 
-4. **AlertService** (`src/services/alert/slack.ts`) - Sends Slack notifications for detected changes
+4. **AlertService** (`src/services/alert/slack.ts`) - Sends Slack notifications for detected changes, plus the end-of-run summary (`alertOnRunCompletion`) that names the targets that succeeded and the ones that failed
 
 5. **ReportService** (`src/services/report/`) - Produces the auditor report when `--report-dir` is set:
    - `ReportCollector` is fed once per target run from `main.ts`, after both comparisons and _before_ the inventory diff, so the report records the baseline the comparison actually ran against

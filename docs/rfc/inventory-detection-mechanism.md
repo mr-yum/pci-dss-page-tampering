@@ -317,8 +317,11 @@ A single `IAlertService` (Slack or console) handles all output:
 - `alertForTypedResults(...)` — routes violation/discovery results to the
   correct destination, and in inventory mode distinguishes "inventory updated"
   from "manual review required" using the diff's `appliedResults`.
-- `alertOnSuccess(...)` — an informational summary (mode, targets, resource
-  counts, duration) sent to the dedicated `successNotification` destination.
+- `alertOnRunCompletion(...)` — the end-of-run summary (mode, targets that
+  succeeded and targets that failed with pass and reason, resource counts,
+  duration), sent to the dedicated `successNotification` destination for every
+  run that attempted at least one target; its headline switches on the run
+  outcome so a partial run cannot pass for a clean one.
 - `alertOnPullRequestFailure(...)` — surfaces PR-creation failures so a human
   can open the PR manually.
 

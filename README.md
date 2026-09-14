@@ -295,6 +295,16 @@ rule. The workflow-level policy is optional:
 bounded to 0–30000 ms and receives a linear multiplier before later attempts.
 Before opting in, audit every externally visible action and mark its boundary.
 
+### When One Target Fails
+
+A single target's workflow failing does not stop the run. The other variations in the pass still execute, the inventory diff and push still run for the observations that were made, and under `--mode all` the detection pass still follows an inventory pass that had failures. The failed target is:
+
+- recorded in the auditor report (`run.status: "partial"`, with the error on that target's section),
+- named in the end-of-run Slack summary under **Targets Failed**, with its pass and the error message, while the headline switches from :white_check_mark: to :warning: (some targets failed) or :red_circle: (every target failed),
+- and reflected in the exit code: the process exits `2` after the summary has been sent, so a scheduled run with an unmonitored payment page still shows red.
+
+Only run-level failures abort the whole run: the inventory pull, the push or pull-request step, and the browser launch.
+
 ### Interacting with Embedded Payment Frames
 
 Payment providers commonly isolate card fields in cross-origin iframes. Add a
@@ -538,7 +548,7 @@ The bundled `inventory-and-detection.yml` workflow passes `--report-dir reports`
 
 It deliberately excludes `**/inventory/**` from the upload, because this repository is public and the inventory it monitors is not. **That artefact is therefore not self-contained**: its `file:line` citations and the "Inventory as scanned" links have nothing to resolve against, and the `sha256` values in `run.inventorySources` can only be checked by someone who fetches the matching files from the inventory repository at the commit named in `run.inventoryRef`. A workflow hosted in the inventory repository uploads `reports/` whole and does not have this gap — which is why the scheduled run lives there. A digest of the findings is also appended to the GitHub Actions job summary.
 
-The Slack success notification carries a **View run & download** button linking the workflow run page. That is deliberately the run page rather than the artifact itself: the artifact is uploaded by a workflow step that runs _after_ the tool exits, so it has no URL at the moment the notification is sent. The run page is the better destination regardless — the artefact is one click away, and the job-summary digest of findings renders on that same page. Outside CI the notification lists the written file paths instead.
+The end-of-run Slack summary carries a **View run & download** button linking the workflow run page. That is deliberately the run page rather than the artifact itself: the artifact is uploaded by a workflow step that runs _after_ the tool exits, so it has no URL at the moment the notification is sent. The run page is the better destination regardless — the artefact is one click away, and the job-summary digest of findings renders on that same page. Outside CI the notification lists the written file paths instead.
 
 > **Retention:** the workflow configures `retention-days: 90`. That is the ceiling for a public repository; private and internal repositories allow up to 400 days, and an organisation or enterprise policy may cap it lower still. Either way, PCI evidence retention is typically twelve months, so treat the artefact as a convenience copy, **not** the system of record. Archive it elsewhere if you need to satisfy a retention requirement.
 

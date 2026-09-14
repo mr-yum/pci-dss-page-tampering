@@ -9,6 +9,8 @@
  * - T027: Exhaustive type checking via TypeScript never
  */
 
+import axios from 'axios'
+
 import type { ComparisonResultType } from '../../types/comparison.js'
 import { AuthorizedHeaderFound } from '../../types/comparison/authorized-header-found.js'
 import { AuthorizedScriptFound } from '../../types/comparison/authorized-script-found.js'
@@ -1123,10 +1125,10 @@ describe('SlackAlertService - Typed Results Handling (Phase 4)', () => {
 })
 
 /**
- * Unit tests for SlackAlertService.alertOnSuccess()
+ * Unit tests for SlackAlertService.alertOnRunCompletion()
  *
  * Tests for Phase 3 (User Story 1):
- * - T008: SlackAlertService.alertOnSuccess() message payload verification
+ * - T008: SlackAlertService.alertOnRunCompletion() message payload verification
  *   - Sends to correct channel based on mode
  *   - Uses Slack Block Kit format with green check mark emoji
  *   - Includes all required execution details
@@ -1136,7 +1138,7 @@ describe('SlackAlertService - Typed Results Handling (Phase 4)', () => {
 import { ExecutionMode } from '../../types/config.js'
 import type { ExecutionSummary } from '../../types/execution-summary.js'
 
-describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
+describe('SlackAlertService - alertOnRunCompletion (Phase 3)', () => {
   let service: SlackAlertService
   let mockAlertDestinations: InventoryAlert
 
@@ -1171,7 +1173,7 @@ describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
   describe('auditor report link', () => {
     const blocksOf = async (summary: ExecutionSummary): Promise<any[]> => {
       const spy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
       return (spy.mock.calls[0]![0] as any).blocks
     }
 
@@ -1212,7 +1214,7 @@ describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
   })
 
   /**
-   * T005: Tests for alertOnSuccess using successNotification destination
+   * T005: Tests for alertOnRunCompletion using successNotification destination
    * Feature 010: Success notifications should route to dedicated successNotification destination
    * regardless of execution mode, instead of mode-based routing.
    */
@@ -1226,7 +1228,7 @@ describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
 
       const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       // Feature 010: Uses successNotification directly instead of mode-based routing
       expect(sendMessageSpy).toHaveBeenCalledWith(
@@ -1245,7 +1247,7 @@ describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
 
       const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       // Feature 010: Uses successNotification directly instead of mode-based routing
       expect(sendMessageSpy).toHaveBeenCalledWith(
@@ -1264,7 +1266,7 @@ describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
 
       const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       // Feature 010: Uses successNotification directly instead of mode-based routing
       expect(sendMessageSpy).toHaveBeenCalledWith(
@@ -1281,7 +1283,7 @@ describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
 
       const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       expect(sendMessageSpy).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1303,7 +1305,7 @@ describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
 
       const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       expect(sendMessageSpy).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1317,7 +1319,7 @@ describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
 
       const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       expect(sendMessageSpy).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1337,7 +1339,7 @@ describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
 
       const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       expect(sendMessageSpy).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1357,7 +1359,7 @@ describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
 
       const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       expect(sendMessageSpy).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1377,7 +1379,7 @@ describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
 
       const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       expect(sendMessageSpy).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1393,13 +1395,104 @@ describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
     })
   })
 
+  describe('Run outcome rendering', () => {
+    const failedToast = { name: '1.0 Toast staging', pass: 'inventory' as const, reason: 'Timed out waiting for selector \'[id="credit_card_number"]\'' }
+
+    it('keeps the green headline and the Processed label when nothing failed', async () => {
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertOnRunCompletion(createSummary({ targetsFailed: [] }), mockAlertDestinations)
+
+      const texts = (sendMessageSpy.mock.calls[0]![0] as any).blocks.map((block: any) => block.text?.text ?? '')
+      expect(texts[0]).toBe(':white_check_mark: *Workflow Execution Completed Successfully* :white_check_mark:')
+      expect(texts).toContain('*Targets Processed*: 1.0, 2.0')
+      expect(texts.some((text: string) => text.includes('Failed'))).toBe(false)
+    })
+
+    it('switches to a warning headline and names each failed target with its pass and reason', async () => {
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertOnRunCompletion(createSummary({ targetsProcessed: ['1.0 Stripe staging', '2.0 Stripe staging'], targetsFailed: [failedToast] }), mockAlertDestinations)
+
+      const payload = sendMessageSpy.mock.calls[0]![0] as any
+      const texts = payload.blocks.map((block: any) => block.text?.text ?? '')
+      expect(payload.channel).toBe('success-channel')
+      expect(texts[0]).toBe(':warning: *Workflow Execution Completed With 1 Failed Target* :warning:')
+      expect(texts).toContain('*Targets Succeeded*: 1.0 Stripe staging, 2.0 Stripe staging')
+      const failedBlock = texts.find((text: string) => text.startsWith('*Target Failed (1)*'))
+      expect(failedBlock).toContain('*not monitored*')
+      expect(failedBlock).toContain('• `1.0 Toast staging` (inventory): Timed out waiting for selector \'[id="credit_card_number"]\'')
+    })
+
+    it('pluralises the headline and lists every failure without truncation', async () => {
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+      const failures = Array.from({ length: 8 }, (_, index) => ({ name: `target-${index}`, pass: 'detection' as const, reason: `reason ${index}` }))
+
+      await service.alertOnRunCompletion(createSummary({ targetsProcessed: ['1.0'], targetsFailed: failures }), mockAlertDestinations)
+
+      const texts = (sendMessageSpy.mock.calls[0]![0] as any).blocks.map((block: any) => block.text?.text ?? '')
+      expect(texts[0]).toBe(':warning: *Workflow Execution Completed With 8 Failed Targets* :warning:')
+      const failedBlock = texts.find((text: string) => text.startsWith('*Targets Failed (8)*'))
+      for (const failure of failures) expect(failedBlock).toContain(`\`${failure.name}\` (detection): ${failure.reason}`)
+      expect(failedBlock).not.toContain('and ')
+    })
+
+    it("splits a long failed list across sections that each stay under Slack's 3000-character cap", async () => {
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+      const failures = Array.from({ length: 12 }, (_, index) => ({ name: `variation-${index}`, pass: 'inventory' as const, reason: `${index}-`.padEnd(320, 'r') }))
+
+      await service.alertOnRunCompletion(createSummary({ targetsProcessed: ['1.0'], targetsFailed: failures }), mockAlertDestinations)
+
+      const texts = (sendMessageSpy.mock.calls[0]![0] as any).blocks.map((block: any) => block.text?.text ?? '') as string[]
+      const failedSections = texts.filter((text) => text.startsWith('*Targets Failed'))
+      expect(failedSections.length).toBeGreaterThan(1)
+      for (const section of failedSections) expect(section.length).toBeLessThanOrEqual(3000)
+      expect(failedSections[0]).toMatch(/^\*Targets Failed \(12\)\*/)
+      expect(failedSections[1]).toMatch(/^\*Targets Failed \(continued\)\*/)
+      const joined = failedSections.join('\n')
+      for (const failure of failures) expect(joined).toContain(`\`${failure.name}\` (inventory)`)
+    })
+
+    it('escapes mrkdwn control characters in the reason so a page-influenced error cannot ping or spoof', async () => {
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertOnRunCompletion(createSummary({ targetsFailed: [{ ...failedToast, reason: '<!channel> see <https://evil.example/review|Review changes> & act' }] }), mockAlertDestinations)
+
+      const texts = (sendMessageSpy.mock.calls[0]![0] as any).blocks.map((block: any) => block.text?.text ?? '') as string[]
+      const failedBlock = texts.find((text) => text.startsWith('*Target Failed (1)*')) as string
+      expect(failedBlock).toContain('&lt;!channel&gt; see &lt;https://evil.example/review|Review changes&gt; &amp; act')
+      expect(failedBlock).not.toContain('<!channel>')
+    })
+
+    it('clips an overlong reason per entry rather than dropping the entry', async () => {
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertOnRunCompletion(createSummary({ targetsFailed: [{ ...failedToast, reason: 'x'.repeat(1000) }] }), mockAlertDestinations)
+
+      const texts = (sendMessageSpy.mock.calls[0]![0] as any).blocks.map((block: any) => block.text?.text ?? '')
+      const failedBlock = texts.find((text: string) => text.startsWith('*Target Failed (1)*')) as string
+      expect(failedBlock).toContain(`${'x'.repeat(300)}…`)
+      expect(failedBlock).not.toContain('x'.repeat(301))
+    })
+
+    it('uses the red headline and "(none)" when every target failed', async () => {
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+      await service.alertOnRunCompletion(createSummary({ targetsProcessed: [], targetsFailed: [failedToast] }), mockAlertDestinations)
+
+      const texts = (sendMessageSpy.mock.calls[0]![0] as any).blocks.map((block: any) => block.text?.text ?? '')
+      expect(texts[0]).toBe(':red_circle: *Workflow Execution Failed For Every Target* :red_circle:')
+      expect(texts).toContain('*Targets Succeeded*: (none)')
+    })
+  })
+
   describe('Target list formatting', () => {
     it('should display all targets when <= 5', async () => {
       const summary = createSummary({ targetsProcessed: ['1.0', '2.0', '3.0'] })
 
       const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       expect(sendMessageSpy).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1420,7 +1513,7 @@ describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
 
       const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       expect(sendMessageSpy).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1441,7 +1534,7 @@ describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
 
       const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       expect(sendMessageSpy).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1464,7 +1557,7 @@ describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
 
       const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       expect(sendMessageSpy).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1487,7 +1580,7 @@ describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
 
       const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       expect(sendMessageSpy).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1510,7 +1603,7 @@ describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
 
       const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       expect(sendMessageSpy).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1536,7 +1629,7 @@ describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
 
       const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       expect(sendMessageSpy).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1560,7 +1653,7 @@ describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
 
       const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       expect(sendMessageSpy).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1583,7 +1676,7 @@ describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
 
       const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       expect(sendMessageSpy).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1604,7 +1697,7 @@ describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
 
       const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       expect(sendMessageSpy).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1625,7 +1718,7 @@ describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
 
       const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       expect(sendMessageSpy).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1648,7 +1741,7 @@ describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
 
       const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       const callArg = sendMessageSpy.mock.calls[0]?.[0] as { blocks: Array<{ text?: { text: string } }> }
       const blockTexts = callArg.blocks.filter((b) => b.text?.text).map((b) => b.text?.text)
@@ -1660,7 +1753,7 @@ describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
 
       const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       expect(sendMessageSpy).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1680,7 +1773,7 @@ describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
 
       const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       expect(sendMessageSpy).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1700,7 +1793,7 @@ describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
 
       const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       expect(sendMessageSpy).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1722,9 +1815,21 @@ describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
       const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation()
       jest.spyOn(service as any, 'sendMessage').mockRejectedValue(new Error('Slack API error'))
 
-      await expect(service.alertOnSuccess(summary, mockAlertDestinations)).resolves.not.toThrow()
+      await expect(service.alertOnRunCompletion(summary, mockAlertDestinations)).resolves.not.toThrow()
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith('[Alert Error] Failed to send success notification:', expect.any(Error))
+      expect(consoleErrorSpy).toHaveBeenCalledWith('[Alert Error] Failed to send the run summary notification:', expect.any(Error))
+
+      consoleErrorSpy.mockRestore()
+    })
+
+    it('treats an HTTP 200 with ok:false from Slack as a delivery failure and logs it', async () => {
+      const summary = createSummary()
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation()
+      ;(axios.post as jest.Mock).mockResolvedValueOnce({ data: { ok: false, error: 'invalid_blocks' } })
+
+      await expect(service.alertOnRunCompletion(summary, mockAlertDestinations)).resolves.not.toThrow()
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith('[Alert Error] Failed to send the run summary notification:', expect.objectContaining({ message: 'Slack rejected the message: invalid_blocks' }))
 
       consoleErrorSpy.mockRestore()
     })
@@ -1734,7 +1839,7 @@ describe('SlackAlertService - alertOnSuccess (Phase 3)', () => {
       const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation()
       jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
 
-      await service.alertOnSuccess(summary, mockAlertDestinations)
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
 
       expect(consoleLogSpy).toHaveBeenCalledWith('[Alert → Success]: Workflow execution completed successfully')
 

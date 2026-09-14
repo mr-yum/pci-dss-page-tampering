@@ -90,7 +90,7 @@ OPTIONAL PARAMETERS:
 EXIT CODES:
   0    Success - all workflows completed successfully
   1    Validation error - invalid CLI arguments or configuration
-  2    Execution error - Git, network, or workflow failure
+  2    Execution error - Git, network, or workflow failure (partial runs too)
 
 EXAMPLES:
 
@@ -161,7 +161,8 @@ WORKFLOW BEHAVIOR:
 
   All Mode (--mode all, default):
   - Runs inventory workflow first, then detection workflow
-  - If inventory fails, detection is skipped (fail-fast)
+  - A failed target is skipped: the rest, the push and detection still run,
+    the summary names it, then the process exits 2
   - Useful for scheduled monitoring jobs
 
   Validate Mode (--mode validate):
