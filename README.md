@@ -1009,6 +1009,20 @@ emitted by a third-party domain (e.g. Stripe) will not match this entry —
 operators can decide whether to add a separate entry for it or treat it
 as a violation.
 
+> **Keep the host matcher in `identifyWith`.** Repeating it as the
+> authorisation — `"authoriseWith": { "hostMatcher": "^vendor\\.example$" }` —
+> authorises whatever that host sends, so the entry can never produce a
+> finding: it equally authorises
+> `connect-src 'self' https://exfil.evil.test`. The header ends up
+> inventoried but not monitored, and nothing reports it as a gap, because
+> every row comes back `authorised` exactly as a working entry would. It is
+> a reasonable deliberate choice for a third party's policy on a page that
+> is out of scope; on a payment page, authorise the directives instead
+> (`cspDirectiveMatcher` per directive), and only against values you have
+> actually observed. The tell that an entry is host-trusted is an
+> asymmetry: a vendor's policy change alerts on the target that pins the
+> source set and stays silent on the target that trusts the host.
+
 **UrlMatcher** — restrict an external (or inline-via-initiator) script to
 a specific URL pattern:
 
