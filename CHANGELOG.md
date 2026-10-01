@@ -7,6 +7,10 @@ them lands with an entry under Unreleased in the same pull request.
 
 ## [Unreleased]
 
+### Fixed
+
+- A required `content-security-policy` is no longer reported missing on a redirect response: CSP presence is now checked only on OK responses, the same responses CSP values are captured from, so a canonicalising 308 (trailing slash, `http` → `https`) cannot raise a false alarm. Other required headers, including HSTS, are still checked on redirects.
+
 ### Added
 
 - Datadog observability option for the RUM collector: new `infra/observability-datadog` Terraform module mirroring the four CloudWatch alarm families plus the canary dead-man's switch as Datadog monitors (metrics flow CloudWatch → Datadog; the ingest path keeps zero vendor SDKs), and a `create_alarms` toggle on `collector-core` (default `true`) to disable the CloudWatch alarms when the monitors live in Datadog.

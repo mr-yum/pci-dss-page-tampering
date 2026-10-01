@@ -369,7 +369,7 @@ When reasoning about a run, three auditor-report fields have non-obvious semanti
 - **UnknownHeaderFound** (`src/types/comparison/unknown-header-found.ts`) - Header not in inventory
 - **KnownHeaderUnauthorisedContentFound** (`src/types/comparison/known-header-unauthorised-content-found.ts`) - Header identified but authorization failed (includes matcher details, failure reason, and metadataPath for composite matchers)
 - **AuthorizedHeaderFound** (`src/types/comparison/authorized-header-found.ts`) - Header both identified and authorized (compliant, no alert; includes metadataPath for composite matchers)
-- **MissingRequiredHeader** (`src/types/comparison/missing-required-header.ts`) - Header configured with `requiredOn` but absent from an in-scope response occurrence (potential control removal)
+- **MissingRequiredHeader** (`src/types/comparison/missing-required-header.ts`) - Header configured with `requiredOn` but absent from an in-scope response occurrence (potential control removal). Every response is recorded, redirects included, because HSTS on an HTTPS redirect is a real control; but a required `content-security-policy` is only checked on OK responses (`DetectedResponse.ok`), matching the handler's rule that CSP values are captured from OK responses only. Platform-level canonicalising 308s typically carry neither CSP nor `x-frame-options`, so a workflow that crosses one will still trip a required XFO or `x-content-type-options` — navigate canonical URLs in workflows
 
 **Metadata Path**: For composite matchers (OrMatcher/AndMatcher), comparison results include a `metadataPath` array containing authorization metadata from root to leaf. This provides complete audit trail context for nested authorization decisions:
 

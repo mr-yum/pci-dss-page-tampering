@@ -36,6 +36,13 @@ export type DetectedResponse = {
   readonly resourceType: ResponseResourceType
   /** Header names present on this exact response occurrence. Values remain redacted elsewhere. */
   readonly headerNames: ReadonlySet<HeaderName>
+  /**
+   * Whether the response status was 2xx. Lets presence checks follow the same
+   * scope as value capture: CSP values are only inventoried from OK responses,
+   * so a redirect the browser never renders must not be required to carry one.
+   * Undefined (older fixtures) is treated as OK, so required checks still run.
+   */
+  readonly ok?: boolean
 }
 
 /**

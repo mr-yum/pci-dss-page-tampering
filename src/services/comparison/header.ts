@@ -87,6 +87,12 @@ export class HeaderComparisonService implements IHeaderComparisonService {
 
       for (const response of responses) {
         if (!entry.requiredOn.includes(response.resourceType)) continue
+        // CSP is only inventoried from OK responses (see headerResponseHandler),
+        // and a redirect is never rendered, so its policy would have no effect.
+        // Requiring one there turns a canonicalising 308 into a false alarm.
+        // Other required headers keep checking redirects: HSTS on an HTTPS
+        // redirect is a real control.
+        if (headerName === 'content-security-policy' && response.ok === false) continue
         if (!entry.identifyWith.identify({ name: headerName, content: '', url: response.url, workflowId: target.workflowId ?? 'default', targetType: target.type })) continue
 
         const wasObserved = response.headerNames.has(headerName)

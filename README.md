@@ -774,6 +774,13 @@ so misspellings fail inventory validation instead of silently disabling the
 check. `Set-Cookie` should not be blanket-required because many legitimate
 responses do not issue a cookie.
 
+A required `content-security-policy` is only checked on OK (2xx) responses,
+the same responses its values are captured from: a canonicalising redirect
+(trailing slash, `http` → `https`) is never rendered, so its policy would have
+no effect and requiring one would raise a false alarm. Other required headers
+are still checked on redirects, because some — HSTS in particular — take
+effect on an HTTPS redirect.
+
 ### Required scripts
 
 A script entry can likewise declare the passes (`inventory` / `detection`) on

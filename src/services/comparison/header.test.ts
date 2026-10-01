@@ -177,6 +177,48 @@ describe('HeaderComparisonService required headers', () => {
     logSpy.mockRestore()
   })
 
+  describe('required CSP and redirect responses', () => {
+    const requiredCsp: InventoryHeaderInfo = {
+      identifyWith: createMatcher({
+        andMatcher: [{ headerNameMatcher: '^content-security-policy$' }, { hostMatcher: '^pay\\.example\\.com$' }],
+      }),
+      authoriseWith: {
+        matcher: createMatcher({ contentMatcher: "^default-src 'self'$" }),
+        authorisationInfo: { description: 'Required checkout CSP', authorised: true, date: new Date('2026-10-01T00:00:00.000Z') },
+      },
+      requiredOn: ['document'],
+    }
+    const missingTypes = async (entry: InventoryHeaderInfo, response: { ok?: boolean; headerNames?: Set<string> }) =>
+      (
+        await new HeaderComparisonService().compare(
+          target,
+          { ...inventory, headers: [entry] },
+          {
+            headers: new Map(),
+            responses: [{ url: target.url, resourceType: 'document', headerNames: response.headerNames ?? new Set(), ...(response.ok === undefined ? {} : { ok: response.ok }) }],
+          },
+        )
+      ).map((result) => result.type)
+
+    // A canonicalising 308 (trailing slash, http→https) is never rendered and
+    // CSP values are not captured from it either, so it must not be required.
+    it('does not require a CSP on a redirect the browser never renders', async () => {
+      expect(await missingTypes(requiredCsp, { ok: false })).toEqual([])
+    })
+
+    it('still reports a rendered document that lost its CSP', async () => {
+      expect(await missingTypes(requiredCsp, { ok: true })).toEqual(['missing_required_header'])
+    })
+
+    it('fails secure when an older observation does not record whether it was OK', async () => {
+      expect(await missingTypes(requiredCsp, {})).toEqual(['missing_required_header'])
+    })
+
+    it('keeps requiring HSTS on redirects, where it is a real control', async () => {
+      expect(await missingTypes(requiredHeader, { ok: false })).toEqual(['missing_required_header'])
+    })
+  })
+
   it('preserves requiredOn through inventory serialization', () => {
     const raw = inventoryHeaderInfoToRawInventoryHeaderInfo(
       rawInventoryHeaderInfoToInventoryHeaderInfo({
