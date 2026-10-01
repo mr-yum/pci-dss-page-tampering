@@ -334,6 +334,14 @@ Choose a step whose `waitFor` only exists on the card-entry page — scoping
 relies on it to recognise the payment page, so a selector that also matches
 an earlier page would let that page be taken for it.
 
+Mark the **first** step that runs on the payment page, never a later one.
+The rule is asymmetric: a marker placed too early is safe — the real payment
+page then comes after it and stays in scope, so at worst less is scoped out —
+but a marker placed too late can fail open, because the real payment page
+would come before it and could leave scope. Where the card form sits in a
+provider iframe, mark the step that types into the card-number field: framed
+steps also get an exact check that the element found is still attached.
+
 The boundary is the browser's own: Chrome's document identity (`loaderId`),
 not step numbers. So if an application stops doing a full page load
 before its payment page, the earlier pages' scripts land in the payment
