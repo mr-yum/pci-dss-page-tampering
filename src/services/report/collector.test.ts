@@ -439,6 +439,53 @@ describe('ReportCollector payment scope', () => {
   }
 })
 
+describe('ReportCollector unread scripts', () => {
+  const unread = (url: string) => ({ url, resourceType: 'script', status: 200, step: 6, documentUrl: 'https://book.example.test/venue/checkout', reason: 'Could not load response body for this request.' })
+
+  const build = (records: { unread: ReturnType<typeof unread>[]; scope?: 'payment' | 'outside_payment' }[]) => {
+    const inventory = buildInventory()
+    const collector = new ReportCollector()
+    for (const record of records) collector.recordTargetRun({ inventory, target: detectionTarget, comparisonResults: [], unreadScripts: record.unread, ...(record.scope === undefined ? {} : { scope: record.scope }) })
+    return collector.build('detection', runContext())!
+  }
+
+  // An unread payment-page script is a gap in the census, like a failed target.
+  it('lists an unread script under its target and marks the run partial', () => {
+    const report = build([{ unread: [unread('https://cdn.example.test/pay.js')] }])
+    expect(report.targets[0]!.unreadScripts).toEqual([unread('https://cdn.example.test/pay.js')])
+    expect(report.targets[0]!.status).toBe('completed')
+    expect(report.run.status).toBe('partial')
+    expect(report.run.failures).toEqual([])
+    expect(report.summary.scriptsUnread).toBe(1)
+    expect(report.notes.some((note) => note.startsWith('PARTIAL RUN: 1 script response(s) in payment scope'))).toBe(true)
+  })
+
+  it('records an unread script outside the payment page as evidence without making the run partial', () => {
+    const report = build([
+      { unread: [], scope: 'payment' },
+      { unread: [unread('https://cdn.example.test/landing.js')], scope: 'outside_payment' },
+    ])
+    expect(report.targets[0]!.unreadScripts).toEqual([{ ...unread('https://cdn.example.test/landing.js'), scope: 'outside_payment' }])
+    expect(report.run.status).toBe('complete')
+    expect(report.summary.scriptsUnread).toBe(0)
+  })
+
+  it('tags payment-scope unread scripts and orders them deterministically', () => {
+    const report = build([{ unread: [unread('https://cdn.example.test/b.js'), unread('https://cdn.example.test/a.js')], scope: 'payment' }])
+    expect(report.targets[0]!.unreadScripts.map((script) => [script.url, script.scope])).toEqual([
+      ['https://cdn.example.test/a.js', 'payment'],
+      ['https://cdn.example.test/b.js', 'payment'],
+    ])
+    expect(report.run.status).toBe('partial')
+  })
+
+  it('records an empty list, and a complete run, when every script was read', () => {
+    const report = build([{ unread: [] }])
+    expect(report.targets[0]!.unreadScripts).toEqual([])
+    expect(report.run.status).toBe('complete')
+  })
+})
+
 describe('NoopReportCollector', () => {
   it('records nothing and builds nothing', () => {
     const collector = new NoopReportCollector()

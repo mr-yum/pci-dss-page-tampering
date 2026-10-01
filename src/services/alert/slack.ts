@@ -11,7 +11,7 @@ import type { MissingRequiredScript } from '../../types/comparison/missing-requi
 import type { UnknownHeaderFound } from '../../types/comparison/unknown-header-found.js'
 import type { UnknownScriptFound } from '../../types/comparison/unknown-script-found.js'
 import { ExecutionMode } from '../../types/config.js'
-import { type AlertDeliveryFailure, type ExecutionSummary, type FailedTarget, getExecutionOutcome } from '../../types/execution-summary.js'
+import { type AlertDeliveryFailure, type ExecutionSummary, type FailedTarget, getExecutionOutcome, unreadInPaymentScope, type UnreadScriptEntry } from '../../types/execution-summary.js'
 import type { HeaderInfo } from '../../types/header.js'
 import type { AlertDestination, InventoryAlert } from '../../types/inventory/model.js'
 import type { DetectedScript } from '../../types/matcher/matcher.interface.js'
@@ -1151,8 +1151,8 @@ export class SlackAlertService implements IAlertService {
 
       // Create and send message
       const messagePayload = this.createRunCompletionMessagePayload(summary, destination)
-      const failed = summary.targetsFailed?.length ?? 0
-      this.log(AlertType.Success, failed === 0 ? 'Workflow execution completed successfully' : `Workflow execution completed with ${failed} failed target(s)`)
+      const outcome = getExecutionOutcome(summary)
+      this.log(AlertType.Success, outcome === 'success' ? 'Workflow execution completed successfully' : `Workflow execution completed with problems (${outcome}); see the run summary`)
       await this.sendMessage(messagePayload)
     } catch (error) {
       this.recordDeliveryFailure('the run summary notification', null, error)
@@ -1169,10 +1169,14 @@ export class SlackAlertService implements IAlertService {
   private createRunCompletionMessagePayload(summary: ExecutionSummary, destination: AlertDestination): object {
     const failed = summary.targetsFailed ?? []
     const undelivered = summary.alertsUndelivered ?? []
+    const unreadInScope = unreadInPaymentScope(summary.scriptsUnread)
+    const unreadOutside = (summary.scriptsUnread ?? []).filter((entry) => entry.outsidePaymentPage)
     const outcome = getExecutionOutcome(summary)
-    const problems = [failed.length > 0 ? `${failed.length} Failed Target${failed.length === 1 ? '' : 's'}` : null, undelivered.length > 0 ? `${undelivered.length} Undelivered Alert${undelivered.length === 1 ? '' : 's'}` : null].filter(
-      (part): part is string => part !== null,
-    )
+    const problems = [
+      failed.length > 0 ? `${failed.length} Failed Target${failed.length === 1 ? '' : 's'}` : null,
+      unreadInScope.length > 0 ? `${unreadInScope.length} Unread Payment Page Script${unreadInScope.length === 1 ? '' : 's'}` : null,
+      undelivered.length > 0 ? `${undelivered.length} Undelivered Alert${undelivered.length === 1 ? '' : 's'}` : null,
+    ].filter((part): part is string => part !== null)
     const headline = {
       success: ':white_check_mark: *Workflow Execution Completed Successfully* :white_check_mark:',
       partial: `:warning: *Workflow Execution Completed With ${problems.join(' And ')}* :warning:`,
@@ -1207,6 +1211,13 @@ export class SlackAlertService implements IAlertService {
           },
         },
         ...this.formatFailedTargets(failed).map((text) => ({
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text,
+          },
+        })),
+        ...[...this.formatUnreadScripts(unreadInScope, false), ...this.formatUnreadScripts(unreadOutside, true)].map((text) => ({
           type: 'section',
           text: {
             type: 'mrkdwn',
@@ -1388,6 +1399,39 @@ export class SlackAlertService implements IAlertService {
     for (const failure of undelivered) {
       const target = failure.target === null ? '' : ` for \`${escapeMrkdwn(clip(failure.target, targetLimit))}\``
       const line = boundLine(`• ${escapeMrkdwn(failure.alert)}${target}: ${escapeMrkdwn(clip(failure.reason, reasonLimit))}`)
+      if (current.length + 1 + line.length > SECTION_CHAR_LIMIT) {
+        sections.push(current)
+        current = `*${label} (continued)*`
+      }
+      current += `\n${line}`
+    }
+    sections.push(current)
+    return sections
+  }
+
+  /**
+   * Name every script whose body could not be read, with its target, pass,
+   * workflow step and page — never "and N more", for the same reason as the
+   * failed-target list. Payment-scope scripts and those on earlier pages the
+   * payment page replaced are separate lists, because only the first is a
+   * monitoring gap. Same bounds and escaping as the lists above: the URL and
+   * the reason come from the page and the browser.
+   */
+  private formatUnreadScripts(unread: readonly UnreadScriptEntry[], outsidePaymentPage: boolean): string[] {
+    if (unread.length === 0) return []
+
+    const fieldLimit = 300
+    const clip = (text: string): string => (text.length > fieldLimit ? `${text.slice(0, fieldLimit)}…` : text)
+    const label = outsidePaymentPage ? `${unread.length === 1 ? 'Script' : 'Scripts'} Not Read Outside The Payment Page` : `${unread.length === 1 ? 'Script' : 'Scripts'} Not Read`
+    const header = outsidePaymentPage
+      ? `*${label} (${unread.length})* — on earlier pages the payment page replaced; recorded for evidence, not a monitoring gap:`
+      : `*${label} (${unread.length})* — these scripts reached the payment page, but their content could not be read, so they were *not checked* in this run:`
+
+    const sections: string[] = []
+    let current = header
+    for (const script of unread) {
+      const page = script.documentUrl === null ? 'an unattributed page' : `\`${escapeMrkdwn(clip(script.documentUrl))}\``
+      const line = boundLine(`• \`${escapeMrkdwn(clip(script.url))}\` on \`${escapeMrkdwn(clip(script.target))}\` (${script.pass}, step ${script.step}, ${page}): ${escapeMrkdwn(clip(script.reason))}`)
       if (current.length + 1 + line.length > SECTION_CHAR_LIMIT) {
         sections.push(current)
         current = `*${label} (continued)*`

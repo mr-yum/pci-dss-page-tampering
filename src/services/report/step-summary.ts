@@ -11,7 +11,7 @@
 
 import { appendFile } from 'fs/promises'
 
-import type { AuditorReport, ReportResourceRow } from '../../types/report.js'
+import type { AuditorReport, ReportResourceRow, ReportUnreadScript } from '../../types/report.js'
 
 /**
  * GitHub truncates the *entire* summary past 1 MiB, so a large report would
@@ -42,6 +42,12 @@ function findingRows(report: AuditorReport): { row: ReportResourceRow; targetKey
   return report.targets.flatMap((target) => [...target.scripts, ...target.headers].filter((row) => row.status !== 'authorised' && row.scope !== 'outside_payment').map((row) => ({ row, targetKey: target.targetKey })))
 }
 
+// Unread scripts in payment scope (or in an unscoped run) are a gap in the
+// monitoring, listed like findings; outside ones are evidence and only counted.
+function unreadScripts(report: AuditorReport, inPaymentScope: boolean): { script: ReportUnreadScript; targetKey: string }[] {
+  return report.targets.flatMap((target) => target.unreadScripts.filter((script) => (script.scope !== 'outside_payment') === inPaymentScope).map((script) => ({ script, targetKey: target.targetKey })))
+}
+
 function outsidePaymentRowCount(report: AuditorReport): number {
   return report.targets.reduce((total, target) => total + [...target.scripts, ...target.headers].filter((row) => row.scope === 'outside_payment').length, 0)
 }
@@ -65,7 +71,27 @@ export function buildStepSummary(report: AuditorReport): string {
   ]
 
   if (run.targetFilter !== null) lines.push(`> **Partial census** — filtered to target ${cell(run.targetFilter)}.`, '')
-  if (run.status === 'partial') lines.push(`> **Partial run** — ${run.failures.length} target(s) failed.`, '')
+  const unread = unreadScripts(report, true)
+  if (run.status === 'partial') {
+    const reasons = [run.failures.length > 0 ? `${run.failures.length} target(s) failed` : null, unread.length > 0 ? `${unread.length} payment page script(s) could not be read` : null].filter((reason): reason is string => reason !== null)
+    lines.push(`> **Partial run** — ${reasons.join('; ')}.`, '')
+  }
+
+  if (unread.length > 0) {
+    lines.push(
+      `### Scripts not read (${unread.length})`,
+      '',
+      'These scripts reached the payment page, but their body could not be read, so they were neither hashed nor compared.',
+      '',
+      '| Target | Script | Step | Page | Reason |',
+      '| --- | --- | ---: | --- | --- |',
+    )
+    for (const { script, targetKey } of unread.slice(0, MAX_FINDING_ROWS)) {
+      lines.push(`| ${cell(targetKey)} | ${cell(script.url)} | ${script.step} | ${cell(script.documentUrl ?? 'unattributed')} | ${cell(script.reason)} |`)
+    }
+    if (unread.length > MAX_FINDING_ROWS) lines.push('', `…and ${unread.length - MAX_FINDING_ROWS} more — see the \`auditor-report\` artefact.`)
+    lines.push('')
+  }
 
   if (findings.length === 0) {
     lines.push(
@@ -89,6 +115,11 @@ export function buildStepSummary(report: AuditorReport): string {
   const outside = outsidePaymentRowCount(report)
   if (outside > 0) {
     lines.push(`${outside} resource(s) were observed on pages loaded before the payment page. They are listed in the census as \`outside_payment\` and are not findings.`, '')
+  }
+
+  const unreadOutside = unreadScripts(report, false).length
+  if (unreadOutside > 0) {
+    lines.push(`${unreadOutside} script(s) on pages loaded before the payment page could not be read. They are listed under \`unreadScripts\` as \`outside_payment\` and do not make the run partial.`, '')
   }
 
   lines.push(`Full census: ${summary.total} resources across ${summary.targets} target(s) — download the \`auditor-report\` artefact.`, '')

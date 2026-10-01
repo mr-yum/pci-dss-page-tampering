@@ -1,4 +1,5 @@
 import { ExecutionMode } from './config.js'
+import type { UnreadScriptRecord } from './script.js'
 
 /** Which pass of a run a target belongs to. */
 export type ExecutionPass = 'inventory' | 'detection'
@@ -33,6 +34,29 @@ export type AlertDeliveryFailure = {
   reason: string
 }
 
+/**
+ * A script that arrived during a target run but whose body could not be read,
+ * so it was neither hashed nor compared.
+ *
+ * Named, not counted, for the same reason as a failed target: the reader has
+ * to learn *which* script on *which* page went unexamined. One in payment
+ * scope degrades the run exactly as a failed target does — the payment page
+ * was not fully monitored — while one on an earlier page the payment page
+ * replaced is listed for evidence only.
+ */
+export type UnreadScriptEntry = UnreadScriptRecord & {
+  /** Display name of the target (its configured name, or `<file>/<workflow>`). */
+  target: string
+  pass: ExecutionPass
+  /** True only for a script attributed to an earlier page the payment page replaced. */
+  outsidePaymentPage: boolean
+}
+
+/** The unread scripts that count against the run: all but those on an earlier page the payment page replaced. */
+export function unreadInPaymentScope(entries: readonly UnreadScriptEntry[] | undefined): UnreadScriptEntry[] {
+  return (entries ?? []).filter((entry) => !entry.outsidePaymentPage)
+}
+
 /** How the run went, derived from which targets succeeded, which failed, and what could not be alerted. */
 export type ExecutionOutcome = 'success' | 'partial' | 'failure'
 
@@ -62,6 +86,12 @@ export type ExecutionSummary = {
    * Omitted or empty on a clean run.
    */
   alertsUndelivered?: AlertDeliveryFailure[]
+
+  /**
+   * Scripts whose body could not be read, in and outside payment scope, in
+   * the order they were recorded. Omitted or empty when every script was read.
+   */
+  scriptsUnread?: UnreadScriptEntry[]
 
   /** Git repository URL that was monitored */
   repositoryUrl: string
@@ -145,16 +175,20 @@ export function validateExecutionSummary(summary: ExecutionSummary): void {
 }
 
 /**
- * Classify a run from its per-target results and its alert deliveries.
+ * Classify a run from its per-target results, its alert deliveries and the
+ * scripts it could not read.
  *
- * A run is a success only when every target completed AND every alert it
- * produced was delivered; an undelivered alert degrades it to partial, since
- * the finding exists but nobody was told.
+ * A run is a success only when every target completed, every alert it
+ * produced was delivered, AND every script in payment scope was read. An
+ * undelivered alert degrades it to partial, since the finding exists but
+ * nobody was told; so does an unread payment-page script, since something
+ * ran on the payment page that nobody examined.
  */
-export function getExecutionOutcome(summary: Pick<ExecutionSummary, 'targetsProcessed' | 'targetsFailed' | 'alertsUndelivered'>): ExecutionOutcome {
+export function getExecutionOutcome(summary: Pick<ExecutionSummary, 'targetsProcessed' | 'targetsFailed' | 'alertsUndelivered' | 'scriptsUnread'>): ExecutionOutcome {
   const failed = summary.targetsFailed?.length ?? 0
   const undelivered = summary.alertsUndelivered?.length ?? 0
-  if (failed === 0 && undelivered === 0) return 'success'
+  const unread = unreadInPaymentScope(summary.scriptsUnread).length
+  if (failed === 0 && undelivered === 0 && unread === 0) return 'success'
   if (failed > 0 && summary.targetsProcessed.length === 0) return 'failure'
   return 'partial'
 }

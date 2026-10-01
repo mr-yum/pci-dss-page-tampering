@@ -9,6 +9,7 @@ them lands with an entry under Unreleased in the same pull request.
 
 ### Fixed
 
+- Scripts that finish loading as the payment page navigates away are now read and compared instead of silently dropped. Chrome discards a page's response bodies once a navigation away from it starts, so every script pulled in by a "Pay" click on its way to 3-D Secure failed with `Could not load response body for this request` and vanished from the run, which still exited 0. The monitor now asks Chrome to retain response bodies across navigation, waits for in-flight script reads before closing the browser, and accounts for any script it still cannot read: each is listed in the auditor report (`targets[].unreadScripts`, `summary.scriptsUnread`; schema 1.5.0) and named in the run summary under **Scripts Not Read**, and one on the payment page marks the run partial and exits `2`, like a failed target. Unread scripts on earlier pages the payment page replaced are listed for evidence without changing the exit code.
 - A required `content-security-policy` is no longer reported missing on a redirect response: CSP presence is now checked only on OK responses, the same responses CSP values are captured from, so a canonicalising 308 (trailing slash, `http` → `https`) cannot raise a false alarm. Other required headers, including HSTS, are still checked on redirects.
 
 ### Added

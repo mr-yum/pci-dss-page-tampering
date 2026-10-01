@@ -136,6 +136,24 @@ describe('ConsoleAlertService - alertOnRunCompletion (Phase 3)', () => {
       expect(consoleSpy).toHaveBeenCalledWith('    - 2.0 Paystack production (detection): net::ERR_NAME_NOT_RESOLVED')
     })
 
+    it('reports unread payment-page scripts as a partial run and names each one; outside ones are listed as evidence', async () => {
+      const unread = { url: 'https://cdn.example.test/pay.js', resourceType: 'script', status: 200, step: 5, documentUrl: 'https://shop.example.test/checkout', reason: 'body evicted', target: 'Shop production', pass: 'detection' as const }
+      const summary = createSummary({
+        scriptsUnread: [
+          { ...unread, outsidePaymentPage: false },
+          { ...unread, url: 'https://cdn.example.test/landing.js', documentUrl: null, outsidePaymentPage: true },
+        ],
+      })
+
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
+
+      expect(consoleSpy).toHaveBeenCalledWith('[Console Alert -> Partial Failure]: Workflow execution completed, but 1 payment page script(s) could not be read and were not checked')
+      expect(consoleSpy).toHaveBeenCalledWith('  Scripts Not Read: 1')
+      expect(consoleSpy).toHaveBeenCalledWith('    - https://cdn.example.test/pay.js on Shop production (detection, step 5, https://shop.example.test/checkout): body evicted')
+      expect(consoleSpy).toHaveBeenCalledWith('  Scripts Not Read Outside The Payment Page (evidence only): 1')
+      expect(consoleSpy).toHaveBeenCalledWith('    - https://cdn.example.test/landing.js on Shop production (detection, step 5, unattributed page): body evicted')
+    })
+
     it('reports a total failure when nothing was processed', async () => {
       const summary = createSummary({ targetsProcessed: [], targetsFailed: [{ name: '1.0', pass: 'detection', reason: 'boom' }] })
 

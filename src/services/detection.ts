@@ -2,7 +2,7 @@ import type { Browser, ElementHandle, Frame, HTTPResponse, Page } from 'puppetee
 import { TimeoutError } from 'puppeteer'
 
 import { headerResponseHandler } from '../handlers/header.js'
-import { scriptResponseHandler } from '../handlers/script.js'
+import { PendingScriptReads, recordUnreadScript, scriptResponseHandler } from '../handlers/script.js'
 import type { IDetectionService } from '../interfaces/detection.js'
 import type { DetectionSummary } from '../types/detection.js'
 import type { DocumentId } from '../types/document.js'
@@ -10,7 +10,7 @@ import type { DetectedResponse, HeaderDetectionSummary, HeaderName, HeaderUrl } 
 import type { InventoryHeaderInfo } from '../types/inventory/model.js'
 import type { ScriptMatcher } from '../types/matcher.js'
 import type { PuppeteerClickAction, PuppeteerClickPopupAction, PuppeteerInputAction, PuppeteerLocatorAction, PuppeteerNavigateAction, PuppeteerTotpAction } from '../types/puppeteer.js'
-import type { ScriptInfo } from '../types/script.js'
+import type { ScriptInfo, UnreadScriptResponse } from '../types/script.js'
 import type { Target } from '../types/target.js'
 import { resolveDateTemplates } from '../utils/date-template.js'
 import { getInlineScriptsFromPage } from '../utils/page.js'
@@ -44,6 +44,19 @@ const FRAMED_INPUT_TYPING_DELAY_MS = 25
 // into a multi-minute delay for every later variation in the same inventory.
 const INITIAL_WORKFLOW_TIMEOUT_MS = 300000
 const NAVIGATION_ATTEMPT_TIMEOUT_MS = 120000
+
+// How long a finished workflow waits for script bodies still being read
+// before it closes the browser context. Anything still unread then is
+// recorded as unread rather than lost.
+const SCRIPT_READ_SETTLE_TIMEOUT_MS = 15000
+
+// Response bodies Chrome keeps outside the renderer, so they survive the page
+// navigating away (see retainResponseBodies). Caps, not allocations: a body
+// evicted past them is recorded as unread, never silently lost.
+const RETAINED_RESPONSE_BODIES_TOTAL_BYTES = 256 * 1024 * 1024
+const RETAINED_RESPONSE_BODY_MAX_BYTES = 32 * 1024 * 1024
+
+const SCRIPT_READ_UNFINISHED_REASON = `the response body was still being read ${SCRIPT_READ_SETTLE_TIMEOUT_MS / 1000}s after the workflow finished`
 
 type ActionTarget = {
   context: Page | Frame
@@ -92,6 +105,12 @@ export class DetectionService implements IDetectionService {
   private async detectAttempt(browser: Browser, target: Target, scriptContentMatchers: ScriptMatcher[], inventoryHeaders: readonly InventoryHeaderInfo[] = []): Promise<DetectionSummary> {
     const externalScripts: ScriptInfo[] = []
     const internalScripts: ScriptInfo[] = []
+    // Script responses whose body could not be read: recorded, never dropped.
+    const unreadScripts: UnreadScriptResponse[] = []
+    const pendingScriptReads = new PendingScriptReads()
+    // Workflow step running now (0 = initial navigation), read by the response
+    // handler when each response arrives.
+    let currentStep = 0
     const headers = new Map<HeaderName, Map<string, Set<HeaderUrl>>>()
     const responses: DetectedResponse[] = []
     const headerDocuments: NonNullable<HeaderDetectionSummary['documents']> = new Map()
@@ -138,6 +157,13 @@ export class DetectionService implements IDetectionService {
       // same treatment in their handler.
       await this.applyRealisticUserAgent(page, browser)
 
+      // Keep response bodies readable after the page navigates away. Without
+      // this, Chrome discards a document's response bodies as soon as a
+      // navigation away from it is under way, so a script that finishes
+      // loading during a "Pay" click that leaves for 3-D Secure cannot be read
+      // at all — exactly the moment a skimmer would load.
+      await this.retainResponseBodies(page, target)
+
       // Install the inline-script attribution shim before any page script
       // runs so we can tag each inserted <script> element with the URL of
       // the script that initiated the insertion (see src/utils/page-attribution.ts).
@@ -172,7 +198,10 @@ export class DetectionService implements IDetectionService {
       // Bootstrap page. The document is read synchronously when the response
       // arrives, before any await, so it names the document that issued it.
       page
-        .on('response', (response) => scriptResponseHandler(response, externalScripts, documentOf(response)))
+        .on('response', (response) => {
+          const document = documentOf(response)
+          pendingScriptReads.track(scriptResponseHandler(response, externalScripts, document, { unread: unreadScripts, step: currentStep }), response, document, currentStep)
+        })
         .on('response', (response) =>
           headerResponseHandler(response, headers, responses, target.url, inventoryHeaders, target.workflowId ?? 'default', target.type, tracker === undefined ? undefined : { document: documentOf(response), documents: headerDocuments }),
         )
@@ -218,6 +247,7 @@ export class DetectionService implements IDetectionService {
 
         target.logger.log(`(${currentStepIndex}/${totalStepCount}) ${step.description} for target '${puppeteerWorkflow.target.url}'.`)
         tracker?.ledger.setStep(currentStepIndex)
+        currentStep = currentStepIndex
 
         try {
           await this.waitForStepDelay(step.delay, index, initialWorkflowDeadline)
@@ -275,6 +305,13 @@ export class DetectionService implements IDetectionService {
           throw stepError // Re-throw to maintain existing error handling
         }
       }
+
+      // Let in-flight script reads finish while the DevTools session they
+      // need is still open, then account for any that did not.
+      for (const unfinished of await pendingScriptReads.settle(SCRIPT_READ_SETTLE_TIMEOUT_MS)) {
+        target.logger.error(`Script ${redactUrl(unfinished.url)} (step ${unfinished.step}) was still being read when the workflow finished; recorded as unread.`)
+        recordUnreadScript(unreadScripts, { ...unfinished, reason: SCRIPT_READ_UNFINISHED_REASON })
+      }
     } catch (e) {
       // Enhanced error logging for the main catch block
       if (e instanceof Error && e.name === 'TimeoutError') {
@@ -310,11 +347,18 @@ export class DetectionService implements IDetectionService {
       )
     }
 
+    if (unreadScripts.length > 0) {
+      target.logger.error(`${unreadScripts.length} script response(s) could not be read and were not compared: ${unreadScripts.map((unread) => redactUrl(unread.url)).join(', ')}`)
+    }
+
+    // Snapshots: a read that settles after the context closed must not change
+    // a summary that has already been handed to comparison.
     return {
       target: target,
       scriptSummary: {
-        externalScripts: externalScripts,
+        externalScripts: [...externalScripts],
         inlineScripts: internalScripts,
+        unreadScripts: [...unreadScripts],
       },
       headerSummary: {
         headers: headers,
@@ -337,6 +381,37 @@ export class DetectionService implements IDetectionService {
   private async applyRealisticUserAgent(page: Page, browser: Browser): Promise<void> {
     const normalisedUserAgent = normaliseHeadlessUserAgent(await browser.userAgent())
     await page.setUserAgent(normalisedUserAgent, deriveUserAgentMetadata(normalisedUserAgent, await browser.version()))
+  }
+
+  /**
+   * Ask Chrome to keep response bodies outside the renderer
+   * (`Network.configureDurableMessages`), so a body can still be read after
+   * its document has gone.
+   *
+   * Without it Chrome keeps a document's response bodies in the renderer and
+   * discards them once a navigation away from that document is under way:
+   * `Network.getResponseBody` then fails with "No resource with given
+   * identifier found" (Puppeteer rewrites it to "Could not load response body
+   * for this request. This might happen if the request is a preflight
+   * request."). Every script that finishes loading between a click and the
+   * navigation it triggers is lost that way — on a payment page, the scripts
+   * a "Pay" click pulls in on its way to 3-D Secure.
+   *
+   * The setting belongs to the page, not to the DevTools session that sends
+   * it, so a dedicated session is enough for Puppeteer's own body reads to
+   * benefit. It does not reach out-of-process iframes, whose bodies go with
+   * their own session when the frame is torn down. Best effort: on a Chrome
+   * without the command the run continues, and any body that cannot be read
+   * is recorded as unread rather than lost.
+   */
+  private async retainResponseBodies(page: Page, target: Target): Promise<void> {
+    try {
+      const session = await page.createCDPSession()
+      await session.send('Network.enable')
+      await session.send('Network.configureDurableMessages', { maxTotalBufferSize: RETAINED_RESPONSE_BODIES_TOTAL_BYTES, maxResourceBufferSize: RETAINED_RESPONSE_BODY_MAX_BYTES })
+    } catch (error) {
+      target.logger.error(`Could not ask Chrome to retain response bodies across navigation (${error}); scripts that finish loading as the page navigates away may be recorded as unread.`)
+    }
   }
 
   /**

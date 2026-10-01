@@ -30,7 +30,7 @@ import type { TargetType } from './target.js'
  * change in what an existing value means. Consumers should gate on the major
  * and tolerate unknown fields.
  */
-export const REPORT_SCHEMA_VERSION = '1.4.0'
+export const REPORT_SCHEMA_VERSION = '1.5.0'
 
 /**
  * Where an observation sits relative to the payment page, when the target's
@@ -167,6 +167,30 @@ export type ReportResourceRow = {
 }
 
 /**
+ * A script response the browser received but whose body the run could not
+ * read (added in 1.5.0). Never a census row: there is no content, so no hash,
+ * no identification and no authorisation decision — only the fact that the
+ * script arrived and went unexamined. In payment scope (or with no `scope`)
+ * it makes the run `partial`, exactly as a failed target does; outside the
+ * payment page it is evidence only.
+ */
+export type ReportUnreadScript = {
+  /** Redacted: origin and path only. */
+  url: string
+  resourceType: string
+  /** HTTP status of the response whose body could not be read. */
+  status: number
+  /** Workflow step running when the response arrived (0 = initial navigation). */
+  step: number
+  /** Redacted URL of the top-level document it belonged to; null when it could not be attributed. */
+  documentUrl: string | null
+  /** Why the body could not be read. */
+  reason: string
+  /** See `ReportScope`. Absent when the target's workflow marks no payment page. */
+  scope?: ReportScope
+}
+
+/**
  * An inventory entry that nothing observed matched during this run.
  *
  * Real 6.4.3 hygiene signal: an authorised script that no longer appears is
@@ -207,6 +231,8 @@ export type ReportTargetSection = {
   scripts: ReportResourceRow[]
   headers: ReportResourceRow[]
   unmatchedInventoryEntries: ReportUnmatchedEntry[]
+  /** Script responses whose body could not be read (added in 1.5.0). Empty when every script was read. */
+  unreadScripts: ReportUnreadScript[]
   /**
    * Present whenever the workflow marks a payment page: the documents the run
    * passed through, in order, and the counts for the rows the run alerts on.
@@ -259,7 +285,11 @@ export type ReportRunMetadata = {
   startedAt: string
   completedAt: string
   durationMs: number
-  /** `partial` when any target failed, so a short census is never mistaken for a clean one. */
+  /**
+   * `partial` when any target failed, or (since 1.5.0) when any script in
+   * payment scope could not be read — so a short census is never mistaken
+   * for a clean one.
+   */
   status: 'complete' | 'partial'
   failures: { targetKey: string; message: string }[]
   /** Inventory files copied next to this report. Empty when none was retained. */
@@ -271,7 +301,8 @@ export type AuditorReport = {
   schemaVersion: string
   generator: { name: string; version: string }
   run: ReportRunMetadata
-  summary: ReportStatusCounts & { targets: number; targetsFailed: number }
+  /** `scriptsUnread` (added in 1.5.0) counts unread scripts in payment scope only — the ones that make the run partial. */
+  summary: ReportStatusCounts & { targets: number; targetsFailed: number; scriptsUnread: number }
   targets: ReportTargetSection[]
   /** Machine-stated caveats: truncation, redaction, partial run, size cap. */
   notes: string[]

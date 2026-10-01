@@ -46,3 +46,32 @@ describe('buildStepSummary payment scope', () => {
     expect(markdown).not.toContain('pages loaded before the payment page')
   })
 })
+
+describe('buildStepSummary unread scripts', () => {
+  const unread = (url: string) => ({ url, resourceType: 'script', status: 200, step: 6, documentUrl: 'https://book.example.test/venue/checkout', reason: 'Could not load response body for this request.' })
+
+  it('lists every unread payment-page script and says why the run is partial', () => {
+    const collector = new ReportCollector()
+    collector.recordTargetRun({ inventory: buildInventory(), target: detectionTarget, comparisonResults: [], unreadScripts: [unread('https://cdn.example.test/pay.js')] })
+
+    const markdown = buildStepSummary(collector.build('detection', runContext())!)
+
+    expect(markdown).toContain('> **Partial run** — 1 payment page script(s) could not be read.')
+    expect(markdown).toContain('### Scripts not read (1)')
+    expect(markdown).toContain('`https://cdn.example.test/pay.js`')
+    expect(markdown).toContain('`https://book.example.test/venue/checkout`')
+  })
+
+  it('only counts unread scripts from pages before the payment page, and keeps the run complete', () => {
+    const collector = new ReportCollector()
+    collector.recordTargetRun({ inventory: buildInventory(), target: detectionTarget, comparisonResults: [], unreadScripts: [], scope: 'payment' })
+    collector.recordTargetRun({ inventory: buildInventory(), target: detectionTarget, comparisonResults: [], unreadScripts: [unread('https://cdn.example.test/landing.js')], scope: 'outside_payment' })
+
+    const markdown = buildStepSummary(collector.build('detection', runContext())!)
+
+    expect(markdown).not.toContain('Partial run')
+    expect(markdown).not.toContain('### Scripts not read')
+    expect(markdown).not.toContain('landing.js')
+    expect(markdown).toContain('1 script(s) on pages loaded before the payment page could not be read')
+  })
+})
