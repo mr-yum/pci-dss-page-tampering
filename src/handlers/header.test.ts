@@ -158,7 +158,19 @@ describe('headerResponseHandler', () => {
         url: 'https://third-party.example/script.js',
         resourceType: 'document',
         headerNames: new Set(['strict-transport-security']),
+        ok: true,
       },
+    ])
+  })
+
+  it('records whether each response occurrence was OK, so presence checks can skip redirects', async () => {
+    const responses: NonNullable<HeaderDetectionSummary['responses']> = []
+    await headerResponseHandler(mockResponse('https://pay.example.com/checkout/', {}, false), summary, responses, 'https://pay.example.com')
+    await headerResponseHandler(mockResponse('https://pay.example.com/checkout', { 'content-security-policy': "default-src 'self'" }), summary, responses, 'https://pay.example.com')
+
+    expect(responses.map(({ url, ok }) => ({ url, ok }))).toEqual([
+      { url: 'https://pay.example.com/checkout/', ok: false },
+      { url: 'https://pay.example.com/checkout', ok: true },
     ])
   })
 

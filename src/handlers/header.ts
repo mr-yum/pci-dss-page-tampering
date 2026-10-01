@@ -35,7 +35,7 @@ export async function headerResponseHandler(
     // intentionally URL-deduplicated for comparison, so it cannot tell whether
     // a later response for the same URL omitted a required header.
     const headerNames = new Set(Object.keys(headers).map((name) => name.toLowerCase()))
-    detectedResponses?.push({ url, resourceType, headerNames, ...(attribution?.document !== undefined ? { document: attribution.document } : {}) })
+    detectedResponses?.push({ url, resourceType, headerNames, ok: responseOk, ...(attribution?.document !== undefined ? { document: attribution.document } : {}) })
 
     for (const headerName of TRACKED_HEADER_NAMES) {
       const rawValue = headers[headerName]

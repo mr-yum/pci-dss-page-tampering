@@ -775,7 +775,7 @@ The detector captures these headers:
 
 | Header                      | Production capture scope                              | Canonicalisation                                                                        |
 | --------------------------- | ----------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `Content-Security-Policy`   | All responses (existing behaviour)                    | One observation per non-empty directive                                                 |
+| `Content-Security-Policy`   | All OK (2xx) responses, any host or resource type     | One observation per non-empty directive                                                 |
 | `X-Frame-Options`           | Target-host document responses                        | Upper-case canonical token                                                              |
 | `Strict-Transport-Security` | Target-host document responses, including redirects   | Case/order-normalised directives and numeric `max-age`                                  |
 | `X-XSS-Protection`          | Target-host document responses                        | Normalised legacy policy; report URL credentials, query and fragment components removed |
@@ -830,6 +830,13 @@ response resource types (for example `document`, `script`, and `stylesheet`),
 so misspellings fail inventory validation instead of silently disabling the
 check. `Set-Cookie` should not be blanket-required because many legitimate
 responses do not issue a cookie.
+
+A required `content-security-policy` is only checked on OK (2xx) responses,
+the same responses its values are captured from: a canonicalising redirect
+(trailing slash, `http` → `https`) is never rendered, so its policy would have
+no effect and requiring one would raise a false alarm. Other required headers
+are still checked on redirects, because some — HSTS in particular — take
+effect on an HTTPS redirect.
 
 ### Required scripts
 
