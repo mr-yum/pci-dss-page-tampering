@@ -35,6 +35,19 @@ export type WorkflowStep = {
   // replay from the start. Clicks that waitForResponse are boundaries
   // automatically; use this for other side-effecting actions.
   retryBoundary?: true | undefined
+  // Marks the step that runs on the payment page. The top-level browser
+  // document in which this step's target is found — read before its action
+  // runs, so an action that navigates away cannot move the marker — is a
+  // payment document. The run then alerts on and inventories everything
+  // except earlier pages the payment page replaced: its own SPA context
+  // (whatever earlier routes loaded into that document), every page after it,
+  // and any failed render of it all stay in scope. outsidePaymentDocuments
+  // (src/services/payment-scope.ts) is the exact rule. Choose a step whose
+  // waitFor only exists on the card-entry page. Without any marker, or if the
+  // payment page cannot be identified, the whole run stays in scope, as
+  // before. Top-level steps only: popup pages are not observed, so a payment
+  // page in a popup cannot be scoped.
+  paymentPage?: true | undefined
   // When set, resolve the step inside the first child frame whose URL matches
   // this regular expression. Omit it to act on the top-level page.
   frameUrl?: string | undefined

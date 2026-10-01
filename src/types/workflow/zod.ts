@@ -97,6 +97,7 @@ export const WorkflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() =>
     .object({
       description: z.string(),
       retryBoundary: z.literal(true).optional(),
+      paymentPage: z.literal(true).optional(),
       frameUrl: FrameUrlSchema.optional(),
       waitFor: z.array(WorkflowWaitForDefinitionSchema),
       action: z
@@ -133,6 +134,17 @@ export const WorkflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() =>
               code: z.ZodIssueCode.custom,
               path: ['waitForResponse'],
               message: "Response waiting options are only supported for workflow actions of type 'click'",
+            })
+          }
+          // Popup pages are not observed (their scripts and headers are never
+          // captured), so a payment page marked inside one would scope the run
+          // to a document the monitor cannot see. Reject it rather than accept
+          // a marker that silently scopes nothing.
+          if (action.steps?.some((innerStep) => innerStep.paymentPage === true)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['steps'],
+              message: 'paymentPage is only supported on top-level workflow steps; popup pages are not observed',
             })
           }
           if (action.waitForResponse === undefined && (action.waitForResponseTimeout !== undefined || action.waitForResponseMethod !== undefined || action.waitForResponseStatuses !== undefined || action.waitForResponseBody !== undefined)) {

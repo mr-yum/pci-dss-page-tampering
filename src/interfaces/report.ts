@@ -12,8 +12,9 @@
  */
 
 import type { ComparisonResultType } from '../types/comparison.js'
+import type { PaymentScope } from '../types/document.js'
 import type { Inventory } from '../types/inventory/model.js'
-import type { AuditorReport, ReportPass, ReportRunMetadata } from '../types/report.js'
+import type { AuditorReport, ReportPass, ReportRunMetadata, ReportScope } from '../types/report.js'
 import type { Target } from '../types/target.js'
 
 /** Run-level facts the collector cannot know for itself. */
@@ -26,6 +27,21 @@ export type ReportInventoryRefInput = {
   repositoryUrl: string
 }
 
+/** One target run's results, as handed to the report. */
+export type TargetRunRecord = {
+  inventory: Inventory
+  target: Target
+  comparisonResults: readonly ComparisonResultType[]
+  /**
+   * Set when the workflow marks a payment page: which side of it these results
+   * are. A scoped run is recorded in two calls, one per scope. Omitted when the
+   * whole run is in scope, which leaves the rows exactly as before.
+   */
+  scope?: ReportScope
+  /** The run's document chain; recorded once per target when scoped. */
+  paymentScope?: PaymentScope
+}
+
 export interface IReportCollector {
   /**
    * Record every comparison result observed for one target run.
@@ -33,7 +49,7 @@ export interface IReportCollector {
    * Called once per target, before any inventory mutation, so the report
    * reflects the baseline the comparison actually ran against.
    */
-  recordTargetRun(input: { inventory: Inventory; target: Target; comparisonResults: readonly ComparisonResultType[] }): void
+  recordTargetRun(input: TargetRunRecord): void
 
   /** Record a target that threw, so the census shows the gap rather than hiding it. */
   recordTargetFailure(input: { inventory: Inventory; target: Target; error: unknown }): void

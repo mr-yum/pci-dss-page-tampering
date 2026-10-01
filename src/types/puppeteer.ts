@@ -17,6 +17,9 @@ export type PuppeteerLocatorAction = {
   action: PuppeteerAction
   delay: number
   retryBoundary?: boolean | undefined
+  // See WorkflowStep.paymentPage: the document in which this step's target is
+  // found, read before its action runs, is a payment document.
+  paymentPage?: boolean | undefined
   postActionDelay?: number | undefined
   reloadOnMissingTarget?: boolean | undefined
 }

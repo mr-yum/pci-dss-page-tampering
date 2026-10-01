@@ -185,6 +185,7 @@ export function stepsToPuppeteerLocatorAction(steps: WorkflowStep[]): PuppeteerL
       action: actionToPuppeteerAction(step.action),
       delay: step.action.delay ?? 0,
       ...(step.retryBoundary === true ? { retryBoundary: true } : {}),
+      ...(step.paymentPage === true ? { paymentPage: true } : {}),
       ...(step.action.postActionDelay === undefined ? {} : { postActionDelay: PostActionDelaySchema.parse(step.action.postActionDelay) }),
       ...(step.action.reloadOnMissingTarget === true ? { reloadOnMissingTarget: true } : {}),
     }

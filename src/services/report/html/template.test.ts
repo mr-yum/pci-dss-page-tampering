@@ -291,3 +291,60 @@ describe('renderReportHtml', () => {
     })
   })
 })
+
+describe('renderReportHtml payment scope', () => {
+  const timestamp = new Date('2026-01-01T00:00:00.000Z')
+
+  const scoped = (documentUrl: string): string => {
+    const inventory = buildInventory()
+    const collector = new ReportCollector()
+    collector.recordTargetRun({
+      inventory,
+      target: detectionTarget,
+      comparisonResults: [new AuthorizedScriptFound(detectionTarget, timestamp, makeScript(), inventory.scripts[0]!, [])],
+      scope: 'payment',
+      paymentScope: {
+        declared: true,
+        paymentDocuments: ['l2'],
+        documents: [
+          { id: 'l1', url: documentUrl, routes: [], firstStep: 0, lastStep: 3 },
+          { id: 'l2', url: 'https://book.example.test/venue/checkout', routes: [], firstStep: 4, lastStep: 9 },
+        ],
+      },
+    })
+    collector.recordTargetRun({
+      inventory,
+      target: detectionTarget,
+      comparisonResults: [new UnknownScriptFound(detectionTarget, timestamp, makeScript({ name: 'https://tagmanager.example/tm.js', url: 'https://tagmanager.example/tm.js', hash: { value: 'cccc' } }))],
+      scope: 'outside_payment',
+    })
+    return renderReportHtml(collector.build('detection', runContext())!)
+  }
+
+  it('marks rows observed outside the payment page and lists the page chain', () => {
+    const page = scoped('https://book.example.test/venue')
+    expect(page).toContain('Outside payment page')
+    expect(page).toContain('data-scope="outside_payment"')
+    expect(page).toContain('Payment page scope')
+    expect(page).toContain('<strong>payment page</strong>')
+  })
+
+  it('escapes a page URL in the chain like every other attacker-influenced string', () => {
+    const page = scoped('https://book.example.test/<img src=x onerror=alert(1)>')
+    expect(page).not.toContain('<img src=x')
+  })
+
+  it('warns when the payment page could not be identified, instead of listing a scope', () => {
+    const inventory = buildInventory()
+    const collector = new ReportCollector()
+    collector.recordTargetRun({
+      inventory,
+      target: detectionTarget,
+      comparisonResults: [new AuthorizedScriptFound(detectionTarget, timestamp, makeScript(), inventory.scripts[0]!, [])],
+      paymentScope: { declared: true, paymentDocuments: [], documents: [{ id: 'l1', url: 'https://book.example.test/venue', routes: [], firstStep: 0, lastStep: 3 }] },
+    })
+    const page = renderReportHtml(collector.build('detection', runContext())!)
+    expect(page).toContain('could not be identified in this run')
+    expect(page).not.toContain('<strong>payment page</strong>')
+  })
+})

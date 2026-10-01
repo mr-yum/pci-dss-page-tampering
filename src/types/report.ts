@@ -30,7 +30,40 @@ import type { TargetType } from './target.js'
  * change in what an existing value means. Consumers should gate on the major
  * and tolerate unknown fields.
  */
-export const REPORT_SCHEMA_VERSION = '1.3.0'
+export const REPORT_SCHEMA_VERSION = '1.4.0'
+
+/**
+ * Where an observation sits relative to the payment page, when the target's
+ * workflow marks one (`paymentPage`) and it was identified. `outside_payment`
+ * rows were observed in an earlier page the payment page replaced — one that
+ * never rendered a payment path, was never current at or after the payment
+ * page, and — if the monitor's own reload recovery replaced it — was replaced
+ * by a document that is itself outside (see `outsidePaymentDocuments`):
+ * recorded here as evidence, never alerted on. Everything else is
+ * `payment` — the payment page and its SPA
+ * context, every page after it, failed renders of it, and anything that could
+ * not be attributed — and is what the run alerts on and inventories. Absent
+ * when the workflow marks no payment page or it could not be identified.
+ */
+export type ReportScope = 'payment' | 'outside_payment'
+
+/** One top-level document the workflow passed through. */
+export type ReportDocument = {
+  /** Redacted: origin and path only. */
+  url: string
+  /** Workflow step running when the document was loaded (0 = initial navigation). */
+  firstStep: number
+  lastStep: number
+  /** True for a document in which a `paymentPage` step's target was found. */
+  paymentPage: boolean
+  /**
+   * Whether this document's observations were alerted on. Only an earlier
+   * page the payment page replaced is `outside_payment` (see `ReportScope`);
+   * the payment page, everything after it and any failed render of it are
+   * `payment`. All `payment` when the payment page could not be identified.
+   */
+  scope: ReportScope
+}
 
 /** Which half of the system produced this document. */
 export type ReportPass = 'inventory' | 'detection'
@@ -129,6 +162,8 @@ export type ReportResourceRow = {
    */
   requiredOn: ResponseResourceType[] | TargetType[] | null
   responseResourceType: ResponseResourceType | null
+  /** See `ReportScope`. Absent when the target's workflow marks no payment page. */
+  scope?: ReportScope
 }
 
 /**
@@ -167,10 +202,20 @@ export type ReportTargetSection = {
   workflowFile: string
   status: 'completed' | 'failed'
   error: string | null
+  /** Every row in the census, in or outside the payment page. */
   counts: ReportStatusCounts
   scripts: ReportResourceRow[]
   headers: ReportResourceRow[]
   unmatchedInventoryEntries: ReportUnmatchedEntry[]
+  /**
+   * Present whenever the workflow marks a payment page: the documents the run
+   * passed through, in order, and the counts for the rows the run alerts on.
+   * `resolved: false` means the payment page could not be identified in this
+   * run, so nothing was scoped out — every row was alerted on, rows carry no
+   * `scope`, and `counts` here equals the full census. It is recorded so a
+   * marker that has stopped resolving is visible rather than silent.
+   */
+  paymentScope?: { resolved: boolean; documents: ReportDocument[]; counts: ReportStatusCounts }
 }
 
 /**

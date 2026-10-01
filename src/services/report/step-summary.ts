@@ -36,8 +36,14 @@ function cell(value: string): string {
   return `${fence} ${singleLine.replace(/\|/gu, '\\|')} ${fence}`
 }
 
+// Rows outside the payment page are evidence, not findings: the run never
+// alerts on them, so the digest must not present them as if it had.
 function findingRows(report: AuditorReport): { row: ReportResourceRow; targetKey: string }[] {
-  return report.targets.flatMap((target) => [...target.scripts, ...target.headers].filter((row) => row.status !== 'authorised').map((row) => ({ row, targetKey: target.targetKey })))
+  return report.targets.flatMap((target) => [...target.scripts, ...target.headers].filter((row) => row.status !== 'authorised' && row.scope !== 'outside_payment').map((row) => ({ row, targetKey: target.targetKey })))
+}
+
+function outsidePaymentRowCount(report: AuditorReport): number {
+  return report.targets.reduce((total, target) => total + [...target.scripts, ...target.headers].filter((row) => row.scope === 'outside_payment').length, 0)
 }
 
 export function buildStepSummary(report: AuditorReport): string {
@@ -62,7 +68,12 @@ export function buildStepSummary(report: AuditorReport): string {
   if (run.status === 'partial') lines.push(`> **Partial run** — ${run.failures.length} target(s) failed.`, '')
 
   if (findings.length === 0) {
-    lines.push('No findings: every observed script and header was authorised by the inventory.', '')
+    lines.push(
+      outsidePaymentRowCount(report) > 0
+        ? 'No findings: every script and header on the payment page — and on every page after it — was authorised by the inventory.'
+        : 'No findings: every observed script and header was authorised by the inventory.',
+      '',
+    )
   } else {
     lines.push(`### Findings (${findings.length})`, '', '| Target | Status | Resource | Detail |', '| --- | --- | --- | --- |')
 
@@ -73,6 +84,11 @@ export function buildStepSummary(report: AuditorReport): string {
     if (findings.length > shown.length) lines.push('', `…and ${findings.length - shown.length} more — see the \`auditor-report\` artefact for the full census.`)
 
     lines.push('')
+  }
+
+  const outside = outsidePaymentRowCount(report)
+  if (outside > 0) {
+    lines.push(`${outside} resource(s) were observed on pages loaded before the payment page. They are listed in the census as \`outside_payment\` and are not findings.`, '')
   }
 
   lines.push(`Full census: ${summary.total} resources across ${summary.targets} target(s) — download the \`auditor-report\` artefact.`, '')

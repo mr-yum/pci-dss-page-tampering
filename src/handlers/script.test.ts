@@ -38,6 +38,25 @@ describe('scriptResponseHandler', () => {
     expect(detectedScripts).toHaveLength(1)
   })
 
+  // The same SDK on an earlier page and again on the payment page: deduping on
+  // (url, hash) alone would keep only the earlier copy, and payment scoping
+  // would then drop the payment page's SDK along with it.
+  it('keeps one copy per document of the same script, tagged with its document', async () => {
+    const detectedScripts: ScriptInfo[] = []
+
+    await scriptResponseHandler(scriptResponse('sdk'), detectedScripts, 'loader-upgrades')
+    await scriptResponseHandler(scriptResponse('sdk'), detectedScripts, 'loader-checkout')
+    await scriptResponseHandler(scriptResponse('sdk'), detectedScripts, 'loader-checkout')
+
+    expect(detectedScripts.map((script) => script.document)).toEqual(['loader-upgrades', 'loader-checkout'])
+  })
+
+  it('leaves an unattributed script without a document', async () => {
+    const detectedScripts: ScriptInfo[] = []
+    await scriptResponseHandler(scriptResponse('sdk'), detectedScripts)
+    expect(detectedScripts[0]).not.toHaveProperty('document')
+  })
+
   it('retains the same script body when it is served from different URLs', async () => {
     const detectedScripts: ScriptInfo[] = []
 

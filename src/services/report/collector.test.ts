@@ -12,7 +12,7 @@ import { UnknownScriptFound } from '../../types/comparison/unknown-script-found.
 import { ExecutionMode } from '../../types/config.js'
 import { NoopReportCollector, ReportCollector } from './collector.js'
 import { serialiseReportForComparison } from './json.js'
-import { buildInventory, detectionTarget, everyResultType, inventoryTarget, makeHeader, makeScript, runContext, SCRIPT_HASH } from './test-fixtures.js'
+import { buildInventory, detectionTarget, everyResultType, inventoryTarget, makeHeader, makeScript, OTHER_HASH, runContext, SCRIPT_HASH } from './test-fixtures.js'
 
 describe('ReportCollector', () => {
   const timestamp = new Date('2026-01-01T00:00:00.000Z')
@@ -338,6 +338,105 @@ describe('ReportCollector', () => {
       expect(collector.build('detection', runContext())!.targets[0]!.scripts[0]!.observed.contentExcerpt).toBe('window.analytics=1')
     })
   })
+})
+
+describe('ReportCollector payment scope', () => {
+  const timestamp = new Date('2026-01-01T00:00:00.000Z')
+  const paymentScope = {
+    declared: true,
+    paymentDocuments: ['loader-checkout'],
+    documents: [
+      { id: 'loader-booking', url: 'https://book.example.test/venue?token=secret', routes: [], firstStep: 0, lastStep: 3 },
+      { id: 'loader-checkout', url: 'https://book.example.test/venue/checkout?session=secret', routes: [], firstStep: 4, lastStep: 9 },
+    ],
+  }
+
+  const scopedReport = () => {
+    const inventory = buildInventory()
+    const collector = new ReportCollector()
+    const tagManager = makeScript({ name: 'https://tagmanager.example/tm.js', url: 'https://tagmanager.example/tm.js', content: 'tm', hash: { value: OTHER_HASH } })
+    collector.recordTargetRun({ inventory, target: detectionTarget, comparisonResults: [new AuthorizedScriptFound(detectionTarget, timestamp, makeScript(), inventory.scripts[0]!, [])], scope: 'payment', paymentScope })
+    // The same authorised SDK also ran on the earlier page, plus an unknown tag manager there.
+    collector.recordTargetRun({
+      inventory,
+      target: detectionTarget,
+      comparisonResults: [new AuthorizedScriptFound(detectionTarget, timestamp, makeScript(), inventory.scripts[0]!, []), new UnknownScriptFound(detectionTarget, timestamp, tagManager)],
+      scope: 'outside_payment',
+    })
+    return collector.build('detection', runContext())!
+  }
+
+  it('tags every row with the scope it was recorded under', () => {
+    const rows = scopedReport().targets[0]!.scripts
+    expect(rows.map((row) => [row.name, row.scope]).sort()).toEqual(
+      [
+        ['https://cdn.example.com/analytics.js', 'outside_payment'],
+        ['https://cdn.example.com/analytics.js', 'payment'],
+        ['https://tagmanager.example/tm.js', 'outside_payment'],
+      ].sort(),
+    )
+  })
+
+  it('keeps a resource seen in both scopes as two rows with distinct ids, the payment row keeping its natural id', () => {
+    const unscoped = new ReportCollector()
+    const inventory = buildInventory()
+    unscoped.recordTargetRun({ inventory, target: detectionTarget, comparisonResults: [new AuthorizedScriptFound(detectionTarget, timestamp, makeScript(), inventory.scripts[0]!, [])] })
+    const naturalId = unscoped.build('detection', runContext())!.targets[0]!.scripts[0]!.rowId
+
+    const sdk = scopedReport().targets[0]!.scripts.filter((row) => row.name === 'https://cdn.example.com/analytics.js')
+    expect(sdk).toHaveLength(2)
+    expect(sdk.find((row) => row.scope === 'payment')!.rowId).toBe(naturalId)
+    expect(sdk.find((row) => row.scope === 'outside_payment')!.rowId).not.toBe(naturalId)
+    expect(sdk.every((row) => row.occurrences === 1)).toBe(true)
+  })
+
+  it('counts the census in full and the payment scope separately', () => {
+    const target = scopedReport().targets[0]!
+    expect(target.counts).toMatchObject({ authorised: 2, unknown: 1, total: 3 })
+    expect(target.paymentScope!.counts).toMatchObject({ authorised: 1, unknown: 0, total: 1 })
+  })
+
+  it('records the redacted page chain and marks the payment document', () => {
+    expect(scopedReport().targets[0]!.paymentScope!.documents).toEqual([
+      { url: 'https://book.example.test/venue', firstStep: 0, lastStep: 3, paymentPage: false, scope: 'outside_payment' },
+      { url: 'https://book.example.test/venue/checkout', firstStep: 4, lastStep: 9, paymentPage: true, scope: 'payment' },
+    ])
+  })
+
+  // A marker that stopped resolving must be visible, not silent: the run fell
+  // back to whole-run scope, and the report says so.
+  it('records a declared payment page that could not be identified as unresolved', () => {
+    const inventory = buildInventory()
+    const collector = new ReportCollector()
+    collector.recordTargetRun({
+      inventory,
+      target: detectionTarget,
+      comparisonResults: [new AuthorizedScriptFound(detectionTarget, timestamp, makeScript(), inventory.scripts[0]!, [])],
+      paymentScope: { ...paymentScope, paymentDocuments: [] },
+    })
+    const target = collector.build('detection', runContext())!.targets[0]!
+
+    expect(target.paymentScope).toMatchObject({ resolved: false, counts: { total: 1 } })
+    expect(target.paymentScope!.documents.every((document) => document.scope === 'payment' && !document.paymentPage)).toBe(true)
+    expect(target.scripts[0]!.scope).toBeUndefined()
+  })
+
+  it('records a resolved scope as resolved', () => {
+    expect(scopedReport().targets[0]!.paymentScope!.resolved).toBe(true)
+  })
+
+  it('leaves an unscoped run exactly as before', () => {
+    const inventory = buildInventory()
+    const report = collect([new AuthorizedScriptFound(detectionTarget, timestamp, makeScript(), inventory.scripts[0]!, [])], inventory)!
+    expect(report.targets[0]!.paymentScope).toBeUndefined()
+    expect(report.targets[0]!.scripts[0]!.scope).toBeUndefined()
+  })
+
+  function collect(results: ComparisonResultType[], inventory = buildInventory()) {
+    const collector = new ReportCollector()
+    collector.recordTargetRun({ inventory, target: detectionTarget, comparisonResults: results })
+    return collector.build('detection', runContext())
+  }
 })
 
 describe('NoopReportCollector', () => {
