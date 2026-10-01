@@ -9,7 +9,7 @@
 
 import type { HTTPResponse } from 'puppeteer'
 
-import type { HeaderDetectionSummary } from '../types/header.js'
+import { type HeaderDetectionSummary, headerObservationKey } from '../types/header.js'
 import { createMatcher } from '../types/matcher/matcher-factory.js'
 import { headerResponseHandler } from './header.js'
 
@@ -188,5 +188,18 @@ describe('headerResponseHandler', () => {
     await headerResponseHandler(mockResponse('https://third-party.example/frame', { 'x-frame-options': 'SAMEORIGIN' }), summary, [], 'https://pay.example.com', [inventoryHeader])
 
     expect(summary.get('x-frame-options')!.get('SAMEORIGIN')).toEqual(new Set(['https://third-party.example/frame']))
+  })
+
+  it('records the document each header observation and response came from', async () => {
+    const responses: NonNullable<HeaderDetectionSummary['responses']> = []
+    const documents: NonNullable<HeaderDetectionSummary['documents']> = new Map()
+    const csp = { 'content-security-policy': "default-src 'self'" }
+
+    await headerResponseHandler(mockResponse('https://pay.example.com/venue', csp), summary, responses, 'https://pay.example.com', [], 'default', 'detection', { document: 'loader-booking', documents })
+    await headerResponseHandler(mockResponse('https://pay.example.com/venue', csp), summary, responses, 'https://pay.example.com', [], 'default', 'detection', { document: 'loader-checkout', documents })
+    await headerResponseHandler(mockResponse('https://pay.example.com/venue', csp), summary, responses, 'https://pay.example.com', [], 'default', 'detection', { document: undefined, documents })
+
+    expect(documents.get(headerObservationKey('content-security-policy', "default-src 'self'", 'https://pay.example.com/venue'))).toEqual(new Set(['loader-booking', 'loader-checkout', null]))
+    expect(responses.map((response) => response.document)).toEqual(['loader-booking', 'loader-checkout', undefined])
   })
 })

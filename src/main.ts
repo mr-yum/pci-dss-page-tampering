@@ -22,6 +22,7 @@ import { ensureInventoryPullRequest } from './services/inventory-pr-coordinator.
 import { PullRequestService } from './services/pull-request.js'
 import { FileReportWriter, NoopReportCollector, ReportCollector, writeStepSummary } from './services/report/index.js'
 import { RunLedger } from './services/run-ledger.js'
+import { compareWithPaymentScope, reportRecordsFor } from './services/scoped-comparison.js'
 import { GitInventoryStore } from './stores/inventory/git.js'
 import { CliArgsSchema, ExitCode } from './types/cli.js'
 import type { ComparisonResultType } from './types/comparison.js'
@@ -229,11 +230,13 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
       // Run resource detection
       const detectionSummaryForTarget = await detectResourcesForTarget
 
-      // Run script comparison with inventory (returns typed results)
-      const scriptComparisonResults = await scriptComparisonService.compare(detectionSummaryForTarget.target, payload, detectionSummaryForTarget.scriptSummary)
-
-      // Run header comparison with inventory (returns typed results)
-      const headerComparisonResults = await headerComparisonService.compare(detectionSummaryForTarget.target, payload, detectionSummaryForTarget.headerSummary)
+      // When the workflow marks a payment page, only the payment page's SPA
+      // context (and every page after it) is compared for alerting and the
+      // inventory diff; pages loaded before it are compared for the auditor
+      // report alone. Without a marker this is the whole run, as before.
+      const scoped = await compareWithPaymentScope(detectionSummaryForTarget, payload, { scripts: scriptComparisonService, headers: headerComparisonService })
+      const scriptComparisonResults = scoped.payment.scripts
+      const headerComparisonResults = scoped.payment.headers
 
       // T009: Calculate resource count for this target (scripts + headers)
       const resourceCount = scriptComparisonResults.length + headerComparisonResults.length
@@ -246,7 +249,11 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
       // unhandled fault while building report rows would abort the target and
       // swallow its 11.6.1 tamper alerts. Evidence collection must never cost
       // us an alert.
-      collectForReportSafely(() => reportCollector.recordTargetRun({ inventory: payload, target, comparisonResults: [...scriptComparisonResults, ...headerComparisonResults] }))
+      collectForReportSafely(() => {
+        for (const record of reportRecordsFor({ inventory: payload, target, scoped, paymentScope: detectionSummaryForTarget.paymentScope })) {
+          collectForReportSafely(() => reportCollector.recordTargetRun(record))
+        }
+      })
 
       if (target.type === 'inventory') {
         // Defer alerting; main flow will flush after PR creation.

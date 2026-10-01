@@ -53,7 +53,9 @@ export const REPORT_SCRIPT = `
       // belongs to neither script bucket.
       var visible = !!activeStatuses[status] && (kind === null || !!activeKinds[kind]);
       if (visible && activeTarget && row.getAttribute('data-target') !== activeTarget) visible = false;
-      if (visible && onlyFindings && status === 'authorised') visible = false;
+      // Rows observed outside the payment page are evidence, never findings:
+      // the run does not alert on them, so "findings only" must not show them.
+      if (visible && onlyFindings && (status === 'authorised' || row.getAttribute('data-scope') === 'outside_payment')) visible = false;
       if (visible && term && haystack.indexOf(term) === -1) visible = false;
       row.hidden = !visible;
       if (visible) shown += 1;

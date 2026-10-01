@@ -106,6 +106,9 @@ td.src { white-space: nowrap; }
 .badge-missing_required { background: var(--warn-bg); color: var(--warn); border-color: var(--warn); }
 .badge-failed { background: var(--bad-bg); color: var(--bad); border-color: var(--bad); }
 .badge-completed { background: var(--ok-bg); color: var(--ok); border-color: var(--ok); }
+.badge-outside_payment { background: var(--surface); color: var(--muted); border-color: var(--border); margin-top: 0.3rem; }
+.documents { margin: 0.5rem 0 1rem; padding-left: 1.4rem; }
+.documents li { margin: 0.2rem 0; }
 
 details { margin-top: 0.35rem; }
 summary { cursor: pointer; color: var(--accent); font-size: 0.85rem; }

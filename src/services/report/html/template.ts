@@ -118,11 +118,11 @@ function formatRow(row: ReportResourceRow, targetKey: string): RawHtml {
   const justification = row.authorisation.effective
   // Detected values are rendered as text only, never as a link: a `javascript:`
   // script URL is exactly the artefact of an attack this report documents.
-  const search = [row.name, row.value ?? '', row.origin.host ?? '', row.status, row.kind, row.observed.hash ?? '', justification?.description ?? ''].join(' ').toLowerCase()
+  const search = [row.name, row.value ?? '', row.origin.host ?? '', row.status, row.kind, row.observed.hash ?? '', justification?.description ?? '', row.scope ?? ''].join(' ').toLowerCase()
 
-  return html`<tr data-row data-target="${targetKey}" data-status="${row.status}" data-kind="${row.kind}" data-search="${search}" id="row-${row.rowId}">
+  return html`<tr data-row data-target="${targetKey}" data-status="${row.status}" data-kind="${row.kind}" data-scope="${row.scope ?? ''}" data-search="${search}" id="row-${row.rowId}">
     <td>
-      ${badge(row.status)}
+      ${badge(row.status)} ${row.scope === 'outside_payment' ? html`<div><span class="badge badge-outside_payment" title="Observed on a page loaded before the payment page; not alerted on">Outside payment page</span></div>` : ''}
       <div class="muted kind">${KIND_LABELS[row.kind] ?? row.kind}</div>
     </td>
     <td class="name">
@@ -272,14 +272,50 @@ function formatCounts(counts: ReportStatusCounts): RawHtml {
   </div>`
 }
 
+/**
+ * The page chain for a target scoped to its payment page: which documents the
+ * run loaded, in order, and which one the payment page was. This is the
+ * evidence that a resource marked "outside payment page" really ran in a
+ * separately loaded document rather than in the payment page's SPA context.
+ */
+function formatPaymentScope(paymentScope: ReportTargetSection['paymentScope']): RawHtml {
+  if (paymentScope === undefined) return html``
+
+  if (!paymentScope.resolved) {
+    return html`<h3>Payment page scope</h3>
+      <p class="banner banner-warn">
+        This workflow marks a payment page, but it could not be identified in this run, so nothing was scoped out: every resource below was treated as on the payment page and alerted on. Check that the marked step's target still exists only
+        on the card-entry page.
+      </p>`
+  }
+
+  return html`<h3>Payment page scope</h3>
+    <p class="sub">
+      Only earlier pages the payment page replaced are listed for evidence and not alerted on. Everything else is in scope and alerted on: the payment page's own document — including anything an earlier route left there through client-side
+      navigation — every page after it, and any failed render of it, whatever page it was loaded at.
+    </p>
+    ${formatCounts(paymentScope.counts)}
+    <ol class="documents">
+      ${join(
+        paymentScope.documents.map(
+          (document) =>
+            html`<li>
+              <span class="mono">${document.url}</span> · steps
+              ${String(document.firstStep)}–${String(document.lastStep)}${document.paymentPage ? html` · <strong>payment page</strong>` : ''}${document.scope === 'outside_payment' ? html` · <span class="muted">outside payment page</span>` : ''}
+            </li>`,
+        ),
+      )}
+    </ol>`
+}
+
 function formatTarget(target: ReportTargetSection): RawHtml {
   const id = `target-${slug(target.targetKey)}`
 
   return html`<section data-target="${target.targetKey}" id="${id}">
     <h2>${target.targetName} <span class="badge badge-${target.status}">${target.status}</span></h2>
     <p class="sub"><span class="mono">${target.url}</span> · inventory <span class="mono">${target.inventoryFile}</span> · workflow <span class="mono">${target.workflowId}</span> (<span class="mono">${target.workflowFile}</span>)</p>
-    ${target.error === null ? '' : html`<p class="banner banner-warn">This target failed: ${target.error}</p>`} ${formatCounts(target.counts)} ${formatTable('Scripts', target.scripts, target.targetKey)}
-    ${formatTable('Headers', target.headers, target.targetKey)} ${formatUnmatched(target.unmatchedInventoryEntries, target.targetKey)}
+    ${target.error === null ? '' : html`<p class="banner banner-warn">This target failed: ${target.error}</p>`} ${formatCounts(target.counts)} ${formatPaymentScope(target.paymentScope)}
+    ${formatTable('Scripts', target.scripts, target.targetKey)} ${formatTable('Headers', target.headers, target.targetKey)} ${formatUnmatched(target.unmatchedInventoryEntries, target.targetKey)}
   </section>`
 }
 

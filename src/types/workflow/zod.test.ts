@@ -198,3 +198,27 @@ describe('WorkflowStepSchema', () => {
     expect(result.success).toBe(false)
   })
 })
+
+describe('WorkflowStepSchema paymentPage', () => {
+  const payStep = { description: 'Card entry ready', paymentPage: true, waitFor: [{ type: 'span', identifier: 'Pay now' }], action: { type: 'escape' } }
+
+  it('accepts the marker on a top-level step', () => {
+    expect(WorkflowStepSchema.safeParse(payStep).success).toBe(true)
+  })
+
+  it('accepts only the literal true', () => {
+    expect(WorkflowStepSchema.safeParse({ ...payStep, paymentPage: false }).success).toBe(false)
+  })
+
+  // Popup pages are never observed, so a marker there would scope the run to a
+  // document the monitor cannot see.
+  it('rejects the marker inside a popup workflow', () => {
+    const result = WorkflowStepSchema.safeParse({
+      description: 'Open hosted checkout',
+      waitFor: [{ type: 'button', identifier: 'Pay' }],
+      action: { type: 'clickPopup', steps: [payStep] },
+    })
+    expect(result.success).toBe(false)
+    expect(JSON.stringify(result.error?.issues)).toContain('paymentPage is only supported on top-level workflow steps')
+  })
+})

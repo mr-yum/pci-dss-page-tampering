@@ -16,10 +16,10 @@
  * @see ../../interfaces/report.ts
  */
 
-import type { InventoryFileCopy, IReportCollector, ReportInventoryRefInput, ReportRunContext } from '../../interfaces/report.js'
-import type { ComparisonResultType } from '../../types/comparison.js'
+import type { InventoryFileCopy, IReportCollector, ReportInventoryRefInput, ReportRunContext, TargetRunRecord } from '../../interfaces/report.js'
+import type { PaymentScope } from '../../types/document.js'
 import type { Inventory, InventoryHeaderInfo, InventoryScriptInfo } from '../../types/inventory/model.js'
-import type { AuditorReport, ReportPass, ReportResourceRow, ReportStatusCounts, ReportTargetSection, ReportUnmatchedEntry } from '../../types/report.js'
+import type { AuditorReport, ReportDocument, ReportPass, ReportResourceRow, ReportStatusCounts, ReportTargetSection, ReportUnmatchedEntry } from '../../types/report.js'
 import { REPORT_SCHEMA_VERSION } from '../../types/report.js'
 import type { Target } from '../../types/target.js'
 import { createSha256Hash } from '../../utils/hash.js'
@@ -27,6 +27,7 @@ import { inventoryHeaderInfoToRawInventoryHeaderInfo } from '../../utils/invento
 import { createProvenanceResolver, createSourceLocator, type ProvenanceResolver } from '../../utils/provenance.js'
 import { inventoryScriptInfoToRawInventoryScriptInfo } from '../../utils/script.js'
 import { redactUrl } from '../../utils/url.js'
+import { outsidePaymentDocuments } from '../payment-scope.js'
 import { redactForDisplay, toReportRow } from './mapper.js'
 import { toReportAuthorisationInfo, toReportMatcherRef } from './matcher-ref.js'
 
@@ -71,6 +72,31 @@ function compareRows(left: ReportResourceRow, right: ReportResourceRow): number 
   )
 }
 
+/**
+ * Tag a row with its payment scope. A resource observed both before and on the
+ * payment page yields the same natural rowId from both scopes; the rowId is
+ * also the dedupe key and HTML anchor, so the outside-payment copy gets a
+ * derived one. Payment rows keep the natural id, stable across the switch to
+ * scoping.
+ */
+function withScope(row: ReportResourceRow, scope: TargetRunRecord['scope']): ReportResourceRow {
+  if (scope === undefined) return row
+  if (scope === 'payment') return { ...row, scope }
+  return { ...row, scope, rowId: createSha256Hash(`outside_payment\u0000${row.rowId}`).value.slice(0, 16) }
+}
+
+function toReportDocuments(scope: PaymentScope): ReportDocument[] {
+  const paymentDocuments = new Set(scope.paymentDocuments)
+  const outside = outsidePaymentDocuments(scope) ?? new Set()
+  return scope.documents.map((document) => ({
+    url: redactUrl(document.url),
+    firstStep: document.firstStep,
+    lastStep: document.lastStep,
+    paymentPage: paymentDocuments.has(document.id),
+    scope: outside.has(document.id) ? 'outside_payment' : 'payment',
+  }))
+}
+
 type TargetSectionState = {
   targetKey: string
   inventoryFile: string
@@ -91,6 +117,9 @@ type TargetSectionState = {
   matchedScripts: Set<InventoryScriptInfo>
   matchedHeaders: Set<InventoryHeaderInfo>
   unmatched: ReportUnmatchedEntry[]
+  /** Set when the workflow marks a payment page. */
+  documents: ReportDocument[] | null
+  paymentScopeResolved: boolean
 }
 
 export class ReportCollector implements IReportCollector {
@@ -105,9 +134,13 @@ export class ReportCollector implements IReportCollector {
    */
   private readonly inventoryFiles = new Map<ReportPass, Map<string, string>>()
 
-  recordTargetRun(input: { inventory: Inventory; target: Target; comparisonResults: readonly ComparisonResultType[] }): void {
-    const { inventory, target, comparisonResults } = input
+  recordTargetRun(input: TargetRunRecord): void {
+    const { inventory, target, comparisonResults, scope } = input
     const section = this.sectionFor(inventory, target)
+    if (input.paymentScope?.declared === true) {
+      section.documents = toReportDocuments(input.paymentScope)
+      section.paymentScopeResolved = outsidePaymentDocuments(input.paymentScope) !== null
+    }
 
     // One resolver per target run: parsing the file and indexing its positions
     // is per-file work, not per-row work.
@@ -115,7 +148,7 @@ export class ReportCollector implements IReportCollector {
     const workflowId = target.workflowId ?? 'default'
 
     for (const result of comparisonResults) {
-      const row = toReportRow(result, inventory, workflowId, resolveProvenance)
+      const row = withScope(toReportRow(result, inventory, workflowId, resolveProvenance), scope)
       const existing = section.rows.get(row.rowId)
 
       // A header repeated across responses is one control observed many times,
@@ -193,6 +226,15 @@ export class ReportCollector implements IReportCollector {
           scripts: rows.filter((row) => row.kind !== 'header'),
           headers: rows.filter((row) => row.kind === 'header'),
           unmatchedInventoryEntries: [...section.unmatched].sort((left, right) => collator.compare(left.kind, right.kind) || left.index - right.index),
+          ...(section.documents === null
+            ? {}
+            : {
+                paymentScope: {
+                  resolved: section.paymentScopeResolved,
+                  documents: section.documents,
+                  counts: section.paymentScopeResolved ? countRows(rows.filter((row) => row.scope === 'payment')) : countRows(rows),
+                },
+              }),
         }
       })
       .sort((left, right) => collator.compare(left.targetKey, right.targetKey))
@@ -308,6 +350,8 @@ export class ReportCollector implements IReportCollector {
         status: 'completed',
         error: null,
         rows: new Map(),
+        documents: null,
+        paymentScopeResolved: false,
         matchedScripts: new Set(),
         matchedHeaders: new Set(),
         unmatched: [],
@@ -327,7 +371,7 @@ export class ReportCollector implements IReportCollector {
  * drift apart.
  */
 export class NoopReportCollector implements IReportCollector {
-  recordTargetRun(_input: { inventory: Inventory; target: Target; comparisonResults: readonly ComparisonResultType[] }): void {}
+  recordTargetRun(_input: TargetRunRecord): void {}
   recordTargetFailure(_input: { inventory: Inventory; target: Target; error: unknown }): void {}
   recordInventoryRef(_pass: ReportPass, _ref: ReportInventoryRefInput): void {}
   build(_pass?: ReportPass, _run?: ReportRunContext): null {
