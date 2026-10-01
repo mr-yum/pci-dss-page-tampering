@@ -93,7 +93,11 @@ export function buildStepSummary(report: AuditorReport): string {
     lines.push('')
   }
 
-  if (findings.length === 0) {
+  if (findings.length === 0 && unread.length > 0) {
+    // Unread scripts were observed but never judged: "everything was
+    // authorised" would contradict the partial status above.
+    lines.push('No findings among the scripts and headers that could be read — but the scripts listed above were not checked at all.', '')
+  } else if (findings.length === 0) {
     lines.push(
       outsidePaymentRowCount(report) > 0
         ? 'No findings: every script and header on the payment page — and on every page after it — was authorised by the inventory.'

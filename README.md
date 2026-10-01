@@ -611,6 +611,8 @@ Real payment pages do still change between runs, and the report reflects that fa
 
 `schemaVersion` is semver. Additive optional fields bump the minor; removing a field, changing its type, or changing what a value means bumps the major. Consumers should gate on the major version and tolerate unknown fields.
 
+One deliberate widening shipped as a minor: since 1.5.0, `run.status` is `"partial"` not only when a target failed but also when a script on the payment page could not be read — in which case `run.failures` can be empty and the gap is listed under `targets[].unreadScripts` (counted in `summary.scriptsUnread`). `partial` has always meant "this census is short, do not read it as clean", and this is a short census; a consumer that takes `partial` to imply a non-empty `failures` should check both lists.
+
 ### In CI
 
 The bundled `inventory-and-detection.yml` workflow passes `--report-dir reports` and uploads the directory as an `auditor-report-<run-id>-<attempt>` artefact with `if: always()`, so the evidence survives a failed detection run — the run an assessor is most likely to ask about.

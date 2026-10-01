@@ -60,6 +60,8 @@ describe('buildStepSummary unread scripts', () => {
     expect(markdown).toContain('### Scripts not read (1)')
     expect(markdown).toContain('`https://cdn.example.test/pay.js`')
     expect(markdown).toContain('`https://book.example.test/venue/checkout`')
+    expect(markdown).not.toContain('was authorised by the inventory')
+    expect(markdown).toContain('the scripts listed above were not checked at all')
   })
 
   it('only counts unread scripts from pages before the payment page, and keeps the run complete', () => {

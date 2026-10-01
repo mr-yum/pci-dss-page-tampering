@@ -142,6 +142,8 @@ export class DetectionService implements IDetectionService {
       throw error
     }
     let puppeteerWorkflow: any
+    // Taken before the context closes (see below); undefined only on a path that throws.
+    let capturedScripts: { external: ScriptInfo[]; unread: UnreadScriptResponse[] } | undefined
     let retryBoundaryCrossed = false
     // Resolved from the target's template URL before navigation; hoisted so
     // every error path can log the URL that was actually navigated.
@@ -312,6 +314,11 @@ export class DetectionService implements IDetectionService {
         target.logger.error(`Script ${redactUrl(unfinished.url)} (step ${unfinished.step}) was still being read when the workflow finished; recorded as unread.`)
         recordUnreadScript(unreadScripts, { ...unfinished, reason: SCRIPT_READ_UNFINISHED_REASON })
       }
+      // Snapshot now, before the context closes: closing it can settle a
+      // leftover read — succeeding, or failing a second time with "Session
+      // closed" — and that must neither compare a script already recorded as
+      // unread nor record it twice.
+      capturedScripts = { external: [...externalScripts], unread: [...unreadScripts] }
     } catch (e) {
       // Enhanced error logging for the main catch block
       if (e instanceof Error && e.name === 'TimeoutError') {
@@ -347,18 +354,18 @@ export class DetectionService implements IDetectionService {
       )
     }
 
-    if (unreadScripts.length > 0) {
-      target.logger.error(`${unreadScripts.length} script response(s) could not be read and were not compared: ${unreadScripts.map((unread) => redactUrl(unread.url)).join(', ')}`)
+    // Always set here: every path that skips the assignment throws.
+    const scripts = capturedScripts!
+    if (scripts.unread.length > 0) {
+      target.logger.error(`${scripts.unread.length} script response(s) could not be read and were not compared: ${scripts.unread.map((unread) => redactUrl(unread.url)).join(', ')}`)
     }
 
-    // Snapshots: a read that settles after the context closed must not change
-    // a summary that has already been handed to comparison.
     return {
       target: target,
       scriptSummary: {
-        externalScripts: [...externalScripts],
+        externalScripts: scripts.external,
         inlineScripts: internalScripts,
-        unreadScripts: [...unreadScripts],
+        unreadScripts: scripts.unread,
       },
       headerSummary: {
         headers: headers,

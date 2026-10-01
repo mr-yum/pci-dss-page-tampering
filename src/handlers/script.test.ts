@@ -98,6 +98,24 @@ describe('scriptResponseHandler', () => {
       expect(await reads.settle(10)).toEqual([{ url: 'https://cdn.example.com/slow.js', resourceType: 'script', status: 200, step: 7, document: 'loader-checkout' }])
     })
 
+    // A response can arrive, and start a read, while settle is already
+    // waiting on earlier reads: it must get its own chance to finish.
+    it('waits for reads that start while it is already waiting', async () => {
+      const reads = new PendingScriptReads()
+      let releaseFirst: () => void = () => undefined
+      const first = new Promise<void>((resolve) => (releaseFirst = resolve))
+      const firstResponse = { ...scriptResponse('a'), url: () => 'https://cdn.example.com/first.js' } as unknown as HTTPResponse
+      reads.track(first, firstResponse, undefined, 3)
+
+      const settled = reads.settle(1000)
+      const lateResponse = { ...scriptResponse('b'), url: () => 'https://cdn.example.com/late.js' } as unknown as HTTPResponse
+      const late = new Promise<void>((resolve) => setTimeout(resolve, 50))
+      reads.track(late, lateResponse, undefined, 3)
+      releaseFirst()
+
+      expect(await settled).toEqual([])
+    })
+
     it('ignores responses the handler does not read', async () => {
       const reads = new PendingScriptReads()
       const stylesheet = { request: () => ({ resourceType: () => 'stylesheet' }), ok: () => true } as unknown as HTTPResponse

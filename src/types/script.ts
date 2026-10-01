@@ -61,7 +61,7 @@ export type ScriptInfo = {
  * silently loses one would look exactly like a clean run.
  *
  * Unredacted here; every surface that displays it redacts it (see
- * `toUnreadScriptRecord`).
+ * `toUnreadScriptRecords`).
  */
 export type UnreadScriptResponse = {
   url: string

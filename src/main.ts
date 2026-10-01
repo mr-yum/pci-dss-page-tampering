@@ -161,6 +161,12 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
    */
   const targetDisplayName = (inventory: Inventory, workflow: InventoryWorkflow, target: Target): string => target.name ?? `${inventory.fileName.replace(/\.json$/, '')}/${workflow.id} (${target.type})`
 
+  /** A pass whose targets all completed can still have left payment-page scripts unread; say so instead of "successfully". */
+  const passOutcome = (results: readonly (readonly TargetRunResult[])[]): string | null => {
+    const unread = results.flat().reduce((total, result) => total + result.unreadScripts.payment.length, 0)
+    return unread === 0 ? null : `Workflow pass completed, but ${unread} payment page script(s) could not be read; see the run summary.`
+  }
+
   /** Fold the targets a pass could not complete into the run summary. */
   const recordTargetFailures = (pass: ExecutionPass, failures: readonly { group: Inventory; item: InventoryWorkflow; error: unknown }[]): void => {
     for (const failure of failures) {
@@ -504,7 +510,11 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
           const inventoriesToPush: InventoryDifferenceResult[] = diffResults.map((result) => result.diffResult)
           const pushResult = await scriptInventoryService.push(inventoriesToPush, config.branches.inventory)
 
-          log(inventoryRun.failures.length === 0 ? 'Inventory workflow completed successfully.' : `Inventory workflow completed with ${inventoryRun.failures.length} failed target(s); the others were diffed and pushed.`)
+          log(
+            inventoryRun.failures.length > 0
+              ? `Inventory workflow completed with ${inventoryRun.failures.length} failed target(s); the others were diffed and pushed.`
+              : (passOutcome(inventoryRun.results) ?? 'Inventory workflow completed successfully.'),
+          )
 
           // Open a PR so the inventory repo's CI (`--mode validate`) runs and humans
           // can review the change. Skip conditions are handled inside the service
@@ -598,7 +608,7 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
         )
         recordTargetFailures('detection', detectionRun.failures)
 
-        log(detectionRun.failures.length === 0 ? 'Detection workflow completed successfully.' : `Detection workflow completed with ${detectionRun.failures.length} failed target(s).`)
+        log(detectionRun.failures.length > 0 ? `Detection workflow completed with ${detectionRun.failures.length} failed target(s).` : (passOutcome(detectionRun.results) ?? 'Detection workflow completed successfully.'))
       } finally {
         await emitReportSafely('detection')
       }

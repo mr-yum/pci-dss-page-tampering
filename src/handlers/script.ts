@@ -134,14 +134,21 @@ export class PendingScriptReads {
    * can neither be counted twice nor change a summary already returned.
    */
   async settle(timeoutMs: number): Promise<Omit<UnreadScriptResponse, 'reason'>[]> {
-    if (this.pending.size > 0) {
-      let timer: NodeJS.Timeout | undefined
-      const deadline = new Promise<void>((resolve) => {
-        timer = setTimeout(resolve, timeoutMs)
-      })
+    let timer: NodeJS.Timeout | undefined
+    let expired = false
+    const deadline = new Promise<void>((resolve) => {
+      timer = setTimeout(() => {
+        expired = true
+        resolve()
+      }, timeoutMs)
+    })
+    // Loop, not a single wait: a response can arrive — and start a read —
+    // while earlier reads are being awaited, and that read must get the same
+    // chance to finish rather than be reported as stuck.
+    while (this.pending.size > 0 && !expired) {
       await Promise.race([Promise.allSettled([...this.pending.keys()]), deadline])
-      clearTimeout(timer)
     }
+    clearTimeout(timer)
     return [...this.pending.values()]
   }
 }
