@@ -1,5 +1,6 @@
 import type { ResourceType } from 'puppeteer'
 
+import type { DocumentId } from './document.js'
 import type { Target } from './target.js'
 import type { Workflow } from './workflow.js'
 
@@ -36,6 +37,8 @@ export type DetectedResponse = {
   readonly resourceType: ResponseResourceType
   /** Header names present on this exact response occurrence. Values remain redacted elsewhere. */
   readonly headerNames: ReadonlySet<HeaderName>
+  /** Top-level document this response belongs to; undefined when it could not be attributed. */
+  readonly document?: DocumentId
 }
 
 /**
@@ -54,6 +57,19 @@ export type HeaderDetectionSummary = {
    * when the same URL responds more than once during a workflow.
    */
   responses?: DetectedResponse[]
+  /**
+   * The documents each header observation was made in, keyed by
+   * `headerObservationKey(name, value, url)`. `null` records an observation
+   * that could not be attributed. Absent for fixtures and for runs without
+   * attribution; payment scoping treats a missing key as unattributed, which
+   * keeps the observation in scope.
+   */
+  documents?: Map<string, Set<DocumentId | null>>
+}
+
+/** Key for `HeaderDetectionSummary.documents`. The separator cannot occur in a header name. */
+export function headerObservationKey(name: string, value: string, url: string): string {
+  return `${name}\u0000${value}\u0000${url}`
 }
 
 export type HeaderInfo = {

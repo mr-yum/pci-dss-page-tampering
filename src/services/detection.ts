@@ -5,7 +5,8 @@ import { headerResponseHandler } from '../handlers/header.js'
 import { scriptResponseHandler } from '../handlers/script.js'
 import type { IDetectionService } from '../interfaces/detection.js'
 import type { DetectionSummary } from '../types/detection.js'
-import type { DetectedResponse, HeaderName, HeaderUrl } from '../types/header.js'
+import type { DocumentId } from '../types/document.js'
+import type { DetectedResponse, HeaderDetectionSummary, HeaderName, HeaderUrl } from '../types/header.js'
 import type { InventoryHeaderInfo } from '../types/inventory/model.js'
 import type { ScriptMatcher } from '../types/matcher.js'
 import type { PuppeteerClickAction, PuppeteerClickPopupAction, PuppeteerInputAction, PuppeteerLocatorAction, PuppeteerNavigateAction, PuppeteerTotpAction } from '../types/puppeteer.js'
@@ -18,6 +19,8 @@ import { generateTotp, millisecondsRemainingInTotpWindow } from '../utils/totp.j
 import { redactUrl } from '../utils/url.js'
 import { deriveUserAgentMetadata, normaliseHeadlessUserAgent } from '../utils/user-agent.js'
 import { getPuppeteerWorkflowFromTarget, stepsToPuppeteerLocatorAction } from '../utils/workflow.js'
+import { DocumentTracker } from './document-ledger.js'
+import { outsidePaymentDocuments } from './payment-scope.js'
 
 // If fewer than this many milliseconds remain in the current TOTP window,
 // wait for the next window before generating the code, so it cannot expire
@@ -91,6 +94,18 @@ export class DetectionService implements IDetectionService {
     const internalScripts: ScriptInfo[] = []
     const headers = new Map<HeaderName, Map<string, Set<HeaderUrl>>>()
     const responses: DetectedResponse[] = []
+    const headerDocuments: NonNullable<HeaderDetectionSummary['documents']> = new Map()
+    // Documents in which a paymentPage step's target was found. If any marked
+    // step's document cannot be read, scoping is abandoned for the run rather
+    // than applied to the documents that did resolve: an unresolved payment
+    // page would otherwise have its scripts moved out of scope.
+    const paymentDocuments = new Set<DocumentId>()
+    // Documents the monitor's own reload recovery replaced, on any step. Each
+    // takes the scope of the document that replaced it, whatever its path
+    // (see PaymentScope.recoveryReplaced).
+    const recoveryReplaced = new Set<DocumentId>()
+    let paymentDocumentUnresolved = false
+    let tracker: DocumentTracker | undefined
 
     // Isolated context per run: cookies and storage must not leak between
     // the inventory and detection phases (a session persisted from the
@@ -128,10 +143,39 @@ export class DetectionService implements IDetectionService {
       // the script that initiated the insertion (see src/utils/page-attribution.ts).
       await page.evaluateOnNewDocument(INLINE_SCRIPT_ATTRIBUTION_SCRIPT)
 
-      // Bootstrap page
+      // Attribute every observation to the top-level document it belongs to,
+      // so the run can be scoped to the payment page's SPA context (see
+      // partitionByPaymentScope). Best effort: without it every observation is
+      // unattributed, which keeps the whole run in scope as before.
+      tracker = await DocumentTracker.attach(page).catch((error: unknown) => {
+        target.logger.error(`Document attribution unavailable (${error}); the whole run stays in payment scope.`)
+        return undefined
+      })
+      if (tracker !== undefined && !tracker.attributionAvailable()) {
+        target.logger.error('Puppeteer no longer exposes frame ids; document attribution is degraded and unattributed observations stay in payment scope.')
+      }
+      const documentOf = (response: HTTPResponse): DocumentId | undefined => tracker?.documentOf(response.request())
+
+      // Called by every reload recovery, on every step, just before it
+      // navigates: records the document about to be replaced. If that cannot
+      // be read, scoping is abandoned for the run rather than risk scoping out
+      // a failed render of the payment page. Unused without a marker.
+      const declaresPaymentPage = getPuppeteerWorkflowFromTarget(target).locatorActions.some((step) => step.paymentPage === true)
+      const recordRecovery = declaresPaymentPage
+        ? async (): Promise<void> => {
+            const replaced = await tracker?.currentDocument()
+            if (replaced === undefined) paymentDocumentUnresolved = true
+            else recoveryReplaced.add(replaced)
+          }
+        : undefined
+
+      // Bootstrap page. The document is read synchronously when the response
+      // arrives, before any await, so it names the document that issued it.
       page
-        .on('response', (response) => scriptResponseHandler(response, externalScripts))
-        .on('response', (response) => headerResponseHandler(response, headers, responses, target.url, inventoryHeaders, target.workflowId ?? 'default', target.type))
+        .on('response', (response) => scriptResponseHandler(response, externalScripts, documentOf(response)))
+        .on('response', (response) =>
+          headerResponseHandler(response, headers, responses, target.url, inventoryHeaders, target.workflowId ?? 'default', target.type, tracker === undefined ? undefined : { document: documentOf(response), documents: headerDocuments }),
+        )
 
       // Surface blocked requests with their Cloudflare ray ID. Bot mitigation
       // (managed challenge, Turnstile, rate limit) usually manifests downstream
@@ -149,7 +193,7 @@ export class DetectionService implements IDetectionService {
       navigationUrl = resolveDateTemplates(puppeteerWorkflow.target.url)
       const initialWorkflowDeadline = Date.now() + INITIAL_WORKFLOW_TIMEOUT_MS
       try {
-        await this.navigateToTarget(page, navigationUrl, target, initialWorkflowDeadline)
+        await this.navigateToTarget(page, navigationUrl, target, initialWorkflowDeadline, recordRecovery)
       } catch (navError) {
         if (navError instanceof Error && navError.name === 'TimeoutError') {
           target.logger.error(`NAVIGATION TIMEOUT ERROR`)
@@ -173,10 +217,27 @@ export class DetectionService implements IDetectionService {
         const currentStepIndex = index + 1
 
         target.logger.log(`(${currentStepIndex}/${totalStepCount}) ${step.description} for target '${puppeteerWorkflow.target.url}'.`)
+        tracker?.ledger.setStep(currentStepIndex)
 
         try {
           await this.waitForStepDelay(step.delay, index, initialWorkflowDeadline)
-          const actionTarget = index === 0 && navigationUrl !== undefined ? await this.waitForInitialActionTarget(page, step, navigationUrl, target, initialWorkflowDeadline) : await this.waitForRecoverableActionTarget(page, step, target)
+          const actionTarget =
+            index === 0 && navigationUrl !== undefined
+              ? await this.waitForInitialActionTarget(page, step, navigationUrl, target, initialWorkflowDeadline, recordRecovery)
+              : await this.waitForRecoverableActionTarget(page, step, target, recordRecovery)
+
+          // The payment page is the document in which a marked step's target
+          // was found. Read it now, before the action runs: a "Pay" click that
+          // navigates away must not move the marker onto the next page.
+          if (step.paymentPage === true) {
+            const paymentDocument = await this.resolvePaymentDocument(page, step, actionTarget, tracker)
+            if (paymentDocument === undefined) {
+              paymentDocumentUnresolved = true
+              target.logger.error(`Could not identify the payment page document at step ${currentStepIndex}; the whole run stays in payment scope.`)
+            } else {
+              paymentDocuments.add(paymentDocument)
+            }
+          }
 
           // Execute action
           await this.executeAction(page, actionTarget, step, target, browser, () => {
@@ -184,7 +245,7 @@ export class DetectionService implements IDetectionService {
           })
 
           // Detect and add new inline scripts on each workflow action
-          const newInlineScripts = await this.detectNewInlineScripts(page, internalScripts, scriptContentMatchers)
+          const newInlineScripts = await this.detectNewInlineScripts(page, internalScripts, scriptContentMatchers, tracker)
           newInlineScripts.forEach((script) => internalScripts.push(script))
         } catch (stepError) {
           // Enhanced error logging for workflow steps
@@ -238,6 +299,17 @@ export class DetectionService implements IDetectionService {
       await context.close().catch((closeError) => target.logger.error(`Failed to close browser context: ${closeError}`))
     }
 
+    const declared = puppeteerWorkflow.locatorActions.some((step: PuppeteerLocatorAction) => step.paymentPage === true)
+    const documents = tracker?.ledger.documents() ?? []
+    const paymentScope = { declared, paymentDocuments: paymentDocumentUnresolved ? [] : [...paymentDocuments], documents, recoveryReplaced: [...recoveryReplaced] }
+    const outside = outsidePaymentDocuments(paymentScope)
+    if (outside !== null) {
+      const outsidePages = documents.filter((document) => outside.has(document.id)).map((document) => redactUrl(document.url))
+      target.logger.log(
+        `Payment page scope: ${outsidePages.length} page(s) loaded before the payment page (${outsidePages.join(', ') || 'none'}) are recorded as outside the payment page and not alerted on; the payment page and every page after it are in scope.`,
+      )
+    }
+
     return {
       target: target,
       scriptSummary: {
@@ -247,7 +319,9 @@ export class DetectionService implements IDetectionService {
       headerSummary: {
         headers: headers,
         responses,
+        ...(tracker === undefined ? {} : { documents: headerDocuments }),
       },
+      paymentScope,
     }
   }
 
@@ -637,7 +711,30 @@ export class DetectionService implements IDetectionService {
     throw new TimeoutError(`Timed out waiting for selector '${step.querySelector}' in a frame URL matching /${step.frameUrl}/. Observed frame URLs: ${observedFrameUrls || '(none)'}`)
   }
 
-  private async waitForRecoverableActionTarget(page: Page, step: PuppeteerLocatorAction, target: Target): Promise<ActionTarget> {
+  /**
+   * The document in which a marked step's target was found, or undefined
+   * when that cannot be established. The target was found a moment ago and a
+   * top-level navigation could commit in between, so the read is bracketed:
+   * read the current document, confirm the target is still there — the found
+   * element still attached for a framed step, the selector still matching for
+   * a top-level one — and read the document again. Only an unchanged document
+   * with the target present is the payment page; anything else is treated as
+   * unresolved, which keeps the whole run in scope.
+   */
+  private async resolvePaymentDocument(page: Page, step: PuppeteerLocatorAction, actionTarget: ActionTarget, tracker: DocumentTracker | undefined): Promise<DocumentId | undefined> {
+    if (tracker === undefined) return undefined
+    const before = await tracker.currentDocument()
+    let present: boolean
+    try {
+      present = actionTarget.element === undefined ? (await page.$(step.querySelector)) !== null : await actionTarget.element.evaluate((element) => element.isConnected)
+    } catch {
+      present = false
+    }
+    const after = await tracker.currentDocument()
+    return present && before !== undefined && before === after ? before : undefined
+  }
+
+  private async waitForRecoverableActionTarget(page: Page, step: PuppeteerLocatorAction, target: Target, onRecovery?: () => Promise<void>): Promise<ActionTarget> {
     if (!step.reloadOnMissingTarget) return this.waitForActionTarget(page, step)
     if (step.frameUrl === undefined) throw new Error('Missing-target recovery requires a trusted frameUrl')
 
@@ -650,12 +747,13 @@ export class DetectionService implements IDetectionService {
       if (recoveryUrl.protocol !== 'https:') throw new Error('Missing-target recovery requires a current HTTPS page URL', { cause: error })
       // Use an explicit GET navigation. Browser reload can resubmit a POST
       // that produced the current document and replay a prior side effect.
+      await onRecovery?.()
       await page.goto(recoveryUrl.href, { waitUntil: 'networkidle2' })
       return this.waitForActionTarget(page, step)
     }
   }
 
-  private async waitForInitialActionTarget(page: Page, step: PuppeteerLocatorAction, navigationUrl: string, target: Target, deadline = Date.now() + INITIAL_WORKFLOW_TIMEOUT_MS): Promise<ActionTarget> {
+  private async waitForInitialActionTarget(page: Page, step: PuppeteerLocatorAction, navigationUrl: string, target: Target, deadline = Date.now() + INITIAL_WORKFLOW_TIMEOUT_MS, onRecovery?: () => Promise<void>): Promise<ActionTarget> {
     const attemptTimeouts = [30000, 30000, page.getDefaultTimeout()]
     for (const [index, configuredTimeout] of attemptTimeouts.entries()) {
       try {
@@ -668,7 +766,8 @@ export class DetectionService implements IDetectionService {
         if (!(error instanceof Error) || error.name !== 'TimeoutError' || isFinalAttempt || Date.now() >= deadline) throw error
 
         target.logger.log(`Initial workflow content did not render; reloading (${index + 2}/${attemptTimeouts.length}).`)
-        await this.navigateToTarget(page, navigationUrl, target, deadline)
+        await onRecovery?.()
+        await this.navigateToTarget(page, navigationUrl, target, deadline, onRecovery)
       }
     }
     throw new Error('Initial action target retry loop exhausted unexpectedly')
@@ -687,7 +786,7 @@ export class DetectionService implements IDetectionService {
     if (delay >= remainingTime || Date.now() >= initialWorkflowDeadline) throw new TimeoutError('Timed out preparing initial workflow content')
   }
 
-  private async navigateToTarget(page: Page, url: string, target: Target, deadline = Date.now() + INITIAL_WORKFLOW_TIMEOUT_MS): Promise<void> {
+  private async navigateToTarget(page: Page, url: string, target: Target, deadline = Date.now() + INITIAL_WORKFLOW_TIMEOUT_MS, onRecovery?: () => Promise<void>): Promise<void> {
     const maxAttempts = 3
     for (let attempt = 1; ; attempt++) {
       try {
@@ -701,6 +800,7 @@ export class DetectionService implements IDetectionService {
         }
         target.logger.log(`Transient initial navigation failure; retrying (${attempt + 1}/${maxAttempts}).`)
         await this.sleep(Math.min(attempt * 1000, Math.max(0, deadline - Date.now())))
+        await onRecovery?.()
       }
     }
   }
@@ -735,9 +835,20 @@ export class DetectionService implements IDetectionService {
     return scheme ? `${scheme}:<redacted>` : '<unparseable>'
   }
 
-  private async detectNewInlineScripts(page: Page, existingScripts: ScriptInfo[], scriptContentMatchers: ScriptMatcher[]): Promise<ScriptInfo[]> {
+  /**
+   * Inline scripts are read from whichever document is current. Attribute
+   * them only when the same document was current before and after the scan;
+   * a navigation in between leaves them unattributed, which keeps them in
+   * payment scope. Dedupe by (hash, document), so the payment page's copy of a
+   * script an earlier page also ran is kept rather than lost to scoping.
+   */
+  private async detectNewInlineScripts(page: Page, existingScripts: ScriptInfo[], scriptContentMatchers: ScriptMatcher[], tracker?: DocumentTracker): Promise<ScriptInfo[]> {
+    const before = await tracker?.currentDocument()
     const detectedInlineScripts = await this.getInlineScriptsSettled(page, scriptContentMatchers)
-    return detectedInlineScripts.filter((detectedScript) => !existingScripts.some((existingScript) => existingScript.hash.value === detectedScript.hash.value))
+    const after = await tracker?.currentDocument()
+    const document = before !== undefined && before === after ? before : undefined
+    const attributed = document === undefined ? detectedInlineScripts : detectedInlineScripts.map((script) => ({ ...script, document }))
+    return attributed.filter((detectedScript) => !existingScripts.some((existingScript) => existingScript.hash.value === detectedScript.hash.value && existingScript.document === detectedScript.document))
   }
 
   /**

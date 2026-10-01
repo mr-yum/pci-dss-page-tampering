@@ -1,6 +1,7 @@
 import type { HTTPResponse } from 'puppeteer'
 
-import type { DetectedResponse, HeaderDetectionSummary, HeaderUrl, ResponseResourceType } from '../types/header.js'
+import type { DocumentId } from '../types/document.js'
+import { type DetectedResponse, type HeaderDetectionSummary, headerObservationKey, type HeaderUrl, type ResponseResourceType } from '../types/header.js'
 import type { InventoryHeaderInfo } from '../types/inventory/model.js'
 import { normalizeTrackedHeader, TRACKED_HEADER_NAMES } from '../utils/header-normalization.js'
 
@@ -15,6 +16,11 @@ export async function headerResponseHandler(
   // recognised here; without it they fail secure and the header is never
   // captured, which reads as "clean" rather than "not monitored".
   targetType: string = 'detection',
+  // Which top-level document this response belongs to, and the index to record
+  // it in (see DocumentLedger and partitionByPaymentScope). Omitted when
+  // documents are not tracked; observations are then unattributed, which keeps
+  // them in payment scope.
+  attribution?: { document: DocumentId | undefined; documents: NonNullable<HeaderDetectionSummary['documents']> },
 ): Promise<void> {
   try {
     const headers = response.headers()
@@ -29,7 +35,7 @@ export async function headerResponseHandler(
     // intentionally URL-deduplicated for comparison, so it cannot tell whether
     // a later response for the same URL omitted a required header.
     const headerNames = new Set(Object.keys(headers).map((name) => name.toLowerCase()))
-    detectedResponses?.push({ url, resourceType, headerNames })
+    detectedResponses?.push({ url, resourceType, headerNames, ...(attribution?.document !== undefined ? { document: attribution.document } : {}) })
 
     for (const headerName of TRACKED_HEADER_NAMES) {
       const rawValue = headers[headerName]
@@ -45,6 +51,12 @@ export async function headerResponseHandler(
         const urls = valuesByUrl.get(value) ?? new Set<HeaderUrl>()
         urls.add(url)
         valuesByUrl.set(value, urls)
+        if (attribution !== undefined) {
+          const key = headerObservationKey(headerName, value, url)
+          const documents = attribution.documents.get(key) ?? new Set<DocumentId | null>()
+          documents.add(attribution.document ?? null)
+          attribution.documents.set(key, documents)
+        }
       }
       if (valuesByUrl.size > 0) {
         detectedHeaders.set(headerName, valuesByUrl)

@@ -1,5 +1,6 @@
 import type { HTTPRequest, HTTPResponse } from 'puppeteer'
 
+import type { DocumentId } from '../types/document.js'
 import type { ScriptInfo } from '../types/script.js'
 import { createSha256Hash } from '../utils/hash.js'
 
@@ -29,7 +30,11 @@ function deriveInitiatorUrl(request: HTTPRequest): string | undefined {
   }
 }
 
-export async function scriptResponseHandler(response: HTTPResponse, detectedScripts: ScriptInfo[]): Promise<void> {
+/**
+ * @param document Top-level document the response belongs to (see `DocumentLedger`),
+ *   or undefined when it could not be attributed — which keeps the script in payment scope.
+ */
+export async function scriptResponseHandler(response: HTTPResponse, detectedScripts: ScriptInfo[], document?: DocumentId): Promise<void> {
   if (response.request().resourceType() === 'script' && response.ok()) {
     try {
       const scriptUrl = response.url()
@@ -39,8 +44,12 @@ export async function scriptResponseHandler(response: HTTPResponse, detectedScri
 
       // Reload recovery can observe more than one body at the same URL. Keep
       // every distinct version so a failed first render cannot mask changed
-      // bytes served by the successful attempt.
-      if (!detectedScripts.some((scriptInfo) => scriptInfo.source.type === 'external' && scriptInfo.source.url === scriptUrl && scriptInfo.hash.value === scriptHash.value) && scriptContent) {
+      // bytes served by the successful attempt. The document is part of the
+      // key too: the same SDK loaded on an earlier page and again on the
+      // payment page must keep the payment page's copy, or scoping would drop
+      // it along with the earlier page. Payment scoping collapses the copies
+      // again within each scope.
+      if (!detectedScripts.some((scriptInfo) => scriptInfo.source.type === 'external' && scriptInfo.source.url === scriptUrl && scriptInfo.hash.value === scriptHash.value && scriptInfo.document === document) && scriptContent) {
         detectedScripts.push({
           source: {
             type: 'external',
@@ -49,6 +58,7 @@ export async function scriptResponseHandler(response: HTTPResponse, detectedScri
             ...(initiator !== undefined ? { initiator } : {}),
           },
           hash: scriptHash,
+          ...(document !== undefined ? { document } : {}),
         })
       }
     } catch (error) {

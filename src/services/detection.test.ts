@@ -798,3 +798,299 @@ describe('DetectionService framed workflow actions', () => {
     expect(serviceInternals().redactFrameUrl('data:text/html,<p>secret</p>')).toBe('data:<redacted>')
   })
 })
+
+describe('DetectionService payment page scope', () => {
+  afterEach(() => jest.restoreAllMocks())
+
+  type DocumentState = { loader: string | Error }
+
+  // A DevTools session whose current top-level document is whatever the test says.
+  function fakeSession(state: DocumentState) {
+    return {
+      on: jest.fn(),
+      send: jest.fn(async (method: string) => {
+        if (method !== 'Page.getFrameTree') return {}
+        if (state.loader instanceof Error) throw state.loader
+        return { frameTree: { frame: { id: 'main', loaderId: state.loader } } }
+      }),
+    }
+  }
+
+  function run(
+    steps: object[],
+    state: DocumentState,
+    options: {
+      attachFails?: boolean
+      onAction?: (index: number) => void
+      targetPresent?: () => boolean
+      recover?: (stepIndex: number) => string | undefined
+      unreadableAtRecovery?: boolean
+      hooks?: { initialNavigation?: unknown; initialTarget?: unknown }
+    } = {},
+  ): Promise<DetectionSummary> {
+    const page = {
+      $: jest.fn(async () => ((options.targetPresent ?? (() => true))() ? {} : null)),
+      setDefaultTimeout: jest.fn(),
+      setDefaultNavigationTimeout: jest.fn(),
+      evaluateOnNewDocument: jest.fn().mockResolvedValue(undefined),
+      on: jest.fn().mockReturnThis(),
+      url: jest.fn().mockReturnValue('https://book.example.test/venue'),
+      mainFrame: jest.fn().mockReturnValue({ _id: 'main' }),
+      createCDPSession: options.attachFails ? jest.fn().mockRejectedValue(new Error('no session')) : jest.fn().mockResolvedValue(fakeSession(state)),
+    } as unknown as Page
+    const context = { newPage: jest.fn().mockResolvedValue(page), close: jest.fn().mockResolvedValue(undefined) }
+    const workflowBrowser = { createBrowserContext: jest.fn().mockResolvedValue(context) } as unknown as Browser
+    const workflowTarget = {
+      url: 'https://book.example.test/venue',
+      workflowId: 'default',
+      workflow: { definition: { steps } },
+      logger: { log: jest.fn(), error: jest.fn() },
+    } as unknown as Target
+
+    const service = serviceInternals() as DetectionServiceInternals & { getInlineScriptsSettled: () => Promise<unknown[]> }
+    service.applyRealisticUserAgent = jest.fn().mockResolvedValue(undefined)
+    service.navigateToTarget = jest.fn().mockImplementation(async (...args: unknown[]) => {
+      if (options.hooks) options.hooks.initialNavigation = args[4]
+    })
+    service.waitForInitialActionTarget = jest.fn().mockImplementation(async (...args: unknown[]) => {
+      if (options.hooks) options.hooks.initialTarget = args[5]
+      return { context: page }
+    })
+    let stepIndex = 0
+    // Simulate the monitor's reload recovery when the test asks for it: call
+    // the hook, then commit the replacement document.
+    service.waitForRecoverableActionTarget = jest.fn().mockImplementation(async (_page: Page, _step: unknown, _target: unknown, onRecovery?: () => Promise<void>) => {
+      stepIndex += 1
+      const replacement = options.recover?.(stepIndex)
+      if (replacement !== undefined) {
+        if (options.unreadableAtRecovery) state.loader = new Error('target closed')
+        await onRecovery?.()
+        state.loader = replacement
+      }
+      return { context: page }
+    })
+    service.getInlineScriptsSettled = jest.fn().mockResolvedValue([])
+    let action = 0
+    service.executeAction = jest.fn().mockImplementation(async () => options.onAction?.(action++))
+
+    return service.detectAttempt(workflowBrowser, workflowTarget)
+  }
+
+  const click = (description: string, extra: object = {}) => ({ description, waitFor: [{ type: 'button', identifier: description }], action: { type: 'click' }, ...extra })
+
+  it("records the document in which the marked step's target was found, before its action navigates away", async () => {
+    const state: DocumentState = { loader: 'L-booking' }
+    const navigations = ['L-checkout', 'L-confirmation']
+    const summary = await run([click('Continue'), click('Pay', { paymentPage: true })], state, { onAction: (index) => (state.loader = navigations[index]!) })
+
+    expect(summary.paymentScope).toEqual(expect.objectContaining({ declared: true, paymentDocuments: ['L-checkout'] }))
+  })
+
+  it('keeps the whole run in scope when the payment document cannot be read', async () => {
+    const state: DocumentState = { loader: 'L-booking' }
+    const summary = await run([click('Continue'), click('Pay', { paymentPage: true })], state, { onAction: (index) => index === 0 && (state.loader = new Error('target closed')) })
+
+    expect(summary.paymentScope).toEqual(expect.objectContaining({ declared: true, paymentDocuments: [] }))
+  })
+
+  it('keeps the whole run in scope when document attribution cannot attach', async () => {
+    const summary = await run([click('Pay', { paymentPage: true })], { loader: 'L-checkout' }, { attachFails: true })
+
+    expect(summary.paymentScope).toEqual(expect.objectContaining({ declared: true, paymentDocuments: [] }))
+    expect(summary.headerSummary.documents).toBeUndefined()
+  })
+
+  it('declares nothing when no step is marked', async () => {
+    const summary = await run([click('Continue')], { loader: 'L-booking' })
+
+    expect(summary.paymentScope).toEqual(expect.objectContaining({ declared: false, paymentDocuments: [] }))
+  })
+
+  // The target was found a moment ago; a navigation committing before the
+  // document is read must not mark the next page as the payment page.
+  it('treats the payment page as unresolved when the document changes while it is being read', async () => {
+    const state: DocumentState = { loader: 'L-checkout' }
+    let reads = 0
+    const summary = await run([click('Pay', { paymentPage: true })], state, {
+      targetPresent: () => {
+        reads += 1
+        state.loader = 'L-next'
+        return true
+      },
+    })
+    expect(reads).toBe(1)
+    expect(summary.paymentScope).toEqual(expect.objectContaining({ declared: true, paymentDocuments: [] }))
+  })
+
+  it('treats the payment page as unresolved when its target is gone by the time the document is read', async () => {
+    const summary = await run([click('Pay', { paymentPage: true })], { loader: 'L-checkout' }, { targetPresent: () => false })
+    expect(summary.paymentScope).toEqual(expect.objectContaining({ declared: true, paymentDocuments: [] }))
+  })
+
+  it("keeps a document the monitor's recovery replaced during a payment step in scope", async () => {
+    const state: DocumentState = { loader: 'L-booking' }
+    const summary = await run([click('Continue'), click('Pay', { paymentPage: true })], state, {
+      onAction: (index) => index === 0 && (state.loader = 'L-checkout-failed'),
+      recover: (stepIndex) => (stepIndex === 1 ? 'L-checkout' : undefined),
+    })
+    expect(summary.paymentScope).toEqual(expect.objectContaining({ paymentDocuments: ['L-checkout'], recoveryReplaced: ['L-checkout-failed'] }))
+  })
+
+  // Recorded on every step: whether the failed render stays in scope is decided
+  // by what replaced it (outsidePaymentDocuments rule 3), not by step index.
+  it('records a document recovery replaced before the marked step too', async () => {
+    const state: DocumentState = { loader: 'L-booking' }
+    const summary = await run([click('Continue'), click('More'), click('Pay', { paymentPage: true })], state, {
+      onAction: (index) => index === 0 && (state.loader = 'L-upsell-failed'),
+      recover: (stepIndex) => (stepIndex === 1 ? 'L-upsell' : undefined),
+    })
+    expect(summary.paymentScope!.recoveryReplaced).toEqual(['L-upsell-failed'])
+  })
+
+  it('abandons scoping when recovery cannot read the document it replaces', async () => {
+    const state: DocumentState = { loader: 'L-booking' }
+    const summary = await run([click('Continue'), click('Pay', { paymentPage: true })], state, {
+      onAction: (index) => index === 0 && (state.loader = 'L-checkout-failed'),
+      recover: (stepIndex) => (stepIndex === 1 ? 'L-checkout' : undefined),
+      unreadableAtRecovery: true,
+    })
+    expect(summary.paymentScope).toEqual(expect.objectContaining({ declared: true, paymentDocuments: [] }))
+  })
+
+  it('passes the recovery hook to the initial navigation and the first step when a payment page is declared', async () => {
+    const hooks: { initialNavigation?: unknown; initialTarget?: unknown } = {}
+    await run([click('Pay', { paymentPage: true })], { loader: 'L-checkout' }, { hooks })
+    expect(hooks.initialNavigation).toEqual(expect.any(Function))
+    expect(hooks.initialTarget).toBe(hooks.initialNavigation)
+  })
+
+  it('passes no recovery hook when no payment page is declared', async () => {
+    const hooks: { initialNavigation?: unknown; initialTarget?: unknown } = { initialNavigation: 'unset', initialTarget: 'unset' }
+    await run([click('Continue')], { loader: 'L-booking' }, { hooks })
+    expect(hooks.initialNavigation).toBeUndefined()
+    expect(hooks.initialTarget).toBeUndefined()
+  })
+
+  // Scoping to the documents that did resolve would push the unresolved
+  // payment page's scripts outside scope: the whole run must stay in.
+  it('abandons scoping when one of two marked steps cannot read its document', async () => {
+    const state: DocumentState = { loader: 'L-checkout' }
+    const summary = await run([click('Card', { paymentPage: true }), click('Pay', { paymentPage: true })], state, { onAction: (index) => index === 0 && (state.loader = new Error('target closed')) })
+
+    expect(summary.paymentScope).toEqual(expect.objectContaining({ declared: true, paymentDocuments: [] }))
+  })
+})
+
+describe('DetectionService inline script attribution', () => {
+  type Internals = {
+    detectNewInlineScripts(page: Page, existing: unknown[], matchers: unknown[], tracker?: unknown): Promise<{ hash: { value: string }; document?: string }[]>
+    getInlineScriptsSettled: () => Promise<unknown[]>
+  }
+  const inline = (hash: string) => ({ source: { type: 'inline', id: `inline_script/${hash}`, content: hash }, hash: { value: hash } })
+  // Each read of the current document returns the next value in turn: before the scan, then after it.
+  const tracker = (...reads: (string | undefined)[]) => ({ currentDocument: jest.fn(async () => reads.shift()) })
+
+  function service(scanned: unknown[]): Internals {
+    const internals = new DetectionService() as unknown as Internals
+    internals.getInlineScriptsSettled = jest.fn().mockResolvedValue(scanned)
+    return internals
+  }
+
+  it('attributes a scan to its document when no navigation happened during it', async () => {
+    const found = await service([inline('a')]).detectNewInlineScripts({} as Page, [], [], tracker('L1', 'L1'))
+    expect(found.map((s) => s.document)).toEqual(['L1'])
+  })
+
+  // A navigation mid-scan means the scripts could belong to either page:
+  // leaving them unattributed keeps them in payment scope.
+  it('leaves a scan unattributed when the document changed during it', async () => {
+    const found = await service([inline('a')]).detectNewInlineScripts({} as Page, [], [], tracker('L1', 'L2'))
+    expect(found[0]).not.toHaveProperty('document')
+  })
+
+  it('keeps the payment page copy of an inline script an earlier page already ran', async () => {
+    const found = await service([inline('a')]).detectNewInlineScripts({} as Page, [{ ...inline('a'), document: 'L1' }], [], tracker('L2', 'L2'))
+    expect(found.map((s) => s.document)).toEqual(['L2'])
+  })
+
+  it('still drops a script already captured from the same document', async () => {
+    const found = await service([inline('a')]).detectNewInlineScripts({} as Page, [{ ...inline('a'), document: 'L2' }], [], tracker('L2', 'L2'))
+    expect(found).toEqual([])
+  })
+})
+
+describe('DetectionService recovery reports the document it replaces', () => {
+  type RecoveryInternals = {
+    waitForActionTarget: jest.Mock
+    waitForRecoverableActionTarget(page: Page, step: PuppeteerLocatorAction, target: Target, onRecovery?: () => Promise<void>): Promise<unknown>
+    waitForInitialActionTarget(page: Page, step: PuppeteerLocatorAction, navigationUrl: string, target: Target, deadline?: number, onRecovery?: () => Promise<void>): Promise<unknown>
+    navigateToTarget: jest.Mock
+  }
+  const timeout = () => Object.assign(new Error('target did not render'), { name: 'TimeoutError' })
+  const logger = { log: jest.fn(), error: jest.fn() }
+
+  it('calls the hook before the reload-on-missing-target navigation', async () => {
+    const events: string[] = []
+    const page = { url: () => 'https://pay.example.test/checkout', getDefaultTimeout: () => 1000, goto: jest.fn(async () => events.push('goto')) } as unknown as Page
+    const service = new DetectionService() as unknown as RecoveryInternals
+    service.waitForActionTarget = jest.fn().mockRejectedValueOnce(timeout()).mockResolvedValueOnce({ context: page })
+    const step = { querySelector: 'input', frameUrl: '^https://pay\\.example\\.test/frame$', reloadOnMissingTarget: true } as unknown as PuppeteerLocatorAction
+
+    await service.waitForRecoverableActionTarget(page, step, { logger } as unknown as Target, async () => void events.push('hook'))
+
+    expect(events).toEqual(['hook', 'goto'])
+  })
+
+  it('calls the hook before each retry of a transient initial navigation failure', async () => {
+    const events: string[] = []
+    const goto = jest
+      .fn()
+      .mockImplementationOnce(async () => {
+        events.push('goto-1')
+        throw new Error('net::ERR_NETWORK_CHANGED')
+      })
+      .mockImplementationOnce(async () => void events.push('goto-2'))
+    const service = new DetectionService() as unknown as { navigateToTarget(...args: unknown[]): Promise<void>; sleep: jest.Mock }
+    service.sleep = jest.fn().mockResolvedValue(undefined)
+
+    await service.navigateToTarget({ goto } as unknown as Page, 'https://pay.example.test/start', { logger } as unknown as Target, Date.now() + 60_000, async () => void events.push('hook'))
+
+    expect(events).toEqual(['goto-1', 'hook', 'goto-2'])
+  })
+
+  it('calls the hook before the initial step reloads the start URL', async () => {
+    const events: string[] = []
+    const page = { getDefaultTimeout: () => 1000 } as unknown as Page
+    const service = new DetectionService() as unknown as RecoveryInternals
+    service.waitForActionTarget = jest.fn().mockRejectedValueOnce(timeout()).mockResolvedValueOnce({ context: page })
+    service.navigateToTarget = jest.fn(async () => void events.push('reload'))
+    const hook = async () => void events.push('hook')
+
+    await service.waitForInitialActionTarget(page, { querySelector: 'button' } as unknown as PuppeteerLocatorAction, 'https://pay.example.test/start', { logger } as unknown as Target, Date.now() + 60_000, hook)
+
+    expect(events).toEqual(['hook', 'reload'])
+    // ...and forwards it, so the reload's own retries are covered too.
+    expect(service.navigateToTarget.mock.calls[0]![4]).toBe(hook)
+  })
+})
+
+describe('DetectionService resolvePaymentDocument', () => {
+  type Internals = { resolvePaymentDocument(page: Page, step: PuppeteerLocatorAction, actionTarget: { context: unknown; element?: unknown }, tracker?: unknown): Promise<string | undefined> }
+  const steady = { currentDocument: jest.fn(async () => 'L-checkout') }
+  const step = { querySelector: 'input' } as unknown as PuppeteerLocatorAction
+  const resolve = (actionTarget: { context: unknown; element?: unknown }) => (new DetectionService() as unknown as Internals).resolvePaymentDocument({ $: async () => ({}) } as unknown as Page, step, actionTarget, steady)
+
+  // A framed step keeps the element the wait found: it must still be attached,
+  // or a navigation may have replaced its document since.
+  it('accepts a framed target whose found element is still attached', async () => {
+    expect(await resolve({ context: {}, element: { evaluate: async () => true } })).toBe('L-checkout')
+  })
+
+  it('rejects a framed target whose found element has been detached', async () => {
+    expect(await resolve({ context: {}, element: { evaluate: async () => false } })).toBeUndefined()
+  })
+
+  it('rejects a framed target whose element can no longer be evaluated', async () => {
+    expect(await resolve({ context: {}, element: { evaluate: async () => Promise.reject(new Error('Execution context was destroyed')) } })).toBeUndefined()
+  })
+})

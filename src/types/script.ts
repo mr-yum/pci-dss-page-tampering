@@ -1,3 +1,4 @@
+import type { DocumentId } from './document.js'
 import type { SHA256Hash } from './hash.js'
 
 export type ExternalScriptSource = {
@@ -43,6 +44,14 @@ export type ScriptSource = ExternalScriptSource | InlineScriptSource
 export type ScriptInfo = {
   source: ScriptSource
   hash: SHA256Hash
+  /**
+   * Top-level browser document the script was observed in (see
+   * `DocumentLedger`). Undefined when it could not be attributed, which keeps
+   * it in payment scope. Part of the dedupe key: the same script observed on
+   * an earlier page and again on the payment page must keep both copies, or
+   * the payment-page copy would be lost to scoping.
+   */
+  document?: DocumentId
 }
 
 export type ScriptDetectionSummary = {

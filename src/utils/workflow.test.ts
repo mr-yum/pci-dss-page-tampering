@@ -237,4 +237,21 @@ describe('workflow retry conversion', () => {
     expect(workflow.retry).toEqual({ maxAttempts: 3, backoffMs: 2500 })
     expect(workflow.locatorActions[0]).toEqual(expect.objectContaining({ retryBoundary: true }))
   })
+
+  it('carries the payment page marker to the step it marks, and only that step', () => {
+    const target = {
+      workflow: {
+        definition: {
+          steps: [
+            { description: 'Continue', waitFor: [{ type: 'button', identifier: 'Continue' }], action: { type: 'click' } },
+            { description: 'Card entry ready', paymentPage: true, waitFor: [{ type: 'span', identifier: 'Pay now' }], action: { type: 'escape' } },
+          ],
+        },
+      },
+    } as unknown as Target
+
+    const steps = getPuppeteerWorkflowFromTarget(target).locatorActions
+    expect(steps[0]).not.toHaveProperty('paymentPage')
+    expect(steps[1]).toEqual(expect.objectContaining({ paymentPage: true }))
+  })
 })

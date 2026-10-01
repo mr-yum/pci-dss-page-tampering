@@ -295,6 +295,61 @@ rule. The workflow-level policy is optional:
 bounded to 0–30000 ms and receives a linear multiplier before later attempts.
 Before opting in, audit every externally visible action and mark its boundary.
 
+### Scoping a Run to the Payment Page
+
+A workflow usually passes through pages that are not the payment page — a
+product page, an upsell, a sign-in — and those pages can legitimately run
+scripts that must never reach the card-entry page, a tag manager for instance.
+Without help the monitor cannot tell them apart: it would alert on, and ask
+for inventory entries for, every script the whole workflow touched. Mark the
+step that runs on the payment page:
+
+```json
+{
+  "description": "Card entry ready",
+  "paymentPage": true,
+  "waitFor": [{ "type": "span", "identifier": "Pay now" }],
+  "action": { "type": "escape", "delay": 2500 }
+}
+```
+
+The run is then scoped to the payment page's **SPA context**: the top-level
+browser document in which this step's target was found, plus every script and
+header observed in that same document — including anything an earlier route
+loaded before a client-side (`pushState`) navigation brought the user there.
+Pages loaded by a full navigation _before_ it are separate documents: they
+are still compared and listed in the auditor report, labelled
+`outside_payment`, but they are never alerted on and never produce inventory
+pull-request entries. An earlier document leaves scope only when it is
+genuinely a different page the payment page replaced — that is, when it
+**never rendered a payment page path** (counting every route it reached by
+client-side navigation, not only the URL it was loaded at) **and was never
+current at or after the payment page**. So everything from the payment page
+onwards stays in scope — a reload of the card form, a 3-D Secure redirect, a
+confirmation page, an earlier page the browser restores from its
+back/forward cache — and so does a failed render of the payment page that
+reload recovery replaced, whether it was loaded at the payment path, routed
+there, or replaced by the monitor's own recovery onto a different path.
+Choose a step whose `waitFor` only exists on the card-entry page — scoping
+relies on it to recognise the payment page, so a selector that also matches
+an earlier page would let that page be taken for it.
+
+The boundary is the browser's own: Chrome's document identity (`loaderId`),
+not step numbers. So if an application stops doing a full page load
+before its payment page, the earlier pages' scripts land in the payment
+document and are alerted on — a removed control shows up as findings, not as
+silence. Anything the monitor cannot attribute to a document stays in scope,
+and if the marked step's document cannot be read the whole run stays in
+scope, exactly as without a marker; the auditor report then records the
+payment page as `resolved: false`, so a marker that has stopped resolving is
+visible. Once a workflow is scoped, `requiredOn` presence checks are judged
+against what stays in scope: a required script or header found only on an
+earlier page that left scope no longer satisfies them.
+
+The marker is supported on top-level steps only — popup pages are not
+observed — and several steps may be marked when a flow has more than one
+payment document. Workflows without a marker behave exactly as before.
+
 ### When One Target Fails
 
 A single target's workflow failing does not stop the run. The other variations in the pass still execute, the inventory diff and push still run for the observations that were made, and under `--mode all` the detection pass still follows an inventory pass that had failures. The failed target is:
@@ -496,6 +551,8 @@ The provenance is specific, not approximate: for an entry authorised by one of s
 ```
 
 The HTML page is self-contained — no network access, no fonts, no images — so it opens from a downloaded CI artefact on a machine with no connectivity. It supports filtering by type and status, free-text search and a "findings only" view, and remains complete with JavaScript disabled (so print-to-PDF captures everything). The JSON is the canonical machine-readable form.
+
+When a target's workflow marks its payment page (see [Scoping a Run to the Payment Page](#scoping-a-run-to-the-payment-page)), the target gains `paymentScope`: the redacted chain of pages the run loaded, each with its scope and the payment page marked, and the counts for the rows the run alerts on. When the payment page was identified, each row also carries `scope` — `payment` or `outside_payment`. When it was not, `paymentScope.resolved` is `false`, rows carry no `scope`, everything was alerted on, and the HTML report says so. `counts` remains the full census. Rows outside the payment page are shown with an **Outside payment page** badge, are left out of the "findings only" view and the job-summary findings, and were never alerted on.
 
 One status filter starts **off**: **Not observed** — inventory entries that nothing on the page matched, either stale inventory or a resource that stopped loading. They are 6.4.3 hygiene signal rather than part of the census, so they are hidden until asked for. They are always present in the markup (and so in a JS-disabled read and in `unmatchedInventoryEntries` in the JSON); the filter only hides them. Being inventory entries rather than observations, they are exempt from the **Type** filter — an entry for a script may match an external or an inline one, so it belongs to neither bucket.
 
