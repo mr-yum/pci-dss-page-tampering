@@ -1,7 +1,7 @@
-import type { HTTPResponse } from 'puppeteer'
+import type { HTTPRequest, HTTPResponse } from 'puppeteer'
 
 import type { ScriptInfo, UnreadScriptResponse } from '../types/script.js'
-import { PendingScriptReads, scriptResponseHandler } from './script.js'
+import { PendingScriptReads, SCRIPT_READ_LATE_REASON, scriptResponseHandler } from './script.js'
 
 type MockInitiator = { type?: string; url?: string; stack?: { callFrames: { url?: string }[] } }
 
@@ -78,6 +78,63 @@ describe('scriptResponseHandler', () => {
       await scriptResponseHandler(unreadableResponse(), [], 'loader-confirm', { unread, step: 6 })
       expect(unread.map((record) => record.document)).toEqual(['loader-checkout', 'loader-confirm'])
     })
+
+    // The deadline records a read as unfinished; closing the context then makes
+    // the same read fail with a different reason. One gap, one record.
+    it('records the same script once however many reasons it fails for', async () => {
+      const unread: UnreadScriptResponse[] = []
+      await scriptResponseHandler(unreadableResponse(undefined, 'the response body was still being read 15s after the workflow finished'), [], 'loader-checkout', { unread, step: 5 })
+      await scriptResponseHandler(unreadableResponse(undefined, 'Session closed. Most likely the page has been closed.'), [], 'loader-checkout', { unread, step: 5 })
+      expect(unread).toHaveLength(1)
+      expect(unread[0]?.reason).toBe('the response body was still being read 15s after the workflow finished')
+    })
+  })
+
+  // Once the run has drained its reads and is building its summary, a body
+  // that lands late must neither be compared (the summary would not include
+  // it consistently) nor vanish.
+  describe('once the run is sealed', () => {
+    let consoleError: jest.SpyInstance
+    beforeEach(() => {
+      consoleError = jest.spyOn(console, 'error').mockImplementation()
+    })
+    afterEach(() => consoleError.mockRestore())
+
+    it('records a body that finishes reading late as unread instead of comparing it', async () => {
+      const detectedScripts: ScriptInfo[] = []
+      const unread: UnreadScriptResponse[] = []
+      await scriptResponseHandler(scriptResponse('body', 'https://cdn.example.com/late.js'), detectedScripts, 'loader-confirm', { unread, step: 6, sealed: () => true })
+      expect(detectedScripts).toEqual([])
+      expect(unread).toEqual([{ url: 'https://cdn.example.com/late.js', resourceType: 'script', status: 200, reason: SCRIPT_READ_LATE_REASON, document: 'loader-confirm', step: 6 }])
+      expect(String(consoleError.mock.calls[0]?.[0])).toContain('recorded as unread')
+    })
+
+    it('still compares a body that is read before the run is sealed', async () => {
+      const detectedScripts: ScriptInfo[] = []
+      await scriptResponseHandler(scriptResponse('body'), detectedScripts, 'loader-confirm', { unread: [], step: 6, sealed: () => false })
+      expect(detectedScripts).toHaveLength(1)
+    })
+
+    it('does not record a script twice when its request was recorded as unanswered and its response then lands late', async () => {
+      const atDeadline: UnreadScriptResponse = { url: 'https://cdn.example.com/late.js', resourceType: 'script', status: 0, reason: 'no response had arrived 15s after the workflow finished', document: 'loader-confirm', step: 6 }
+      const unread: UnreadScriptResponse[] = [atDeadline]
+      await scriptResponseHandler(scriptResponse('body', 'https://cdn.example.com/late.js'), [], 'loader-confirm', { unread, step: 6, sealed: () => true })
+      expect(unread).toEqual([atDeadline])
+    })
+
+    it('does not record a script twice when the deadline recorded it and the closing context fails it again', async () => {
+      const atDeadline: UnreadScriptResponse = {
+        url: 'https://cdn.example.com/pay.js?token=secret',
+        resourceType: 'script',
+        status: 200,
+        reason: 'the response body was still being read 15s after the workflow finished',
+        document: 'loader-checkout',
+        step: 5,
+      }
+      const unread: UnreadScriptResponse[] = [atDeadline]
+      await scriptResponseHandler(unreadableResponse(undefined, 'Session closed. Most likely the page has been closed.'), [], 'loader-checkout', { unread, step: 5, sealed: () => true })
+      expect(unread).toEqual([atDeadline])
+    })
   })
 
   describe('PendingScriptReads', () => {
@@ -95,7 +152,7 @@ describe('scriptResponseHandler', () => {
       const response = { ...scriptResponse('never'), status: () => 200, url: () => 'https://cdn.example.com/slow.js', text: () => new Promise<string>(() => undefined) } as unknown as HTTPResponse
       reads.track(scriptResponseHandler(response, []), response, 'loader-checkout', 7)
 
-      expect(await reads.settle(10)).toEqual([{ url: 'https://cdn.example.com/slow.js', resourceType: 'script', status: 200, step: 7, document: 'loader-checkout' }])
+      expect(await reads.settle(10)).toEqual([{ url: 'https://cdn.example.com/slow.js', resourceType: 'script', status: 200, step: 7, document: 'loader-checkout', phase: 'reading' }])
     })
 
     // A response can arrive, and start a read, while settle is already
@@ -114,6 +171,44 @@ describe('scriptResponseHandler', () => {
       releaseFirst()
 
       expect(await settled).toEqual([])
+    })
+
+    function scriptRequest(url = 'https://cdn.example.com/late.js?sig=abc', resourceType = 'script'): HTTPRequest {
+      return { resourceType: () => resourceType, url: () => url } as unknown as HTTPRequest
+    }
+
+    // A request issued by the last step has no read to wait for yet; without
+    // this its response would land while the context was closing, after the
+    // run had been summarised.
+    it('waits for a script request whose response has not arrived, and returns it at the deadline', async () => {
+      const reads = new PendingScriptReads()
+      reads.trackRequest(scriptRequest(), 4, () => 'loader-confirm')
+      expect(await reads.settle(50)).toEqual([{ url: 'https://cdn.example.com/late.js?sig=abc', resourceType: 'script', status: 0, step: 4, document: 'loader-confirm', phase: 'awaiting-response' }])
+    })
+
+    it('stops waiting for a request once it finishes or fails', async () => {
+      const reads = new PendingScriptReads()
+      const request = scriptRequest()
+      reads.trackRequest(request, 4, () => undefined)
+      const settling = reads.settle(5000)
+      reads.requestSettled(request)
+      expect(await settling).toEqual([])
+    })
+
+    it('hands a request over to its read when the response arrives, and lists it once if that read is still pending at the deadline', async () => {
+      const reads = new PendingScriptReads()
+      const request = scriptRequest('https://cdn.example.com/app.js')
+      reads.trackRequest(request, 4, () => undefined)
+      const response = { ...scriptResponse('body', 'https://cdn.example.com/app.js'), request: () => request, text: () => new Promise<string>(() => undefined) } as unknown as HTTPResponse
+      reads.track(scriptResponseHandler(response, []), response, 'loader-confirm', 4)
+      const unsettled = await reads.settle(50)
+      expect(unsettled).toEqual([{ url: 'https://cdn.example.com/app.js', resourceType: 'script', status: 200, step: 4, document: 'loader-confirm', phase: 'reading' }])
+    })
+
+    it('ignores requests that are not scripts', async () => {
+      const reads = new PendingScriptReads()
+      reads.trackRequest(scriptRequest('https://api.example.com/session', 'xhr'), 4, () => undefined)
+      expect(await reads.settle(50)).toEqual([])
     })
 
     it('ignores responses the handler does not read', async () => {

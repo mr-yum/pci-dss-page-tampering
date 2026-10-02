@@ -90,8 +90,8 @@ OPTIONAL PARAMETERS:
 EXIT CODES:
   0    Success - all workflows completed successfully
   1    Validation error - invalid CLI arguments or configuration
-  2    Execution error - Git, network, or workflow failure (partial runs and
-       undelivered alerts; not rum-compare)
+  2    Execution error - Git, network, or workflow failure (partial runs,
+       undelivered alerts, unread payment-page scripts; not rum-compare)
 
 EXAMPLES:
 

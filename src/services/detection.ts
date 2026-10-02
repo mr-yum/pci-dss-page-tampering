@@ -56,7 +56,12 @@ const SCRIPT_READ_SETTLE_TIMEOUT_MS = 15000
 const RETAINED_RESPONSE_BODIES_TOTAL_BYTES = 256 * 1024 * 1024
 const RETAINED_RESPONSE_BODY_MAX_BYTES = 32 * 1024 * 1024
 
+// How long a closed context is given for the reads it cut off to reject, so
+// their records land before the summary is built.
+const SCRIPT_READ_CLOSE_GRACE_MS = 2000
+
 const SCRIPT_READ_UNFINISHED_REASON = `the response body was still being read ${SCRIPT_READ_SETTLE_TIMEOUT_MS / 1000}s after the workflow finished`
+const SCRIPT_REQUEST_UNANSWERED_REASON = `no response had arrived ${SCRIPT_READ_SETTLE_TIMEOUT_MS / 1000}s after the workflow finished`
 
 type ActionTarget = {
   context: Page | Frame
@@ -108,6 +113,9 @@ export class DetectionService implements IDetectionService {
     // Script responses whose body could not be read: recorded, never dropped.
     const unreadScripts: UnreadScriptResponse[] = []
     const pendingScriptReads = new PendingScriptReads()
+    // Set once the run has waited for its reads and is being accounted for:
+    // from then on a late read is recorded as unread, never compared.
+    let scriptsSealed = false
     // Workflow step running now (0 = initial navigation), read by the response
     // handler when each response arrives.
     let currentStep = 0
@@ -142,8 +150,6 @@ export class DetectionService implements IDetectionService {
       throw error
     }
     let puppeteerWorkflow: any
-    // Taken before the context closes (see below); undefined only on a path that throws.
-    let capturedScripts: { external: ScriptInfo[]; unread: UnreadScriptResponse[] } | undefined
     let retryBoundaryCrossed = false
     // Resolved from the target's template URL before navigation; hoisted so
     // every error path can log the URL that was actually navigated.
@@ -200,9 +206,12 @@ export class DetectionService implements IDetectionService {
       // Bootstrap page. The document is read synchronously when the response
       // arrives, before any await, so it names the document that issued it.
       page
+        .on('request', (request) => pendingScriptReads.trackRequest(request, currentStep, (issued) => tracker?.documentOf(issued)))
+        .on('requestfailed', (request) => pendingScriptReads.requestSettled(request))
+        .on('requestfinished', (request) => pendingScriptReads.requestSettled(request))
         .on('response', (response) => {
           const document = documentOf(response)
-          pendingScriptReads.track(scriptResponseHandler(response, externalScripts, document, { unread: unreadScripts, step: currentStep }), response, document, currentStep)
+          pendingScriptReads.track(scriptResponseHandler(response, externalScripts, document, { unread: unreadScripts, step: currentStep, sealed: () => scriptsSealed }), response, document, currentStep)
         })
         .on('response', (response) =>
           headerResponseHandler(response, headers, responses, target.url, inventoryHeaders, target.workflowId ?? 'default', target.type, tracker === undefined ? undefined : { document: documentOf(response), documents: headerDocuments }),
@@ -308,17 +317,19 @@ export class DetectionService implements IDetectionService {
         }
       }
 
-      // Let in-flight script reads finish while the DevTools session they
-      // need is still open, then account for any that did not.
-      for (const unfinished of await pendingScriptReads.settle(SCRIPT_READ_SETTLE_TIMEOUT_MS)) {
-        target.logger.error(`Script ${redactUrl(unfinished.url)} (step ${unfinished.step}) was still being read when the workflow finished; recorded as unread.`)
-        recordUnreadScript(unreadScripts, { ...unfinished, reason: SCRIPT_READ_UNFINISHED_REASON })
+      // Let in-flight script requests and body reads finish while the DevTools
+      // session they need is still open, then account for any that did not.
+      for (const { phase, ...unsettled } of await pendingScriptReads.settle(SCRIPT_READ_SETTLE_TIMEOUT_MS)) {
+        const reading = phase === 'reading'
+        target.logger.error(`Script ${redactUrl(unsettled.url)} (step ${unsettled.step}) ${reading ? 'was still being read' : 'had not received a response'} when the workflow finished; recorded as unread.`)
+        recordUnreadScript(unreadScripts, { ...unsettled, reason: reading ? SCRIPT_READ_UNFINISHED_REASON : SCRIPT_REQUEST_UNANSWERED_REASON })
       }
-      // Snapshot now, before the context closes: closing it can settle a
-      // leftover read — succeeding, or failing a second time with "Session
-      // closed" — and that must neither compare a script already recorded as
-      // unread nor record it twice.
-      capturedScripts = { external: [...externalScripts], unread: [...unreadScripts] }
+      // The run is accounted for from here: a read that lands late is recorded
+      // as unread rather than compared (UnreadScriptAccounting.sealed), and a
+      // read that fails a second time as the context closes is the same gap,
+      // deduplicated by recordUnreadScript. The arrays stay live rather than
+      // being copied, so a record made while the context closes is not lost.
+      scriptsSealed = true
     } catch (e) {
       // Enhanced error logging for the main catch block
       if (e instanceof Error && e.name === 'TimeoutError') {
@@ -341,6 +352,9 @@ export class DetectionService implements IDetectionService {
       // Closes the page and discards cookies/storage. Log-and-continue on
       // failure so cleanup can never mask a workflow error.
       await context.close().catch((closeError) => target.logger.error(`Failed to close browser context: ${closeError}`))
+      // A read the close cut off rejects a moment later; give it that moment
+      // so its record lands before the summary is built from these arrays.
+      await pendingScriptReads.settle(SCRIPT_READ_CLOSE_GRACE_MS)
     }
 
     const declared = puppeteerWorkflow.locatorActions.some((step: PuppeteerLocatorAction) => step.paymentPage === true)
@@ -354,18 +368,16 @@ export class DetectionService implements IDetectionService {
       )
     }
 
-    // Always set here: every path that skips the assignment throws.
-    const scripts = capturedScripts!
-    if (scripts.unread.length > 0) {
-      target.logger.error(`${scripts.unread.length} script response(s) could not be read and were not compared: ${scripts.unread.map((unread) => redactUrl(unread.url)).join(', ')}`)
+    if (unreadScripts.length > 0) {
+      target.logger.error(`${unreadScripts.length} script response(s) could not be read and were not compared: ${unreadScripts.map((unread) => redactUrl(unread.url)).join(', ')}`)
     }
 
     return {
       target: target,
       scriptSummary: {
-        externalScripts: scripts.external,
+        externalScripts: externalScripts,
         inlineScripts: internalScripts,
-        unreadScripts: scripts.unread,
+        unreadScripts: unreadScripts,
       },
       headerSummary: {
         headers: headers,

@@ -291,7 +291,7 @@ function formatUnread(scripts: readonly ReportUnreadScript[]): RawHtml {
               (script) =>
                 html`<tr>
                   <td class="mono">${script.url}</td>
-                  <td>${String(script.status)}</td>
+                  <td>${script.status === 0 ? 'no response' : String(script.status)}</td>
                   <td>${String(script.step)}</td>
                   <td class="mono">${script.documentUrl ?? html`<span class="muted">unattributed</span>`}</td>
                   <td>${script.scope === 'outside_payment' ? 'outside payment page' : 'payment page'}</td>

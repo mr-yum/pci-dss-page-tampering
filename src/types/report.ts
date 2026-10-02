@@ -26,9 +26,14 @@ import type { TargetType } from './target.js'
 /**
  * Semantic version of the document shape.
  *
- * Minor for additive optional fields; major for a removal, a retype, or a
- * change in what an existing value means. Consumers should gate on the major
- * and tolerate unknown fields.
+ * Minor for additive optional fields, and for a new reason an existing
+ * status can be reported for when the status already meant what it still
+ * means — `run.status: "partial"` has always meant "this census is short, do
+ * not read it as clean", so a new way for a census to be short (an unread
+ * payment-page script, 1.5.0) is minor even though `run.failures` can now be
+ * empty alongside it. Major for a removal, a retype, or a change in what an
+ * existing value means. Consumers should gate on the major, tolerate unknown
+ * fields, and never infer one field's shape from another's value.
  */
 export const REPORT_SCHEMA_VERSION = '1.5.0'
 
