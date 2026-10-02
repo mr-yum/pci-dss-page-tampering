@@ -1,7 +1,8 @@
 import type { IAlertService } from '../interfaces/alert.js'
 import type { ExecutionMode } from '../types/config.js'
-import type { AlertDeliveryFailure, AuditorReportLocation, ExecutionPass, ExecutionSummary, FailedTarget } from '../types/execution-summary.js'
+import { type AlertDeliveryFailure, type AuditorReportLocation, type ExecutionPass, type ExecutionSummary, type FailedTarget, unreadInPaymentScope, type UnreadScriptEntry } from '../types/execution-summary.js'
 import type { InventoryAlert } from '../types/inventory/model.js'
+import type { UnreadScriptRecord } from '../types/script.js'
 import { redactForDisplay } from './report/mapper.js'
 
 export type RunLedgerFinishInput = {
@@ -17,16 +18,19 @@ export type RunLedgerFinishInput = {
 
 /**
  * Thrown by {@link RunLedger.finish} once the run summary has gone out, so the
- * process exits non-zero for a run that left any target unmonitored or any
- * finding unannounced.
+ * process exits non-zero for a run that left any target unmonitored, any
+ * payment-page script unread, or any finding unannounced.
  */
 export class RunFailuresError extends Error {
   constructor(
     readonly failed: readonly FailedTarget[],
     readonly undelivered: readonly AlertDeliveryFailure[],
+    /** Unread scripts in payment scope only: the ones that fail the run. */
+    readonly unread: readonly UnreadScriptEntry[] = [],
   ) {
     const parts: string[] = []
     if (failed.length > 0) parts.push(`${failed.length} target run(s) failed: ${failed.map((target) => `${target.name} (${target.pass})`).join(', ')}`)
+    if (unread.length > 0) parts.push(`${unread.length} payment page script(s) could not be read: ${unread.map((script) => `${script.url} on ${script.target} (${script.pass})`).join(', ')}`)
     if (undelivered.length > 0) parts.push(`${undelivered.length} alert(s) could not be delivered: ${undelivered.map((failure) => `${failure.alert}${failure.target === null ? '' : ` for ${failure.target}`}`).join(', ')}`)
     super(`${parts.join('; ')}. The remaining targets were processed; see the run summary and the auditor report.`)
     this.name = 'RunFailuresError'
@@ -48,6 +52,7 @@ export class RunLedger {
   private readonly processed: string[] = []
   private readonly failed: FailedTarget[] = []
   private readonly undelivered: AlertDeliveryFailure[] = []
+  private readonly unread: UnreadScriptEntry[] = []
   private resourceCount = 0
 
   constructor(private readonly log: (message: string) => void) {}
@@ -62,6 +67,10 @@ export class RunLedger {
 
   get alertsUndelivered(): readonly AlertDeliveryFailure[] {
     return this.undelivered
+  }
+
+  get scriptsUnread(): readonly UnreadScriptEntry[] {
+    return this.unread
   }
 
   get totalResourceCount(): number {
@@ -89,6 +98,29 @@ export class RunLedger {
   }
 
   /**
+   * Record the scripts a target run received but could not read.
+   *
+   * Those in payment scope fail the run exactly as a failed target does: the
+   * target completed, but part of its payment page went unexamined. Those on
+   * an earlier page the payment page replaced are named in the summary as
+   * evidence and do not affect the exit code. The records arrive redacted
+   * (see `toUnreadScriptRecords`).
+   */
+  recordUnreadScripts(target: string, pass: ExecutionPass, scripts: { payment: readonly UnreadScriptRecord[]; outside: readonly UnreadScriptRecord[] }): void {
+    for (const [records, outsidePaymentPage] of [
+      [scripts.payment, false],
+      [scripts.outside, true],
+    ] as const) {
+      for (const record of records) {
+        this.unread.push({ ...record, target, pass, outsidePaymentPage })
+        this.log(
+          `Script ${record.url} on target '${target}' (${pass} pass, step ${record.step}) could not be read and was not compared${outsidePaymentPage ? ' — outside the payment page, recorded for evidence only' : '; the run will be marked partial'}. Reason: ${record.reason}`,
+        )
+      }
+    }
+  }
+
+  /**
    * Record alerts that were produced but never arrived.
    *
    * Idempotent per failure object, so the alert service's running list can be
@@ -108,6 +140,7 @@ export class RunLedger {
       targetsProcessed: [...this.processed],
       targetsFailed: [...this.failed],
       alertsUndelivered: [...this.undelivered],
+      scriptsUnread: [...this.unread],
       repositoryUrl: input.repositoryUrl,
       inventoryBranch: input.inventoryBranch,
       detectionBranch: input.detectionBranch,
@@ -120,7 +153,8 @@ export class RunLedger {
 
   /**
    * Send the run summary, then throw {@link RunFailuresError} if any target
-   * did not complete or any alert was not delivered.
+   * did not complete, any script in payment scope could not be read, or any
+   * alert was not delivered.
    *
    * The alert service's own delivery failures are folded in first, so the
    * summary that goes out already names them. The summary send itself is
@@ -148,6 +182,7 @@ export class RunLedger {
       this.recordUndeliveredAlerts(input.alertService.getDeliveryFailures())
     }
 
-    if (this.failed.length > 0 || this.undelivered.length > 0) throw new RunFailuresError(this.failed, this.undelivered)
+    const unreadInScope = unreadInPaymentScope(this.unread)
+    if (this.failed.length > 0 || this.undelivered.length > 0 || unreadInScope.length > 0) throw new RunFailuresError(this.failed, this.undelivered, unreadInScope)
   }
 }

@@ -9,7 +9,7 @@ import type { MissingRequiredScript } from '../../types/comparison/missing-requi
 import type { UnknownHeaderFound } from '../../types/comparison/unknown-header-found.js'
 import type { UnknownScriptFound } from '../../types/comparison/unknown-script-found.js'
 import { ExecutionMode } from '../../types/config.js'
-import { type AlertDeliveryFailure, type ExecutionSummary, getExecutionOutcome } from '../../types/execution-summary.js'
+import { type AlertDeliveryFailure, type ExecutionSummary, getExecutionOutcome, unreadInPaymentScope } from '../../types/execution-summary.js'
 import type { InventoryAlert } from '../../types/inventory/model.js'
 import type { Target } from '../../types/target.js'
 import { extractHost, redactUrl } from '../../utils/url.js'
@@ -205,14 +205,18 @@ export class ConsoleAlertService implements IAlertService {
   async alertOnRunCompletion(summary: ExecutionSummary, _alertDestinations: InventoryAlert): Promise<void> {
     const failed = summary.targetsFailed ?? []
     const undelivered = summary.alertsUndelivered ?? []
+    const unreadInScope = unreadInPaymentScope(summary.scriptsUnread)
+    const unreadOutside = (summary.scriptsUnread ?? []).filter((entry) => entry.outsidePaymentPage)
     switch (getExecutionOutcome(summary)) {
       case 'success':
         console.log(`[Console Alert -> Success]: Workflow execution completed successfully`)
         break
       case 'partial': {
-        const problems = [failed.length > 0 ? `${failed.length} target(s) failed and were not monitored` : null, undelivered.length > 0 ? `${undelivered.length} alert(s) could not be delivered` : null].filter(
-          (part): part is string => part !== null,
-        )
+        const problems = [
+          failed.length > 0 ? `${failed.length} target(s) failed and were not monitored` : null,
+          unreadInScope.length > 0 ? `${unreadInScope.length} payment page script(s) could not be read and were not checked` : null,
+          undelivered.length > 0 ? `${undelivered.length} alert(s) could not be delivered` : null,
+        ].filter((part): part is string => part !== null)
         console.log(`[Console Alert -> Partial Failure]: Workflow execution completed, but ${problems.join(' and ')}`)
         break
       }
@@ -232,6 +236,18 @@ export class ConsoleAlertService implements IAlertService {
       console.log(`  Targets Failed: ${failed.length}`)
       for (const target of failed) {
         console.log(`    - ${target.name} (${target.pass}): ${target.reason}`)
+      }
+    }
+
+    // Named in full, like failed targets: which script on which page went unread.
+    for (const [label, entries] of [
+      ['Scripts Not Read', unreadInScope],
+      ['Scripts Not Read Outside The Payment Page (evidence only)', unreadOutside],
+    ] as const) {
+      if (entries.length === 0) continue
+      console.log(`  ${label}: ${entries.length}`)
+      for (const script of entries) {
+        console.log(`    - ${script.url} on ${script.target} (${script.pass}, step ${script.step}, ${script.documentUrl ?? 'unattributed page'}): ${script.reason}`)
       }
     }
 

@@ -186,6 +186,19 @@ describe('validateExecutionSummary', () => {
       expect(getExecutionOutcome({ targetsProcessed: ['1.0'], alertsUndelivered: [{ alert: 'unauthorized header alerts', target: 'https://pay.example.com', reason: 'invalid_blocks' }] })).toBe('partial')
     })
 
+    describe('unread scripts', () => {
+      const unread = { url: 'https://cdn.example.test/pay.js', resourceType: 'script', status: 200, step: 5, documentUrl: null, reason: 'body evicted', target: '1.0', pass: 'detection' as const }
+
+      // The payment page ran a script nobody examined: not a clean run.
+      it('is partial when a payment-page script could not be read', () => {
+        expect(getExecutionOutcome({ targetsProcessed: ['1.0'], scriptsUnread: [{ ...unread, outsidePaymentPage: false }] })).toBe('partial')
+      })
+
+      it('stays success when the only unread script was on an earlier page the payment page replaced', () => {
+        expect(getExecutionOutcome({ targetsProcessed: ['1.0'], scriptsUnread: [{ ...unread, outsidePaymentPage: true }] })).toBe('success')
+      })
+    })
+
     it('is failure when every attempted target failed', () => {
       expect(getExecutionOutcome({ targetsProcessed: [], targetsFailed: [{ name: '2.0', pass: 'detection', reason: 'boom' }] })).toBe('failure')
     })

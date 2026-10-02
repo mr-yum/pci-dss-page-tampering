@@ -1136,7 +1136,7 @@ describe('SlackAlertService - Typed Results Handling (Phase 4)', () => {
  *   - Error handling (logs and continues)
  */
 import { ExecutionMode } from '../../types/config.js'
-import type { ExecutionSummary } from '../../types/execution-summary.js'
+import type { ExecutionSummary, UnreadScriptEntry } from '../../types/execution-summary.js'
 
 describe('SlackAlertService - alertOnRunCompletion (Phase 3)', () => {
   let service: SlackAlertService
@@ -1485,6 +1485,60 @@ describe('SlackAlertService - alertOnRunCompletion (Phase 3)', () => {
       const texts = (sendMessageSpy.mock.calls[0]![0] as any).blocks.map((block: any) => block.text?.text ?? '') as string[]
       expect(texts[0]).toBe(':warning: *Workflow Execution Completed With 1 Undelivered Alert* :warning:')
       expect(texts).toContain('*Targets Processed*: 1.0, 2.0')
+    })
+
+    describe('scripts that could not be read', () => {
+      const unread = (overrides: Partial<UnreadScriptEntry> = {}): UnreadScriptEntry => ({
+        url: 'https://cdn.example.test/pay.js',
+        resourceType: 'script',
+        status: 200,
+        step: 5,
+        documentUrl: 'https://shop.example.test/checkout',
+        reason: 'Could not load response body for this request.',
+        target: 'Shop production',
+        pass: 'detection',
+        outsidePaymentPage: false,
+        ...overrides,
+      })
+
+      // The summary is the one place a reader learns what went unexamined, so
+      // it names the target and the script, never just a count.
+      it('switches to the warning headline and names each payment-page script with its target, step and page', async () => {
+        const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+        await service.alertOnRunCompletion(createSummary({ scriptsUnread: [unread(), unread({ url: 'https://cdn.example.test/3ds.js', step: 6 })] }), mockAlertDestinations)
+
+        const texts = (sendMessageSpy.mock.calls[0]![0] as any).blocks.map((block: any) => block.text?.text ?? '') as string[]
+        expect(texts[0]).toBe(':warning: *Workflow Execution Completed With 2 Unread Payment Page Scripts* :warning:')
+        const block = texts.find((text) => text.startsWith('*Scripts Not Read (2)*')) as string
+        expect(block).toContain('*not checked*')
+        expect(block).toContain('• `https://cdn.example.test/pay.js` on `Shop production` (detection, step 5, `https://shop.example.test/checkout`): Could not load response body for this request.')
+        expect(block).toContain('• `https://cdn.example.test/3ds.js` on `Shop production` (detection, step 6,')
+      })
+
+      it('lists a script outside the payment page separately and keeps the green headline', async () => {
+        const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+        await service.alertOnRunCompletion(createSummary({ scriptsUnread: [unread({ url: 'https://cdn.example.test/landing.js', outsidePaymentPage: true, documentUrl: null })] }), mockAlertDestinations)
+
+        const texts = (sendMessageSpy.mock.calls[0]![0] as any).blocks.map((block: any) => block.text?.text ?? '') as string[]
+        expect(texts[0]).toBe(':white_check_mark: *Workflow Execution Completed Successfully* :white_check_mark:')
+        expect(texts.some((text) => text.startsWith('*Script Not Read (1)*'))).toBe(false)
+        const block = texts.find((text) => text.startsWith('*Script Not Read Outside The Payment Page (1)*')) as string
+        expect(block).toContain('not a monitoring gap')
+        expect(block).toContain('`https://cdn.example.test/landing.js` on `Shop production` (detection, step 5, an unattributed page)')
+      })
+
+      it('escapes a page-influenced URL and reason', async () => {
+        const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+        await service.alertOnRunCompletion(createSummary({ scriptsUnread: [unread({ url: 'https://cdn.example.test/<!channel>.js', reason: '<https://evil.example|click>' })] }), mockAlertDestinations)
+
+        const texts = (sendMessageSpy.mock.calls[0]![0] as any).blocks.map((block: any) => block.text?.text ?? '') as string[]
+        const block = texts.find((text) => text.startsWith('*Script Not Read (1)*')) as string
+        expect(block).not.toContain('<!channel>')
+        expect(block).toContain('&lt;https://evil.example|click&gt;')
+      })
     })
 
     it('clips an overlong reason per entry rather than dropping the entry', async () => {

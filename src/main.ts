@@ -30,6 +30,7 @@ import { ExecutionMode, type RuntimeConfiguration } from './types/config.js'
 import type { AuditorReportLocation, ExecutionPass } from './types/execution-summary.js'
 import { getInventoryWorkflows, type Inventory, type InventoryAlert, type InventoryDifferenceResult, type InventoryWorkflow } from './types/inventory/model.js'
 import type { ReportPass } from './types/report.js'
+import type { UnreadScriptRecord } from './types/script.js'
 import { PullTarget, type Target } from './types/target.js'
 import { mapGroupsSequentially } from './utils/concurrency.js'
 import { createLogger } from './utils/logger.js'
@@ -160,6 +161,12 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
    */
   const targetDisplayName = (inventory: Inventory, workflow: InventoryWorkflow, target: Target): string => target.name ?? `${inventory.fileName.replace(/\.json$/, '')}/${workflow.id} (${target.type})`
 
+  /** A pass whose targets all completed can still have left payment-page scripts unread; say so instead of "successfully". */
+  const passOutcome = (results: readonly (readonly TargetRunResult[])[]): string | null => {
+    const unread = results.flat().reduce((total, result) => total + result.unreadScripts.payment.length, 0)
+    return unread === 0 ? null : `Workflow pass completed, but ${unread} payment page script(s) could not be read; see the run summary.`
+  }
+
   /** Fold the targets a pass could not complete into the run summary. */
   const recordTargetFailures = (pass: ExecutionPass, failures: readonly { group: Inventory; item: InventoryWorkflow; error: unknown }[]): void => {
     for (const failure of failures) {
@@ -168,7 +175,8 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
   }
 
   /**
-   * Send the run summary, then fail the process if any target did not complete.
+   * Send the run summary, then fail the process if any target did not complete,
+   * any payment-page script could not be read, or any alert was not delivered.
    *
    * Order matters: the summary is the operator's account of what was and was
    * not monitored, so it goes out even when the exit code is about to be
@@ -203,7 +211,13 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
      */
     inventoryUpdatedResults: ReadonlySet<ComparisonResultType>
   }
-  type TargetRunResult = { comparisonResults: ComparisonResultType[]; resourceCount: number; pendingAlerts: PendingAlerts | null }
+  type TargetRunResult = {
+    comparisonResults: ComparisonResultType[]
+    resourceCount: number
+    pendingAlerts: PendingAlerts | null
+    /** Script responses whose body could not be read, by payment scope. */
+    unreadScripts: { payment: UnreadScriptRecord[]; outside: UnreadScriptRecord[] }
+  }
 
   // Helper function to run workflow for a single target.
   // For detection targets, alerts are sent immediately (no PR exists). For
@@ -237,6 +251,7 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
       const scoped = await compareWithPaymentScope(detectionSummaryForTarget, payload, { scripts: scriptComparisonService, headers: headerComparisonService })
       const scriptComparisonResults = scoped.payment.scripts
       const headerComparisonResults = scoped.payment.headers
+      const unreadScripts = { payment: scoped.unread.payment, outside: scoped.unread.outside ?? [] }
 
       // T009: Calculate resource count for this target (scripts + headers)
       const resourceCount = scriptComparisonResults.length + headerComparisonResults.length
@@ -262,12 +277,13 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
           comparisonResults: allComparisonResults,
           resourceCount,
           pendingAlerts: { scriptComparisonResults, headerComparisonResults, target, alertDestinations: payload.alerts, inventoryUpdatedResults: new Set() },
+          unreadScripts,
         }
       } else {
         // Detection mode: no PR is ever created here, alert immediately.
         await alertService.alertForTypedResults(scriptComparisonResults, target, payload.alerts)
         await alertService.alertForTypedResults(headerComparisonResults, target, payload.alerts)
-        return { comparisonResults: [...scriptComparisonResults, ...headerComparisonResults], resourceCount, pendingAlerts: null }
+        return { comparisonResults: [...scriptComparisonResults, ...headerComparisonResults], resourceCount, pendingAlerts: null, unreadScripts }
       }
     } catch (error) {
       // Record the gap so a partially-failed run still produces evidence for
@@ -459,7 +475,11 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
           (inventory) => getWorkflowsForTargetFilter(inventory, config.targetFilter.targetName),
           async (inventory, workflow) => {
             const result = await runForTargetAsync(browser, inventory, workflow.inventory)
-            ledger.recordSuccess(targetDisplayName(inventory, workflow, workflow.inventory), result.resourceCount)
+            const name = targetDisplayName(inventory, workflow, workflow.inventory)
+            ledger.recordSuccess(name, result.resourceCount)
+            // A completed target can still have left payment-page scripts
+            // unread; the ledger fails the run for those like a failed target.
+            ledger.recordUnreadScripts(name, 'inventory', result.unreadScripts)
             return result
           },
         )
@@ -490,7 +510,11 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
           const inventoriesToPush: InventoryDifferenceResult[] = diffResults.map((result) => result.diffResult)
           const pushResult = await scriptInventoryService.push(inventoriesToPush, config.branches.inventory)
 
-          log(inventoryRun.failures.length === 0 ? 'Inventory workflow completed successfully.' : `Inventory workflow completed with ${inventoryRun.failures.length} failed target(s); the others were diffed and pushed.`)
+          log(
+            inventoryRun.failures.length > 0
+              ? `Inventory workflow completed with ${inventoryRun.failures.length} failed target(s); the others were diffed and pushed.`
+              : (passOutcome(inventoryRun.results) ?? 'Inventory workflow completed successfully.'),
+          )
 
           // Open a PR so the inventory repo's CI (`--mode validate`) runs and humans
           // can review the change. Skip conditions are handled inside the service
@@ -576,13 +600,15 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
           (inventory) => getWorkflowsForTargetFilter(inventory, config.targetFilter.targetName),
           async (inventory, workflow) => {
             const result = await runForTargetAsync(browser, inventory, workflow.detection)
-            ledger.recordSuccess(targetDisplayName(inventory, workflow, workflow.detection), result.resourceCount)
+            const name = targetDisplayName(inventory, workflow, workflow.detection)
+            ledger.recordSuccess(name, result.resourceCount)
+            ledger.recordUnreadScripts(name, 'detection', result.unreadScripts)
             return result
           },
         )
         recordTargetFailures('detection', detectionRun.failures)
 
-        log(detectionRun.failures.length === 0 ? 'Detection workflow completed successfully.' : `Detection workflow completed with ${detectionRun.failures.length} failed target(s).`)
+        log(detectionRun.failures.length > 0 ? `Detection workflow completed with ${detectionRun.failures.length} failed target(s).` : (passOutcome(detectionRun.results) ?? 'Detection workflow completed successfully.'))
       } finally {
         await emitReportSafely('detection')
       }

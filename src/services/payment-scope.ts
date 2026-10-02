@@ -34,7 +34,11 @@ export function partitionByPaymentScope(summary: DetectionSummary): ScopedDetect
     return {
       payment: {
         ...summary,
-        scriptSummary: { externalScripts: collapseExternal(summary.scriptSummary.externalScripts), inlineScripts: collapseInline(summary.scriptSummary.inlineScripts) },
+        scriptSummary: {
+          externalScripts: collapseExternal(summary.scriptSummary.externalScripts),
+          inlineScripts: collapseInline(summary.scriptSummary.inlineScripts),
+          unreadScripts: [...(summary.scriptSummary.unreadScripts ?? [])],
+        },
       },
       outsidePayment: null,
     }
@@ -48,6 +52,11 @@ export function partitionByPaymentScope(summary: DetectionSummary): ScopedDetect
   ]
   const [paymentExternal, outsideExternal] = splitScripts(summary.scriptSummary.externalScripts, collapseExternal)
   const [paymentInline, outsideInline] = splitScripts(summary.scriptSummary.inlineScripts, collapseInline)
+  // Unread scripts follow the same rule as every other observation: only one
+  // attributed to a known earlier page leaves scope; an unattributed one stays.
+  const unread = summary.scriptSummary.unreadScripts ?? []
+  const paymentUnread = unread.filter((script) => inScope(script.document))
+  const outsideUnread = unread.filter((script) => !inScope(script.document))
 
   const [paymentHeaders, outsideHeaders] = splitHeaders(summary.headerSummary, inScope)
   const responses = summary.headerSummary.responses ?? []
@@ -56,12 +65,12 @@ export function partitionByPaymentScope(summary: DetectionSummary): ScopedDetect
   return {
     payment: {
       ...summary,
-      scriptSummary: { externalScripts: paymentExternal, inlineScripts: paymentInline },
+      scriptSummary: { externalScripts: paymentExternal, inlineScripts: paymentInline, unreadScripts: paymentUnread },
       headerSummary: { ...summary.headerSummary, headers: paymentHeaders, responses: splitResponses((response) => inScope(response.document)) },
     },
     outsidePayment: {
       ...summary,
-      scriptSummary: { externalScripts: outsideExternal, inlineScripts: outsideInline },
+      scriptSummary: { externalScripts: outsideExternal, inlineScripts: outsideInline, unreadScripts: outsideUnread },
       headerSummary: { ...summary.headerSummary, headers: outsideHeaders, responses: splitResponses((response) => !inScope(response.document)) },
     },
   }

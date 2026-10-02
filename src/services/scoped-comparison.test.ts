@@ -3,7 +3,7 @@ import type { PaymentScope } from '../types/document.js'
 import { headerObservationKey } from '../types/header.js'
 import type { Inventory } from '../types/inventory/model.js'
 import { createMatcher } from '../types/matcher/matcher-factory.js'
-import type { ScriptInfo } from '../types/script.js'
+import type { ScriptInfo, UnreadScriptResponse } from '../types/script.js'
 import type { TargetDetection } from '../types/target.js'
 import { HeaderComparisonService } from './comparison/header.js'
 import { ScriptComparisonService } from './comparison/script.js'
@@ -19,9 +19,9 @@ const script = (path: string, document: string): ScriptInfo => ({
   hash: { value: `hash${path}` } as ScriptInfo['hash'],
   document,
 })
-const detection = (scripts: ScriptInfo[], paymentScope?: PaymentScope): DetectionSummary => ({
+const detection = (scripts: ScriptInfo[], paymentScope?: PaymentScope, unreadScripts?: UnreadScriptResponse[]): DetectionSummary => ({
   target,
-  scriptSummary: { externalScripts: scripts, inlineScripts: [] },
+  scriptSummary: { externalScripts: scripts, inlineScripts: [], ...(unreadScripts === undefined ? {} : { unreadScripts }) },
   headerSummary: { headers: new Map(), responses: [] },
   ...(paymentScope === undefined ? {} : { paymentScope }),
 })
@@ -46,6 +46,41 @@ describe('compareWithPaymentScope', () => {
     const { payment, outside } = await compareWithPaymentScope(detection([script('/tag-manager.js', 'L-booking'), script('/sdk.js', 'L-booking'), script('/sdk.js', 'L-checkout'), script('/3ds.js', 'L-3ds')], scope), inventory, services)
     expect(names(payment.scripts)).toEqual(['https://cdn.example.test/3ds.js', 'https://cdn.example.test/sdk.js'])
     expect(names(outside!)).toEqual(['https://cdn.example.test/sdk.js', 'https://cdn.example.test/tag-manager.js'])
+  })
+
+  describe('unread scripts', () => {
+    const unread = (path: string, document?: string): UnreadScriptResponse => ({
+      url: `https://cdn.example.test${path}?token=secret`,
+      resourceType: 'script',
+      status: 200,
+      reason: 'Could not load response body for this request. This might happen if the request is a preflight request.',
+      step: 4,
+      ...(document === undefined ? {} : { document }),
+    })
+    const scope: PaymentScope = { declared: true, paymentDocuments: ['L-checkout'], documents: chain }
+
+    // Same rule as every other observation: only a script attributed to an
+    // earlier page the payment page replaced leaves scope. An unattributed
+    // one stays in — attribution failing must never hide a gap.
+    it('splits unread scripts by payment scope, keeping unattributed ones in scope', async () => {
+      const { unread: split } = await compareWithPaymentScope(detection([], scope, [unread('/early.js', 'L-booking'), unread('/pay.js', 'L-checkout'), unread('/3ds.js', 'L-3ds'), unread('/orphan.js')]), inventory, services)
+      expect(split.payment.map((record) => record.url)).toEqual(['https://cdn.example.test/pay.js', 'https://cdn.example.test/3ds.js', 'https://cdn.example.test/orphan.js'])
+      expect(split.outside!.map((record) => record.url)).toEqual(['https://cdn.example.test/early.js'])
+    })
+
+    it('redacts the script URL and names the page it was loaded on', async () => {
+      const { unread: split } = await compareWithPaymentScope(detection([], scope, [unread('/pay.js', 'L-checkout'), unread('/orphan.js')]), inventory, services)
+      expect(split.payment).toEqual([
+        { url: 'https://cdn.example.test/pay.js', resourceType: 'script', status: 200, step: 4, documentUrl: 'https://book.example.test/venue/checkout', reason: expect.stringContaining('Could not load response body') },
+        { url: 'https://cdn.example.test/orphan.js', resourceType: 'script', status: 200, step: 4, documentUrl: null, reason: expect.stringContaining('Could not load response body') },
+      ])
+    })
+
+    it('keeps every unread script in payment scope when the run is not scoped', async () => {
+      const { unread: split } = await compareWithPaymentScope(detection([], undefined, [unread('/early.js', 'L-booking')]), inventory, services)
+      expect(split.payment.map((record) => record.url)).toEqual(['https://cdn.example.test/early.js'])
+      expect(split.outside).toBeNull()
+    })
   })
 
   describe('headers', () => {
@@ -103,9 +138,11 @@ describe('compareWithPaymentScope', () => {
 describe('reportRecordsFor', () => {
   const declared = (paymentDocuments: string[]): PaymentScope => ({ declared: true, paymentDocuments, documents: chain })
   const results = { scripts: [{ type: 'unknown_script_found' }], headers: [] } as unknown as ScopedComparison['payment']
+  const noUnread: ScopedComparison['unread'] = { payment: [], outside: null }
+  const unreadRecord = (url: string) => ({ url, resourceType: 'script', status: 200, step: 3, documentUrl: null, reason: 'gone' })
 
   it('records an unmarked run as one unlabelled set with no page chain', () => {
-    const records = reportRecordsFor({ inventory, target, scoped: { payment: results, outside: null }, paymentScope: { declared: false, paymentDocuments: [], documents: chain } })
+    const records = reportRecordsFor({ inventory, target, scoped: { payment: results, outside: null, unread: noUnread }, paymentScope: { declared: false, paymentDocuments: [], documents: chain } })
     expect(records).toHaveLength(1)
     expect(records[0]).not.toHaveProperty('scope')
     expect(records[0]).not.toHaveProperty('paymentScope')
@@ -115,16 +152,22 @@ describe('reportRecordsFor', () => {
   // like an unmarked workflow.
   it('records a declared but unresolved payment page with its chain and no row labels', () => {
     const paymentScope = declared([])
-    const records = reportRecordsFor({ inventory, target, scoped: { payment: results, outside: null }, paymentScope })
+    const records = reportRecordsFor({ inventory, target, scoped: { payment: results, outside: null, unread: noUnread }, paymentScope })
     expect(records).toHaveLength(1)
     expect(records[0]!.paymentScope).toBe(paymentScope)
     expect(records[0]).not.toHaveProperty('scope')
   })
 
   it('records a scoped run as a labelled payment set plus a report-only outside set', () => {
-    const records = reportRecordsFor({ inventory, target, scoped: { payment: results, outside: [] }, paymentScope: declared(['L-checkout']) })
+    const records = reportRecordsFor({
+      inventory,
+      target,
+      scoped: { payment: results, outside: [], unread: { payment: [unreadRecord('https://a.example.test/pay.js')], outside: [unreadRecord('https://a.example.test/early.js')] } },
+      paymentScope: declared(['L-checkout']),
+    })
     expect(records.map((record) => record.scope)).toEqual(['payment', 'outside_payment'])
     expect(records[0]!.paymentScope).toBeDefined()
     expect(records[1]).not.toHaveProperty('paymentScope')
+    expect(records.map((record) => record.unreadScripts?.map((unread) => unread.url))).toEqual([['https://a.example.test/pay.js'], ['https://a.example.test/early.js']])
   })
 })

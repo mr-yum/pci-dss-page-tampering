@@ -54,7 +54,54 @@ export type ScriptInfo = {
   document?: DocumentId
 }
 
+/**
+ * A script response the browser received but whose body the monitor could not
+ * read, so the script was neither hashed nor compared. Recorded rather than
+ * dropped: a script nobody read is an unmonitored script, and a run that
+ * silently loses one would look exactly like a clean run.
+ *
+ * Unredacted here; every surface that displays it redacts it (see
+ * `toUnreadScriptRecords`).
+ */
+export type UnreadScriptResponse = {
+  url: string
+  /** Puppeteer resource type of the request — `script` for everything recorded today. */
+  resourceType: string
+  /** HTTP status of the response whose body could not be read. */
+  status: number
+  /** Why the body could not be read, e.g. the DevTools protocol error. */
+  reason: string
+  /**
+   * Top-level document the response belongs to (see `DocumentLedger`).
+   * Undefined when it could not be attributed, which keeps it in payment scope.
+   */
+  document?: DocumentId
+  /** Workflow step running when the response arrived (0 = initial navigation). */
+  step: number
+}
+
+/**
+ * An unread script response as every report and notification shows it: URLs
+ * reduced to origin and path, the reason redacted, and the document resolved
+ * to the URL it was loaded at.
+ */
+export type UnreadScriptRecord = {
+  url: string
+  resourceType: string
+  status: number
+  step: number
+  /** Redacted URL of the top-level document the response belongs to; null when unattributed. */
+  documentUrl: string | null
+  reason: string
+}
+
 export type ScriptDetectionSummary = {
   externalScripts: ScriptInfo[]
   inlineScripts: ScriptInfo[]
+  /**
+   * Script responses whose body could not be read. Payment scoping splits
+   * them like any other observation; in payment scope they fail the run the
+   * way a failed target does. Omitted means none were recorded.
+   */
+  unreadScripts?: UnreadScriptResponse[]
 }
