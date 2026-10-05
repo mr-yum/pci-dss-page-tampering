@@ -74,6 +74,15 @@ function clipTableCell(cell: unknown, cap: number): unknown {
 /** Headroom under Slack's 3,000-character cap on a section's text. */
 const SECTION_CHAR_LIMIT = 2900
 /**
+ * Entries a run-summary list of unread scripts or unanswered requests names
+ * before it points at the auditor report: enough to act on, few enough that
+ * every list together stays far inside Slack's 50-block message limit.
+ */
+const MAX_SUMMARY_LIST_ROWS = 20
+/** Longest single field (URL, target, reason) in a run-summary list line. */
+const SUMMARY_FIELD_LIMIT = 300
+const clipField = (text: string): string => (text.length > SUMMARY_FIELD_LIMIT ? `${text.slice(0, SUMMARY_FIELD_LIMIT)}…` : text)
+/**
  * Longest single list line, measured *after* escaping: `&` becomes `&amp;`,
  * so a raw clip alone cannot promise a line fits, and a continuation section
  * starts with whatever line overflowed the previous one.
@@ -1410,59 +1419,62 @@ export class SlackAlertService implements IAlertService {
   }
 
   /**
-   * Name every script whose body could not be read, with its target, pass,
-   * workflow step and page — never "and N more", for the same reason as the
-   * failed-target list. Payment-scope scripts and those on earlier pages the
-   * payment page replaced are separate lists, because only the first is a
-   * monitoring gap. Same bounds and escaping as the lists above: the URL and
-   * the reason come from the page and the browser.
+   * Name the scripts whose body could not be read, with target, pass,
+   * workflow step and page. Payment-scope scripts and those on earlier pages
+   * the payment page replaced are separate lists, because only the first is a
+   * monitoring gap. Same escaping as the lists above (the URL and the reason
+   * come from the page and the browser), and capped like them at
+   * `MAX_SUMMARY_LIST_ROWS` — see `namedListSections`.
    */
   private formatUnreadScripts(unread: readonly UnreadScriptEntry[], outsidePaymentPage: boolean): string[] {
     if (unread.length === 0) return []
 
-    const fieldLimit = 300
-    const clip = (text: string): string => (text.length > fieldLimit ? `${text.slice(0, fieldLimit)}…` : text)
     const label = outsidePaymentPage ? `${unread.length === 1 ? 'Script' : 'Scripts'} Not Read Outside The Payment Page` : `${unread.length === 1 ? 'Script' : 'Scripts'} Not Read`
     const header = outsidePaymentPage
       ? `*${label} (${unread.length})* — on earlier pages the payment page replaced; recorded for evidence, not a monitoring gap:`
       : `*${label} (${unread.length})* — these scripts reached the payment page, but their content could not be read, so they were *not checked* in this run:`
-
-    const sections: string[] = []
-    let current = header
-    for (const script of unread) {
-      const page = script.documentUrl === null ? 'an unattributed page' : `\`${escapeMrkdwn(clip(script.documentUrl))}\``
-      const line = boundLine(`• \`${escapeMrkdwn(clip(script.url))}\` on \`${escapeMrkdwn(clip(script.target))}\` (${script.pass}, step ${script.step}, ${page}): ${escapeMrkdwn(clip(script.reason))}`)
-      if (current.length + 1 + line.length > SECTION_CHAR_LIMIT) {
-        sections.push(current)
-        current = `*${label} (continued)*`
-      }
-      current += `\n${line}`
-    }
-    sections.push(current)
-    return sections
+    return this.namedListSections(label, header, unread, (script) => {
+      const page = script.documentUrl === null ? 'an unattributed page' : `\`${escapeMrkdwn(clipField(script.documentUrl))}\``
+      return `• \`${escapeMrkdwn(clipField(script.url))}\` on \`${escapeMrkdwn(clipField(script.target))}\` (${script.pass}, step ${script.step}, ${page}): ${escapeMrkdwn(clipField(script.reason))}`
+    })
   }
 
   /**
-   * Name every script request that never got a response. Evidence, not a
+   * Name the script requests that never got a response. Evidence, not a
    * monitoring gap — a script whose response never arrived never ran — so it
-   * leaves the headline alone; but each one is named, because a URL the page
+   * leaves the headline alone; but each is named, because a URL the page
    * built wrongly, or a host that has stopped answering, shows up nowhere
-   * else. Same bounds and escaping as the lists above.
+   * else. Same escaping and cap as the lists above.
    */
   private formatUnansweredRequests(unanswered: readonly UnansweredRequestEntry[]): string[] {
     if (unanswered.length === 0) return []
 
-    const fieldLimit = 300
-    const clip = (text: string): string => (text.length > fieldLimit ? `${text.slice(0, fieldLimit)}…` : text)
     const label = `Script ${unanswered.length === 1 ? 'Request' : 'Requests'} Unanswered`
     const header = `*${label} (${unanswered.length})* — the page requested these scripts but no response ever arrived, so they never ran; recorded for evidence, not a monitoring gap:`
+    return this.namedListSections(label, header, unanswered, (request) => {
+      const page = request.documentUrl === null ? 'an unattributed page' : `\`${escapeMrkdwn(clipField(request.documentUrl))}\``
+      const scope = request.outsidePaymentPage ? ', outside the payment page' : ''
+      return `• \`${escapeMrkdwn(clipField(request.url))}\` on \`${escapeMrkdwn(clipField(request.target))}\` (${request.pass}, step ${request.step}, ${page}${scope}): ${escapeMrkdwn(clipField(request.reason))}`
+    })
+  }
+
+  /**
+   * Lay a named list out as sections under Slack's per-section limit, naming
+   * at most `MAX_SUMMARY_LIST_ROWS` entries and saying how many more there
+   * are. The cap is what keeps the summary deliverable: Slack rejects a
+   * message of more than 50 blocks wholesale (`invalid_blocks`), and a CDN
+   * outage across every target and both passes can produce hundreds of
+   * entries — a rejected summary would itself fail the run and tell nobody
+   * anything. Every entry stays in the auditor report and the run log.
+   */
+  private namedListSections<T>(label: string, header: string, entries: readonly T[], lineFor: (entry: T) => string): string[] {
+    const shown = entries.slice(0, MAX_SUMMARY_LIST_ROWS)
+    const lines = shown.map((entry) => boundLine(lineFor(entry)))
+    if (entries.length > shown.length) lines.push(`…and ${entries.length - shown.length} more — every one is listed in the auditor report and the run log.`)
 
     const sections: string[] = []
     let current = header
-    for (const request of unanswered) {
-      const page = request.documentUrl === null ? 'an unattributed page' : `\`${escapeMrkdwn(clip(request.documentUrl))}\``
-      const scope = request.outsidePaymentPage ? ', outside the payment page' : ''
-      const line = boundLine(`• \`${escapeMrkdwn(clip(request.url))}\` on \`${escapeMrkdwn(clip(request.target))}\` (${request.pass}, step ${request.step}, ${page}${scope}): ${escapeMrkdwn(clip(request.reason))}`)
+    for (const line of lines) {
       if (current.length + 1 + line.length > SECTION_CHAR_LIMIT) {
         sections.push(current)
         current = `*${label} (continued)*`

@@ -188,7 +188,7 @@ export type ReportUnreadScript = {
   /** Redacted: origin and path only. */
   url: string
   resourceType: string
-  /** HTTP status of the response whose body could not be read. */
+  /** HTTP status of the response whose body could not be read; 0 when the body finished loading but no response was ever surfaced, so no status is known. */
   status: number
   /** Workflow step running when the response arrived (0 = initial navigation). */
   step: number
@@ -202,10 +202,13 @@ export type ReportUnreadScript = {
 
 /**
  * A script request the page issued that never got a response (added in
- * 1.6.0). Evidence, never a finding, in either scope: Puppeteer surfaces a
- * script's response only once its body is complete and a script cannot run
- * before then, so a request with no response never executed on the page. It
- * never affects `run.status`. Listed because the request itself deserves a
+ * 1.6.0), and whose body was never seen to finish loading. Evidence, never a
+ * finding, in either scope: in the observed Chrome behaviour (probe,
+ * 2026-10-02) a script's response surfaces only once its body is complete and
+ * a script cannot run before then, so such a request never executed on the
+ * page. A request whose body did finish without a response surfacing is
+ * listed under `unreadScripts` (status 0) instead. It never affects
+ * `run.status`. Listed because the request itself deserves a
  * look — a URL the page built wrongly, or a host that stopped answering.
  */
 export type ReportUnansweredRequest = {

@@ -118,7 +118,7 @@ export class DocumentLedger {
  * removes them only degrades attribution to `undefined` — in scope — and never
  * throws.
  */
-function requestIdOf(request: HTTPRequest): string | undefined {
+export function requestIdOf(request: HTTPRequest): string | undefined {
   const id = (request as unknown as { id?: unknown }).id
   return typeof id === 'string' ? id : undefined
 }

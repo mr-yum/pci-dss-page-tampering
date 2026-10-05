@@ -1,5 +1,6 @@
-import type { Browser, ElementHandle, Frame, Page } from 'puppeteer'
+import type { Browser, ElementHandle, Frame, HTTPRequest, Page } from 'puppeteer'
 
+import { SCRIPT_BODY_WITHOUT_RESPONSE_REASON, SCRIPT_REQUEST_FRAME_DETACHED_REASON } from '../handlers/script.js'
 import type { DetectionSummary } from '../types/detection.js'
 import type { PuppeteerLocatorAction } from '../types/puppeteer.js'
 import type { Target } from '../types/target.js'
@@ -1101,6 +1102,7 @@ describe('DetectionService resolvePaymentDocument', () => {
 // test/integration/unread-scripts.test.ts.
 describe('DetectionService response-body retention in out-of-process iframes', () => {
   const session = (sent: string[] = [], fail = false) => ({
+    on: jest.fn(),
     send: jest.fn(async (method: string) => {
       if (fail) throw new Error('Target closed')
       sent.push(method)
@@ -1127,7 +1129,7 @@ describe('DetectionService response-body retention in out-of-process iframes', (
     expect(frameSession.send).toHaveBeenCalledWith('Network.configureDurableMessages', { maxTotalBufferSize: 256 * 1024 * 1024, maxResourceBufferSize: 32 * 1024 * 1024 })
   })
 
-  // A cross-process navigation swaps the frame's session: the new one needs it too.
+  // Should a navigation give the frame a new session, the new one needs it too.
   it('configures a new session when the same frame comes back on one', () => {
     const first = session()
     const second = session()
@@ -1180,5 +1182,115 @@ describe('DetectionService response-body retention in out-of-process iframes', (
       },
     }) as unknown as Frame
     expect(frameSessionOf(throwing)).toBeUndefined()
+  })
+})
+
+// The accounting is only as good as its wiring: each of these breaks if the
+// listener that feeds PendingScriptReads is removed from detectAttempt.
+describe('DetectionService script accounting wiring', () => {
+  type Handler = (...args: any[]) => void
+  const SETTLE = { deadlineMs: 30, closeGraceMs: 30 }
+
+  function run(options: { onAction?: (emit: (event: string, ...args: unknown[]) => void, sessionEmit: (event: string, payload: unknown) => void) => void; onClose?: (emit: (event: string, ...args: unknown[]) => void) => void } = {}) {
+    const handlers = new Map<string, Handler[]>()
+    const sessionHandlers = new Map<string, Handler[]>()
+    const add = (map: Map<string, Handler[]>, event: string, handler: Handler) => map.set(event, [...(map.get(event) ?? []), handler])
+    const session = {
+      on: jest.fn((event: string, handler: Handler) => add(sessionHandlers, event, handler)),
+      send: jest.fn(async () => ({})),
+    }
+    const page: Record<string, unknown> = {
+      setDefaultTimeout: jest.fn(),
+      setDefaultNavigationTimeout: jest.fn(),
+      evaluateOnNewDocument: jest.fn().mockResolvedValue(undefined),
+      url: jest.fn().mockReturnValue('https://shop.example.test/checkout'),
+      mainFrame: jest.fn().mockReturnValue({ _id: 'main' }),
+      frames: jest.fn().mockReturnValue([]),
+      createCDPSession: jest.fn().mockResolvedValue(session),
+    }
+    page['on'] = jest.fn((event: string, handler: Handler) => {
+      add(handlers, event, handler)
+      return page
+    })
+    const emit = (event: string, ...args: unknown[]): void => handlers.get(event)?.forEach((handler) => handler(...args))
+    const sessionEmit = (event: string, payload: unknown): void => sessionHandlers.get(event)?.forEach((handler) => handler(payload))
+    const context = { newPage: jest.fn().mockResolvedValue(page), close: jest.fn(async () => options.onClose?.(emit)) }
+    const workflowBrowser = { createBrowserContext: jest.fn().mockResolvedValue(context) } as unknown as Browser
+    const logger = { log: jest.fn(), error: jest.fn() }
+    const workflowTarget = {
+      url: 'https://shop.example.test/checkout',
+      workflowId: 'default',
+      workflow: { definition: { steps: [{ description: 'Pay', waitFor: [{ type: 'button', identifier: 'Pay' }], action: { type: 'click' } }] } },
+      logger,
+    } as unknown as Target
+
+    const service = new DetectionService({ scriptSettle: SETTLE }) as unknown as DetectionServiceInternals & { getInlineScriptsSettled: () => Promise<unknown[]> }
+    service.applyRealisticUserAgent = jest.fn().mockResolvedValue(undefined)
+    service.navigateToTarget = jest.fn().mockResolvedValue(undefined)
+    service.waitForInitialActionTarget = jest.fn().mockResolvedValue({ context: page })
+    service.getInlineScriptsSettled = jest.fn().mockResolvedValue([])
+    service.executeAction = jest.fn().mockImplementation(async () => options.onAction?.(emit, sessionEmit))
+    return service.detectAttempt(workflowBrowser, workflowTarget)
+  }
+
+  const frame = (client?: unknown) => ({ client, url: () => 'https://pay.example.test/card', parentFrame: () => null }) as unknown as Frame
+  const scriptRequest = (url: string, options: { frame?: Frame; id?: string; response?: unknown } = {}) =>
+    ({ resourceType: () => 'script', url: () => url, frame: () => options.frame ?? null, id: options.id ?? url, response: () => options.response ?? null, initiator: () => undefined }) as unknown as HTTPRequest
+
+  it('records a script that finished with no response surfaced as unread (requestfinished)', async () => {
+    const summary = await run({
+      onAction: (emit) => {
+        const request = scriptRequest('https://cdn.example.test/pay.js')
+        emit('request', request)
+        emit('requestfinished', request)
+      },
+    })
+    expect(summary.scriptSummary.unreadScripts).toEqual([expect.objectContaining({ url: 'https://cdn.example.test/pay.js', status: 0, reason: SCRIPT_BODY_WITHOUT_RESPONSE_REASON })])
+    expect(summary.scriptSummary.unansweredRequests).toEqual([])
+  })
+
+  it("records a script whose body Chrome reported finished on the page's own session as unread, not unanswered", async () => {
+    const summary = await run({
+      onAction: (emit, sessionEmit) => {
+        emit('request', scriptRequest('https://cdn.example.test/pay.js', { id: 'R-1' }))
+        sessionEmit('Network.loadingFinished', { requestId: 'R-1' })
+      },
+    })
+    expect(summary.scriptSummary.unreadScripts).toEqual([expect.objectContaining({ url: 'https://cdn.example.test/pay.js', reason: SCRIPT_BODY_WITHOUT_RESPONSE_REASON })])
+    expect(summary.scriptSummary.unansweredRequests).toEqual([])
+  })
+
+  // Puppeteer never rejects a body read whose session disconnected.
+  it('records a response that lands as the context closes, and whose read never settles, as unread', async () => {
+    const request = scriptRequest('https://cdn.example.test/late.js')
+    const response = {
+      request: () => request,
+      ok: () => true,
+      status: () => 200,
+      url: () => 'https://cdn.example.test/late.js',
+      headers: () => ({}),
+      text: () => new Promise<string>(() => undefined),
+    }
+    const summary = await run({ onAction: (emit) => emit('request', request), onClose: (emit) => emit('response', response) })
+    expect(summary.scriptSummary.unreadScripts).toEqual([expect.objectContaining({ url: 'https://cdn.example.test/late.js', status: 200, reason: 'the response body was still being read when the browser context closed' })])
+    expect(summary.scriptSummary.unansweredRequests).toEqual([])
+  })
+
+  it('stops waiting for a detached frame’s request and lists it with the detached-frame reason', async () => {
+    const card = frame()
+    const summary = await run({
+      onAction: (emit) => {
+        emit('request', scriptRequest('https://pay.example.test/challenge.js', { frame: card }))
+        emit('framedetached', card)
+      },
+    })
+    expect(summary.scriptSummary.unansweredRequests).toEqual([expect.objectContaining({ url: 'https://pay.example.test/challenge.js', reason: SCRIPT_REQUEST_FRAME_DETACHED_REASON })])
+  })
+
+  it("retains bodies on a frame's own session when a request is the first sign of it", async () => {
+    const frameSession = { on: jest.fn(), send: jest.fn(async () => ({})) }
+    await run({ onAction: (emit) => emit('request', scriptRequest('https://pay.example.test/card.js', { frame: frame(frameSession) })) })
+    expect(frameSession.send).toHaveBeenCalledWith('Network.configureDurableMessages', expect.any(Object))
+    expect(frameSession.on).toHaveBeenCalledWith('Network.loadingFinished', expect.any(Function))
   })
 })

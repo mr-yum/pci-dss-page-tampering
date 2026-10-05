@@ -1,8 +1,8 @@
-import type { Browser, CDPSession, ElementHandle, Frame, HTTPResponse, Page } from 'puppeteer'
+import type { Browser, CDPSession, ElementHandle, Frame, HTTPResponse, Page, Protocol } from 'puppeteer'
 import { TimeoutError } from 'puppeteer'
 
 import { headerResponseHandler } from '../handlers/header.js'
-import { PendingScriptReads, recordUnreadScript, scriptResponseHandler } from '../handlers/script.js'
+import { PendingScriptReads, recordUnreadScript, scriptResponseHandler, type SettleReasons } from '../handlers/script.js'
 import type { IDetectionService } from '../interfaces/detection.js'
 import type { DetectionSummary } from '../types/detection.js'
 import type { DocumentId } from '../types/document.js'
@@ -61,9 +61,19 @@ const RETAINED_RESPONSE_BODY_MAX_BYTES = 32 * 1024 * 1024
 // their records land before the summary is built.
 const SCRIPT_READ_CLOSE_GRACE_MS = 2000
 
-const SCRIPT_READ_UNFINISHED_REASON = `the response body was still being read ${SCRIPT_READ_SETTLE_TIMEOUT_MS / 1000}s after the workflow finished`
-const SCRIPT_REQUEST_UNANSWERED_REASON = `no response had arrived ${SCRIPT_READ_SETTLE_TIMEOUT_MS / 1000}s after the workflow finished`
-const SCRIPT_REQUEST_UNANSWERED_AT_CLOSE_REASON = 'no response had arrived when the browser context closed'
+// What the two settles call what is still outstanding. The close-grace
+// settle sees only what started after the seal (the deadline settle already
+// moved everything older on), and a read cut off by the close that never
+// settles at all — Puppeteer does not reject a body read when its session
+// disconnects — is recorded there rather than lost.
+const atDeadline = (deadlineMs: number): SettleReasons => ({
+  reading: `the response body was still being read ${deadlineMs / 1000}s after the workflow finished`,
+  unanswered: `no response had arrived ${deadlineMs / 1000}s after the workflow finished`,
+})
+const AT_CLOSE: SettleReasons = {
+  reading: 'the response body was still being read when the browser context closed',
+  unanswered: 'issued after the workflow finished, and no response had arrived when the browser context closed',
+}
 
 type ActionTarget = {
   context: Page | Frame
@@ -83,8 +93,16 @@ class WorkflowAttemptError extends Error {
 export class DetectionService implements IDetectionService {
   private readonly totpSeeds: ReadonlyMap<string, string>
 
-  constructor(options: { totpSeeds?: ReadonlyMap<string, string> } = {}) {
+  private readonly scriptSettle: { deadlineMs: number; closeGraceMs: number }
+
+  /**
+   * @param options.scriptSettle How long a finished workflow waits for script
+   *   requests and reads, and how long a closed context is given. Overridable
+   *   for tests only; production uses the defaults.
+   */
+  constructor(options: { totpSeeds?: ReadonlyMap<string, string>; scriptSettle?: { deadlineMs: number; closeGraceMs: number } } = {}) {
     this.totpSeeds = options.totpSeeds ?? new Map()
+    this.scriptSettle = options.scriptSettle ?? { deadlineMs: SCRIPT_READ_SETTLE_TIMEOUT_MS, closeGraceMs: SCRIPT_READ_CLOSE_GRACE_MS }
   }
   async detect(browser: Browser, target: Target, scriptContentMatchers: ScriptMatcher[], inventoryHeaders: readonly InventoryHeaderInfo[] = []): Promise<DetectionSummary> {
     const retry = getPuppeteerWorkflowFromTarget(target).retry
@@ -172,11 +190,15 @@ export class DetectionService implements IDetectionService {
       // navigation away from it is under way, so a script that finishes
       // loading during a "Pay" click that leaves for 3-D Secure cannot be read
       // at all — exactly the moment a skimmer would load.
-      await this.retainResponseBodies(page, target)
+      // Both sessions also report Chrome's own Network.loadingFinished to
+      // PendingScriptReads: a script whose body finished but whose response
+      // never surfaced through Puppeteer is then unread, not unanswered.
+      const bodyFinished = (requestId: string): void => pendingScriptReads.bodyFinished(requestId)
+      await this.retainResponseBodies(page, target, bodyFinished)
       // The same for every cross-site iframe, whose bodies the page-level
       // setting does not reach: a card provider's frame that navigates itself
       // on to its 3-D Secure challenge loses them the same way.
-      const retainFrameBodies = this.frameBodyRetention(page, target)
+      const retainFrameBodies = this.frameBodyRetention(page, target, bodyFinished)
       for (const frame of safeFrames(page)) retainFrameBodies(frame)
       page.on('frameattached', retainFrameBodies).on('framenavigated', retainFrameBodies)
 
@@ -220,10 +242,18 @@ export class DetectionService implements IDetectionService {
           pendingScriptReads.trackRequest(request, currentStep, (issued) => tracker?.documentOf(issued))
         })
         // A torn-down frame's requests may never be reported finished or
-        // failed; stop waiting for them (they are still listed as unanswered).
+        // failed; stop waiting for them (those with neither are listed as
+        // unanswered).
         .on('framedetached', (frame) => pendingScriptReads.frameDetached(frame))
         .on('requestfailed', (request) => pendingScriptReads.requestSettled(request))
-        .on('requestfinished', (request) => pendingScriptReads.requestSettled(request))
+        // Finished without a response surfaced: the body was delivered and the
+        // script may have run, but nothing read it — unread, at any time.
+        .on('requestfinished', (request) => {
+          const unread = pendingScriptReads.requestFinished(request, currentStep, (finished) => tracker?.documentOf(finished))
+          if (unread === undefined) return
+          target.logger.error(`Script ${redactUrl(unread.url)} (step ${unread.step}) finished loading but no response was surfaced for it; it was not compared and is recorded as unread.`)
+          recordUnreadScript(unreadScripts, unread)
+        })
         .on('response', (response) => {
           const document = documentOf(response)
           pendingScriptReads.track(scriptResponseHandler(response, externalScripts, document, { unread: unreadScripts, step: currentStep, sealed: () => scriptsSealed }), response, document, currentStep)
@@ -334,14 +364,12 @@ export class DetectionService implements IDetectionService {
 
       // Let in-flight script requests and body reads finish while the DevTools
       // session they need is still open, then account for any that did not.
-      // A body still being read is a script that arrived and went unexamined:
-      // unread, which fails the run. A request still unanswered never ran on
-      // the page (its response would have come with its complete body), so
-      // PendingScriptReads keeps it as evidence only.
-      for (const unfinished of await pendingScriptReads.settle(SCRIPT_READ_SETTLE_TIMEOUT_MS, SCRIPT_REQUEST_UNANSWERED_REASON)) {
-        target.logger.error(`Script ${redactUrl(unfinished.url)} (step ${unfinished.step}) was still being read when the workflow finished; recorded as unread.`)
-        recordUnreadScript(unreadScripts, { ...unfinished, reason: SCRIPT_READ_UNFINISHED_REASON })
-      }
+      // A body still being read, or one known to have finished with no
+      // response surfaced, is a script that arrived and went unexamined:
+      // unread, which fails the run. A request with no response and no sign
+      // its body finished never ran on the page, so PendingScriptReads keeps
+      // it as evidence only.
+      this.recordUnsettled(await pendingScriptReads.settle(this.scriptSettle.deadlineMs, atDeadline(this.scriptSettle.deadlineMs)), unreadScripts, target)
       // The run is accounted for from here: a read that lands late is recorded
       // as unread rather than compared (UnreadScriptAccounting.sealed) — and a
       // response that finally answers a request reported unanswered takes it
@@ -374,7 +402,9 @@ export class DetectionService implements IDetectionService {
       await context.close().catch((closeError) => target.logger.error(`Failed to close browser context: ${closeError}`))
       // A read the close cut off rejects a moment later; give it that moment
       // so its record lands before the summary is built from these arrays.
-      await pendingScriptReads.settle(SCRIPT_READ_CLOSE_GRACE_MS, SCRIPT_REQUEST_UNANSWERED_AT_CLOSE_REASON)
+      // One that still has not settled — Puppeteer leaves a body read pending
+      // forever when its session disconnects — is recorded as unread here.
+      this.recordUnsettled(await pendingScriptReads.settle(this.scriptSettle.closeGraceMs, AT_CLOSE), unreadScripts, target)
     }
 
     const declared = puppeteerWorkflow.locatorActions.some((step: PuppeteerLocatorAction) => step.paymentPage === true)
@@ -417,6 +447,14 @@ export class DetectionService implements IDetectionService {
     }
   }
 
+  /** Record what a `PendingScriptReads.settle` returned as unread: never dropped. */
+  private recordUnsettled(unsettled: readonly UnreadScriptResponse[], unreadScripts: UnreadScriptResponse[], target: Target): void {
+    for (const unread of unsettled) {
+      target.logger.error(`Script ${redactUrl(unread.url)} (step ${unread.step}) was not read: ${unread.reason}; recorded as unread.`)
+      recordUnreadScript(unreadScripts, unread)
+    }
+  }
+
   /**
    * Present the regular Chrome user agent instead of HeadlessChrome so the
    * monitor observes what real users are served: bot mitigation blocks on the
@@ -452,9 +490,10 @@ export class DetectionService implements IDetectionService {
    * the command the run continues, and any body that cannot be read is
    * recorded as unread rather than lost.
    */
-  private async retainResponseBodies(page: Page, target: Target): Promise<void> {
+  private async retainResponseBodies(page: Page, target: Target, onBodyFinished: (requestId: string) => void): Promise<void> {
     try {
       const session = await page.createCDPSession()
+      session.on('Network.loadingFinished', (event: Protocol.Network.LoadingFinishedEvent) => onBodyFinished(event.requestId))
       await session.send('Network.enable')
       await session.send('Network.configureDurableMessages', { maxTotalBufferSize: RETAINED_RESPONSE_BODIES_TOTAL_BYTES, maxResourceBufferSize: RETAINED_RESPONSE_BODY_MAX_BYTES })
     } catch (error) {
@@ -477,14 +516,15 @@ export class DetectionService implements IDetectionService {
    * all.
    *
    * Returns a listener for every event that can reveal a new session: a frame
-   * attaching, a frame navigating (a cross-process navigation swaps the
-   * frame's session), and a request from a frame. Each session is configured
+   * attaching, a frame navigating (in case a navigation gives the frame a new
+   * session; a probe found Puppeteer keeps the session across a cross-site
+   * navigation of an out-of-process frame), and a request from a frame. Each session is configured
    * once. A frame on the page's own session needs nothing. Best effort like
    * the page-level setting: a body that still cannot be read — a frame torn
    * down before the read, a Puppeteer build that no longer exposes the frame's
    * session — is recorded as unread, never lost.
    */
-  private frameBodyRetention(page: Page, target: Target): (frame: Frame | null) => void {
+  private frameBodyRetention(page: Page, target: Target, onBodyFinished: (requestId: string) => void = () => undefined): (frame: Frame | null) => void {
     const configured = new WeakSet<CDPSession>()
     const mainFrame = safeMainFrame(page)
     const pageSession = mainFrame === undefined ? undefined : frameSessionOf(mainFrame)
@@ -502,6 +542,10 @@ export class DetectionService implements IDetectionService {
       }
       if (configured.has(session)) return
       configured.add(session)
+      // Puppeteer's own session for the frame, with Network already enabled:
+      // an extra listener here sees Chrome's events independent of how
+      // Puppeteer queues them.
+      session.on('Network.loadingFinished', (event: Protocol.Network.LoadingFinishedEvent) => onBodyFinished(event.requestId))
       session
         .send('Network.configureDurableMessages', { maxTotalBufferSize: RETAINED_RESPONSE_BODIES_TOTAL_BYTES, maxResourceBufferSize: RETAINED_RESPONSE_BODY_MAX_BYTES })
         .catch((error: unknown) => target.logger.error(`Could not ask Chrome to retain response bodies in frame ${redactUrl(safeFrameUrl(frame))} (${error}); scripts that finish loading as it navigates away may be recorded as unread.`))
@@ -1062,7 +1106,8 @@ export class DetectionService implements IDetectionService {
 export function frameSessionOf(frame: Frame): CDPSession | undefined {
   try {
     const client = (frame as unknown as { client?: unknown }).client
-    return typeof client === 'object' && client !== null && typeof (client as { send?: unknown }).send === 'function' ? (client as CDPSession) : undefined
+    const looksLikeSession = typeof client === 'object' && client !== null && typeof (client as { send?: unknown }).send === 'function' && typeof (client as { on?: unknown }).on === 'function'
+    return looksLikeSession ? (client as CDPSession) : undefined
   } catch {
     return undefined
   }

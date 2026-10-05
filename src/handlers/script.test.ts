@@ -1,7 +1,7 @@
 import type { Frame, HTTPRequest, HTTPResponse } from 'puppeteer'
 
 import type { ScriptInfo, UnreadScriptResponse } from '../types/script.js'
-import { PendingScriptReads, SCRIPT_READ_LATE_REASON, SCRIPT_REQUEST_FRAME_DETACHED_REASON, scriptResponseHandler } from './script.js'
+import { PendingScriptReads, recordUnreadScript, SCRIPT_BODY_WITHOUT_RESPONSE_REASON, SCRIPT_READ_LATE_REASON, SCRIPT_REQUEST_FRAME_DETACHED_REASON, scriptResponseHandler } from './script.js'
 
 type MockInitiator = { type?: string; url?: string; stack?: { callFrames: { url?: string }[] } }
 
@@ -132,23 +132,33 @@ describe('scriptResponseHandler', () => {
 
   describe('PendingScriptReads', () => {
     const UNANSWERED = 'no response had arrived 15s after the workflow finished'
+    const READING = 'the response body was still being read 15s after the workflow finished'
+    const REASONS = { reading: READING, unanswered: UNANSWERED }
+
+    function scriptRequest(url = 'https://cdn.example.com/late.js?sig=abc', resourceType = 'script', frame: Frame | null = null, id = `req-${url}`, response: HTTPResponse | null = null): HTTPRequest {
+      return { resourceType: () => resourceType, url: () => url, frame: () => frame, id, response: () => response } as unknown as HTTPRequest
+    }
+
+    /** A response to `request` whose body read never settles — what Puppeteer does when the read's session disconnects. */
+    const neverReadResponse = (request: HTTPRequest, url = 'https://cdn.example.com/late.js'): HTTPResponse =>
+      ({ ...scriptResponse('never', url), request: () => request, text: () => new Promise<string>(() => undefined) }) as unknown as HTTPResponse
 
     it('returns nothing once every tracked read has settled', async () => {
       const reads = new PendingScriptReads()
       const response = scriptResponse('body')
       reads.track(scriptResponseHandler(response, []), response, 'loader-checkout', 2)
-      expect(await reads.settle(1000, UNANSWERED)).toEqual([])
+      expect(await reads.settle(1000, REASONS)).toEqual([])
       expect(reads.unansweredRequests()).toEqual([])
     })
 
     // A read still in flight when the workflow ends would otherwise either be
     // cut off by the context closing or land after the run was summarised.
-    it('returns the reads still pending at the deadline, described for the unread record', async () => {
+    it('returns the reads still pending at the deadline as unread, with the reading reason', async () => {
       const reads = new PendingScriptReads()
       const response = { ...scriptResponse('never'), status: () => 200, url: () => 'https://cdn.example.com/slow.js', text: () => new Promise<string>(() => undefined) } as unknown as HTTPResponse
       reads.track(scriptResponseHandler(response, []), response, 'loader-checkout', 7)
 
-      expect(await reads.settle(10, UNANSWERED)).toEqual([{ url: 'https://cdn.example.com/slow.js', resourceType: 'script', status: 200, step: 7, document: 'loader-checkout' }])
+      expect(await reads.settle(10, REASONS)).toEqual([{ url: 'https://cdn.example.com/slow.js', resourceType: 'script', status: 200, reason: READING, step: 7, document: 'loader-checkout' }])
       expect(reads.unansweredRequests()).toEqual([])
     })
 
@@ -161,7 +171,7 @@ describe('scriptResponseHandler', () => {
       const firstResponse = { ...scriptResponse('a'), url: () => 'https://cdn.example.com/first.js' } as unknown as HTTPResponse
       reads.track(first, firstResponse, undefined, 3)
 
-      const settled = reads.settle(1000, UNANSWERED)
+      const settled = reads.settle(1000, REASONS)
       const lateResponse = { ...scriptResponse('b'), url: () => 'https://cdn.example.com/late.js' } as unknown as HTTPResponse
       const late = new Promise<void>((resolve) => setTimeout(resolve, 50))
       reads.track(late, lateResponse, undefined, 3)
@@ -170,25 +180,21 @@ describe('scriptResponseHandler', () => {
       expect(await settled).toEqual([])
     })
 
-    function scriptRequest(url = 'https://cdn.example.com/late.js?sig=abc', resourceType = 'script', frame: Frame | null = null): HTTPRequest {
-      return { resourceType: () => resourceType, url: () => url, frame: () => frame } as unknown as HTTPRequest
-    }
-
     // A request issued by the last step has no read to wait for yet; without
     // this its response would land while the context was closing, after the
     // run had been summarised.
-    it('waits for a script request whose response has not arrived, then lists it as unanswered rather than as an unfinished read', async () => {
+    it('waits for a script request whose response has not arrived, then lists it as unanswered rather than unread', async () => {
       const reads = new PendingScriptReads()
       reads.trackRequest(scriptRequest(), 4, () => 'loader-confirm')
-      expect(await reads.settle(50, UNANSWERED)).toEqual([])
+      expect(await reads.settle(50, REASONS)).toEqual([])
       expect(reads.unansweredRequests()).toEqual([{ url: 'https://cdn.example.com/late.js?sig=abc', resourceType: 'script', reason: UNANSWERED, step: 4, document: 'loader-confirm' }])
     })
 
-    it('stops waiting for a request once it finishes or fails, and never lists it', async () => {
+    it('stops waiting for a request once it fails, and never lists it', async () => {
       const reads = new PendingScriptReads()
       const request = scriptRequest()
       reads.trackRequest(request, 4, () => undefined)
-      const settling = reads.settle(5000, UNANSWERED)
+      const settling = reads.settle(5000, REASONS)
       reads.requestSettled(request)
       expect(await settling).toEqual([])
       expect(reads.unansweredRequests()).toEqual([])
@@ -200,44 +206,137 @@ describe('scriptResponseHandler', () => {
       const reads = new PendingScriptReads()
       const request = scriptRequest()
       reads.trackRequest(request, 4, () => undefined)
-      await reads.settle(10, UNANSWERED)
+      await reads.settle(10, REASONS)
       reads.requestSettled(request)
       expect(reads.unansweredRequests()).toHaveLength(1)
     })
 
-    it('hands a request over to its read when the response arrives, and lists it once — as a read — if that read is still pending at the deadline', async () => {
+    it('hands a request over to its read when the response arrives, and returns it once — as unread — if that read is still pending at the deadline', async () => {
       const reads = new PendingScriptReads()
       const request = scriptRequest('https://cdn.example.com/app.js')
       reads.trackRequest(request, 4, () => undefined)
-      const response = { ...scriptResponse('body', 'https://cdn.example.com/app.js'), request: () => request, text: () => new Promise<string>(() => undefined) } as unknown as HTTPResponse
+      const response = neverReadResponse(request, 'https://cdn.example.com/app.js')
       reads.track(scriptResponseHandler(response, []), response, 'loader-confirm', 4)
-      const unsettled = await reads.settle(50, UNANSWERED)
-      expect(unsettled).toEqual([{ url: 'https://cdn.example.com/app.js', resourceType: 'script', status: 200, step: 4, document: 'loader-confirm' }])
+      expect(await reads.settle(50, REASONS)).toEqual([{ url: 'https://cdn.example.com/app.js', resourceType: 'script', status: 200, reason: READING, step: 4, document: 'loader-confirm' }])
       expect(reads.unansweredRequests()).toEqual([])
     })
 
-    // The fail-secure half of the disposition: a request reported unanswered
-    // whose response lands after the run was sealed (as the context closes)
-    // leaves the unanswered list and is recorded once, as unread, by the
-    // sealed response handler — the script arrived and was never compared.
-    it('moves a request reported unanswered to unread when its response lands after the seal', async () => {
-      const consoleError = jest.spyOn(console, 'error').mockImplementation()
-      const reads = new PendingScriptReads()
-      const request = scriptRequest('https://cdn.example.com/late.js')
-      reads.trackRequest(request, 6, () => 'loader-confirm')
-      await reads.settle(10, UNANSWERED)
-      expect(reads.unansweredRequests()).toHaveLength(1)
+    describe('a response that lands after the request was reported unanswered', () => {
+      // The fail-secure half of the disposition: the script arrived and was
+      // never compared, so it ends unread — recorded by the sealed handler.
+      it('moves to unread once its read settles after the seal', async () => {
+        const consoleError = jest.spyOn(console, 'error').mockImplementation()
+        const reads = new PendingScriptReads()
+        const request = scriptRequest('https://cdn.example.com/late.js')
+        reads.trackRequest(request, 6, () => 'loader-confirm')
+        await reads.settle(10, REASONS)
+        expect(reads.unansweredRequests()).toHaveLength(1)
 
-      const unread: UnreadScriptResponse[] = []
-      const detectedScripts: ScriptInfo[] = []
-      const response = { ...scriptResponse('body', 'https://cdn.example.com/late.js'), request: () => request } as unknown as HTTPResponse
-      reads.track(scriptResponseHandler(response, detectedScripts, 'loader-confirm', { unread, step: 6, sealed: () => true }), response, 'loader-confirm', 6)
-      expect(await reads.settle(1000, UNANSWERED)).toEqual([])
+        const unread: UnreadScriptResponse[] = []
+        const detectedScripts: ScriptInfo[] = []
+        const response = { ...scriptResponse('body', 'https://cdn.example.com/late.js'), request: () => request } as unknown as HTTPResponse
+        reads.track(scriptResponseHandler(response, detectedScripts, 'loader-confirm', { unread, step: 6, sealed: () => true }), response, 'loader-confirm', 6)
+        expect(await reads.settle(1000, REASONS)).toEqual([])
 
-      expect(reads.unansweredRequests()).toEqual([])
-      expect(detectedScripts).toEqual([])
-      expect(unread).toEqual([{ url: 'https://cdn.example.com/late.js', resourceType: 'script', status: 200, reason: SCRIPT_READ_LATE_REASON, document: 'loader-confirm', step: 6 }])
-      consoleError.mockRestore()
+        expect(reads.unansweredRequests()).toEqual([])
+        expect(detectedScripts).toEqual([])
+        expect(unread).toEqual([{ url: 'https://cdn.example.com/late.js', resourceType: 'script', status: 200, reason: SCRIPT_READ_LATE_REASON, document: 'loader-confirm', step: 6 }])
+        consoleError.mockRestore()
+      })
+
+      // Puppeteer never rejects a body read whose session disconnected, so a
+      // read can hang forever. It must not drop off the unanswered list and
+      // then vanish: until it settles it is a pending read, returned as
+      // unread by the close-grace settle, and only that.
+      it('is returned as unread by the next settle when its read never settles, and is no longer listed as unanswered', async () => {
+        const reads = new PendingScriptReads()
+        const request = scriptRequest('https://cdn.example.com/late.js')
+        reads.trackRequest(request, 6, () => 'loader-confirm')
+        await reads.settle(10, REASONS)
+        const response = neverReadResponse(request)
+        reads.track(scriptResponseHandler(response, [], 'loader-confirm', { unread: [], step: 6, sealed: () => true }), response, 'loader-confirm', 6)
+
+        expect(reads.unansweredRequests()).toEqual([])
+        expect(await reads.settle(10, { reading: 'still being read when the context closed', unanswered: UNANSWERED })).toEqual([
+          { url: 'https://cdn.example.com/late.js', resourceType: 'script', status: 200, reason: 'still being read when the context closed', step: 6, document: 'loader-confirm' },
+        ])
+      })
+
+      // A 404 or 502 is not a script that runs, and the handler records
+      // nothing for it — so the request must stay on a list somewhere.
+      it('stays listed, with the late answer in its reason, when that response is not a script that runs', async () => {
+        const reads = new PendingScriptReads()
+        const request = scriptRequest('https://cdn.example.com/late.js')
+        reads.trackRequest(request, 6, () => 'loader-confirm')
+        await reads.settle(10, REASONS)
+        const notFound = { request: () => request, ok: () => false, status: () => 404, url: () => 'https://cdn.example.com/late.js' } as unknown as HTTPResponse
+        reads.track(Promise.resolve(), notFound, 'loader-confirm', 6)
+
+        expect(reads.unansweredRequests()).toEqual([{ url: 'https://cdn.example.com/late.js', resourceType: 'script', reason: `${UNANSWERED}; answered only afterwards, with HTTP 404`, step: 6, document: 'loader-confirm' }])
+      })
+    })
+
+    // Puppeteer emits requestfinished even when no response event was ever
+    // surfaced (crbug.com/883475): the body was delivered, the script may
+    // have run, and nothing read it.
+    describe('a request that finishes with no response surfaced', () => {
+      it('is returned as unread before the deadline', () => {
+        const reads = new PendingScriptReads()
+        const request = scriptRequest('https://cdn.example.com/pay.js')
+        reads.trackRequest(request, 3, () => 'loader-checkout')
+        expect(reads.requestFinished(request, 9, () => undefined)).toEqual({ url: 'https://cdn.example.com/pay.js', resourceType: 'script', status: 0, reason: SCRIPT_BODY_WITHOUT_RESPONSE_REASON, step: 3, document: 'loader-checkout' })
+      })
+
+      it('is returned as unread, and taken off the unanswered list, after the deadline', async () => {
+        const reads = new PendingScriptReads()
+        const request = scriptRequest('https://cdn.example.com/pay.js')
+        reads.trackRequest(request, 3, () => 'loader-checkout')
+        await reads.settle(10, REASONS)
+        expect(reads.requestFinished(request, 9, () => undefined)).toMatchObject({ reason: SCRIPT_BODY_WITHOUT_RESPONSE_REASON, step: 3, document: 'loader-checkout' })
+        expect(reads.unansweredRequests()).toEqual([])
+      })
+
+      it('is not returned when its response was surfaced, or when it is not a script', () => {
+        const reads = new PendingScriptReads()
+        const answered = scriptRequest('https://cdn.example.com/pay.js', 'script', null, 'r1', scriptResponse('body'))
+        reads.trackRequest(answered, 3, () => undefined)
+        expect(reads.requestFinished(answered, 3, () => undefined)).toBeUndefined()
+        expect(reads.requestFinished(scriptRequest('https://cdn.example.com/a.css', 'stylesheet'), 3, () => undefined)).toBeUndefined()
+      })
+    })
+
+    // Chrome's own Network.loadingFinished, seen on the monitor's sessions
+    // independent of Puppeteer's event queueing: a request whose body is known
+    // to have finished may have run, so it is never merely unanswered.
+    describe('a request whose body Chrome reported finished', () => {
+      it('is returned as unread at the deadline instead of being listed as unanswered', async () => {
+        const reads = new PendingScriptReads()
+        const request = scriptRequest('https://cdn.example.com/pay.js', 'script', null, 'R-7')
+        reads.trackRequest(request, 5, () => 'loader-checkout')
+        reads.bodyFinished('R-7')
+        expect(await reads.settle(10, REASONS)).toEqual([{ url: 'https://cdn.example.com/pay.js', resourceType: 'script', status: 0, reason: SCRIPT_BODY_WITHOUT_RESPONSE_REASON, step: 5, document: 'loader-checkout' }])
+        expect(reads.unansweredRequests()).toEqual([])
+      })
+
+      it('is moved from unanswered to unread by a later settle when the finish is reported after the deadline', async () => {
+        const reads = new PendingScriptReads()
+        const request = scriptRequest('https://cdn.example.com/pay.js', 'script', null, 'R-8')
+        reads.trackRequest(request, 5, () => 'loader-checkout')
+        await reads.settle(10, REASONS)
+        reads.bodyFinished('R-8')
+        expect(await reads.settle(10, REASONS)).toMatchObject([{ reason: SCRIPT_BODY_WITHOUT_RESPONSE_REASON, step: 5, document: 'loader-checkout' }])
+        expect(reads.unansweredRequests()).toEqual([])
+      })
+
+      it("applies to a detached frame's request too", async () => {
+        const frame = {} as Frame
+        const reads = new PendingScriptReads()
+        reads.trackRequest(scriptRequest('https://provider.example.test/challenge.js', 'script', frame, 'R-9'), 5, () => undefined)
+        reads.frameDetached(frame)
+        reads.bodyFinished('R-9')
+        expect(await reads.settle(10, REASONS)).toMatchObject([{ reason: SCRIPT_BODY_WITHOUT_RESPONSE_REASON }])
+        expect(reads.unansweredRequests()).toEqual([])
+      })
     })
 
     describe('when the frame that issued a request is detached', () => {
@@ -246,15 +345,26 @@ describe('scriptResponseHandler', () => {
 
       // Puppeteer does not always report a torn-down frame's requests as
       // finished or failed, so waiting for them would spend the whole deadline.
-      it('stops waiting for its requests at once, and still lists them as unanswered', async () => {
+      it('stops waiting for its requests at once, and lists those that neither finished nor failed as unanswered', async () => {
         const reads = new PendingScriptReads()
         reads.trackRequest(scriptRequest('https://provider.example.test/challenge.js', 'script', frame), 5, () => 'loader-checkout')
         const started = Date.now()
-        const settling = reads.settle(5000, UNANSWERED)
+        const settling = reads.settle(5000, REASONS)
         reads.frameDetached(frame)
         expect(await settling).toEqual([])
         expect(Date.now() - started).toBeLessThan(1000)
         expect(reads.unansweredRequests()).toEqual([{ url: 'https://provider.example.test/challenge.js', resourceType: 'script', reason: SCRIPT_REQUEST_FRAME_DETACHED_REASON, step: 5, document: 'loader-checkout' }])
+      })
+
+      // What Chrome usually does: abort them, which Puppeteer reports.
+      it('does not list a detached request that then failed', async () => {
+        const reads = new PendingScriptReads()
+        const request = scriptRequest('https://provider.example.test/challenge.js', 'script', frame)
+        reads.trackRequest(request, 5, () => undefined)
+        reads.frameDetached(frame)
+        reads.requestSettled(request)
+        await reads.settle(10, REASONS)
+        expect(reads.unansweredRequests()).toEqual([])
       })
 
       it("keeps waiting for other frames' requests", async () => {
@@ -262,12 +372,12 @@ describe('scriptResponseHandler', () => {
         reads.trackRequest(scriptRequest('https://provider.example.test/challenge.js', 'script', frame), 5, () => undefined)
         reads.trackRequest(scriptRequest('https://cdn.example.com/pay.js', 'script', otherFrame), 5, () => undefined)
         reads.frameDetached(frame)
-        await reads.settle(20, UNANSWERED)
+        await reads.settle(20, REASONS)
         expect(reads.unansweredRequests().map((request) => request.reason)).toEqual([UNANSWERED, SCRIPT_REQUEST_FRAME_DETACHED_REASON])
       })
 
       // Not waited for is not forgotten: a response that lands before the
-      // seal is read like any other; see the test above for one that lands after.
+      // seal is read like any other.
       it('still reads a response that arrives for it after all, and no longer lists it', async () => {
         const reads = new PendingScriptReads()
         const request = scriptRequest('https://provider.example.test/challenge.js', 'script', frame)
@@ -276,7 +386,7 @@ describe('scriptResponseHandler', () => {
         const detectedScripts: ScriptInfo[] = []
         const response = { ...scriptResponse('body', 'https://provider.example.test/challenge.js'), request: () => request } as unknown as HTTPResponse
         reads.track(scriptResponseHandler(response, detectedScripts, undefined, { unread: [], step: 5, sealed: () => false }), response, undefined, 5)
-        expect(await reads.settle(1000, UNANSWERED)).toEqual([])
+        expect(await reads.settle(1000, REASONS)).toEqual([])
         expect(detectedScripts).toHaveLength(1)
         expect(reads.unansweredRequests()).toEqual([])
       })
@@ -285,7 +395,7 @@ describe('scriptResponseHandler', () => {
     it('ignores requests that are not scripts', async () => {
       const reads = new PendingScriptReads()
       reads.trackRequest(scriptRequest('https://api.example.com/session', 'xhr'), 4, () => undefined)
-      expect(await reads.settle(50, UNANSWERED)).toEqual([])
+      expect(await reads.settle(50, REASONS)).toEqual([])
       expect(reads.unansweredRequests()).toEqual([])
     })
 
@@ -293,7 +403,18 @@ describe('scriptResponseHandler', () => {
       const reads = new PendingScriptReads()
       const stylesheet = { request: () => ({ resourceType: () => 'stylesheet' }), ok: () => true } as unknown as HTTPResponse
       reads.track(new Promise<void>(() => undefined), stylesheet, undefined, 1)
-      expect(await reads.settle(10, UNANSWERED)).toEqual([])
+      expect(await reads.settle(10, REASONS)).toEqual([])
+    })
+  })
+
+  describe('recordUnreadScript', () => {
+    // A body-finished-without-response record carries no status; the same
+    // script surfacing later with its real status is the same gap.
+    it('treats a status-0 record and the same script with its real status as one', () => {
+      const unread: UnreadScriptResponse[] = []
+      recordUnreadScript(unread, { url: 'https://cdn.example.com/pay.js', resourceType: 'script', status: 0, reason: SCRIPT_BODY_WITHOUT_RESPONSE_REASON, step: 3, document: 'L' })
+      recordUnreadScript(unread, { url: 'https://cdn.example.com/pay.js', resourceType: 'script', status: 200, reason: SCRIPT_READ_LATE_REASON, step: 3, document: 'L' })
+      expect(unread).toHaveLength(1)
     })
   })
 

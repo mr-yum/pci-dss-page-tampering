@@ -1569,6 +1569,53 @@ describe('SlackAlertService - alertOnRunCompletion (Phase 3)', () => {
         expect(block).toContain('• `https://cdn.example.test/landing.js` on `Shop production` (detection, step 4, an unattributed page, outside the payment page)')
       })
 
+      // Slack rejects a message of more than 50 blocks outright, and a rejected
+      // summary would fail the run — so a CDN outage across every target and
+      // both passes must still produce a deliverable summary.
+      it('names at most 20 entries per list and points at the auditor report for the rest, staying inside 50 blocks', async () => {
+        const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+        const many = <T>(count: number, make: (index: number) => T): T[] => Array.from({ length: count }, (_, index) => make(index))
+        const longReason = 'r'.repeat(300)
+
+        await service.alertOnRunCompletion(
+          createSummary({
+            requestsUnanswered: many(200, (index) => request({ url: `https://cdn.example.test/never-${index}.js`, reason: longReason })),
+            scriptsUnread: [
+              ...many(200, (index) => ({
+                url: `https://cdn.example.test/pay-${index}.js`,
+                resourceType: 'script',
+                status: 200,
+                step: 5,
+                documentUrl: null,
+                reason: longReason,
+                target: 'Shop production',
+                pass: 'detection' as const,
+                outsidePaymentPage: false,
+              })),
+              ...many(200, (index) => ({
+                url: `https://cdn.example.test/early-${index}.js`,
+                resourceType: 'script',
+                status: 200,
+                step: 1,
+                documentUrl: null,
+                reason: longReason,
+                target: 'Shop production',
+                pass: 'detection' as const,
+                outsidePaymentPage: true,
+              })),
+            ],
+          }),
+          mockAlertDestinations,
+        )
+
+        const blocks = (sendMessageSpy.mock.calls[0]![0] as any).blocks as any[]
+        expect(blocks.length).toBeLessThanOrEqual(50)
+        const text = blocks.map((block) => block.text?.text ?? '').join('\n')
+        expect(text).toContain('never-19.js')
+        expect(text).not.toContain('never-20.js')
+        expect(text.match(/…and 180 more — every one is listed in the auditor report and the run log\./g)).toHaveLength(3)
+      })
+
       it('escapes a page-influenced URL', async () => {
         const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
 

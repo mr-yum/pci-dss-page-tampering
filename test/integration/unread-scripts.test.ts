@@ -55,6 +55,9 @@ const HUNG_HEADERS = '/hung-headers.js'
 // finish loading while that navigation is under way.
 const FRAME_SDK = '/frame/sdk.js'
 const FRAME_LATE_SCRIPTS = ['/frame/late-0.js', '/frame/late-1.js', '/frame/late-2.js']
+// A script the card frame requests and never gets an answer for, before the
+// page removes the frame altogether.
+const FRAME_HUNG = '/frame/hung.js'
 
 const checkoutPage = `<!doctype html><html><body><script src="/sdk.js"></script><span>Pay now</span>
 <button onclick="for (const src of ${JSON.stringify(LATE_SCRIPTS).replaceAll('"', "'")}) { const s = document.createElement('script'); s.src = src; document.body.appendChild(s) } location.href = '/shop/confirm'">Pay</button>
@@ -68,11 +71,13 @@ const confirmationPage = `<!doctype html><html><body><span>Confirmed</span>
 // gives the frame a renderer — and a DevTools session — of its own. (Different
 // ports alone are the same site, and the frame would stay in process.)
 const cardFrame = `<!doctype html><html><body><span>Card</span><script src="${FRAME_SDK}"></script>
-<script>addEventListener('message', () => { for (const src of ${JSON.stringify(FRAME_LATE_SCRIPTS).replaceAll('"', "'")}) { const s = document.createElement('script'); s.src = src; document.body.appendChild(s) } location.href = '/frame/challenge' })</script>
+<script>addEventListener('message', (event) => { if (event.data === 'hang') { const s = document.createElement('script'); s.src = '${FRAME_HUNG}'; document.body.appendChild(s); return } for (const src of ${JSON.stringify(FRAME_LATE_SCRIPTS).replaceAll('"', "'")}) { const s = document.createElement('script'); s.src = src; document.body.appendChild(s) } location.href = '/frame/challenge' })</script>
 </body></html>`
 const framedCheckoutPage = (frameOrigin: string): string => `<!doctype html><html><body>
 <iframe id="card" src="${frameOrigin}/frame/card" onload="document.getElementById('ready').textContent = 'Card ready'"></iframe><span id="ready"></span>
 <button onclick="document.getElementById('card').contentWindow.postMessage('pay', '*')">Pay</button>
+<button onclick="document.getElementById('card').contentWindow.postMessage('hang', '*')">Hang</button>
+<button onclick="document.getElementById('card').remove()">Close card</button>
 </body></html>`
 
 const script = (response: http.ServerResponse, url: string): void => {
@@ -107,7 +112,7 @@ const startServer = (): Promise<http.Server & { release: () => void }> =>
         return
       }
       // Nothing at all: the request stays unanswered.
-      if (url === HUNG_HEADERS) {
+      if (url === HUNG_HEADERS || url === FRAME_HUNG) {
         held.push(response)
         return
       }
@@ -119,9 +124,18 @@ const startServer = (): Promise<http.Server & { release: () => void }> =>
     server.listen(0, '127.0.0.1', () => resolve(Object.assign(server, { release })))
   })
 
-type Scenario = 'navigation' | 'unanswered' | 'cross-site-frame'
+type Scenario = 'navigation' | 'unanswered' | 'cross-site-frame' | 'removed-frame'
 
 const stepsFor = (scenario: Scenario): object[] => {
+  if (scenario === 'removed-frame') {
+    return [
+      { description: 'Card entry ready', paymentPage: true, waitFor: [{ type: 'span', identifier: 'Card ready' }], action: { type: 'escape', delay: 300 } },
+      // The card frame requests a script that is never answered...
+      { description: 'Hang', waitFor: [{ type: 'button', identifier: 'Hang' }], action: { type: 'click', delay: 100, postActionDelay: 300 } },
+      // ...and the page then removes the frame with that request outstanding.
+      { description: 'Close card', waitFor: [{ type: 'button', identifier: 'Close card' }], action: { type: 'click', delay: 100, postActionDelay: 300 } },
+    ]
+  }
   if (scenario === 'cross-site-frame') {
     return [
       { description: 'Card entry ready', paymentPage: true, waitFor: [{ type: 'span', identifier: 'Card ready' }], action: { type: 'escape', delay: 300 } },
@@ -145,7 +159,7 @@ const createFixtureRepo = (base: string, scenario: Scenario): string => {
   fs.mkdirSync(path.join(repoPath, 'targets'))
   fs.mkdirSync(path.join(repoPath, 'workflows'))
   fs.writeFileSync(path.join(repoPath, 'workflows/pay.json'), JSON.stringify({ steps: stepsFor(scenario) }))
-  const checkoutUrl = `${base}${scenario === 'cross-site-frame' ? '/shop/framed-checkout' : '/shop/checkout'}`
+  const checkoutUrl = `${base}${scenario === 'cross-site-frame' || scenario === 'removed-frame' ? '/shop/framed-checkout' : '/shop/checkout'}`
   const inventory = {
     target: {
       workflows: [
@@ -299,6 +313,35 @@ describe('script requests that are never answered', () => {
     expect(run.output).toContain(HUNG_BODY)
     expect(run.output).toContain(HUNG_HEADERS)
     expect(run.output).not.toContain('Scripts Not Read')
+    expect(run.status).toBe(ExitCode.Success)
+  })
+})
+
+// A cross-site frame removed by the page while one of its script requests is
+// still outstanding. Puppeteer reports that request neither finished nor
+// failed — only the frame detaching — so without the framedetached hook the
+// run would hold for the whole 15 s deadline and then list it as merely late.
+// It never ran: listed as evidence with the detached-frame reason, exit 0.
+describe('a cross-site frame removed while one of its script requests is outstanding', () => {
+  jest.setTimeout(240_000)
+  let run: Run
+
+  beforeAll(async () => {
+    run = await runDetection('removed-frame')
+  })
+  afterAll(() => stop(run))
+
+  it('lists the request as unanswered because its frame was detached, not because the deadline ran out', () => {
+    const target = run.report.targets.find((candidate) => candidate.workflowId === 'pay')!
+    expect(target.unansweredRequests.map((request) => `${new URL(request.url).hostname}${new URL(request.url).pathname}`)).toEqual([`localhost${FRAME_HUNG}`])
+    expect(target.unansweredRequests[0]!.reason).toContain('its frame was detached')
+    expect(target.unansweredRequests[0]!.reason).not.toContain('15s')
+    expect(target.unreadScripts).toEqual([])
+  })
+
+  it('does not spend the 15 s deadline on it, and finishes as a complete run that exits 0', () => {
+    expect(run.output).not.toContain('no response had arrived 15s')
+    expect(run.report.run.status).toBe('complete')
     expect(run.status).toBe(ExitCode.Success)
   })
 })

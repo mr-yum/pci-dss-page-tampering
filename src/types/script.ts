@@ -67,7 +67,7 @@ export type UnreadScriptResponse = {
   url: string
   /** Puppeteer resource type of the request — `script` for everything recorded today. */
   resourceType: string
-  /** HTTP status of the response whose body could not be read. */
+  /** HTTP status of the response whose body could not be read; 0 when the body finished loading but no response was ever surfaced, so no status is known. */
   status: number
   /** Why the body could not be read, e.g. the DevTools protocol error. */
   reason: string
@@ -97,10 +97,14 @@ export type UnreadScriptRecord = {
 
 /**
  * A script request the page issued that still had no response when the run
- * was accounted for. Evidence, not a finding: Puppeteer surfaces a script's
- * response only once its body is complete, and a classic script cannot run
- * before its body completes, so a request with no response never executed on
- * the page — there is nothing unmonitored to report. It is recorded because
+ * was accounted for, and no sign its body ever finished loading. Evidence,
+ * not a finding: in the observed Chrome behaviour (probe, 2026-10-02)
+ * Puppeteer surfaces a script's response only once its body is complete, and
+ * a classic script cannot run before its body completes, so such a request
+ * never executed on the page. That inference is kept safe by two backstops
+ * that turn a request into an unread script instead — Puppeteer's
+ * `requestfinished` with no response, and Chrome's own
+ * `Network.loadingFinished` (see `PendingScriptReads`). It is recorded because
  * the request itself is worth a human's eye: a URL the page built wrongly, or
  * a host that stopped answering, shows up nowhere else.
  *
