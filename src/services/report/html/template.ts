@@ -9,7 +9,7 @@
  * @see ../../../types/report.ts
  */
 
-import type { AuditorReport, ReportAuthorisationInfo, ReportMatcherRef, ReportResourceRow, ReportStatusCounts, ReportTargetSection, ReportUnmatchedEntry, ReportUnreadScript } from '../../../types/report.js'
+import type { AuditorReport, ReportAuthorisationInfo, ReportMatcherRef, ReportResourceRow, ReportStatusCounts, ReportTargetSection, ReportUnansweredRequest, ReportUnmatchedEntry, ReportUnreadScript } from '../../../types/report.js'
 import { createSha256Hash } from '../../../utils/hash.js'
 import type { ProvenanceNode, SourceProvenance } from '../../../utils/provenance.js'
 import { artefactRelativeHref, escapeHtml, html, join, raw, type RawHtml, safeHttpsHref } from './escape.js'
@@ -291,11 +291,56 @@ function formatUnread(scripts: readonly ReportUnreadScript[]): RawHtml {
               (script) =>
                 html`<tr>
                   <td class="mono">${script.url}</td>
-                  <td>${script.status === 0 ? 'no response' : String(script.status)}</td>
+                  <td>${script.status === 0 ? 'none surfaced' : String(script.status)}</td>
                   <td>${String(script.step)}</td>
                   <td class="mono">${script.documentUrl ?? html`<span class="muted">unattributed</span>`}</td>
                   <td>${script.scope === 'outside_payment' ? 'outside payment page' : 'payment page'}</td>
                   <td>${script.reason}</td>
+                </tr>`,
+            ),
+          )}
+        </tbody>
+      </table>
+    </div>`
+}
+
+/**
+ * Script requests that never got a response. Evidence, not findings: a
+ * script whose response never arrived never ran on the page, so this table
+ * never carries a warning banner — but a malformed URL or a dead host shows
+ * up nowhere else, so it is always shown when there is anything in it.
+ */
+function formatUnanswered(requests: readonly ReportUnansweredRequest[]): RawHtml {
+  if (requests.length === 0) return raw('')
+
+  return html`<h3>Script requests unanswered (${requests.length})</h3>
+    <p class="muted">
+      These script requests never received a response, so the scripts never ran on the page. They are recorded for evidence — a URL the page built wrongly, or a host that stopped answering — and do not make the run partial.
+    </p>
+    <div class="table-wrap">
+      <table>
+        <caption>
+          Script requests that never received a response
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Request</th>
+            <th scope="col">Step</th>
+            <th scope="col">Page</th>
+            <th scope="col">Scope</th>
+            <th scope="col">Reason</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${join(
+            requests.map(
+              (request) =>
+                html`<tr>
+                  <td class="mono">${request.url}</td>
+                  <td>${String(request.step)}</td>
+                  <td class="mono">${request.documentUrl ?? html`<span class="muted">unattributed</span>`}</td>
+                  <td>${request.scope === 'outside_payment' ? 'outside payment page' : 'payment page'}</td>
+                  <td>${request.reason}</td>
                 </tr>`,
             ),
           )}
@@ -365,7 +410,8 @@ function formatTarget(target: ReportTargetSection): RawHtml {
     <h2>${target.targetName} <span class="badge badge-${target.status}">${target.status}</span></h2>
     <p class="sub"><span class="mono">${target.url}</span> · inventory <span class="mono">${target.inventoryFile}</span> · workflow <span class="mono">${target.workflowId}</span> (<span class="mono">${target.workflowFile}</span>)</p>
     ${target.error === null ? '' : html`<p class="banner banner-warn">This target failed: ${target.error}</p>`} ${formatCounts(target.counts)} ${formatPaymentScope(target.paymentScope)} ${formatUnread(target.unreadScripts)}
-    ${formatTable('Scripts', target.scripts, target.targetKey)} ${formatTable('Headers', target.headers, target.targetKey)} ${formatUnmatched(target.unmatchedInventoryEntries, target.targetKey)}
+    ${formatUnanswered(target.unansweredRequests)} ${formatTable('Scripts', target.scripts, target.targetKey)} ${formatTable('Headers', target.headers, target.targetKey)}
+    ${formatUnmatched(target.unmatchedInventoryEntries, target.targetKey)}
   </section>`
 }
 

@@ -67,7 +67,7 @@ export type UnreadScriptResponse = {
   url: string
   /** Puppeteer resource type of the request — `script` for everything recorded today. */
   resourceType: string
-  /** HTTP status of the response whose body could not be read. */
+  /** HTTP status of the response whose body could not be read; 0 when the body finished loading but no response was ever surfaced, so no status is known. */
   status: number
   /** Why the body could not be read, e.g. the DevTools protocol error. */
   reason: string
@@ -95,6 +95,37 @@ export type UnreadScriptRecord = {
   reason: string
 }
 
+/**
+ * A script request the page issued that still had no response when the run
+ * was accounted for, and no sign its body ever finished loading. Evidence,
+ * not a finding: in the observed Chrome behaviour (probe, 2026-10-02)
+ * Puppeteer surfaces a script's response only once its body is complete, and
+ * a classic script cannot run before its body completes, so such a request
+ * never executed on the page. That inference is kept safe by two backstops
+ * that turn a request into an unread script instead — Puppeteer's
+ * `requestfinished` with no response, and Chrome's own
+ * `Network.loadingFinished` (see `PendingScriptReads`). It is recorded because
+ * the request itself is worth a human's eye: a URL the page built wrongly, or
+ * a host that stopped answering, shows up nowhere else.
+ *
+ * Unredacted here; every surface that displays it redacts it (see
+ * `toUnansweredRequestRecords`).
+ */
+export type UnansweredScriptRequest = {
+  url: string
+  /** Puppeteer resource type of the request — `script` for everything recorded today. */
+  resourceType: string
+  /** Why the request is recorded, e.g. still unanswered at the deadline, or its frame went away. */
+  reason: string
+  /** Top-level document the request belongs to; undefined when it could not be attributed. */
+  document?: DocumentId
+  /** Workflow step running when the request was issued (0 = initial navigation). */
+  step: number
+}
+
+/** An unanswered script request as every report and notification shows it; see `UnreadScriptRecord`. */
+export type UnansweredRequestRecord = Omit<UnreadScriptRecord, 'status'>
+
 export type ScriptDetectionSummary = {
   externalScripts: ScriptInfo[]
   inlineScripts: ScriptInfo[]
@@ -104,4 +135,10 @@ export type ScriptDetectionSummary = {
    * way a failed target does. Omitted means none were recorded.
    */
   unreadScripts?: UnreadScriptResponse[]
+  /**
+   * Script requests that never got a response. Split by payment scope like
+   * every other observation, but never fail the run (see
+   * `UnansweredScriptRequest`). Omitted means none were recorded.
+   */
+  unansweredRequests?: UnansweredScriptRequest[]
 }

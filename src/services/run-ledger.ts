@@ -1,8 +1,8 @@
 import type { IAlertService } from '../interfaces/alert.js'
 import type { ExecutionMode } from '../types/config.js'
-import { type AlertDeliveryFailure, type AuditorReportLocation, type ExecutionPass, type ExecutionSummary, type FailedTarget, unreadInPaymentScope, type UnreadScriptEntry } from '../types/execution-summary.js'
+import { type AlertDeliveryFailure, type AuditorReportLocation, type ExecutionPass, type ExecutionSummary, type FailedTarget, type UnansweredRequestEntry, unreadInPaymentScope, type UnreadScriptEntry } from '../types/execution-summary.js'
 import type { InventoryAlert } from '../types/inventory/model.js'
-import type { UnreadScriptRecord } from '../types/script.js'
+import type { UnansweredRequestRecord, UnreadScriptRecord } from '../types/script.js'
 import { redactForDisplay } from './report/mapper.js'
 
 export type RunLedgerFinishInput = {
@@ -53,6 +53,7 @@ export class RunLedger {
   private readonly failed: FailedTarget[] = []
   private readonly undelivered: AlertDeliveryFailure[] = []
   private readonly unread: UnreadScriptEntry[] = []
+  private readonly unanswered: UnansweredRequestEntry[] = []
   private resourceCount = 0
 
   constructor(private readonly log: (message: string) => void) {}
@@ -71,6 +72,10 @@ export class RunLedger {
 
   get scriptsUnread(): readonly UnreadScriptEntry[] {
     return this.unread
+  }
+
+  get requestsUnanswered(): readonly UnansweredRequestEntry[] {
+    return this.unanswered
   }
 
   get totalResourceCount(): number {
@@ -121,6 +126,28 @@ export class RunLedger {
   }
 
   /**
+   * Record the script requests a target run issued that never got a response.
+   *
+   * Evidence, never a failure, in either scope: a script whose response never
+   * arrived never ran on the page, so nothing went unexamined. They are named
+   * in the summary because the request itself deserves a look — a URL the
+   * page built wrongly shows up nowhere else. The records arrive redacted.
+   */
+  recordUnansweredRequests(target: string, pass: ExecutionPass, requests: { payment: readonly UnansweredRequestRecord[]; outside: readonly UnansweredRequestRecord[] }): void {
+    for (const [records, outsidePaymentPage] of [
+      [requests.payment, false],
+      [requests.outside, true],
+    ] as const) {
+      for (const record of records) {
+        this.unanswered.push({ ...record, target, pass, outsidePaymentPage })
+        this.log(
+          `Script request ${record.url} on target '${target}' (${pass} pass, step ${record.step}${outsidePaymentPage ? ', outside the payment page' : ''}) never received a response, so the script never ran; recorded as evidence. Reason: ${record.reason}`,
+        )
+      }
+    }
+  }
+
+  /**
    * Record alerts that were produced but never arrived.
    *
    * Idempotent per failure object, so the alert service's running list can be
@@ -141,6 +168,7 @@ export class RunLedger {
       targetsFailed: [...this.failed],
       alertsUndelivered: [...this.undelivered],
       scriptsUnread: [...this.unread],
+      requestsUnanswered: [...this.unanswered],
       repositoryUrl: input.repositoryUrl,
       inventoryBranch: input.inventoryBranch,
       detectionBranch: input.detectionBranch,

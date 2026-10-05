@@ -31,11 +31,21 @@ import type { TargetType } from './target.js'
  * means — `run.status: "partial"` has always meant "this census is short, do
  * not read it as clean", so a new way for a census to be short (an unread
  * payment-page script, 1.5.0) is minor even though `run.failures` can now be
- * empty alongside it. Major for a removal, a retype, or a change in what an
- * existing value means. Consumers should gate on the major, tolerate unknown
- * fields, and never infer one field's shape from another's value.
+ * empty alongside it. Likewise a list entry moved to where its documented
+ * meaning puts it is minor: 1.5.0 listed every script request still without a
+ * response at the deadline under `unreadScripts` (with `status: 0`); 1.6.0
+ * splits them by evidence. A request whose body was never seen to finish
+ * moves to `unansweredRequests` — it never ran, and never makes the run
+ * partial. A request whose body is known to have finished although no
+ * response was surfaced stays under `unreadScripts` with `status: 0` — it may
+ * have run unexamined, and in payment scope it makes the run partial. So in
+ * 1.6.0 `status: 0` under `unreadScripts` means "body finished, no response
+ * surfaced", never "no response". Major for a removal, a retype, or
+ * a change in what an existing value means. Consumers should gate on the
+ * major, tolerate unknown fields, and never infer one field's shape from
+ * another's value.
  */
-export const REPORT_SCHEMA_VERSION = '1.5.0'
+export const REPORT_SCHEMA_VERSION = '1.6.0'
 
 /**
  * Where an observation sits relative to the payment page, when the target's
@@ -183,13 +193,38 @@ export type ReportUnreadScript = {
   /** Redacted: origin and path only. */
   url: string
   resourceType: string
-  /** HTTP status of the response whose body could not be read. */
+  /** HTTP status of the response whose body could not be read; 0 when the body finished loading but no response was ever surfaced, so no status is known. */
   status: number
   /** Workflow step running when the response arrived (0 = initial navigation). */
   step: number
   /** Redacted URL of the top-level document it belonged to; null when it could not be attributed. */
   documentUrl: string | null
   /** Why the body could not be read. */
+  reason: string
+  /** See `ReportScope`. Absent when the target's workflow marks no payment page. */
+  scope?: ReportScope
+}
+
+/**
+ * A script request the page issued that never got a response (added in
+ * 1.6.0), and whose body was never seen to finish loading. Evidence, never a
+ * finding, in either scope: in the observed Chrome behaviour (probe,
+ * 2026-10-02) a script's response surfaces only once its body is complete and
+ * a script cannot run before then, so such a request never executed on the
+ * page. A request whose body did finish without a response surfacing is
+ * listed under `unreadScripts` (status 0) instead. It never affects
+ * `run.status`. Listed because the request itself deserves a
+ * look — a URL the page built wrongly, or a host that stopped answering.
+ */
+export type ReportUnansweredRequest = {
+  /** Redacted: origin and path only. A malformed URL is shown in the shape the browser requested it. */
+  url: string
+  resourceType: string
+  /** Workflow step running when the request was issued (0 = initial navigation). */
+  step: number
+  /** Redacted URL of the top-level document it belonged to; null when it could not be attributed. */
+  documentUrl: string | null
+  /** Why it is recorded: still unanswered at the deadline, or its frame went away first. */
   reason: string
   /** See `ReportScope`. Absent when the target's workflow marks no payment page. */
   scope?: ReportScope
@@ -238,6 +273,8 @@ export type ReportTargetSection = {
   unmatchedInventoryEntries: ReportUnmatchedEntry[]
   /** Script responses whose body could not be read (added in 1.5.0). Empty when every script was read. */
   unreadScripts: ReportUnreadScript[]
+  /** Script requests that never got a response (added in 1.6.0). Evidence only; empty when none. */
+  unansweredRequests: ReportUnansweredRequest[]
   /**
    * Present whenever the workflow marks a payment page: the documents the run
    * passed through, in order, and the counts for the rows the run alerts on.
@@ -293,7 +330,8 @@ export type ReportRunMetadata = {
   /**
    * `partial` when any target failed, or (since 1.5.0) when any script in
    * payment scope could not be read — so a short census is never mistaken
-   * for a clean one.
+   * for a clean one. An unanswered script request (`unansweredRequests`,
+   * 1.6.0) never makes it partial: that script never ran.
    */
   status: 'complete' | 'partial'
   failures: { targetKey: string; message: string }[]
@@ -306,8 +344,13 @@ export type AuditorReport = {
   schemaVersion: string
   generator: { name: string; version: string }
   run: ReportRunMetadata
-  /** `scriptsUnread` (added in 1.5.0) counts unread scripts in payment scope only — the ones that make the run partial. */
-  summary: ReportStatusCounts & { targets: number; targetsFailed: number; scriptsUnread: number }
+  /**
+   * `scriptsUnread` (added in 1.5.0) counts unread scripts in payment scope
+   * only — the ones that make the run partial. `requestsUnanswered` (added in
+   * 1.6.0) counts unanswered script requests in every scope; it never makes
+   * the run partial.
+   */
+  summary: ReportStatusCounts & { targets: number; targetsFailed: number; scriptsUnread: number; requestsUnanswered: number }
   targets: ReportTargetSection[]
   /** Machine-stated caveats: truncation, redaction, partial run, size cap. */
   notes: string[]

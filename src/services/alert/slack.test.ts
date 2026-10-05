@@ -1136,7 +1136,7 @@ describe('SlackAlertService - Typed Results Handling (Phase 4)', () => {
  *   - Error handling (logs and continues)
  */
 import { ExecutionMode } from '../../types/config.js'
-import type { ExecutionSummary, UnreadScriptEntry } from '../../types/execution-summary.js'
+import type { ExecutionSummary, UnansweredRequestEntry, UnreadScriptEntry } from '../../types/execution-summary.js'
 
 describe('SlackAlertService - alertOnRunCompletion (Phase 3)', () => {
   let service: SlackAlertService
@@ -1538,6 +1538,155 @@ describe('SlackAlertService - alertOnRunCompletion (Phase 3)', () => {
         const block = texts.find((text) => text.startsWith('*Script Not Read (1)*')) as string
         expect(block).not.toContain('<!channel>')
         expect(block).toContain('&lt;https://evil.example|click&gt;')
+      })
+    })
+
+    describe('script requests that were never answered', () => {
+      const request = (overrides: Partial<UnansweredRequestEntry> = {}): UnansweredRequestEntry => ({
+        url: 'https://shop.example.testhttps//shop.example.test/a1b2',
+        resourceType: 'script',
+        step: 4,
+        documentUrl: 'https://shop.example.test/checkout',
+        reason: 'no response had arrived 15s after the workflow finished',
+        target: 'Shop production',
+        pass: 'detection',
+        outsidePaymentPage: false,
+        ...overrides,
+      })
+
+      // Evidence, not a gap: the script never ran. The headline stays green,
+      // but each request is named — a malformed URL shows up nowhere else.
+      it('keeps the green headline and names each request with its target, step, page and scope', async () => {
+        const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+        await service.alertOnRunCompletion(createSummary({ requestsUnanswered: [request(), request({ url: 'https://cdn.example.test/landing.js', documentUrl: null, outsidePaymentPage: true })] }), mockAlertDestinations)
+
+        const texts = (sendMessageSpy.mock.calls[0]![0] as any).blocks.map((block: any) => block.text?.text ?? '') as string[]
+        expect(texts[0]).toBe(':white_check_mark: *Workflow Execution Completed Successfully* :white_check_mark:')
+        const block = texts.find((text) => text.startsWith('*Script Requests Unanswered (2)*')) as string
+        expect(block).toContain('never ran')
+        expect(block).toContain('• `https://shop.example.testhttps//shop.example.test/a1b2` on `Shop production` (detection, step 4, `https://shop.example.test/checkout`): no response had arrived 15s after the workflow finished')
+        expect(block).toContain('• `https://cdn.example.test/landing.js` on `Shop production` (detection, step 4, an unattributed page, outside the payment page)')
+      })
+
+      // Slack rejects a message of more than 50 blocks outright, and a rejected
+      // summary would fail the run — so a CDN outage across every target and
+      // both passes must still produce a deliverable summary.
+      it('names at most 20 entries per list and points at the auditor report for the rest, staying inside 50 blocks', async () => {
+        const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+        const many = <T>(count: number, make: (index: number) => T): T[] => Array.from({ length: count }, (_, index) => make(index))
+        const longReason = 'r'.repeat(300)
+
+        await service.alertOnRunCompletion(
+          createSummary({
+            requestsUnanswered: many(200, (index) => request({ url: `https://cdn.example.test/never-${index}.js`, reason: longReason })),
+            scriptsUnread: [
+              ...many(200, (index) => ({
+                url: `https://cdn.example.test/pay-${index}.js`,
+                resourceType: 'script',
+                status: 200,
+                step: 5,
+                documentUrl: null,
+                reason: longReason,
+                target: 'Shop production',
+                pass: 'detection' as const,
+                outsidePaymentPage: false,
+              })),
+              ...many(200, (index) => ({
+                url: `https://cdn.example.test/early-${index}.js`,
+                resourceType: 'script',
+                status: 200,
+                step: 1,
+                documentUrl: null,
+                reason: longReason,
+                target: 'Shop production',
+                pass: 'detection' as const,
+                outsidePaymentPage: true,
+              })),
+            ],
+          }),
+          mockAlertDestinations,
+        )
+
+        const blocks = (sendMessageSpy.mock.calls[0]![0] as any).blocks as any[]
+        expect(blocks.length).toBeLessThanOrEqual(50)
+        const text = blocks.map((block) => block.text?.text ?? '').join('\n')
+        expect(text).toContain('never-19.js')
+        expect(text).not.toContain('never-20.js')
+        expect(text.match(/…and 180 more — every one is listed in the auditor report and the run log\./g)).toHaveLength(3)
+      })
+
+      // The summary is the one place a reader learns which page went
+      // unmonitored: capping rows must never drop a target.
+      it('still names a target whose only unread script falls past the row cap', async () => {
+        const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+        const unread = (target: string, index: number) => ({
+          url: `https://cdn.example.test/${target}-${index}.js`,
+          resourceType: 'script',
+          status: 200,
+          step: 5,
+          documentUrl: null,
+          reason: 'evicted',
+          target,
+          pass: 'detection' as const,
+          outsidePaymentPage: false,
+        })
+
+        await service.alertOnRunCompletion(createSummary({ scriptsUnread: [...Array.from({ length: 25 }, (_, index) => unread('Shop A', index)), unread('Shop B', 0)] }), mockAlertDestinations)
+
+        const text = ((sendMessageSpy.mock.calls[0]![0] as any).blocks as any[]).map((block) => block.text?.text ?? '').join('\n')
+        expect(text).toContain('`Shop B`')
+        expect(text).toContain('Shop B-0.js')
+        expect(text).toContain('…and 6 more')
+      })
+
+      it.each([30, 300])('names every one of %i affected targets in each of three 200-entry lists, within 50 blocks', async (targetCount) => {
+        const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+        const entries = Math.max(200, targetCount)
+        const targetOf = (index: number) => `Target ${index % targetCount}`
+        const longReason = 'r'.repeat(300)
+        const unread = (prefix: string, outsidePaymentPage: boolean) =>
+          Array.from({ length: entries }, (_, index) => ({
+            url: `https://cdn.example.test/${prefix}${index}.js`,
+            resourceType: 'script',
+            status: 200,
+            step: 5,
+            documentUrl: null,
+            reason: longReason,
+            target: targetOf(index),
+            pass: 'detection' as const,
+            outsidePaymentPage,
+          }))
+
+        await service.alertOnRunCompletion(
+          createSummary({
+            requestsUnanswered: Array.from({ length: entries }, (_, index) => request({ url: `https://cdn.example.test/never-${index}.js`, target: targetOf(index), reason: longReason })),
+            scriptsUnread: [...unread('pay-', false), ...unread('early-', true)],
+          }),
+          mockAlertDestinations,
+        )
+
+        const blocks = (sendMessageSpy.mock.calls[0]![0] as any).blocks as any[]
+        expect(blocks.length).toBeLessThanOrEqual(50)
+        const text = blocks.map((block) => block.text?.text ?? '').join('\n')
+        // Rows are capped at 20 per list — the first 20 targets' first entries…
+        for (const prefix of ['pay-', 'early-', 'never-']) {
+          for (let index = 0; index < 20; index++) expect(text).toContain(`/${prefix}${index}.js\``)
+          expect(text).not.toContain(`/${prefix}20.js\``)
+        }
+        // …and every other target is still named, once in each of the three lists.
+        expect(text.match(new RegExp(`Also affected \\(${targetCount - 20} more targets\\)`, 'g'))).toHaveLength(3)
+        for (let index = 0; index < targetCount; index++) expect(text.split(`\`Target ${index}\``).length - 1).toBeGreaterThanOrEqual(3)
+      })
+
+      it('escapes a page-influenced URL', async () => {
+        const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+        await service.alertOnRunCompletion(createSummary({ requestsUnanswered: [request({ url: 'https://cdn.example.test/<!channel>.js' })] }), mockAlertDestinations)
+
+        const texts = (sendMessageSpy.mock.calls[0]![0] as any).blocks.map((block: any) => block.text?.text ?? '') as string[]
+        const block = texts.find((text) => text.startsWith('*Script Request Unanswered (1)*')) as string
+        expect(block).not.toContain('<!channel>')
       })
     })
 

@@ -4,7 +4,7 @@ import type { ComparisonResultType } from '../types/comparison.js'
 import type { DetectionSummary } from '../types/detection.js'
 import type { DocumentTrailEntry, PaymentScope } from '../types/document.js'
 import type { Inventory } from '../types/inventory/model.js'
-import type { UnreadScriptRecord, UnreadScriptResponse } from '../types/script.js'
+import type { UnansweredRequestRecord, UnansweredScriptRequest, UnreadScriptRecord, UnreadScriptResponse } from '../types/script.js'
 import type { Target } from '../types/target.js'
 import { redactUrl } from '../utils/url.js'
 import { compareOutsidePayment } from './outside-payment.js'
@@ -22,6 +22,12 @@ export type ScopedComparison = {
    * evidence only. `outside` is null exactly when `outside` above is.
    */
   unread: { payment: UnreadScriptRecord[]; outside: UnreadScriptRecord[] | null }
+  /**
+   * Script requests that never got a response, split the same way. Evidence
+   * on both sides: a request with no response never ran on the page, so
+   * neither side affects the run's outcome.
+   */
+  unanswered: { payment: UnansweredRequestRecord[]; outside: UnansweredRequestRecord[] | null }
 }
 
 /**
@@ -30,18 +36,30 @@ export type ScopedComparison = {
  * summary and the logs cannot disagree about what is shown.
  */
 export function toUnreadScriptRecords(unread: readonly UnreadScriptResponse[], documents: readonly DocumentTrailEntry[]): UnreadScriptRecord[] {
-  const documentUrls = new Map(documents.map((document) => [document.id, document.url]))
+  const display = displayFields(documents)
   return unread.map((script) => {
-    const documentUrl = script.document === undefined ? undefined : documentUrls.get(script.document)
-    return {
-      url: redactUrl(script.url),
-      resourceType: script.resourceType,
-      status: script.status,
-      step: script.step,
-      documentUrl: documentUrl === undefined ? null : redactUrl(documentUrl),
-      reason: redactForDisplay(script.reason, 1000).text,
-    }
+    const { url, resourceType, step, documentUrl, reason } = display(script)
+    return { url, resourceType, status: script.status, step, documentUrl, reason }
   })
+}
+
+/** The same redaction and document resolution for unanswered requests (see `toUnreadScriptRecords`). */
+export function toUnansweredRequestRecords(unanswered: readonly UnansweredScriptRequest[], documents: readonly DocumentTrailEntry[]): UnansweredRequestRecord[] {
+  return unanswered.map(displayFields(documents))
+}
+
+function displayFields(documents: readonly DocumentTrailEntry[]): (item: UnansweredScriptRequest) => UnansweredRequestRecord {
+  const documentUrls = new Map(documents.map((document) => [document.id, document.url]))
+  return (item) => {
+    const documentUrl = item.document === undefined ? undefined : documentUrls.get(item.document)
+    return {
+      url: redactUrl(item.url),
+      resourceType: item.resourceType,
+      step: item.step,
+      documentUrl: documentUrl === undefined ? null : redactUrl(documentUrl),
+      reason: redactForDisplay(item.reason, 1000).text,
+    }
+  }
 }
 
 /**
@@ -64,7 +82,11 @@ export async function compareWithPaymentScope(detection: DetectionSummary, inven
     payment: toUnreadScriptRecords(payment.scriptSummary.unreadScripts ?? [], documents),
     outside: outsidePayment === null ? null : toUnreadScriptRecords(outsidePayment.scriptSummary.unreadScripts ?? [], documents),
   }
-  return { payment: { scripts, headers }, outside, unread }
+  const unanswered = {
+    payment: toUnansweredRequestRecords(payment.scriptSummary.unansweredRequests ?? [], documents),
+    outside: outsidePayment === null ? null : toUnansweredRequestRecords(outsidePayment.scriptSummary.unansweredRequests ?? [], documents),
+  }
+  return { payment: { scripts, headers }, outside, unread, unanswered }
 }
 
 /**
@@ -84,10 +106,11 @@ export function reportRecordsFor(input: { inventory: Inventory; target: Target; 
       target,
       comparisonResults: [...scoped.payment.scripts, ...scoped.payment.headers],
       unreadScripts: scoped.unread.payment,
+      unansweredRequests: scoped.unanswered.payment,
       ...(paymentScope?.declared === true ? { paymentScope } : {}),
       ...(scoped.outside === null ? {} : { scope: 'payment' as const }),
     },
   ]
-  if (scoped.outside !== null) records.push({ inventory, target, comparisonResults: scoped.outside, unreadScripts: scoped.unread.outside ?? [], scope: 'outside_payment' })
+  if (scoped.outside !== null) records.push({ inventory, target, comparisonResults: scoped.outside, unreadScripts: scoped.unread.outside ?? [], unansweredRequests: scoped.unanswered.outside ?? [], scope: 'outside_payment' })
   return records
 }

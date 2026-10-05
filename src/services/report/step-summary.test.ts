@@ -77,3 +77,19 @@ describe('buildStepSummary unread scripts', () => {
     expect(markdown).toContain('1 script(s) on pages loaded before the payment page could not be read')
   })
 })
+
+describe('buildStepSummary unanswered script requests', () => {
+  const request = (url: string) => ({ url, resourceType: 'script', step: 4, documentUrl: 'https://book.example.test/venue/checkout', reason: 'no response had arrived 15s after the workflow finished' })
+
+  it('names each one as evidence and leaves the run complete', () => {
+    const collector = new ReportCollector()
+    collector.recordTargetRun({ inventory: buildInventory(), target: detectionTarget, comparisonResults: [], unansweredRequests: [request('https://shop.example.testhttps//shop.example.test/a1b2')] })
+
+    const markdown = buildStepSummary(collector.build('detection', runContext())!)
+
+    expect(markdown).not.toContain('Partial run')
+    expect(markdown).toContain('### Script requests unanswered (1)')
+    expect(markdown).toContain('`https://shop.example.testhttps//shop.example.test/a1b2`')
+    expect(markdown).toContain('do not make the run partial')
+  })
+})

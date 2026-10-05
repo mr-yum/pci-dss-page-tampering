@@ -15,7 +15,7 @@ import type { ComparisonResultType } from '../types/comparison.js'
 import type { PaymentScope } from '../types/document.js'
 import type { Inventory } from '../types/inventory/model.js'
 import type { AuditorReport, ReportPass, ReportRunMetadata, ReportScope } from '../types/report.js'
-import type { UnreadScriptRecord } from '../types/script.js'
+import type { UnansweredRequestRecord, UnreadScriptRecord } from '../types/script.js'
 import type { Target } from '../types/target.js'
 
 /** Run-level facts the collector cannot know for itself. */
@@ -35,6 +35,8 @@ export type TargetRunRecord = {
   comparisonResults: readonly ComparisonResultType[]
   /** Script responses in this scope whose body could not be read. */
   unreadScripts?: readonly UnreadScriptRecord[]
+  /** Script requests in this scope that never got a response: evidence, never a finding. */
+  unansweredRequests?: readonly UnansweredRequestRecord[]
   /**
    * Set when the workflow marks a payment page: which side of it these results
    * are. A scoped run is recorded in two calls, one per scope. Omitted when the

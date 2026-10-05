@@ -486,6 +486,41 @@ describe('ReportCollector unread scripts', () => {
   })
 })
 
+describe('ReportCollector unanswered script requests', () => {
+  const request = (url: string) => ({ url, resourceType: 'script', step: 4, documentUrl: 'https://book.example.test/venue/checkout', reason: 'no response had arrived 15s after the workflow finished' })
+
+  const build = (records: { unanswered: ReturnType<typeof request>[]; scope?: 'payment' | 'outside_payment' }[]) => {
+    const inventory = buildInventory()
+    const collector = new ReportCollector()
+    for (const record of records) collector.recordTargetRun({ inventory, target: detectionTarget, comparisonResults: [], unansweredRequests: record.unanswered, ...(record.scope === undefined ? {} : { scope: record.scope }) })
+    return collector.build('detection', runContext())!
+  }
+
+  // Evidence, not a gap in the census: the script never ran.
+  it('lists them under their target, counts them, and leaves the run complete', () => {
+    const report = build([
+      { unanswered: [request('https://cdn.example.test/b.js'), request('https://cdn.example.test/a.js')], scope: 'payment' },
+      { unanswered: [request('https://cdn.example.test/landing.js')], scope: 'outside_payment' },
+    ])
+    expect(report.targets[0]!.unansweredRequests.map((entry) => [entry.url, entry.scope])).toEqual([
+      ['https://cdn.example.test/landing.js', 'outside_payment'],
+      ['https://cdn.example.test/a.js', 'payment'],
+      ['https://cdn.example.test/b.js', 'payment'],
+    ])
+    expect(report.targets[0]!.unreadScripts).toEqual([])
+    expect(report.run.status).toBe('complete')
+    expect(report.summary).toEqual(expect.objectContaining({ scriptsUnread: 0, requestsUnanswered: 3 }))
+    expect(report.notes.some((note) => note.startsWith('3 script request(s) never received a response'))).toBe(true)
+    expect(report.notes.some((note) => note.startsWith('PARTIAL RUN'))).toBe(false)
+  })
+
+  it('records an empty list when every request was answered', () => {
+    const report = build([{ unanswered: [] }])
+    expect(report.targets[0]!.unansweredRequests).toEqual([])
+    expect(report.summary.requestsUnanswered).toBe(0)
+  })
+})
+
 describe('NoopReportCollector', () => {
   it('records nothing and builds nothing', () => {
     const collector = new NoopReportCollector()

@@ -251,6 +251,16 @@ export class ConsoleAlertService implements IAlertService {
       }
     }
 
+    // Evidence only — those scripts never ran — but named, like the lists
+    // above: a malformed URL or a dead host shows up nowhere else.
+    const unanswered = summary.requestsUnanswered ?? []
+    if (unanswered.length > 0) {
+      console.log(`  Script Requests Unanswered (evidence only; never ran on the page): ${unanswered.length}`)
+      for (const request of unanswered) {
+        console.log(`    - ${request.url} on ${request.target} (${request.pass}, step ${request.step}, ${request.documentUrl ?? 'unattributed page'}${request.outsidePaymentPage ? ', outside the payment page' : ''}): ${request.reason}`)
+      }
+    }
+
     if (undelivered.length > 0) {
       console.log(`  Alerts Not Delivered: ${undelivered.length}`)
       for (const failure of undelivered) {

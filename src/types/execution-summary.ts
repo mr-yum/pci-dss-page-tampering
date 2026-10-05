@@ -1,5 +1,5 @@
 import { ExecutionMode } from './config.js'
-import type { UnreadScriptRecord } from './script.js'
+import type { UnansweredRequestRecord, UnreadScriptRecord } from './script.js'
 
 /** Which pass of a run a target belongs to. */
 export type ExecutionPass = 'inventory' | 'detection'
@@ -52,6 +52,21 @@ export type UnreadScriptEntry = UnreadScriptRecord & {
   outsidePaymentPage: boolean
 }
 
+/**
+ * A script request a target run issued that never got a response, so the
+ * script never ran on the page. Named in the run summary because the request
+ * itself deserves a look — a URL the page built wrongly, or a host that has
+ * stopped answering — but never counted against the run: nothing ran that
+ * went unexamined. See `UnansweredScriptRequest`.
+ */
+export type UnansweredRequestEntry = UnansweredRequestRecord & {
+  /** Display name of the target (its configured name, or `<file>/<workflow>`). */
+  target: string
+  pass: ExecutionPass
+  /** True only for a request attributed to an earlier page the payment page replaced. */
+  outsidePaymentPage: boolean
+}
+
 /** The unread scripts that count against the run: all but those on an earlier page the payment page replaced. */
 export function unreadInPaymentScope(entries: readonly UnreadScriptEntry[] | undefined): UnreadScriptEntry[] {
   return (entries ?? []).filter((entry) => !entry.outsidePaymentPage)
@@ -92,6 +107,13 @@ export type ExecutionSummary = {
    * the order they were recorded. Omitted or empty when every script was read.
    */
   scriptsUnread?: UnreadScriptEntry[]
+
+  /**
+   * Script requests that never got a response, in and outside payment scope,
+   * in the order they were recorded. Evidence only: they never change the
+   * outcome (see `getExecutionOutcome`). Omitted or empty when none.
+   */
+  requestsUnanswered?: UnansweredRequestEntry[]
 
   /** Git repository URL that was monitored */
   repositoryUrl: string
