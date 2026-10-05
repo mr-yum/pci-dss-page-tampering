@@ -194,6 +194,12 @@ describe('validateExecutionSummary', () => {
         expect(getExecutionOutcome({ targetsProcessed: ['1.0'], scriptsUnread: [{ ...unread, outsidePaymentPage: false }] })).toBe('partial')
       })
 
+      // A request with no response never ran on the page: evidence only.
+      it('stays success when script requests went unanswered', () => {
+        const request = { url: 'https://cdn.example.test/never.js', resourceType: 'script', step: 5, documentUrl: null, reason: 'no response', target: '1.0', pass: 'detection' as const, outsidePaymentPage: false }
+        expect(getExecutionOutcome({ targetsProcessed: ['1.0'], requestsUnanswered: [request] } as Parameters<typeof getExecutionOutcome>[0])).toBe('success')
+      })
+
       it('stays success when the only unread script was on an earlier page the payment page replaced', () => {
         expect(getExecutionOutcome({ targetsProcessed: ['1.0'], scriptsUnread: [{ ...unread, outsidePaymentPage: true }] })).toBe('success')
       })

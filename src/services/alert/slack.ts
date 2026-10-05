@@ -11,7 +11,7 @@ import type { MissingRequiredScript } from '../../types/comparison/missing-requi
 import type { UnknownHeaderFound } from '../../types/comparison/unknown-header-found.js'
 import type { UnknownScriptFound } from '../../types/comparison/unknown-script-found.js'
 import { ExecutionMode } from '../../types/config.js'
-import { type AlertDeliveryFailure, type ExecutionSummary, type FailedTarget, getExecutionOutcome, unreadInPaymentScope, type UnreadScriptEntry } from '../../types/execution-summary.js'
+import { type AlertDeliveryFailure, type ExecutionSummary, type FailedTarget, getExecutionOutcome, type UnansweredRequestEntry, unreadInPaymentScope, type UnreadScriptEntry } from '../../types/execution-summary.js'
 import type { HeaderInfo } from '../../types/header.js'
 import type { AlertDestination, InventoryAlert } from '../../types/inventory/model.js'
 import type { DetectedScript } from '../../types/matcher/matcher.interface.js'
@@ -1217,7 +1217,7 @@ export class SlackAlertService implements IAlertService {
             text,
           },
         })),
-        ...[...this.formatUnreadScripts(unreadInScope, false), ...this.formatUnreadScripts(unreadOutside, true)].map((text) => ({
+        ...[...this.formatUnreadScripts(unreadInScope, false), ...this.formatUnreadScripts(unreadOutside, true), ...this.formatUnansweredRequests(summary.requestsUnanswered ?? [])].map((text) => ({
           type: 'section',
           text: {
             type: 'mrkdwn',
@@ -1432,6 +1432,37 @@ export class SlackAlertService implements IAlertService {
     for (const script of unread) {
       const page = script.documentUrl === null ? 'an unattributed page' : `\`${escapeMrkdwn(clip(script.documentUrl))}\``
       const line = boundLine(`• \`${escapeMrkdwn(clip(script.url))}\` on \`${escapeMrkdwn(clip(script.target))}\` (${script.pass}, step ${script.step}, ${page}): ${escapeMrkdwn(clip(script.reason))}`)
+      if (current.length + 1 + line.length > SECTION_CHAR_LIMIT) {
+        sections.push(current)
+        current = `*${label} (continued)*`
+      }
+      current += `\n${line}`
+    }
+    sections.push(current)
+    return sections
+  }
+
+  /**
+   * Name every script request that never got a response. Evidence, not a
+   * monitoring gap — a script whose response never arrived never ran — so it
+   * leaves the headline alone; but each one is named, because a URL the page
+   * built wrongly, or a host that has stopped answering, shows up nowhere
+   * else. Same bounds and escaping as the lists above.
+   */
+  private formatUnansweredRequests(unanswered: readonly UnansweredRequestEntry[]): string[] {
+    if (unanswered.length === 0) return []
+
+    const fieldLimit = 300
+    const clip = (text: string): string => (text.length > fieldLimit ? `${text.slice(0, fieldLimit)}…` : text)
+    const label = `Script ${unanswered.length === 1 ? 'Request' : 'Requests'} Unanswered`
+    const header = `*${label} (${unanswered.length})* — the page requested these scripts but no response ever arrived, so they never ran; recorded for evidence, not a monitoring gap:`
+
+    const sections: string[] = []
+    let current = header
+    for (const request of unanswered) {
+      const page = request.documentUrl === null ? 'an unattributed page' : `\`${escapeMrkdwn(clip(request.documentUrl))}\``
+      const scope = request.outsidePaymentPage ? ', outside the payment page' : ''
+      const line = boundLine(`• \`${escapeMrkdwn(clip(request.url))}\` on \`${escapeMrkdwn(clip(request.target))}\` (${request.pass}, step ${request.step}, ${page}${scope}): ${escapeMrkdwn(clip(request.reason))}`)
       if (current.length + 1 + line.length > SECTION_CHAR_LIMIT) {
         sections.push(current)
         current = `*${label} (continued)*`

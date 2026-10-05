@@ -3,7 +3,7 @@ import type { PaymentScope } from '../types/document.js'
 import { headerObservationKey } from '../types/header.js'
 import type { Inventory } from '../types/inventory/model.js'
 import { createMatcher } from '../types/matcher/matcher-factory.js'
-import type { ScriptInfo, UnreadScriptResponse } from '../types/script.js'
+import type { ScriptInfo, UnansweredScriptRequest, UnreadScriptResponse } from '../types/script.js'
 import type { TargetDetection } from '../types/target.js'
 import { HeaderComparisonService } from './comparison/header.js'
 import { ScriptComparisonService } from './comparison/script.js'
@@ -19,9 +19,9 @@ const script = (path: string, document: string): ScriptInfo => ({
   hash: { value: `hash${path}` } as ScriptInfo['hash'],
   document,
 })
-const detection = (scripts: ScriptInfo[], paymentScope?: PaymentScope, unreadScripts?: UnreadScriptResponse[]): DetectionSummary => ({
+const detection = (scripts: ScriptInfo[], paymentScope?: PaymentScope, unreadScripts?: UnreadScriptResponse[], unansweredRequests?: UnansweredScriptRequest[]): DetectionSummary => ({
   target,
-  scriptSummary: { externalScripts: scripts, inlineScripts: [], ...(unreadScripts === undefined ? {} : { unreadScripts }) },
+  scriptSummary: { externalScripts: scripts, inlineScripts: [], ...(unreadScripts === undefined ? {} : { unreadScripts }), ...(unansweredRequests === undefined ? {} : { unansweredRequests }) },
   headerSummary: { headers: new Map(), responses: [] },
   ...(paymentScope === undefined ? {} : { paymentScope }),
 })
@@ -83,6 +83,38 @@ describe('compareWithPaymentScope', () => {
     })
   })
 
+  describe('unanswered script requests', () => {
+    const request = (path: string, document?: string): UnansweredScriptRequest => ({
+      url: `https://cdn.example.test${path}?token=secret`,
+      resourceType: 'script',
+      reason: 'no response had arrived 15s after the workflow finished',
+      step: 4,
+      ...(document === undefined ? {} : { document }),
+    })
+    const scope: PaymentScope = { declared: true, paymentDocuments: ['L-checkout'], documents: chain }
+
+    // Split like everything else so a reader can tell where the request came
+    // from, though neither side ever fails the run.
+    it('splits them by payment scope, keeping unattributed ones in scope, redacted and with their page', async () => {
+      const { unanswered, unread } = await compareWithPaymentScope(detection([], scope, undefined, [request('/early.js', 'L-booking'), request('/pay.js', 'L-checkout'), request('/orphan.js')]), inventory, services)
+      expect(unanswered.payment).toEqual([
+        { url: 'https://cdn.example.test/pay.js', resourceType: 'script', step: 4, documentUrl: 'https://book.example.test/venue/checkout', reason: 'no response had arrived 15s after the workflow finished' },
+        { url: 'https://cdn.example.test/orphan.js', resourceType: 'script', step: 4, documentUrl: null, reason: 'no response had arrived 15s after the workflow finished' },
+      ])
+      expect(unanswered.outside!.map((record) => record.url)).toEqual(['https://cdn.example.test/early.js'])
+      expect(unread).toEqual({ payment: [], outside: [] })
+    })
+
+    // A URL the page built wrongly is exactly what a human should see; its
+    // shape must survive the redaction that strips the query string.
+    it('shows a malformed URL in the shape the page requested it', async () => {
+      const malformed: UnansweredScriptRequest = { ...request('/x'), url: 'https://pay.example.testhttps://pay.example.test/a1b2?sig=secret' }
+      const { unanswered } = await compareWithPaymentScope(detection([], undefined, undefined, [malformed]), inventory, services)
+      expect(unanswered.payment.map((record) => record.url)).toEqual(['https://pay.example.testhttps//pay.example.test/a1b2'])
+      expect(unanswered.outside).toBeNull()
+    })
+  })
+
   describe('headers', () => {
     const csp = 'content-security-policy'
     const BOOKING_URL = 'https://book.example.test/venue'
@@ -139,10 +171,12 @@ describe('reportRecordsFor', () => {
   const declared = (paymentDocuments: string[]): PaymentScope => ({ declared: true, paymentDocuments, documents: chain })
   const results = { scripts: [{ type: 'unknown_script_found' }], headers: [] } as unknown as ScopedComparison['payment']
   const noUnread: ScopedComparison['unread'] = { payment: [], outside: null }
+  const noUnanswered: ScopedComparison['unanswered'] = { payment: [], outside: null }
   const unreadRecord = (url: string) => ({ url, resourceType: 'script', status: 200, step: 3, documentUrl: null, reason: 'gone' })
+  const unansweredRecord = (url: string) => ({ url, resourceType: 'script', step: 3, documentUrl: null, reason: 'no response' })
 
   it('records an unmarked run as one unlabelled set with no page chain', () => {
-    const records = reportRecordsFor({ inventory, target, scoped: { payment: results, outside: null, unread: noUnread }, paymentScope: { declared: false, paymentDocuments: [], documents: chain } })
+    const records = reportRecordsFor({ inventory, target, scoped: { payment: results, outside: null, unread: noUnread, unanswered: noUnanswered }, paymentScope: { declared: false, paymentDocuments: [], documents: chain } })
     expect(records).toHaveLength(1)
     expect(records[0]).not.toHaveProperty('scope')
     expect(records[0]).not.toHaveProperty('paymentScope')
@@ -152,7 +186,7 @@ describe('reportRecordsFor', () => {
   // like an unmarked workflow.
   it('records a declared but unresolved payment page with its chain and no row labels', () => {
     const paymentScope = declared([])
-    const records = reportRecordsFor({ inventory, target, scoped: { payment: results, outside: null, unread: noUnread }, paymentScope })
+    const records = reportRecordsFor({ inventory, target, scoped: { payment: results, outside: null, unread: noUnread, unanswered: noUnanswered }, paymentScope })
     expect(records).toHaveLength(1)
     expect(records[0]!.paymentScope).toBe(paymentScope)
     expect(records[0]).not.toHaveProperty('scope')
@@ -162,12 +196,18 @@ describe('reportRecordsFor', () => {
     const records = reportRecordsFor({
       inventory,
       target,
-      scoped: { payment: results, outside: [], unread: { payment: [unreadRecord('https://a.example.test/pay.js')], outside: [unreadRecord('https://a.example.test/early.js')] } },
+      scoped: {
+        payment: results,
+        outside: [],
+        unread: { payment: [unreadRecord('https://a.example.test/pay.js')], outside: [unreadRecord('https://a.example.test/early.js')] },
+        unanswered: { payment: [unansweredRecord('https://a.example.test/never.js')], outside: [unansweredRecord('https://a.example.test/early-never.js')] },
+      },
       paymentScope: declared(['L-checkout']),
     })
     expect(records.map((record) => record.scope)).toEqual(['payment', 'outside_payment'])
     expect(records[0]!.paymentScope).toBeDefined()
     expect(records[1]).not.toHaveProperty('paymentScope')
     expect(records.map((record) => record.unreadScripts?.map((unread) => unread.url))).toEqual([['https://a.example.test/pay.js'], ['https://a.example.test/early.js']])
+    expect(records.map((record) => record.unansweredRequests?.map((request) => request.url))).toEqual([['https://a.example.test/never.js'], ['https://a.example.test/early-never.js']])
   })
 })

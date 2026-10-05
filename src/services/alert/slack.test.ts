@@ -1136,7 +1136,7 @@ describe('SlackAlertService - Typed Results Handling (Phase 4)', () => {
  *   - Error handling (logs and continues)
  */
 import { ExecutionMode } from '../../types/config.js'
-import type { ExecutionSummary, UnreadScriptEntry } from '../../types/execution-summary.js'
+import type { ExecutionSummary, UnansweredRequestEntry, UnreadScriptEntry } from '../../types/execution-summary.js'
 
 describe('SlackAlertService - alertOnRunCompletion (Phase 3)', () => {
   let service: SlackAlertService
@@ -1538,6 +1538,45 @@ describe('SlackAlertService - alertOnRunCompletion (Phase 3)', () => {
         const block = texts.find((text) => text.startsWith('*Script Not Read (1)*')) as string
         expect(block).not.toContain('<!channel>')
         expect(block).toContain('&lt;https://evil.example|click&gt;')
+      })
+    })
+
+    describe('script requests that were never answered', () => {
+      const request = (overrides: Partial<UnansweredRequestEntry> = {}): UnansweredRequestEntry => ({
+        url: 'https://shop.example.testhttps//shop.example.test/a1b2',
+        resourceType: 'script',
+        step: 4,
+        documentUrl: 'https://shop.example.test/checkout',
+        reason: 'no response had arrived 15s after the workflow finished',
+        target: 'Shop production',
+        pass: 'detection',
+        outsidePaymentPage: false,
+        ...overrides,
+      })
+
+      // Evidence, not a gap: the script never ran. The headline stays green,
+      // but each request is named — a malformed URL shows up nowhere else.
+      it('keeps the green headline and names each request with its target, step, page and scope', async () => {
+        const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+        await service.alertOnRunCompletion(createSummary({ requestsUnanswered: [request(), request({ url: 'https://cdn.example.test/landing.js', documentUrl: null, outsidePaymentPage: true })] }), mockAlertDestinations)
+
+        const texts = (sendMessageSpy.mock.calls[0]![0] as any).blocks.map((block: any) => block.text?.text ?? '') as string[]
+        expect(texts[0]).toBe(':white_check_mark: *Workflow Execution Completed Successfully* :white_check_mark:')
+        const block = texts.find((text) => text.startsWith('*Script Requests Unanswered (2)*')) as string
+        expect(block).toContain('never ran')
+        expect(block).toContain('• `https://shop.example.testhttps//shop.example.test/a1b2` on `Shop production` (detection, step 4, `https://shop.example.test/checkout`): no response had arrived 15s after the workflow finished')
+        expect(block).toContain('• `https://cdn.example.test/landing.js` on `Shop production` (detection, step 4, an unattributed page, outside the payment page)')
+      })
+
+      it('escapes a page-influenced URL', async () => {
+        const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+        await service.alertOnRunCompletion(createSummary({ requestsUnanswered: [request({ url: 'https://cdn.example.test/<!channel>.js' })] }), mockAlertDestinations)
+
+        const texts = (sendMessageSpy.mock.calls[0]![0] as any).blocks.map((block: any) => block.text?.text ?? '') as string[]
+        const block = texts.find((text) => text.startsWith('*Script Request Unanswered (1)*')) as string
+        expect(block).not.toContain('<!channel>')
       })
     })
 

@@ -3,7 +3,7 @@ import type { Browser, ElementHandle, Frame, Page } from 'puppeteer'
 import type { DetectionSummary } from '../types/detection.js'
 import type { PuppeteerLocatorAction } from '../types/puppeteer.js'
 import type { Target } from '../types/target.js'
-import { DetectionService } from './detection.js'
+import { DetectionService, frameSessionOf } from './detection.js'
 
 jest.mock('puppeteer', () => ({
   TimeoutError: class TimeoutError extends Error {},
@@ -20,6 +20,7 @@ type DetectionServiceInternals = {
   waitForRecoverableActionTarget(page: Page, step: PuppeteerLocatorAction, target: Target): Promise<{ context: Page | Frame; element?: ElementHandle<Element> }>
   waitForStepDelay(delay: number, stepIndex: number, initialWorkflowDeadline: number): Promise<void>
   redactFrameUrl(url: string): string
+  frameBodyRetention(page: Page, target: Target): (frame: Frame | null) => void
 }
 
 const target = {} as Target
@@ -1092,5 +1093,92 @@ describe('DetectionService resolvePaymentDocument', () => {
 
   it('rejects a framed target whose element can no longer be evaluated', async () => {
     expect(await resolve({ context: {}, element: { evaluate: async () => Promise.reject(new Error('Execution context was destroyed')) } })).toBeUndefined()
+  })
+})
+
+// Out-of-process iframes run behind their own DevTools session, which the
+// page-level retention does not reach; real-Chrome proof is in
+// test/integration/unread-scripts.test.ts.
+describe('DetectionService response-body retention in out-of-process iframes', () => {
+  const session = (sent: string[] = [], fail = false) => ({
+    send: jest.fn(async (method: string) => {
+      if (fail) throw new Error('Target closed')
+      sent.push(method)
+      return {}
+    }),
+  })
+  const frame = (client: unknown, url = 'https://pay.example.test/card') => ({ client, url: () => url }) as unknown as Frame
+  const logger = () => ({ log: jest.fn(), error: jest.fn() })
+
+  it("sends Network.configureDurableMessages once on each frame's own session, never on the page's", () => {
+    const pageSession = session()
+    const frameSent: string[] = []
+    const frameSession = session(frameSent)
+    const page = { mainFrame: () => frame(pageSession, 'https://shop.example.test/checkout') } as unknown as Page
+    const retain = serviceInternals().frameBodyRetention(page, { logger: logger() } as unknown as Target)
+
+    retain(frame(pageSession))
+    retain(frame(frameSession))
+    retain(frame(frameSession))
+    retain(null)
+
+    expect(pageSession.send).not.toHaveBeenCalled()
+    expect(frameSent).toEqual(['Network.configureDurableMessages'])
+    expect(frameSession.send).toHaveBeenCalledWith('Network.configureDurableMessages', { maxTotalBufferSize: 256 * 1024 * 1024, maxResourceBufferSize: 32 * 1024 * 1024 })
+  })
+
+  // A cross-process navigation swaps the frame's session: the new one needs it too.
+  it('configures a new session when the same frame comes back on one', () => {
+    const first = session()
+    const second = session()
+    const page = { mainFrame: () => frame(session()) } as unknown as Page
+    const retain = serviceInternals().frameBodyRetention(page, { logger: logger() } as unknown as Target)
+    const swapping = { client: first, url: () => 'https://pay.example.test/card' }
+
+    retain(swapping as unknown as Frame)
+    swapping.client = second
+    retain(swapping as unknown as Frame)
+
+    expect(first.send).toHaveBeenCalledTimes(1)
+    expect(second.send).toHaveBeenCalledTimes(1)
+  })
+
+  it('logs, with the frame URL redacted, when a session refuses the command, and does not throw', async () => {
+    const targetLogger = logger()
+    const page = { mainFrame: () => frame(session()) } as unknown as Page
+    const retain = serviceInternals().frameBodyRetention(page, { logger: targetLogger } as unknown as Target)
+
+    retain(frame(session([], true), 'https://pay.example.test/card?session=secret'))
+    await new Promise((resolve) => setImmediate(resolve))
+
+    expect(targetLogger.error).toHaveBeenCalledTimes(1)
+    expect(String(targetLogger.error.mock.calls[0]![0])).toContain('https://pay.example.test/card ')
+    expect(String(targetLogger.error.mock.calls[0]![0])).not.toContain('secret')
+  })
+
+  // An upgrade that removes the internal accessor degrades, it does not crash.
+  it('reports once, and carries on, when Puppeteer no longer exposes a frame session', () => {
+    const targetLogger = logger()
+    const page = { mainFrame: () => ({}) } as unknown as Page
+    const retain = serviceInternals().frameBodyRetention(page, { logger: targetLogger } as unknown as Target)
+
+    retain({ url: () => 'https://pay.example.test/card' } as unknown as Frame)
+    retain({ url: () => 'https://pay.example.test/other' } as unknown as Frame)
+
+    expect(targetLogger.error).toHaveBeenCalledTimes(1)
+    expect(String(targetLogger.error.mock.calls[0]![0])).toContain('cross-site iframes are not retained')
+  })
+
+  it('reads a frame session only when it looks like one', () => {
+    const client = session()
+    expect(frameSessionOf(frame(client))).toBe(client)
+    expect(frameSessionOf(frame({}))).toBeUndefined()
+    expect(frameSessionOf(frame(undefined))).toBeUndefined()
+    const throwing = Object.defineProperty({}, 'client', {
+      get: () => {
+        throw new Error('detached')
+      },
+    }) as unknown as Frame
+    expect(frameSessionOf(throwing)).toBeUndefined()
   })
 })

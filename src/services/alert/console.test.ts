@@ -154,6 +154,33 @@ describe('ConsoleAlertService - alertOnRunCompletion (Phase 3)', () => {
       expect(consoleSpy).toHaveBeenCalledWith('    - https://cdn.example.test/landing.js on Shop production (detection, step 5, unattributed page): body evicted')
     })
 
+    it('names unanswered script requests as evidence and still reports success', async () => {
+      const request = {
+        url: 'https://shop.example.testhttps//shop.example.test/a1b2',
+        resourceType: 'script',
+        step: 4,
+        documentUrl: 'https://shop.example.test/checkout',
+        reason: 'no response had arrived 15s after the workflow finished',
+        target: 'Shop production',
+        pass: 'detection' as const,
+      }
+      const summary = createSummary({
+        requestsUnanswered: [
+          { ...request, outsidePaymentPage: false },
+          { ...request, url: 'https://cdn.example.test/landing.js', documentUrl: null, outsidePaymentPage: true },
+        ],
+      })
+
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
+
+      expect(consoleSpy).toHaveBeenCalledWith('[Console Alert -> Success]: Workflow execution completed successfully')
+      expect(consoleSpy).toHaveBeenCalledWith('  Script Requests Unanswered (evidence only; never ran on the page): 2')
+      expect(consoleSpy).toHaveBeenCalledWith(
+        '    - https://shop.example.testhttps//shop.example.test/a1b2 on Shop production (detection, step 4, https://shop.example.test/checkout): no response had arrived 15s after the workflow finished',
+      )
+      expect(consoleSpy).toHaveBeenCalledWith('    - https://cdn.example.test/landing.js on Shop production (detection, step 4, unattributed page, outside the payment page): no response had arrived 15s after the workflow finished')
+    })
+
     it('reports a total failure when nothing was processed', async () => {
       const summary = createSummary({ targetsProcessed: [], targetsFailed: [{ name: '1.0', pass: 'detection', reason: 'boom' }] })
 

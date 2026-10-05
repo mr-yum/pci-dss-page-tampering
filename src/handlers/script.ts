@@ -1,7 +1,7 @@
-import type { HTTPRequest, HTTPResponse } from 'puppeteer'
+import type { Frame, HTTPRequest, HTTPResponse } from 'puppeteer'
 
 import type { DocumentId } from '../types/document.js'
-import type { ScriptInfo, UnreadScriptResponse } from '../types/script.js'
+import type { ScriptInfo, UnansweredScriptRequest, UnreadScriptResponse } from '../types/script.js'
 import { createSha256Hash } from '../utils/hash.js'
 import { redactUrl } from '../utils/url.js'
 
@@ -62,13 +62,11 @@ export function describeScriptResponse(response: HTTPResponse, document: Documen
  * Record an unread response once per script, document and status. The same
  * gap can be seen twice with different reasons — still being read at the
  * deadline, then failing with "Session closed" as the context closes — and
- * that is one unmonitored script, not two. A request recorded as unanswered
- * (status 0) matches whatever status its response turns out to carry if it
- * lands while the context is closing.
+ * that is one unmonitored script, not two. (A request still unanswered at the
+ * deadline is not an unread script at all; see `PendingScriptReads`.)
  */
 export function recordUnreadScript(unread: UnreadScriptResponse[], record: UnreadScriptResponse): void {
-  const sameStatus = (existing: UnreadScriptResponse): boolean => existing.status === record.status || existing.status === 0 || record.status === 0
-  if (unread.some((existing) => existing.url === record.url && existing.document === record.document && sameStatus(existing))) return
+  if (unread.some((existing) => existing.url === record.url && existing.document === record.document && existing.status === record.status)) return
   unread.push(record)
 }
 
@@ -132,8 +130,11 @@ export async function scriptResponseHandler(response: HTTPResponse, detectedScri
   }
 }
 
-/** A script the workflow finished without: its body was still being read, or its response had not arrived at all. */
-export type UnsettledScript = Omit<UnreadScriptResponse, 'reason'> & { phase: 'reading' | 'awaiting-response' }
+/** A script body still being read when the workflow finished: recorded as unread, since the script may have run. */
+export type UnfinishedRead = Omit<UnreadScriptResponse, 'reason'>
+
+/** Reason recorded for a request whose frame was detached before any response arrived. */
+export const SCRIPT_REQUEST_FRAME_DETACHED_REASON = 'its frame was detached before a response arrived'
 
 type InFlightRequest = { request: HTTPRequest; step: number; documentOf: (request: HTTPRequest) => DocumentId | undefined }
 
@@ -150,10 +151,23 @@ type InFlightRequest = { request: HTTPRequest; step: number; documentOf: (reques
  * arrived when the last step finishes has no read to wait for, and its
  * response would otherwise land while the context was closing, after the
  * run had been summarised.
+ *
+ * The two end differently. A read still pending at the deadline is a script
+ * that arrived and went unexamined, so the caller records it as unread. A
+ * request still unanswered is evidence only (see `UnansweredScriptRequest`):
+ * Puppeteer surfaces a script's response once its body is complete, and the
+ * script cannot have run before then. It stays on the unanswered list only
+ * while it stays unanswered — a response that lands after all, even after the
+ * run is sealed, takes it off, and the sealed response handler records that
+ * response as unread instead.
  */
 export class PendingScriptReads {
-  private readonly pending = new Map<Promise<void>, Omit<UnreadScriptResponse, 'reason'>>()
+  private readonly pending = new Map<Promise<void>, UnfinishedRead>()
   private readonly inFlight = new Map<HTTPRequest, InFlightRequest>()
+  /** Requests whose frame went away before they were answered: not waited for, but still unanswered. */
+  private readonly detached = new Map<HTTPRequest, InFlightRequest>()
+  /** Requests reported unanswered by a `settle`, until a response says otherwise. */
+  private readonly unanswered = new Map<HTTPRequest, UnansweredScriptRequest>()
   private wake: (() => void) | undefined
 
   /**
@@ -167,14 +181,42 @@ export class PendingScriptReads {
     this.inFlight.set(request, { request, step, documentOf })
   }
 
-  /** The request got its response, finished or failed: it is no longer awaited as a request. */
+  /**
+   * The request finished or failed: it is no longer awaited. One already
+   * reported unanswered stays on that list — failing after the deadline (as
+   * the context closes, say) does not make it answered; only a response does
+   * (see `track`).
+   */
   requestSettled(request: HTTPRequest): void {
+    this.detached.delete(request)
     if (this.inFlight.delete(request)) this.wake?.()
   }
 
+  /**
+   * A frame went away: stop spending the deadline on its unanswered requests.
+   * Puppeteer does not always report `requestfailed` or `requestfinished` for
+   * a request whose frame has been torn down, so such a request may never
+   * settle and would otherwise hold the run for the full deadline. It is not
+   * forgotten: it is still listed as unanswered, and if its response does
+   * arrive after all it is read like any other — or, once the run is sealed,
+   * recorded as unread by the response handler.
+   */
+  frameDetached(frame: Frame): void {
+    let moved = false
+    for (const [request, entry] of this.inFlight) {
+      if (frameOf(request) !== frame) continue
+      this.inFlight.delete(request)
+      this.detached.set(request, entry)
+      moved = true
+    }
+    if (moved) this.wake?.()
+  }
+
   track(read: Promise<void>, response: HTTPResponse, document: DocumentId | undefined, step: number): void {
-    // Any response, read or not, answers its request.
+    // Any response, read or not, answers its request — even one reported
+    // unanswered at the deadline; the sealed handler records it as unread.
     this.requestSettled(response.request())
+    this.unanswered.delete(response.request())
     if (!isMonitoredScriptResponse(response)) return
     this.pending.set(read, describeScriptResponse(response, document, step))
     // Registered on the read itself, before `settle` can register anything on
@@ -189,13 +231,15 @@ export class PendingScriptReads {
   }
 
   /**
-   * Wait up to `timeoutMs` for every tracked request and read to settle, and
-   * return what is still outstanding at the deadline for the caller to record.
-   * Loops rather than waiting once: a response can arrive — and start a read —
-   * while earlier reads are being awaited, and that read gets the same chance
-   * to finish rather than being reported as stuck.
+   * Wait up to `timeoutMs` for every tracked request and read to settle.
+   * Returns the reads still pending at the deadline, for the caller to record
+   * as unread; requests still unanswered move to `unansweredRequests()` with
+   * `unansweredReason` (or the detached-frame reason). Loops rather than
+   * waiting once: a response can arrive — and start a read — while earlier
+   * reads are being awaited, and that read gets the same chance to finish
+   * rather than being reported as stuck.
    */
-  async settle(timeoutMs: number): Promise<UnsettledScript[]> {
+  async settle(timeoutMs: number, unansweredReason: string): Promise<UnfinishedRead[]> {
     let timer: NodeJS.Timeout | undefined
     let expired = false
     const deadline = new Promise<void>((resolve) => {
@@ -212,11 +256,30 @@ export class PendingScriptReads {
     }
     this.wake = undefined
     clearTimeout(timer)
-    const reads: UnsettledScript[] = [...this.pending.values()].map((read) => ({ ...read, phase: 'reading' }))
-    const requests: UnsettledScript[] = [...this.inFlight.values()].map(({ request, step, documentOf }) => {
-      const document = documentOf(request)
-      return { url: request.url(), resourceType: request.resourceType(), status: 0, step, ...(document !== undefined ? { document } : {}), phase: 'awaiting-response' }
-    })
-    return [...reads, ...requests]
+    for (const [entries, reason] of [
+      [this.inFlight, unansweredReason],
+      [this.detached, SCRIPT_REQUEST_FRAME_DETACHED_REASON],
+    ] as const) {
+      for (const [request, { step, documentOf }] of entries) {
+        const document = documentOf(request)
+        this.unanswered.set(request, { url: request.url(), resourceType: request.resourceType(), reason, step, ...(document !== undefined ? { document } : {}) })
+      }
+      entries.clear()
+    }
+    return [...this.pending.values()]
+  }
+
+  /** Script requests a `settle` reported unanswered that no response has answered since. */
+  unansweredRequests(): UnansweredScriptRequest[] {
+    return [...this.unanswered.values()]
+  }
+}
+
+/** The frame that issued a request, or undefined when Puppeteer cannot say. */
+function frameOf(request: HTTPRequest): Frame | undefined {
+  try {
+    return request.frame() ?? undefined
+  } catch {
+    return undefined
   }
 }

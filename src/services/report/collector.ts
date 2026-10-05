@@ -19,7 +19,7 @@
 import type { InventoryFileCopy, IReportCollector, ReportInventoryRefInput, ReportRunContext, TargetRunRecord } from '../../interfaces/report.js'
 import type { PaymentScope } from '../../types/document.js'
 import type { Inventory, InventoryHeaderInfo, InventoryScriptInfo } from '../../types/inventory/model.js'
-import type { AuditorReport, ReportDocument, ReportPass, ReportResourceRow, ReportStatusCounts, ReportTargetSection, ReportUnmatchedEntry, ReportUnreadScript } from '../../types/report.js'
+import type { AuditorReport, ReportDocument, ReportPass, ReportResourceRow, ReportStatusCounts, ReportTargetSection, ReportUnansweredRequest, ReportUnmatchedEntry, ReportUnreadScript } from '../../types/report.js'
 import { REPORT_SCHEMA_VERSION } from '../../types/report.js'
 import type { Target } from '../../types/target.js'
 import { createSha256Hash } from '../../utils/hash.js'
@@ -97,6 +97,13 @@ function compareUnread(left: ReportUnreadScript, right: ReportUnreadScript): num
   )
 }
 
+/** Total order over unanswered requests, for byte-identical output. */
+function compareUnanswered(left: ReportUnansweredRequest, right: ReportUnansweredRequest): number {
+  return (
+    collator.compare(left.scope ?? '', right.scope ?? '') || collator.compare(left.url, right.url) || left.step - right.step || collator.compare(left.documentUrl ?? '', right.documentUrl ?? '') || collator.compare(left.reason, right.reason)
+  )
+}
+
 /** In payment scope: labelled `payment`, or unlabelled because the whole run is in scope. */
 function unreadInPaymentScope(script: ReportUnreadScript): boolean {
   return script.scope !== 'outside_payment'
@@ -135,6 +142,7 @@ type TargetSectionState = {
   matchedHeaders: Set<InventoryHeaderInfo>
   unmatched: ReportUnmatchedEntry[]
   unread: ReportUnreadScript[]
+  unanswered: ReportUnansweredRequest[]
   /** Set when the workflow marks a payment page. */
   documents: ReportDocument[] | null
   paymentScopeResolved: boolean
@@ -183,6 +191,7 @@ export class ReportCollector implements IReportCollector {
     section.unmatched = this.collectUnmatched(inventory, section.matchedScripts, section.matchedHeaders)
 
     for (const unread of input.unreadScripts ?? []) section.unread.push({ ...unread, ...(scope === undefined ? {} : { scope }) })
+    for (const unanswered of input.unansweredRequests ?? []) section.unanswered.push({ ...unanswered, ...(scope === undefined ? {} : { scope }) })
 
     this.retainInventorySource(inventory, target)
   }
@@ -247,6 +256,7 @@ export class ReportCollector implements IReportCollector {
           headers: rows.filter((row) => row.kind === 'header'),
           unmatchedInventoryEntries: [...section.unmatched].sort((left, right) => collator.compare(left.kind, right.kind) || left.index - right.index),
           unreadScripts: [...section.unread].sort(compareUnread),
+          unansweredRequests: [...section.unanswered].sort(compareUnanswered),
           ...(section.documents === null
             ? {}
             : {
@@ -261,7 +271,9 @@ export class ReportCollector implements IReportCollector {
       .sort((left, right) => collator.compare(left.targetKey, right.targetKey))
 
     const scriptsUnread = targets.reduce((total, target) => total + target.unreadScripts.filter(unreadInPaymentScope).length, 0)
-    const summary = { ...emptyCounts(), targets: targets.length, targetsFailed: targets.filter((target) => target.status === 'failed').length, scriptsUnread }
+    // Every scope: evidence only, so nothing to separate out.
+    const requestsUnanswered = targets.reduce((total, target) => total + target.unansweredRequests.length, 0)
+    const summary = { ...emptyCounts(), targets: targets.length, targetsFailed: targets.filter((target) => target.status === 'failed').length, scriptsUnread, requestsUnanswered }
 
     for (const target of targets) addCounts(summary, target.counts)
 
@@ -294,11 +306,11 @@ export class ReportCollector implements IReportCollector {
       },
       summary,
       targets,
-      notes: this.buildNotes(run, failures.length > 0, inventorySources.length > 0, scriptsUnread),
+      notes: this.buildNotes(run, failures.length > 0, inventorySources.length > 0, scriptsUnread, requestsUnanswered),
     }
   }
 
-  private buildNotes(run: ReportRunContext, partial: boolean, shipsInventoryCopies: boolean, scriptsUnread: number): string[] {
+  private buildNotes(run: ReportRunContext, partial: boolean, shipsInventoryCopies: boolean, scriptsUnread: number, requestsUnanswered: number): string[] {
     const notes = [
       'Content excerpts are truncated and are for recognition only; the SHA-256 hash is the integrity anchor.',
       // Deliberately scoped to what was observed on the page. The verbatim
@@ -318,6 +330,11 @@ export class ReportCollector implements IReportCollector {
     if (partial) notes.push('PARTIAL RUN: one or more targets failed, so their resources are absent from this census.')
     if (scriptsUnread > 0) {
       notes.push(`PARTIAL RUN: ${scriptsUnread} script response(s) in payment scope arrived but their body could not be read, so they were neither hashed nor compared. Each is listed under its target's unreadScripts.`)
+    }
+    if (requestsUnanswered > 0) {
+      notes.push(
+        `${requestsUnanswered} script request(s) never received a response, so those scripts never ran on the page. They are evidence, not findings, and do not make the run partial; each is listed under its target's unansweredRequests.`,
+      )
     }
 
     return notes
@@ -383,6 +400,7 @@ export class ReportCollector implements IReportCollector {
         matchedHeaders: new Set(),
         unmatched: [],
         unread: [],
+        unanswered: [],
       }
       sections.set(targetKey, section)
     }

@@ -30,7 +30,7 @@ import { ExecutionMode, type RuntimeConfiguration } from './types/config.js'
 import type { AuditorReportLocation, ExecutionPass } from './types/execution-summary.js'
 import { getInventoryWorkflows, type Inventory, type InventoryAlert, type InventoryDifferenceResult, type InventoryWorkflow } from './types/inventory/model.js'
 import type { ReportPass } from './types/report.js'
-import type { UnreadScriptRecord } from './types/script.js'
+import type { UnansweredRequestRecord, UnreadScriptRecord } from './types/script.js'
 import { PullTarget, type Target } from './types/target.js'
 import { mapGroupsSequentially } from './utils/concurrency.js'
 import { createLogger } from './utils/logger.js'
@@ -217,6 +217,8 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
     pendingAlerts: PendingAlerts | null
     /** Script responses whose body could not be read, by payment scope. */
     unreadScripts: { payment: UnreadScriptRecord[]; outside: UnreadScriptRecord[] }
+    /** Script requests that never got a response, by payment scope: evidence only. */
+    unansweredRequests: { payment: UnansweredRequestRecord[]; outside: UnansweredRequestRecord[] }
   }
 
   // Helper function to run workflow for a single target.
@@ -252,6 +254,7 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
       const scriptComparisonResults = scoped.payment.scripts
       const headerComparisonResults = scoped.payment.headers
       const unreadScripts = { payment: scoped.unread.payment, outside: scoped.unread.outside ?? [] }
+      const unansweredRequests = { payment: scoped.unanswered.payment, outside: scoped.unanswered.outside ?? [] }
 
       // T009: Calculate resource count for this target (scripts + headers)
       const resourceCount = scriptComparisonResults.length + headerComparisonResults.length
@@ -278,12 +281,13 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
           resourceCount,
           pendingAlerts: { scriptComparisonResults, headerComparisonResults, target, alertDestinations: payload.alerts, inventoryUpdatedResults: new Set() },
           unreadScripts,
+          unansweredRequests,
         }
       } else {
         // Detection mode: no PR is ever created here, alert immediately.
         await alertService.alertForTypedResults(scriptComparisonResults, target, payload.alerts)
         await alertService.alertForTypedResults(headerComparisonResults, target, payload.alerts)
-        return { comparisonResults: [...scriptComparisonResults, ...headerComparisonResults], resourceCount, pendingAlerts: null, unreadScripts }
+        return { comparisonResults: [...scriptComparisonResults, ...headerComparisonResults], resourceCount, pendingAlerts: null, unreadScripts, unansweredRequests }
       }
     } catch (error) {
       // Record the gap so a partially-failed run still produces evidence for
@@ -480,6 +484,8 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
             // A completed target can still have left payment-page scripts
             // unread; the ledger fails the run for those like a failed target.
             ledger.recordUnreadScripts(name, 'inventory', result.unreadScripts)
+            // Named in the summary as evidence; never fails the run.
+            ledger.recordUnansweredRequests(name, 'inventory', result.unansweredRequests)
             return result
           },
         )
@@ -603,6 +609,7 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
             const name = targetDisplayName(inventory, workflow, workflow.detection)
             ledger.recordSuccess(name, result.resourceCount)
             ledger.recordUnreadScripts(name, 'detection', result.unreadScripts)
+            ledger.recordUnansweredRequests(name, 'detection', result.unansweredRequests)
             return result
           },
         )

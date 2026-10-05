@@ -381,3 +381,17 @@ describe('renderReportHtml unread scripts', () => {
     expect(html).not.toContain('<img src=x onerror=alert(1)>')
   })
 })
+
+describe('renderReportHtml unanswered script requests', () => {
+  const request = (url: string) => ({ url, resourceType: 'script', step: 4, documentUrl: 'https://book.example.test/venue/checkout', reason: 'no response had arrived 15s after the workflow finished' })
+
+  it('lists them under their target as evidence, without a partial-run banner', () => {
+    const collector = new ReportCollector()
+    collector.recordTargetRun({ inventory: buildInventory(), target: detectionTarget, comparisonResults: [], unansweredRequests: [request('https://cdn.example.test/<b>never</b>.js')] })
+    const html = renderReportHtml(collector.build('detection', runContext())!)
+    expect(html).toContain('Script requests unanswered (1)')
+    expect(html).toContain('never ran on the page')
+    expect(html).not.toContain('<b>never</b>')
+    expect(html).not.toContain('PARTIAL RUN')
+  })
+})

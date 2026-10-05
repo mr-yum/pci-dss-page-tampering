@@ -231,4 +231,29 @@ describe('RunLedger', () => {
       expect(logs.some((line) => line.includes('outside the payment page, recorded for evidence only'))).toBe(true)
     })
   })
+
+  describe('unanswered script requests', () => {
+    const unanswered = (url: string) => ({ url, resourceType: 'script', step: 4, documentUrl: 'https://shop.example.test/checkout', reason: 'no response had arrived 15s after the workflow finished' })
+
+    // A script whose response never arrived never ran on the page: evidence
+    // for a human, never a reason to turn the run red — in either scope.
+    it('names unanswered requests in the summary without failing the run', async () => {
+      const alertService = makeAlertService([])
+      ledger.recordSuccess('Shop production', 4)
+      ledger.recordUnansweredRequests('Shop production', 'detection', {
+        payment: [unanswered('https://shop.example.testhttps//shop.example.test/a1b2')],
+        outside: [unanswered('https://cdn.example.test/landing.js')],
+      })
+
+      await expect(ledger.finish(finishInput(alertService))).resolves.toBeUndefined()
+
+      const summary = (alertService.alertOnRunCompletion as jest.Mock).mock.calls[0][0]
+      expect(summary.requestsUnanswered).toEqual([
+        { ...unanswered('https://shop.example.testhttps//shop.example.test/a1b2'), target: 'Shop production', pass: 'detection', outsidePaymentPage: false },
+        { ...unanswered('https://cdn.example.test/landing.js'), target: 'Shop production', pass: 'detection', outsidePaymentPage: true },
+      ])
+      expect(summary.scriptsUnread).toEqual([])
+      expect(logs.some((line) => line.includes('never received a response, so the script never ran; recorded as evidence'))).toBe(true)
+    })
+  })
 })

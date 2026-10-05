@@ -126,6 +126,28 @@ export function buildStepSummary(report: AuditorReport): string {
     lines.push(`${unreadOutside} script(s) on pages loaded before the payment page could not be read. They are listed under \`unreadScripts\` as \`outside_payment\` and do not make the run partial.`, '')
   }
 
+  // Evidence, not findings — a script whose request was never answered never
+  // ran — but a malformed URL or a dead host shows up nowhere else, so each
+  // one is named.
+  const unanswered = report.targets.flatMap((target) => target.unansweredRequests.map((request) => ({ request, targetKey: target.targetKey })))
+  if (unanswered.length > 0) {
+    lines.push(
+      `### Script requests unanswered (${unanswered.length})`,
+      '',
+      'These script requests never received a response, so the scripts never ran on the page. Recorded for evidence; they do not make the run partial.',
+      '',
+      '| Target | Request | Step | Page | Scope | Reason |',
+      '| --- | --- | ---: | --- | --- | --- |',
+    )
+    for (const { request, targetKey } of unanswered.slice(0, MAX_FINDING_ROWS)) {
+      lines.push(
+        `| ${cell(targetKey)} | ${cell(request.url)} | ${request.step} | ${cell(request.documentUrl ?? 'unattributed')} | ${request.scope === 'outside_payment' ? 'outside payment page' : 'payment page'} | ${cell(request.reason)} |`,
+      )
+    }
+    if (unanswered.length > MAX_FINDING_ROWS) lines.push('', `…and ${unanswered.length - MAX_FINDING_ROWS} more — see the \`auditor-report\` artefact.`)
+    lines.push('')
+  }
+
   lines.push(`Full census: ${summary.total} resources across ${summary.targets} target(s) — download the \`auditor-report\` artefact.`, '')
 
   const markdown = lines.join('\n')

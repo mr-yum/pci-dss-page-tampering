@@ -95,6 +95,33 @@ export type UnreadScriptRecord = {
   reason: string
 }
 
+/**
+ * A script request the page issued that still had no response when the run
+ * was accounted for. Evidence, not a finding: Puppeteer surfaces a script's
+ * response only once its body is complete, and a classic script cannot run
+ * before its body completes, so a request with no response never executed on
+ * the page — there is nothing unmonitored to report. It is recorded because
+ * the request itself is worth a human's eye: a URL the page built wrongly, or
+ * a host that stopped answering, shows up nowhere else.
+ *
+ * Unredacted here; every surface that displays it redacts it (see
+ * `toUnansweredRequestRecords`).
+ */
+export type UnansweredScriptRequest = {
+  url: string
+  /** Puppeteer resource type of the request — `script` for everything recorded today. */
+  resourceType: string
+  /** Why the request is recorded, e.g. still unanswered at the deadline, or its frame went away. */
+  reason: string
+  /** Top-level document the request belongs to; undefined when it could not be attributed. */
+  document?: DocumentId
+  /** Workflow step running when the request was issued (0 = initial navigation). */
+  step: number
+}
+
+/** An unanswered script request as every report and notification shows it; see `UnreadScriptRecord`. */
+export type UnansweredRequestRecord = Omit<UnreadScriptRecord, 'status'>
+
 export type ScriptDetectionSummary = {
   externalScripts: ScriptInfo[]
   inlineScripts: ScriptInfo[]
@@ -104,4 +131,10 @@ export type ScriptDetectionSummary = {
    * way a failed target does. Omitted means none were recorded.
    */
   unreadScripts?: UnreadScriptResponse[]
+  /**
+   * Script requests that never got a response. Split by payment scope like
+   * every other observation, but never fail the run (see
+   * `UnansweredScriptRequest`). Omitted means none were recorded.
+   */
+  unansweredRequests?: UnansweredScriptRequest[]
 }
