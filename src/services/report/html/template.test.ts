@@ -348,3 +348,36 @@ describe('renderReportHtml payment scope', () => {
     expect(page).not.toContain('<strong>payment page</strong>')
   })
 })
+
+describe('renderReportHtml unread scripts', () => {
+  const unread = (url: string, reason = 'Could not load response body for this request.') => ({ url, resourceType: 'script', status: 200, step: 6, documentUrl: 'https://book.example.test/venue/checkout', reason })
+
+  const render = (records: { unread: ReturnType<typeof unread>[]; scope?: 'payment' | 'outside_payment' }[]): string => {
+    const collector = new ReportCollector()
+    for (const record of records) collector.recordTargetRun({ inventory: buildInventory(), target: detectionTarget, comparisonResults: [], unreadScripts: record.unread, ...(record.scope === undefined ? {} : { scope: record.scope }) })
+    return renderReportHtml(collector.build('detection', runContext())!)
+  }
+
+  it('lists an unread payment-page script under its target and flags the run as partial', () => {
+    const html = render([{ unread: [unread('https://cdn.example.test/pay.js')] }])
+    expect(html).toContain('Scripts not read (1)')
+    expect(html).toContain('PARTIAL RUN — 1 payment page script(s) could not be read')
+    expect(html).toContain('https:&#x2F;&#x2F;cdn.example.test&#x2F;pay.js')
+    expect(html).not.toContain('target(s) failed')
+  })
+
+  it('lists an unread script outside the payment page without a partial-run banner', () => {
+    const html = render([
+      { unread: [], scope: 'payment' },
+      { unread: [unread('https://cdn.example.test/landing.js')], scope: 'outside_payment' },
+    ])
+    expect(html).toContain('Scripts not read (1)')
+    expect(html).toContain('outside payment page')
+    expect(html).not.toContain('PARTIAL RUN')
+  })
+
+  it('escapes the browser-supplied reason like every other attacker-influenced string', () => {
+    const html = render([{ unread: [unread('https://cdn.example.test/pay.js', '<img src=x onerror=alert(1)>')] }])
+    expect(html).not.toContain('<img src=x onerror=alert(1)>')
+  })
+})

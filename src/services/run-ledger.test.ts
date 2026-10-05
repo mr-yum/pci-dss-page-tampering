@@ -191,4 +191,44 @@ describe('RunLedger', () => {
 
     expect(ledger.alertsUndelivered).toEqual(recorded)
   })
+
+  describe('unread scripts', () => {
+    const unread = (url: string) => ({ url, resourceType: 'script', status: 200, step: 5, documentUrl: 'https://shop.example.test/checkout', reason: 'Could not load response body for this request.' })
+
+    // A completed target whose payment page ran a script nobody read was not
+    // fully monitored: the run must go red exactly as for a failed target.
+    it('fails the run for a payment-scope script it could not read, after sending a summary that names it', async () => {
+      const events: string[] = []
+      const alertService = makeAlertService(events)
+      ledger.recordSuccess('Shop production', 4)
+      ledger.recordUnreadScripts('Shop production', 'detection', { payment: [unread('https://cdn.example.test/pay.js')], outside: [] })
+
+      let thrown: unknown
+      try {
+        await ledger.finish(finishInput(alertService))
+      } catch (error) {
+        events.push('thrown')
+        thrown = error
+      }
+
+      expect(events).toEqual(['summary-sent', 'thrown'])
+      expect(thrown).toBeInstanceOf(RunFailuresError)
+      expect((thrown as Error).message).toContain('1 payment page script(s) could not be read: https://cdn.example.test/pay.js on Shop production (detection)')
+      const summary = (alertService.alertOnRunCompletion as jest.Mock).mock.calls[0][0]
+      expect(summary.targetsProcessed).toEqual(['Shop production'])
+      expect(summary.scriptsUnread).toEqual([{ ...unread('https://cdn.example.test/pay.js'), target: 'Shop production', pass: 'detection', outsidePaymentPage: false }])
+    })
+
+    it('names an unread script outside the payment page in the summary without failing the run', async () => {
+      const alertService = makeAlertService([])
+      ledger.recordSuccess('Shop staging', 4)
+      ledger.recordUnreadScripts('Shop staging', 'inventory', { payment: [], outside: [unread('https://cdn.example.test/landing.js')] })
+
+      await expect(ledger.finish(finishInput(alertService))).resolves.toBeUndefined()
+
+      const summary = (alertService.alertOnRunCompletion as jest.Mock).mock.calls[0][0]
+      expect(summary.scriptsUnread).toEqual([{ ...unread('https://cdn.example.test/landing.js'), target: 'Shop staging', pass: 'inventory', outsidePaymentPage: true }])
+      expect(logs.some((line) => line.includes('outside the payment page, recorded for evidence only'))).toBe(true)
+    })
+  })
 })

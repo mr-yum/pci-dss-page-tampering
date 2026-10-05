@@ -9,7 +9,7 @@
  * @see ../../../types/report.ts
  */
 
-import type { AuditorReport, ReportAuthorisationInfo, ReportMatcherRef, ReportResourceRow, ReportStatusCounts, ReportTargetSection, ReportUnmatchedEntry } from '../../../types/report.js'
+import type { AuditorReport, ReportAuthorisationInfo, ReportMatcherRef, ReportResourceRow, ReportStatusCounts, ReportTargetSection, ReportUnmatchedEntry, ReportUnreadScript } from '../../../types/report.js'
 import { createSha256Hash } from '../../../utils/hash.js'
 import type { ProvenanceNode, SourceProvenance } from '../../../utils/provenance.js'
 import { artefactRelativeHref, escapeHtml, html, join, raw, type RawHtml, safeHttpsHref } from './escape.js'
@@ -255,6 +255,56 @@ function formatUnmatched(entries: readonly ReportUnmatchedEntry[], targetKey: st
 }
 
 /**
+ * Scripts that arrived but could not be read. Not census rows — there is no
+ * content to hash or judge — so they get their own table, always shown: in
+ * payment scope each one is why the run is partial.
+ */
+function formatUnread(scripts: readonly ReportUnreadScript[]): RawHtml {
+  if (scripts.length === 0) return raw('')
+
+  const inScope = scripts.filter((script) => script.scope !== 'outside_payment').length
+
+  return html`<h3>Scripts not read (${scripts.length})</h3>
+    ${
+      inScope > 0
+        ? html`<p class="banner banner-warn">${inScope} script(s) reached the payment page, but their body could not be read, so they were neither hashed nor compared. This target was not fully monitored in this run.</p>`
+        : html`<p class="muted">These scripts were on pages loaded before the payment page; they are recorded for evidence and do not make the run partial.</p>`
+    }
+    <div class="table-wrap">
+      <table>
+        <caption>
+          Script responses whose body could not be read
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Script</th>
+            <th scope="col">HTTP status</th>
+            <th scope="col">Step</th>
+            <th scope="col">Page</th>
+            <th scope="col">Scope</th>
+            <th scope="col">Reason</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${join(
+            scripts.map(
+              (script) =>
+                html`<tr>
+                  <td class="mono">${script.url}</td>
+                  <td>${script.status === 0 ? 'no response' : String(script.status)}</td>
+                  <td>${String(script.step)}</td>
+                  <td class="mono">${script.documentUrl ?? html`<span class="muted">unattributed</span>`}</td>
+                  <td>${script.scope === 'outside_payment' ? 'outside payment page' : 'payment page'}</td>
+                  <td>${script.reason}</td>
+                </tr>`,
+            ),
+          )}
+        </tbody>
+      </table>
+    </div>`
+}
+
+/**
  * Search text for an unmatched entry, mirroring `formatRow`'s: the free-text
  * box must reach these rows too once the reader turns them on.
  */
@@ -314,7 +364,7 @@ function formatTarget(target: ReportTargetSection): RawHtml {
   return html`<section data-target="${target.targetKey}" id="${id}">
     <h2>${target.targetName} <span class="badge badge-${target.status}">${target.status}</span></h2>
     <p class="sub"><span class="mono">${target.url}</span> · inventory <span class="mono">${target.inventoryFile}</span> · workflow <span class="mono">${target.workflowId}</span> (<span class="mono">${target.workflowFile}</span>)</p>
-    ${target.error === null ? '' : html`<p class="banner banner-warn">This target failed: ${target.error}</p>`} ${formatCounts(target.counts)} ${formatPaymentScope(target.paymentScope)}
+    ${target.error === null ? '' : html`<p class="banner banner-warn">This target failed: ${target.error}</p>`} ${formatCounts(target.counts)} ${formatPaymentScope(target.paymentScope)} ${formatUnread(target.unreadScripts)}
     ${formatTable('Scripts', target.scripts, target.targetKey)} ${formatTable('Headers', target.headers, target.targetKey)} ${formatUnmatched(target.unmatchedInventoryEntries, target.targetKey)}
   </section>`
 }
@@ -343,7 +393,10 @@ export function renderReportHtml(report: AuditorReport): string {
 
   const banners = join([
     ...(report.run.targetFilter !== null ? [html`<p class="banner banner-warn">PARTIAL CENSUS — this run was filtered to target “${report.run.targetFilter}” and does not cover every monitored target.</p>`] : []),
-    ...(report.run.status === 'partial' ? [html`<p class="banner banner-warn">PARTIAL RUN — ${report.run.failures.length} target(s) failed; their resources are missing from this census.</p>`] : []),
+    ...(report.run.failures.length > 0 ? [html`<p class="banner banner-warn">PARTIAL RUN — ${report.run.failures.length} target(s) failed; their resources are missing from this census.</p>`] : []),
+    ...(report.summary.scriptsUnread > 0
+      ? [html`<p class="banner banner-warn">PARTIAL RUN — ${report.summary.scriptsUnread} payment page script(s) could not be read, so they were neither hashed nor compared; each is listed under its target.</p>`]
+      : []),
   ])
 
   const body = html`<main>

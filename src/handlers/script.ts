@@ -1,8 +1,9 @@
 import type { HTTPRequest, HTTPResponse } from 'puppeteer'
 
 import type { DocumentId } from '../types/document.js'
-import type { ScriptInfo } from '../types/script.js'
+import type { ScriptInfo, UnreadScriptResponse } from '../types/script.js'
 import { createSha256Hash } from '../utils/hash.js'
+import { redactUrl } from '../utils/url.js'
 
 /**
  * Derive the initiator URL for a script request from the CDP initiator info,
@@ -30,39 +31,192 @@ function deriveInitiatorUrl(request: HTTPRequest): string | undefined {
   }
 }
 
+/** Where unreadable script responses are recorded, and which workflow step is running. */
+export type UnreadScriptAccounting = {
+  unread: UnreadScriptResponse[]
+  /** Workflow step running when the response arrived (0 = initial navigation). */
+  step: number
+  /**
+   * Whether the run has finished waiting for its reads and is being accounted
+   * for (see `PendingScriptReads.settle`). From then on a read that completes
+   * is recorded as unread rather than compared: the summary is built from
+   * these arrays, and a body that lands now was not read in time to be in it.
+   */
+  sealed?: () => boolean
+}
+
+/** Reason recorded for a body that was read only after the run had been accounted for. */
+export const SCRIPT_READ_LATE_REASON = 'the response body finished reading only after the workflow had been accounted for'
+
+/** Whether a response is one the handler reads and compares: an OK script. */
+export function isMonitoredScriptResponse(response: HTTPResponse): boolean {
+  return response.request().resourceType() === 'script' && response.ok()
+}
+
+/** The unread-script record for a response, without the reason. */
+export function describeScriptResponse(response: HTTPResponse, document: DocumentId | undefined, step: number): Omit<UnreadScriptResponse, 'reason'> {
+  return { url: response.url(), resourceType: response.request().resourceType(), status: response.status(), step, ...(document !== undefined ? { document } : {}) }
+}
+
+/**
+ * Record an unread response once per script, document and status. The same
+ * gap can be seen twice with different reasons — still being read at the
+ * deadline, then failing with "Session closed" as the context closes — and
+ * that is one unmonitored script, not two. A request recorded as unanswered
+ * (status 0) matches whatever status its response turns out to carry if it
+ * lands while the context is closing.
+ */
+export function recordUnreadScript(unread: UnreadScriptResponse[], record: UnreadScriptResponse): void {
+  const sameStatus = (existing: UnreadScriptResponse): boolean => existing.status === record.status || existing.status === 0 || record.status === 0
+  if (unread.some((existing) => existing.url === record.url && existing.document === record.document && sameStatus(existing))) return
+  unread.push(record)
+}
+
 /**
  * @param document Top-level document the response belongs to (see `DocumentLedger`),
  *   or undefined when it could not be attributed — which keeps the script in payment scope.
+ * @param accounting Where a response whose body cannot be read is recorded.
+ *   Never silently dropped: an unread script is an unmonitored one, and the run
+ *   has to say so (see `UnreadScriptResponse`).
  */
-export async function scriptResponseHandler(response: HTTPResponse, detectedScripts: ScriptInfo[], document?: DocumentId): Promise<void> {
-  if (response.request().resourceType() === 'script' && response.ok()) {
-    try {
-      const scriptUrl = response.url()
-      const scriptContent = await response.text()
-      const scriptHash = createSha256Hash(scriptContent)
-      const initiator = deriveInitiatorUrl(response.request())
+export async function scriptResponseHandler(response: HTTPResponse, detectedScripts: ScriptInfo[], document?: DocumentId, accounting?: UnreadScriptAccounting): Promise<void> {
+  if (!isMonitoredScriptResponse(response)) return
 
-      // Reload recovery can observe more than one body at the same URL. Keep
-      // every distinct version so a failed first render cannot mask changed
-      // bytes served by the successful attempt. The document is part of the
-      // key too: the same SDK loaded on an earlier page and again on the
-      // payment page must keep the payment page's copy, or scoping would drop
-      // it along with the earlier page. Payment scoping collapses the copies
-      // again within each scope.
-      if (!detectedScripts.some((scriptInfo) => scriptInfo.source.type === 'external' && scriptInfo.source.url === scriptUrl && scriptInfo.hash.value === scriptHash.value && scriptInfo.document === document) && scriptContent) {
-        detectedScripts.push({
-          source: {
-            type: 'external',
-            url: scriptUrl,
-            content: scriptContent,
-            ...(initiator !== undefined ? { initiator } : {}),
-          },
-          hash: scriptHash,
-          ...(document !== undefined ? { document } : {}),
-        })
-      }
-    } catch (error) {
-      console.error(`Errored while attempting to read script response: ${error}`)
+  // Read the step now, before the await: the record names the step the
+  // response arrived in, which is the step that caused it.
+  const step = accounting?.step ?? 0
+  let scriptContent: string
+  try {
+    scriptContent = await response.text()
+  } catch (error) {
+    const record: UnreadScriptResponse = { ...describeScriptResponse(response, document, step), reason: error instanceof Error ? error.message : String(error) }
+    // Origin and path only, like every other URL this tool logs: a script URL
+    // can carry a signed token in its query string.
+    console.error(`Could not read the body of script ${redactUrl(record.url)} (HTTP ${record.status}, step ${step}, document ${document ?? 'unattributed'}); it was not compared and is recorded as unread: ${record.reason}`)
+    if (accounting !== undefined) recordUnreadScript(accounting.unread, record)
+    return
+  }
+
+  if (accounting?.sealed?.() === true) {
+    // Too late to be compared: the run is being summarised from these arrays.
+    // Fail secure and say so rather than let the script vanish or land in a
+    // summary that has already been read.
+    const record: UnreadScriptResponse = { ...describeScriptResponse(response, document, step), reason: SCRIPT_READ_LATE_REASON }
+    console.error(`Script ${redactUrl(record.url)} (HTTP ${record.status}, step ${step}, document ${document ?? 'unattributed'}) finished reading after the workflow was accounted for; it was not compared and is recorded as unread.`)
+    recordUnreadScript(accounting.unread, record)
+    return
+  }
+
+  const scriptUrl = response.url()
+  const scriptHash = createSha256Hash(scriptContent)
+  const initiator = deriveInitiatorUrl(response.request())
+
+  // Reload recovery can observe more than one body at the same URL. Keep
+  // every distinct version so a failed first render cannot mask changed
+  // bytes served by the successful attempt. The document is part of the
+  // key too: the same SDK loaded on an earlier page and again on the
+  // payment page must keep the payment page's copy, or scoping would drop
+  // it along with the earlier page. Payment scoping collapses the copies
+  // again within each scope.
+  if (!detectedScripts.some((scriptInfo) => scriptInfo.source.type === 'external' && scriptInfo.source.url === scriptUrl && scriptInfo.hash.value === scriptHash.value && scriptInfo.document === document) && scriptContent) {
+    detectedScripts.push({
+      source: {
+        type: 'external',
+        url: scriptUrl,
+        content: scriptContent,
+        ...(initiator !== undefined ? { initiator } : {}),
+      },
+      hash: scriptHash,
+      ...(document !== undefined ? { document } : {}),
+    })
+  }
+}
+
+/** A script the workflow finished without: its body was still being read, or its response had not arrived at all. */
+export type UnsettledScript = Omit<UnreadScriptResponse, 'reason'> & { phase: 'reading' | 'awaiting-response' }
+
+type InFlightRequest = { request: HTTPRequest; step: number; documentOf: (request: HTTPRequest) => DocumentId | undefined }
+
+/**
+ * The script requests and body reads still in flight, so a run can wait for
+ * them before it closes the browser context and account for any that never
+ * finish.
+ *
+ * Puppeteer does not await event listeners, so the response handler runs
+ * detached from the workflow. Without this, the workflow could finish — and
+ * close the context, ending the DevTools session the read depends on — while
+ * a body was still being read, and that script would vanish from the run.
+ * Requests are tracked as well as reads: a script whose response has not yet
+ * arrived when the last step finishes has no read to wait for, and its
+ * response would otherwise land while the context was closing, after the
+ * run had been summarised.
+ */
+export class PendingScriptReads {
+  private readonly pending = new Map<Promise<void>, Omit<UnreadScriptResponse, 'reason'>>()
+  private readonly inFlight = new Map<HTTPRequest, InFlightRequest>()
+  private wake: (() => void) | undefined
+
+  /**
+   * Note a script request the page has issued, so `settle` waits for its
+   * response too. `documentOf` is consulted only if the request is still
+   * unanswered at the deadline, when the document ledger has had every chance
+   * to attribute it.
+   */
+  trackRequest(request: HTTPRequest, step: number, documentOf: (request: HTTPRequest) => DocumentId | undefined): void {
+    if (request.resourceType() !== 'script') return
+    this.inFlight.set(request, { request, step, documentOf })
+  }
+
+  /** The request got its response, finished or failed: it is no longer awaited as a request. */
+  requestSettled(request: HTTPRequest): void {
+    if (this.inFlight.delete(request)) this.wake?.()
+  }
+
+  track(read: Promise<void>, response: HTTPResponse, document: DocumentId | undefined, step: number): void {
+    // Any response, read or not, answers its request.
+    this.requestSettled(response.request())
+    if (!isMonitoredScriptResponse(response)) return
+    this.pending.set(read, describeScriptResponse(response, document, step))
+    // Registered on the read itself, before `settle` can register anything on
+    // it, so a settled read is always gone from `pending` by the time `settle`
+    // resumes. The rejection handler also keeps a defect in the handler from
+    // surfacing as an unhandled rejection; the handler itself never rejects.
+    const forget = (): void => {
+      this.pending.delete(read)
+      this.wake?.()
     }
+    read.then(forget, forget)
+  }
+
+  /**
+   * Wait up to `timeoutMs` for every tracked request and read to settle, and
+   * return what is still outstanding at the deadline for the caller to record.
+   * Loops rather than waiting once: a response can arrive — and start a read —
+   * while earlier reads are being awaited, and that read gets the same chance
+   * to finish rather than being reported as stuck.
+   */
+  async settle(timeoutMs: number): Promise<UnsettledScript[]> {
+    let timer: NodeJS.Timeout | undefined
+    let expired = false
+    const deadline = new Promise<void>((resolve) => {
+      timer = setTimeout(() => {
+        expired = true
+        resolve()
+      }, timeoutMs)
+    })
+    while ((this.pending.size > 0 || this.inFlight.size > 0) && !expired) {
+      const woken = new Promise<void>((resolve) => {
+        this.wake = resolve
+      })
+      await Promise.race([woken, deadline])
+    }
+    this.wake = undefined
+    clearTimeout(timer)
+    const reads: UnsettledScript[] = [...this.pending.values()].map((read) => ({ ...read, phase: 'reading' }))
+    const requests: UnsettledScript[] = [...this.inFlight.values()].map(({ request, step, documentOf }) => {
+      const document = documentOf(request)
+      return { url: request.url(), resourceType: request.resourceType(), status: 0, step, ...(document !== undefined ? { document } : {}), phase: 'awaiting-response' }
+    })
+    return [...reads, ...requests]
   }
 }

@@ -368,6 +368,8 @@ A single target's workflow failing does not stop the run. The other variations i
 
 The same rule applies to alerts the run produced but could not deliver. Slack rejects an oversize or malformed payload with HTTP 200 and `ok: false`; the tool records each such rejection, lists them in the summary under **Alerts Not Delivered** (alert kind, target, reason), and exits `2` for them too, because a finding nobody was told about is indistinguishable from a quiet run. This applies to the synthetic inventory and detection passes; `--mode rum-compare` reports delivery failures in its own summary and, by design, does not change its exit code for them. Table-based alerts are fitted to Slack's 10,000-character table budget before sending, with a note saying how many rows were cut and pointing at the auditor report for the full list.
 
+The same rule applies to a script whose content the run could not read: its body was gone before the monitor could hash it, or it was still arriving — or still unanswered — when the workflow finished and the run's wait for it ran out, so it was neither compared nor alerted on. Every such script is listed in the auditor report under its target's `unreadScripts` and named in the summary under **Scripts Not Read** — URL, target, pass, workflow step and the page it was loaded on. A script on the payment page (or anywhere in an unscoped run) makes the run `partial`, switches the headline to :warning: and exits `2`, exactly like a failed target. A script on an earlier page the payment page replaced is listed under **Scripts Not Read Outside The Payment Page** for evidence and does not change the exit code. Chrome normally discards a page's response bodies as soon as the page starts navigating away; the monitor asks it to keep them, so scripts that finish loading as a "Pay" click leaves the payment page are read like any other.
+
 Only run-level failures abort the whole run: the inventory pull, the push or pull-request step, and the browser launch.
 
 ### Interacting with Embedded Payment Frames
@@ -593,7 +595,7 @@ The tool always writes these copies when `--report-dir` is set. A publishing ste
 - **Inventory files the run did not read.** The copy under `<pass>/inventory/` covers the targets that pass actually processed. Under `--target`, that is one file, not the whole repository — consistent with the partial-census labelling.
 - **Raw control or bidirectional characters.** Replaced with a visible `⟨U+XXXX⟩` token, so a malicious excerpt cannot _render_ as something benign.
 
-A run filtered with `--target` is labelled a **partial census** in both the document and the page banner; a run in which any target failed is marked `run.status: "partial"` with the failures named. A short census is never presented as a clean one.
+A run filtered with `--target` is labelled a **partial census** in both the document and the page banner; a run in which any target failed, or in which a script on the payment page could not be read (each listed under its target's `unreadScripts`, counted in `summary.scriptsUnread`), is marked `run.status: "partial"` with the gaps named. A short census is never presented as a clean one.
 
 ### Diffing between runs
 
@@ -608,6 +610,8 @@ Real payment pages do still change between runs, and the report reflects that fa
 ### Compatibility
 
 `schemaVersion` is semver. Additive optional fields bump the minor; removing a field, changing its type, or changing what a value means bumps the major. Consumers should gate on the major version and tolerate unknown fields.
+
+One deliberate widening shipped as a minor: since 1.5.0, `run.status` is `"partial"` not only when a target failed but also when a script on the payment page could not be read — in which case `run.failures` can be empty and the gap is listed under `targets[].unreadScripts` (counted in `summary.scriptsUnread`). `partial` has always meant "this census is short, do not read it as clean", and this is a short census; a consumer that takes `partial` to imply a non-empty `failures` should check both lists.
 
 ### In CI
 
