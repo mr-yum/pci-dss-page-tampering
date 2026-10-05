@@ -42,6 +42,11 @@ describe('redactRepositoryTarget', () => {
 })
 
 describe('extractHost', () => {
+  it('reports the minting document’s host for a blob: URL, which has none of its own', () => {
+    expect(extractHost('blob:https://challenges.example/eb774c7a-d678-4c7e-8143-f5485c0c22db')).toBe('challenges.example')
+    expect(extractHost('blob:null/0a1b')).toBe('(unknown)')
+  })
+
   it('returns the host for a typical URL', () => {
     expect(extractHost('https://m.stripe.network/out-4.5.45.js')).toBe('m.stripe.network')
   })
@@ -80,6 +85,14 @@ describe('redactUrl', () => {
 
   it('returns origin + path unchanged when there is no query', () => {
     expect(redactUrl('https://js.stripe.com/v3/fingerprinted/js/shared.js')).toBe('https://js.stripe.com/v3/fingerprinted/js/shared.js')
+  })
+
+  // The parser reports a blob: URL's inner origin as `origin` and the whole
+  // inner URL as `pathname`, so the naive concatenation doubled the host.
+  it('keeps the blob: scheme and redacts the inner URL instead of doubling its host', () => {
+    expect(redactUrl('blob:https://challenges.example/eb774c7a-d678-4c7e-8143-f5485c0c22db')).toBe('blob:https://challenges.example/eb774c7a-d678-4c7e-8143-f5485c0c22db')
+    expect(redactUrl('blob:https://shop.example/0a1b?x=1')).toBe('blob:https://shop.example/0a1b')
+    expect(redactUrl('blob:null/0a1b')).toBe('blob:null/0a1b')
   })
 
   it('returns (unknown) for empty or unparseable input', () => {

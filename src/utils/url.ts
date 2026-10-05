@@ -55,7 +55,11 @@ export function redactRepositoryTarget(target: string | undefined | null): strin
 export function extractHost(url: string | undefined | null): string {
   if (!url || url.trim() === '') return UNKNOWN_HOST
   try {
-    const host = new URL(url).host
+    const parsed = new URL(url)
+    // A blob: URL has no host of its own; the host that matters is the one of
+    // the document that minted it, carried in the inner URL (see redactUrl).
+    if (parsed.protocol === 'blob:') return extractHost(parsed.pathname)
+    const host = parsed.host
     return host.length > 0 ? host : UNKNOWN_HOST
   } catch {
     return UNKNOWN_HOST
@@ -67,11 +71,23 @@ export function extractHost(url: string | undefined | null): string {
  * when logging a URL that may carry sensitive query parameters (tokens,
  * signed URLs, PII) — keeps the endpoint identifiable without leaking secrets.
  * Falls back to `(unknown)` for unparseable input.
+ *
+ * A `blob:` URL wraps the URL of the document that minted it
+ * (`blob:https://host/uuid`): the parser reports the inner origin as `origin`
+ * and the whole inner URL as `pathname`, so `origin + pathname` would read
+ * `https://hosthttps://host/uuid` — which is how the auditor report rendered
+ * every blob-loaded script's `origin.url` until this was caught, and how an
+ * unanswered Turnstile blob request came to look like a malformed URL on the
+ * page. The scheme is kept and the inner URL is redacted on its own.
  */
 export function redactUrl(url: string | undefined | null): string {
   if (!url || url.trim() === '') return UNKNOWN_HOST
   try {
     const parsed = new URL(url)
+    if (parsed.protocol === 'blob:') {
+      const inner = redactUrl(parsed.pathname)
+      return inner === UNKNOWN_HOST ? `blob:${parsed.pathname}` : `blob:${inner}`
+    }
     return `${parsed.origin}${parsed.pathname}`
   } catch {
     return UNKNOWN_HOST
