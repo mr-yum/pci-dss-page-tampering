@@ -346,7 +346,7 @@ When reasoning about a run, three auditor-report fields have non-obvious semanti
 
 - `targets[].unmatchedInventoryEntries` lists entries that matched nothing in that pass. This is the evidence for retiring a stale entry — confirm it across every pass the entry is live for, and check the traffic isn't simply landing on a different target file.
 - `observed.contentExcerpt` is a truncated prefix (`CONTENT_EXCERPT_LIMIT`, `src/services/report/mapper.ts`), so replaying report rows through content or hash matchers produces false negatives.
-- `origin.url` is redacted as described above.
+- `origin.url` is redacted as described above. For a script loaded from a `blob:` URL it reads `blob:https://<minting-host>/<uuid>` and `origin.host` is the minting document's host — before 2026-10-05 both were wrong (`https://hosthttps://host/<uuid>` and `(unknown)`), because `new URL()` reports a blob URL's inner origin as `origin` and the whole inner URL as `pathname`; an "obviously malformed" doubled-host URL in an older report or run log is this rendering, not a request the page made.
 
 **A symptom worth recognising:** appending a hash for a genuinely new release is the normal, intended path. What is not normal is an entry collecting a _fresh_ hash on _every_ run: that means it identifies a payload which differs per request, so no hash can ever authorise it and the list grows without bound while verifying nothing. The tell is unbounded growth with no corresponding deploy. Establish which of the two you are looking at before appending another hash — the fix for the second is a matcher that authorises on the stable part of the payload, not one more hash.
 

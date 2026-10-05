@@ -44,8 +44,12 @@ import type { TargetType } from './target.js'
  * a change in what an existing value means. Consumers should gate on the
  * major, tolerate unknown fields, and never infer one field's shape from
  * another's value.
+ *
+ * Patch when a value's derivation is corrected without its meaning or shape
+ * changing — a `rowId` whose inputs were fixed, for instance — so a consumer
+ * that keyed on it across runs knows why it moved.
  */
-export const REPORT_SCHEMA_VERSION = '1.6.0'
+export const REPORT_SCHEMA_VERSION = '1.6.1'
 
 /**
  * Where an observation sits relative to the payment page, when the target's
@@ -151,7 +155,13 @@ export type ReportInventoryEntryRef = {
 }
 
 export type ReportResourceRow = {
-  /** Stable across runs; used as the HTML anchor and the dedupe key. */
+  /**
+   * Stable across runs for a given tool version; used as the HTML anchor and
+   * the dedupe key. Derived from the row's kind, name, hash, value, redacted
+   * URL and workflow, so a correction to any of those derivations (1.6.1:
+   * blob-URL redaction) changes the ids of the rows it touches; each such
+   * change is a patch bump and a CHANGELOG entry, never silent.
+   */
   rowId: string
   kind: ReportResourceKind
   status: ReportRowStatus

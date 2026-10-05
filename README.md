@@ -613,6 +613,8 @@ Real payment pages do still change between runs, and the report reflects that fa
 
 `schemaVersion` is semver. Additive optional fields bump the minor; removing a field, changing its type, or changing what a value means bumps the major. Consumers should gate on the major version and tolerate unknown fields.
 
+Row ids (`rowId`) are stable across runs for a given tool version, not forever: they hash the row's redacted URL among other fields, so 1.6.1 — which corrected the rendering of `blob:` URLs — changed the ids of every row whose URL is a `blob:` URL — blob-loaded scripts, and any header row recorded from a `blob:` response — and of nothing else. A derivation correction like that is a patch bump and a CHANGELOG entry.
+
 One deliberate widening shipped as a minor: since 1.5.0, `run.status` is `"partial"` not only when a target failed but also when a script on the payment page could not be read — in which case `run.failures` can be empty and the gap is listed under `targets[].unreadScripts` (counted in `summary.scriptsUnread`). `partial` has always meant "this census is short, do not read it as clean", and this is a short census; a consumer that takes `partial` to imply a non-empty `failures` should check both lists.
 
 1.6.0 adds `targets[].unansweredRequests` and `summary.requestsUnanswered`, and with them splits what 1.5.0 listed under `unreadScripts` with `status: 0` (every script request still without a response at the deadline) by the evidence available:
