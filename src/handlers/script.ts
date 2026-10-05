@@ -200,6 +200,13 @@ export class PendingScriptReads {
   private readonly unanswered = new Map<HTTPRequest, UnansweredScriptRequest>()
   /** DevTools request ids whose body Chrome reported finished on one of the monitor's own sessions. */
   private readonly finishedBodies = new Set<string>()
+  /**
+   * Unanswered requests that a non-script response (a 404, a 502) answered
+   * after the deadline, with its status. A response *was* surfaced for them,
+   * so a finished body under their request id is that error page's, not a
+   * script that may have run: they stay unanswered.
+   */
+  private readonly answeredLate = new Map<HTTPRequest, number>()
   private wake: (() => void) | undefined
 
   /**
@@ -280,11 +287,23 @@ export class PendingScriptReads {
     const request = response.request()
     this.requestSettled(request)
     if (!isMonitoredScriptResponse(response)) {
-      // Not a script that runs (a 404, a 502): nothing to read. A request
-      // already reported unanswered stays listed — it was never answered
-      // with a script — with the late answer noted.
       const listed = this.unanswered.get(request)
-      if (listed !== undefined) this.unanswered.set(request, { ...listed, reason: `${listed.reason}; answered only afterwards, with HTTP ${response.status()}` })
+      if (listed === undefined) return
+      const status = response.status()
+      // A redirect hop is answered by the redirect: the request it redirects
+      // to is a request of its own, tracked and judged on its own. It shares
+      // this hop's DevTools request id, so keeping the hop listed would let
+      // the target's finished body turn the hop into a second, misdescribed
+      // record of the same gap.
+      if (status >= 300 && status < 400) {
+        this.unanswered.delete(request)
+        return
+      }
+      // Not a script that runs (a 404, a 502): nothing to read, and nothing
+      // ran. It stays listed — it was never answered with a script — with the
+      // late answer noted, and is never turned into an unread script.
+      this.answeredLate.set(request, status)
+      this.unanswered.set(request, { ...listed, reason: `${listed.reason}; answered only afterwards, with HTTP ${status}` })
       return
     }
     this.pending.set(read, { record: describeScriptResponse(response, document, step), request })
@@ -346,7 +365,7 @@ export class PendingScriptReads {
       ...(document !== undefined ? { document } : {}),
     })
     for (const [request, listed] of this.unanswered) {
-      if (!bodyFinished(request) || this.hasPendingRead(request)) continue
+      if (!bodyFinished(request) || this.hasPendingRead(request) || this.answeredLate.has(request)) continue
       this.unanswered.delete(request)
       unread.push(withoutResponse(request, listed.step, listed.document))
     }

@@ -74,9 +74,10 @@ function clipTableCell(cell: unknown, cap: number): unknown {
 /** Headroom under Slack's 3,000-character cap on a section's text. */
 const SECTION_CHAR_LIMIT = 2900
 /**
- * Entries a run-summary list of unread scripts or unanswered requests names
- * before it points at the auditor report: enough to act on, few enough that
- * every list together stays far inside Slack's 50-block message limit.
+ * Rows a run-summary list of unread scripts or unanswered requests names
+ * before it points at the auditor report; targets beyond the rows are still
+ * named, by name alone (see `namedListSections`). Enough to act on, few
+ * enough that the lists together stay inside Slack's 50-block message limit.
  */
 const MAX_SUMMARY_LIST_ROWS = 20
 /** Longest single field (URL, target, reason) in a run-summary list line. */
@@ -1459,18 +1460,48 @@ export class SlackAlertService implements IAlertService {
   }
 
   /**
-   * Lay a named list out as sections under Slack's per-section limit, naming
-   * at most `MAX_SUMMARY_LIST_ROWS` entries and saying how many more there
-   * are. The cap is what keeps the summary deliverable: Slack rejects a
-   * message of more than 50 blocks wholesale (`invalid_blocks`), and a CDN
-   * outage across every target and both passes can produce hundreds of
-   * entries — a rejected summary would itself fail the run and tell nobody
-   * anything. Every entry stays in the auditor report and the run log.
+   * Lay a named list out as sections under Slack's per-section limit.
+   *
+   * Rows are capped, targets are not dropped. Rows go first to each affected
+   * target's first entry, in order, then to further entries, up to
+   * `MAX_SUMMARY_LIST_ROWS`; any target left without a row is still named, in
+   * compact "Also affected" lines of target names alone; and a final line
+   * says how many entries were not shown. The summary is the one place a
+   * reader learns *which* page went unmonitored, so no target may disappear
+   * behind "and N more" — yet the row cap is what keeps the summary
+   * deliverable: Slack rejects a message of more than 50 blocks wholesale
+   * (`invalid_blocks`), and a CDN outage across every target and both passes
+   * can produce hundreds of entries — a rejected summary would itself fail
+   * the run and tell nobody anything. Every entry stays in the auditor report
+   * and the run log.
    */
-  private namedListSections<T>(label: string, header: string, entries: readonly T[], lineFor: (entry: T) => string): string[] {
-    const shown = entries.slice(0, MAX_SUMMARY_LIST_ROWS)
-    const lines = shown.map((entry) => boundLine(lineFor(entry)))
-    if (entries.length > shown.length) lines.push(`…and ${entries.length - shown.length} more — every one is listed in the auditor report and the run log.`)
+  private namedListSections<T extends { target: string }>(label: string, header: string, entries: readonly T[], lineFor: (entry: T) => string): string[] {
+    const kept = new Set<number>()
+    const rowed = new Set<string>()
+    entries.forEach((entry, index) => {
+      if (kept.size >= MAX_SUMMARY_LIST_ROWS || rowed.has(entry.target)) return
+      rowed.add(entry.target)
+      kept.add(index)
+    })
+    for (let index = 0; index < entries.length && kept.size < MAX_SUMMARY_LIST_ROWS; index++) kept.add(index)
+    const lines = entries.filter((_, index) => kept.has(index)).map((entry) => boundLine(lineFor(entry)))
+
+    const unrowed = [...new Set(entries.map((entry) => entry.target))].filter((target) => !rowed.has(target))
+    if (unrowed.length > 0) {
+      // Names only, split into lines that never reach the line clip, so no
+      // target is cut off mid-list.
+      let names = `Also affected (${unrowed.length} more target${unrowed.length === 1 ? '' : 's'}):`
+      for (const target of unrowed) {
+        const name = ` \`${escapeMrkdwn(clipField(target))}\``
+        if (names.length + name.length > LINE_CHAR_LIMIT) {
+          lines.push(names)
+          names = 'Also affected (continued):'
+        }
+        names += name
+      }
+      lines.push(names)
+    }
+    if (entries.length > kept.size) lines.push(`…and ${entries.length - kept.size} more — every one is listed in the auditor report and the run log.`)
 
     const sections: string[] = []
     let current = header

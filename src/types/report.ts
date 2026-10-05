@@ -32,10 +32,15 @@ import type { TargetType } from './target.js'
  * not read it as clean", so a new way for a census to be short (an unread
  * payment-page script, 1.5.0) is minor even though `run.failures` can now be
  * empty alongside it. Likewise a list entry moved to where its documented
- * meaning puts it is minor: 1.5.0 also listed a script request that never got
- * a response under `unreadScripts` (with `status: 0`), although that list was
- * always documented as responses whose body could not be read; 1.6.0 lists
- * those under `unansweredRequests` instead. Major for a removal, a retype, or
+ * meaning puts it is minor: 1.5.0 listed every script request still without a
+ * response at the deadline under `unreadScripts` (with `status: 0`); 1.6.0
+ * splits them by evidence. A request whose body was never seen to finish
+ * moves to `unansweredRequests` — it never ran, and never makes the run
+ * partial. A request whose body is known to have finished although no
+ * response was surfaced stays under `unreadScripts` with `status: 0` — it may
+ * have run unexamined, and in payment scope it makes the run partial. So in
+ * 1.6.0 `status: 0` under `unreadScripts` means "body finished, no response
+ * surfaced", never "no response". Major for a removal, a retype, or
  * a change in what an existing value means. Consumers should gate on the
  * major, tolerate unknown fields, and never infer one field's shape from
  * another's value.

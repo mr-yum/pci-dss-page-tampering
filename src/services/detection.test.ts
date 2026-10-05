@@ -21,7 +21,7 @@ type DetectionServiceInternals = {
   waitForRecoverableActionTarget(page: Page, step: PuppeteerLocatorAction, target: Target): Promise<{ context: Page | Frame; element?: ElementHandle<Element> }>
   waitForStepDelay(delay: number, stepIndex: number, initialWorkflowDeadline: number): Promise<void>
   redactFrameUrl(url: string): string
-  frameBodyRetention(page: Page, target: Target): (frame: Frame | null) => void
+  frameBodyRetention(page: Page, target: Target, onBodyFinished: (requestId: string) => void): (frame: Frame | null) => void
 }
 
 const target = {} as Target
@@ -1117,7 +1117,7 @@ describe('DetectionService response-body retention in out-of-process iframes', (
     const frameSent: string[] = []
     const frameSession = session(frameSent)
     const page = { mainFrame: () => frame(pageSession, 'https://shop.example.test/checkout') } as unknown as Page
-    const retain = serviceInternals().frameBodyRetention(page, { logger: logger() } as unknown as Target)
+    const retain = serviceInternals().frameBodyRetention(page, { logger: logger() } as unknown as Target, () => undefined)
 
     retain(frame(pageSession))
     retain(frame(frameSession))
@@ -1134,7 +1134,7 @@ describe('DetectionService response-body retention in out-of-process iframes', (
     const first = session()
     const second = session()
     const page = { mainFrame: () => frame(session()) } as unknown as Page
-    const retain = serviceInternals().frameBodyRetention(page, { logger: logger() } as unknown as Target)
+    const retain = serviceInternals().frameBodyRetention(page, { logger: logger() } as unknown as Target, () => undefined)
     const swapping = { client: first, url: () => 'https://pay.example.test/card' }
 
     retain(swapping as unknown as Frame)
@@ -1148,7 +1148,7 @@ describe('DetectionService response-body retention in out-of-process iframes', (
   it('logs, with the frame URL redacted, when a session refuses the command, and does not throw', async () => {
     const targetLogger = logger()
     const page = { mainFrame: () => frame(session()) } as unknown as Page
-    const retain = serviceInternals().frameBodyRetention(page, { logger: targetLogger } as unknown as Target)
+    const retain = serviceInternals().frameBodyRetention(page, { logger: targetLogger } as unknown as Target, () => undefined)
 
     retain(frame(session([], true), 'https://pay.example.test/card?session=secret'))
     await new Promise((resolve) => setImmediate(resolve))
@@ -1162,7 +1162,7 @@ describe('DetectionService response-body retention in out-of-process iframes', (
   it('reports once, and carries on, when Puppeteer no longer exposes a frame session', () => {
     const targetLogger = logger()
     const page = { mainFrame: () => ({}) } as unknown as Page
-    const retain = serviceInternals().frameBodyRetention(page, { logger: targetLogger } as unknown as Target)
+    const retain = serviceInternals().frameBodyRetention(page, { logger: targetLogger } as unknown as Target, () => undefined)
 
     retain({ url: () => 'https://pay.example.test/card' } as unknown as Frame)
     retain({ url: () => 'https://pay.example.test/other' } as unknown as Frame)
@@ -1291,6 +1291,20 @@ describe('DetectionService script accounting wiring', () => {
     const frameSession = { on: jest.fn(), send: jest.fn(async () => ({})) }
     await run({ onAction: (emit) => emit('request', scriptRequest('https://pay.example.test/card.js', { frame: frame(frameSession) })) })
     expect(frameSession.send).toHaveBeenCalledWith('Network.configureDurableMessages', expect.any(Object))
-    expect(frameSession.on).toHaveBeenCalledWith('Network.loadingFinished', expect.any(Function))
+  })
+
+  // The same backstop as the page session's, through the frame's own session:
+  // an out-of-process frame's Network events never reach the page session.
+  it("records a script whose body Chrome reported finished on a frame's own session as unread, not unanswered", async () => {
+    const frameHandlers = new Map<string, Handler>()
+    const frameSession = { on: jest.fn((event: string, handler: Handler) => frameHandlers.set(event, handler)), send: jest.fn(async () => ({})) }
+    const summary = await run({
+      onAction: (emit) => {
+        emit('request', scriptRequest('https://pay.example.test/card.js', { frame: frame(frameSession), id: 'F-1' }))
+        frameHandlers.get('Network.loadingFinished')?.({ requestId: 'F-1' })
+      },
+    })
+    expect(summary.scriptSummary.unreadScripts).toEqual([expect.objectContaining({ url: 'https://pay.example.test/card.js', reason: SCRIPT_BODY_WITHOUT_RESPONSE_REASON })])
+    expect(summary.scriptSummary.unansweredRequests).toEqual([])
   })
 })

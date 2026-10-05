@@ -524,7 +524,7 @@ export class DetectionService implements IDetectionService {
    * down before the read, a Puppeteer build that no longer exposes the frame's
    * session — is recorded as unread, never lost.
    */
-  private frameBodyRetention(page: Page, target: Target, onBodyFinished: (requestId: string) => void = () => undefined): (frame: Frame | null) => void {
+  private frameBodyRetention(page: Page, target: Target, onBodyFinished: (requestId: string) => void): (frame: Frame | null) => void {
     const configured = new WeakSet<CDPSession>()
     const mainFrame = safeMainFrame(page)
     const pageSession = mainFrame === undefined ? undefined : frameSessionOf(mainFrame)

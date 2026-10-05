@@ -274,6 +274,43 @@ describe('scriptResponseHandler', () => {
 
         expect(reads.unansweredRequests()).toEqual([{ url: 'https://cdn.example.com/late.js', resourceType: 'script', reason: `${UNANSWERED}; answered only afterwards, with HTTP 404`, step: 6, document: 'loader-confirm' }])
       })
+
+      // The finished body under that request id is the error page's: a 404
+      // never ran, so it must not become "no response was surfaced".
+      it('stays listed with its status, and is never turned into an unread script, when its error page body then finishes', async () => {
+        const reads = new PendingScriptReads()
+        const request = scriptRequest('https://cdn.example.com/late.js', 'script', null, 'R-404')
+        reads.trackRequest(request, 6, () => undefined)
+        await reads.settle(10, REASONS)
+        reads.track(Promise.resolve(), { request: () => request, ok: () => false, status: () => 502, url: () => 'https://cdn.example.com/late.js' } as unknown as HTTPResponse, undefined, 6)
+        reads.bodyFinished('R-404')
+
+        expect(await reads.settle(10, REASONS)).toEqual([])
+        expect(reads.unansweredRequests()).toEqual([expect.objectContaining({ reason: `${UNANSWERED}; answered only afterwards, with HTTP 502` })])
+      })
+
+      // A redirect hop and its target share one DevTools request id, so the
+      // target's finished body must not turn the hop into a second record.
+      it('drops a redirect hop answered after the deadline, leaving exactly one record — for the script it redirected to', async () => {
+        const consoleError = jest.spyOn(console, 'error').mockImplementation()
+        const reads = new PendingScriptReads()
+        const hop = scriptRequest('https://cdn.example.com/a.js', 'script', null, 'R-302')
+        reads.trackRequest(hop, 6, () => 'loader-confirm')
+        await reads.settle(10, REASONS)
+
+        reads.track(Promise.resolve(), { request: () => hop, ok: () => false, status: () => 302, url: () => 'https://cdn.example.com/a.js' } as unknown as HTTPResponse, 'loader-confirm', 6)
+        const target = scriptRequest('https://cdn.example.com/b.js', 'script', null, 'R-302')
+        reads.trackRequest(target, 6, () => 'loader-confirm')
+        const unread: UnreadScriptResponse[] = []
+        const response = { ...scriptResponse('body', 'https://cdn.example.com/b.js'), request: () => target } as unknown as HTTPResponse
+        reads.track(scriptResponseHandler(response, [], 'loader-confirm', { unread, step: 6, sealed: () => true }), response, 'loader-confirm', 6)
+        reads.bodyFinished('R-302')
+
+        expect(await reads.settle(1000, REASONS)).toEqual([])
+        expect(reads.unansweredRequests()).toEqual([])
+        expect(unread).toEqual([expect.objectContaining({ url: 'https://cdn.example.com/b.js', status: 200, reason: SCRIPT_READ_LATE_REASON })])
+        consoleError.mockRestore()
+      })
     })
 
     // Puppeteer emits requestfinished even when no response event was ever
