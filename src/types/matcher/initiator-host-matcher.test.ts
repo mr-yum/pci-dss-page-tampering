@@ -200,6 +200,112 @@ describe('InitiatorHostMatcher', () => {
       expect(() => transitive('^x$', 9)).toThrow('maxDepth')
     })
 
+    describe('hop kinds', () => {
+      const FRAME = 'https://pay.vendor.example/frame?session=abc'
+      const PAGE = 'https://shop.example.com/checkout'
+      type Kind = 'script' | 'document'
+      const kinds = (pattern: string, only: Kind[], maxDepth?: number) => new InitiatorHostMatcher(pattern, undefined, { transitive: true, kinds: only, ...(maxDepth !== undefined ? { maxDepth } : {}) })
+      const VENDOR = '^([a-z0-9-]+\\.)*vendor\\.example$'
+      /** A script the vendor's frame loaded: its chain ends at the frame document, and the browser says it was loaded there. */
+      /** `null`: the browser named no frame. */
+      const inFrame = (initiatorChain: ReturnType<typeof chain>, frameUrl: string | null = FRAME): Matchable => make('https://cdn.captcha.example/c.js', { initiatorChain, ...(frameUrl !== null ? { frameUrl } : {}) })
+      const parsedInFrame = chain([FRAME, 'document'])
+      const insertedInFrame = chain(['https://js.vendor.example/loader.js', 'script'], [FRAME, 'document'])
+
+      it('matches a document hop on the host when the script was loaded in that frame', () => {
+        expect(kinds(VENDOR, ['document']).identify(inFrame(parsedInFrame))).toBe(true)
+        expect(kinds(VENDOR, ['document']).identify(inFrame(insertedInFrame))).toBe(true)
+        expect(kinds(VENDOR, ['document']).authorize(inFrame(insertedInFrame))).toEqual({ authorized: true })
+      })
+
+      it('never lets a script hop satisfy kinds: ["document"], however well its host matches', () => {
+        // Same host on a script hop, the chain's document on another host.
+        const scriptOnVendor = chain(['https://js.vendor.example/loader.js', 'script'], [PAGE, 'document'])
+        expect(kinds(VENDOR, ['document']).identify(inFrame(scriptOnVendor, PAGE))).toBe(false)
+        expect(kinds(VENDOR, ['script', 'document']).identify(inFrame(scriptOnVendor, PAGE))).toBe(true)
+      })
+
+      it('never lets a document hop satisfy kinds: ["script"]', () => {
+        expect(kinds(VENDOR, ['script']).identify(inFrame(parsedInFrame))).toBe(false)
+        expect(kinds(VENDOR, ['script']).identify(inFrame(insertedInFrame))).toBe(true)
+      })
+
+      it('binds a document hop to the frame the script was loaded into: a chain that only reaches the vendor frame never counts', () => {
+        // Page code named a script the frame loaded (or the frame document's
+        // URL) as its inserter: the chain reaches the frame, the request did not come from it.
+        expect(kinds(VENDOR, ['document']).identify(inFrame(insertedInFrame, PAGE))).toBe(false)
+        expect(kinds(VENDOR, ['document']).identify(inFrame(parsedInFrame, PAGE))).toBe(false)
+        // The binding is by origin: same host on another scheme or port is another frame.
+        expect(kinds(VENDOR, ['document']).identify(inFrame(parsedInFrame, 'http://pay.vendor.example/frame'))).toBe(false)
+        expect(kinds(VENDOR, ['document']).identify(inFrame(parsedInFrame, 'https://pay.vendor.example:8443/frame'))).toBe(false)
+        // A route of the same frame document is the same origin.
+        expect(kinds(VENDOR, ['document']).identify(inFrame(parsedInFrame, 'https://pay.vendor.example/frame/step-2#card'))).toBe(true)
+      })
+
+      it('fails secure without a frame: no document hop is bound (the real-user lane, inline scripts, workers)', () => {
+        expect(kinds(VENDOR, ['document']).identify(inFrame(parsedInFrame, null))).toBe(false)
+        expect(kinds(VENDOR, ['document']).identify(inFrame(parsedInFrame, 'not a url'))).toBe(false)
+        expect(kinds(VENDOR, ['document']).identify(inFrame(parsedInFrame, 'about:blank'))).toBe(false)
+      })
+
+      it('keeps the fail-secure rules: missing chain, unknown hops, inline hops, maxDepth', () => {
+        expect(kinds('.*', ['document']).identify(inFrame([] as ReturnType<typeof chain>))).toBe(false)
+        expect(kinds('.*', ['document']).authorize(make('https://x.example/a.js', { frameUrl: FRAME }))).toEqual({ authorized: false, reason: 'initiator chain is missing' })
+        // A document beyond an unknown hop is past what is known.
+        const broken = chain(['https://js.vendor.example/loader.js', 'unknown'], [FRAME, 'document'])
+        expect(kinds(VENDOR, ['document']).identify(inFrame(broken))).toBe(false)
+        // Inline hops carry no host, under either kind.
+        expect(kinds('inline', ['script']).identify(inFrame(chain(['inline_script/id_not_found#k-1', 'script'], [FRAME, 'document'])))).toBe(false)
+        expect(kinds(VENDOR, ['document']).identify(inFrame(chain(['inline_script/id_not_found#k-1', 'script'], [FRAME, 'document'])))).toBe(true)
+        expect(kinds(VENDOR, ['document'], 1).identify(inFrame(insertedInFrame))).toBe(false)
+        expect(kinds(VENDOR, ['document'], 2).identify(inFrame(insertedInFrame))).toBe(true)
+      })
+
+      it('matches on a forked path too, each path judged by the same frame', () => {
+        const forkToFrame = chain(['https://js.vendor.example/loader.js', 'script'], [FRAME, 'document'])
+        const elsewhere = chain(['https://js.vendor.example/loader.js', 'script'], [PAGE, 'document'])
+        expect(kinds(VENDOR, ['document']).identify(make('https://cdn.captcha.example/c.js', { initiatorChain: elsewhere, alternateInitiatorChains: [forkToFrame], frameUrl: FRAME }))).toBe(true)
+        expect(kinds(VENDOR, ['document']).identify(make('https://cdn.captcha.example/c.js', { initiatorChain: elsewhere, alternateInitiatorChains: [forkToFrame], frameUrl: PAGE }))).toBe(false)
+      })
+
+      it('names the chain, the kinds considered and the frame in a denial', () => {
+        const denied = kinds(VENDOR, ['document']).authorize(inFrame(insertedInFrame, PAGE))
+        expect(denied.authorized).toBe(false)
+        expect(denied.reason).toContain('no document hop within 8 of the initiator chain has a host matching pattern')
+        expect(denied.reason).toContain('this script was loaded into a frame on shop.example.com')
+        expect(denied.reason).toContain('loaded by js.vendor.example ← page pay.vendor.example')
+        expect(denied.reason).not.toContain('session=abc')
+        expect(kinds(VENDOR, ['document']).authorize(inFrame(parsedInFrame, null)).reason).toContain("this script's frame is unknown")
+        const scriptOnly = kinds('^evil\\.example$', ['script']).authorize(inFrame(insertedInFrame))
+        expect(scriptOnly.reason).toContain('no script hop within 8')
+        expect(scriptOnly.reason).not.toContain('frame')
+      })
+
+      it('describes the kinds, and serialises them canonically (duplicates dropped)', () => {
+        expect(kinds('^x$', ['document']).getDescription()).toBe('initiator-host(transitive, ≤8 hops, document hops):/^x$/')
+        expect(kinds('^x$', ['document', 'script'], 3).getDescription()).toBe('initiator-host(transitive, ≤3 hops, script or document hops):/^x$/')
+        expect(kinds('^x$', ['document', 'document']).getOptions()).toEqual({ transitive: true, kinds: ['document'] })
+        expect(kinds('^x$', ['document', 'script']).getOptions()).toEqual({ transitive: true, kinds: ['script', 'document'] })
+        expect(kinds('^x$', ['document']).getHopKinds()).toEqual(['document'])
+        expect(transitive('^x$').getHopKinds()).toEqual(['script', 'document'])
+      })
+
+      it('rejects an empty or unknown kinds list at construction', () => {
+        expect(() => kinds('^x$', [])).toThrow('kinds')
+        expect(() => kinds('^x$', ['unknown' as Kind])).toThrow('kinds')
+      })
+
+      it('leaves the form without kinds exactly as it was: every hop counts, document hops unbound', () => {
+        // The same chains and frames, judged by the form without kinds.
+        expect(transitive(VENDOR).identify(inFrame(insertedInFrame, PAGE))).toBe(true)
+        expect(transitive(VENDOR).identify(inFrame(parsedInFrame, null))).toBe(true)
+        expect(transitive('^js\\.vendor\\.example$').identify(inFrame(insertedInFrame, PAGE))).toBe(true)
+        expect(transitive(VENDOR).getDescription()).toBe(`initiator-host(transitive, ≤8 hops):/${VENDOR}/`)
+        expect(transitive(VENDOR).getOptions()).toEqual({ transitive: true })
+        expect(transitive('^evil\\.example$').authorize(inFrame(insertedInFrame, PAGE)).reason).toMatch(/^no hop within 8 of the initiator chain has a host matching pattern \^evil\\\.example\$: loaded by/)
+      })
+    })
+
     it('leaves the string form exactly as it was: the immediate initiator only', () => {
       const immediate = new InitiatorHostMatcher('^js\\.vendor\\.example$')
       expect(immediate.identify(loaded(vendorChain, { initiator: 'https://assets.example.net/mid.js' }))).toBe(false)

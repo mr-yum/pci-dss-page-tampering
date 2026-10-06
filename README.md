@@ -1248,11 +1248,80 @@ never matched. On the synthetic passes, page and frame documents are hops too,
 so a pattern matching your own page's host identifies every script on the
 page — aim it at vendor hosts, and authorise on content as well.
 
+**Trust through a vendor's frames — `kinds: ["document"]`.** A payment
+provider's nested frames (a card form, a wallet payframe, a captcha frame) load
+scripts of their own, and those scripts are loaded by the _frame document_, not
+by a script the provider's SDK entry could vouch for — so a load grant, whose
+walk ends at a document hop, never reaches them. `kinds` limits which hops the
+transitive form considers: `["document"]`, `["script"]`, or both. An entry
+that identifies and authorises whatever the vendor's frames load:
+
+```json
+{
+  "identifyWith": {
+    "andMatcher": [
+      { "initiatorHostMatcher": { "host": "^([a-z0-9-]+\\.)*vendor\\.example$", "transitive": true, "kinds": ["document"] } },
+      { "nameMatcher": "^(https|blob:https):\\/\\/([a-z0-9-]+\\.)*(vendor\\.example|captcha\\.example)\\/" }
+    ]
+  },
+  "authoriseWith": {
+    "andMatcher": [
+      { "initiatorHostMatcher": { "host": "^([a-z0-9-]+\\.)*vendor\\.example$", "transitive": true, "kinds": ["document"] } },
+      { "nameMatcher": "^(https|blob:https):\\/\\/([a-z0-9-]+\\.)*(vendor\\.example|captcha\\.example)\\/" }
+    ],
+    "authorisationInfo": { "description": "Scripts the vendor's own frames load, from the vendor's and its captcha provider's hosts", "authorised": true, "date": "2026-10-06T00:00:00.000Z" }
+  }
+}
+```
+
+What makes this safe is the rule behind `"document"`: a document hop counts
+**only when it is the frame the browser loaded the script into** (same
+origin), as Chrome's frame tree reports it for the script's own request. The
+chain alone would not do — it is built from evidence page code can forge, and
+a real-Chrome test shows two one-line forgeries reaching a vendor frame's
+document from the payment page: an `eval` whose `//# sourceURL` names a
+script the frame loaded (the walk then continues to the frame's document), and
+one naming the frame document's URL itself. What page code cannot do is make
+a request issue from inside a cross-origin frame, so a script that _was_
+loaded into the vendor's frame was loaded by the vendor's document, whatever
+its chain claims. `"script"` hops stay as forgeable as ever, and a `"script"`
+hop never satisfies `"document"` (nor the reverse). Without `kinds` the
+object form is exactly as before: every script and document hop counts, and
+document hops are not bound to anything.
+
+Keep the `nameMatcher` conjunct even though the document hop is
+browser-attested. It is the script's own evidence, so it holds if the binding
+ever has a gap the tests did not find (defence in depth), and it keeps out
+what a vendor frame has no business running — a `data:` URL, an unexpected
+scheme, a host outside the vendor's estate. Two more limits:
+
+- **Name only hosts whose documents the vendor alone authors.** The page can
+  point an iframe at any URL on a host the pattern admits, so a subdomain
+  serving user content or a sandbox the public can publish to would let page
+  code choose what runs "inside the vendor's frame".
+- **Never aim `kinds: ["document"]` at your own page's host.** Every script on
+  the payment page — a skimmer included — is loaded into that document, so
+  the entry would vouch for all of them.
+- **A script loaded into two frames on different origins has no single
+  frame**, so it never satisfies `"document"`: the vendor's script also loaded
+  by the page itself is judged by its own entry.
+
+`--mode validate` rejects an empty `kinds` list or any value other than
+`"script"` and `"document"`; duplicates are tolerated.
+
 **On real-user observations** (`--mode rum-compare`) both shapes apply, with
 the browser agent's chain (beacon v2) as the evidence and stricter rules,
 because a browser observer never sees a script's body and the ancestors are
 not in the same batch (a known loader is not re-reported):
 
+- **`kinds: ["document"]` is a synthetic-lane control.** The agent never
+  reports a `document` hop, and no beacon can say which frame the browser
+  loaded a script into, so a document-only matcher never matches a real-user
+  observation — not even one whose beacon claims a document hop. In
+  `identifyWith` it simply does not identify; in `authoriseWith` it makes the
+  authoriser unevaluable, so the observation is recorded identification-only
+  rather than raised as a false mismatch. The agent runs in your page, not in
+  the vendor's frames, so it never sees the scripts this pattern is for.
 - **The page is never a known hop.** The agent ends every chain at the page as
   an `unknown` hop — it cannot tell a script parsed from the markup from one
   inserted by an async callback — so the transitive form never matches the

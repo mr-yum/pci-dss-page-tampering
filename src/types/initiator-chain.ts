@@ -19,6 +19,11 @@
  *   document) and stops. Synthetic lane only: the RUM agent cannot tell who
  *   inserted a script it never saw inserted, so it records the page as an
  *   `unknown` hop.
+ *   The kind is the resolver's classification of a URL, reached through
+ *   forgeable script hops — not, on its own, browser evidence: a page can
+ *   make its chain end at a vendor frame's document. It is evidence only
+ *   where bound to the frame the browser loaded the script into
+ *   (`Matchable.frameUrl`; see `InitiatorHostMatcher`'s `kinds`).
  * - `unknown` — the URL named as inserter could not be tied to anything
  *   observed (an unread script, a guess such as the document fallback for an
  *   async insertion). The walk ends there and nothing beyond it is assumed;
@@ -30,6 +35,12 @@
  */
 
 export type InitiatorHopKind = 'script' | 'document' | 'unknown'
+
+/** The hop kinds that can name a host, and so the kinds a transitive `initiatorHostMatcher` may filter on (`kinds`). */
+export type HostedHopKind = Exclude<InitiatorHopKind, 'unknown'>
+
+/** Every `HostedHopKind`, in the canonical order matchers describe and serialise them in. */
+export const HOSTED_HOP_KINDS: readonly HostedHopKind[] = ['script', 'document']
 
 export type InitiatorHop = {
   /** Script URL, inline identity (`inline_script/…#…`), or document URL. Unredacted in memory; every display surface redacts it. */
@@ -126,6 +137,29 @@ export function chainText(chain: readonly InitiatorHop[], render: (hop: Initiato
       return text
     })
     .join(' ← ')
+}
+
+/** The origin of a URL, or null when it has none (missing, unparseable, opaque). Binds a `document` hop to a script's frame. */
+export function originOf(url: string | undefined): string | null {
+  if (url === undefined || url.trim() === '') return null
+  try {
+    const origin = new URL(url).origin
+    return origin === 'null' ? null : origin
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The frame URL two captures of one script agree on, or undefined when they
+ * disagree on its origin (or either has none): a script loaded both in a
+ * vendor's frame and in the page has no single frame, so neither copy may
+ * bind a `document` hop. Capture and scoping keep one copy per (url, hash);
+ * this keeps that from choosing a frame for it.
+ */
+export function agreedFrameUrl(kept: string | undefined, other: string | undefined): string | undefined {
+  const origin = originOf(kept)
+  return origin !== null && origin === originOf(other) ? kept : undefined
 }
 
 /** Render a hop by its host, for matcher reasons; inline identities are shown as-is. */

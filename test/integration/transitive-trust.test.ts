@@ -22,6 +22,15 @@
  * - `/f/` — the granting loader runs inside a cross-site frame (`localhost`
  *   under a `127.0.0.1` page, so Chrome gives it a process and a DevTools
  *   session of its own): its asset still inherits.
+ * - `/k/` — trust that passes through a vendor's frame document: scripts the
+ *   cross-site frame's parser loads are identified by a transitive
+ *   `initiatorHostMatcher` with `kinds: ["document"]` on the frame's host,
+ *   and not by the same matcher with `kinds: ["script"]`. Page code then
+ *   loads scripts from the frame's host while forging their chains to reach
+ *   the frame (an eval'd `//# sourceURL` naming the frame's script, and one
+ *   naming the frame document itself): the forgeries take — the chains end
+ *   at the frame's document — and still satisfy nothing, because a document
+ *   hop counts only in the frame the browser loaded the script into.
  * - `/x/` — the shim is forgeable, and this proves it does not matter: page
  *   code overrides `WeakMap.prototype.get`/`has` so the attribution shim
  *   reports an inline script the page inserted itself as inserted by the
@@ -70,6 +79,27 @@ const X_FORGE = `/*x-forge*/(function(){
   document.head.appendChild(el);
 })();`
 
+// Page code in /k/'s markup: loads two scripts from the frame's host, each
+// from eval'd code whose `//# sourceURL` names something in the frame — the
+// frame's own script, then (from a timer, with no current script for the
+// shim to name) the frame document's URL.
+const kForge = (frameOrigin: string): string => {
+  const insert = (src: string) => `var s=document.createElement('script');s.src=${JSON.stringify(src)};document.head.appendChild(s)`
+  const evalAs = (src: string, sourceUrl: string) => `eval(${JSON.stringify(`${insert(src)}\n//# sourceURL=${sourceUrl}`)})`
+  return `/*k-forge*/${evalAs(`${frameOrigin}/k/forged-script.js`, `${frameOrigin}/k/framed.js`)};setTimeout(function(){${evalAs(`${frameOrigin}/k/forged-document.js`, `${frameOrigin}/k/frame`)}},0);`
+}
+
+// Page code in /k/'s markup that races the frame binding: from a same-origin
+// child frame it requests a (slow) script from the vendor's host, then points
+// that frame at the vendor's document before the response arrives.
+const kRace = (frameOrigin: string): string => {
+  const insert = `var s=document.createElement('script');s.src=${JSON.stringify(`${frameOrigin}/k/forged-race.js`)};document.head.appendChild(s)`
+  return `/*k-race*/function kRace(f){f.onload=null;f.contentWindow.eval(${JSON.stringify(`${insert}\n//# sourceURL=${frameOrigin}/k/frame`)});setTimeout(function(){f.src=${JSON.stringify(`${frameOrigin}/k/frame`)}},100)}`
+}
+
+/** Served this long after the request, so the race above can navigate the frame first. */
+const SLOW_SCRIPTS: Record<string, number> = { '/k/forged-race.js': 800 }
+
 const scripts = (frameOrigin: string): Record<string, string> => ({
   '/g/loader.js': `${inserts('/g/asset.js', '/g/denied.js')}\nvar t=document.createElement('script');t.text=${JSON.stringify(G_INLINE)};document.head.appendChild(t);`,
   '/g/asset.js': 'window.gAsset=1',
@@ -89,6 +119,11 @@ const scripts = (frameOrigin: string): Record<string, string> => ({
   '/f/loader.js': inserts('/f/asset.js'),
   '/f/asset.js': 'window.fAsset=1',
   '/x/loader.js': 'window.xLoader=1',
+  '/k/framed.js': 'window.kFramed=1',
+  '/k/framed-script-kind.js': 'window.kFramedScriptKind=1',
+  '/k/forged-script.js': 'window.kForgedScript=1',
+  '/k/forged-document.js': 'window.kForgedDocument=1',
+  '/k/forged-race.js': 'window.kForgedRace=1',
 })
 
 const page = (body: string): string => `<!doctype html><html><head></head><body><span>Ready</span>${body}</body></html>`
@@ -102,6 +137,9 @@ const pages = (frameOrigin: string): Record<string, string> => ({
   '/f/page': page(`<iframe src="${frameOrigin}/f/frame"></iframe>`),
   '/f/frame': page('<script src="/f/loader.js"></script>'),
   '/x/page': page(`<script src="/x/loader.js"></script><script>${X_FORGE}</script>`),
+  '/k/page': page(`<iframe src="${frameOrigin}/k/frame"></iframe><script>${kForge(frameOrigin)}${kRace(frameOrigin)}</script><iframe src="/k/child" onload="kRace(this)"></iframe>`),
+  '/k/child': page(''),
+  '/k/frame': page('<script src="/k/framed.js"></script><script src="/k/framed-script-kind.js"></script>'),
 })
 
 const startServer = (): Promise<http.Server> =>
@@ -110,7 +148,11 @@ const startServer = (): Promise<http.Server> =>
       const url = (request.url ?? '/').split('?')[0]!
       const frameOrigin = `http://localhost:${(server.address() as AddressInfo).port}`
       const body = scripts(frameOrigin)[url]
-      if (body !== undefined) return response.writeHead(200, { 'content-type': 'text/javascript', 'cache-control': 'no-store' }).end(body)
+      if (body !== undefined) {
+        const send = () => response.writeHead(200, { 'content-type': 'text/javascript', 'cache-control': 'no-store' }).end(body)
+        const delay = SLOW_SCRIPTS[url]
+        return delay === undefined ? send() : void setTimeout(send, delay)
+      }
       const html = pages(frameOrigin)[url]
       if (html !== undefined) return response.writeHead(200, { 'content-type': 'text/html', 'cache-control': 'no-store' }).end(html)
       return response.writeHead(404).end()
@@ -127,6 +169,9 @@ const LOADS = { nameMatcher: '^http://(127\\.0\\.0\\.1|localhost):\\d+/' }
 // A guard that would admit /x/'s payload by its content: only the rule that an
 // inline load never inherits stands between the forged record and inheritance.
 const X_LOADS = { orMatcher: [LOADS, { contentMatcher: 'xPayload' }] }
+
+// Any document on the frame's host — the fixture's stand-in for a vendor's frames.
+const IN_FRAME_DOCUMENT = { host: '^localhost:\\d+$', transitive: true, kinds: ['document'] }
 
 const inventoryScripts = (frameOrigin: string) => {
   const bodies = scripts(frameOrigin)
@@ -150,10 +195,20 @@ const inventoryScripts = (frameOrigin: string) => {
     },
     { identifyWith: { nameMatcher: exact('/f/loader.js', 'localhost') }, authoriseWith: { hashes: hashOf(bodies['/f/loader.js']!), authorisationInfo: AUTHORISED }, authorisesLoads: 'transitive', loadsMatching: LOADS },
     { identifyWith: { nameMatcher: exact('/x/loader.js') }, authoriseWith: { hashes: hashOf(bodies['/x/loader.js']!), authorisationInfo: AUTHORISED }, authorisesLoads: 'transitive', loadsMatching: X_LOADS },
+    // The README's frame pattern: the frame document AND the script's own URL, to identify and to authorise.
+    ...['/k/framed.js', '/k/forged-script.js', '/k/forged-document.js', '/k/forged-race.js'].map((urlPath) => {
+      const framed = { andMatcher: [{ initiatorHostMatcher: IN_FRAME_DOCUMENT }, { nameMatcher: exact(urlPath, 'localhost') }] }
+      return { identifyWith: framed, authoriseWith: { ...framed, authorisationInfo: AUTHORISED } }
+    }),
+    // The same host on script hops only: a script the frame's parser loaded has none.
+    {
+      identifyWith: { andMatcher: [{ initiatorHostMatcher: { ...IN_FRAME_DOCUMENT, kinds: ['script'] } }, { nameMatcher: exact('/k/framed-script-kind.js', 'localhost') }] },
+      authoriseWith: { nameMatcher: exact('/k/framed-script-kind.js', 'localhost'), authorisationInfo: AUTHORISED },
+    },
   ]
 }
 
-const WORKFLOWS = ['g', 'p', 'n', 'i', 'h', 'f', 'x'] as const
+const WORKFLOWS = ['g', 'p', 'n', 'i', 'h', 'f', 'k', 'x'] as const
 
 const createFixtureRepo = (base: string, frameOrigin: string): string => {
   const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'pci-transitive-trust-repo-'))
@@ -304,6 +359,45 @@ describe('trust inherited through loaders, in real Chrome', () => {
     expect(asset.status).toBe('authorised')
     expect(asset.authorisation.inherited).toBeDefined()
     expect(asset.observed.initiatorChain?.map((hop) => `${hop.kind}:${new URL(hop.url).hostname}${new URL(hop.url).pathname}`)).toEqual(['script:localhost/f/loader.js', 'document:localhost/f/frame'])
+  })
+
+  describe('trust through a vendor frame document (kinds: ["document"])', () => {
+    const hops = (chain: Hop[] | undefined) => (chain ?? []).map((hop) => `${hop.kind}:${new URL(hop.url).hostname}${new URL(hop.url).pathname}`)
+
+    it("identifies and authorises a script the cross-site frame's parser loaded, by the frame document's host", () => {
+      const framed = row('k', '/k/framed.js')
+      expect(hops(framed.observed.initiatorChain)).toEqual(['document:localhost/k/frame'])
+      expect(framed.status).toBe('authorised')
+      expect(framed.authorisation.inherited).toBeUndefined()
+    })
+
+    it('does not identify it on the same host with kinds: ["script"] — a document hop is not a script hop', () => {
+      const scriptKind = row('k', '/k/framed-script-kind.js')
+      expect(hops(scriptKind.observed.initiatorChain)).toEqual(['document:localhost/k/frame'])
+      expect(scriptKind.status).toBe('unknown')
+    })
+
+    it("never satisfies it from page code whose forged chain reaches the frame's document: naming the frame's script", () => {
+      const forged = row('k', '/k/forged-script.js')
+      // The forgery took: the chain runs through the frame's script to its document.
+      expect(hops(forged.observed.initiatorChain)).toEqual(['script:localhost/k/framed.js', 'document:localhost/k/frame'])
+      expect(forged.status).toBe('unknown')
+    })
+
+    it('never satisfies it from page code that names the frame document itself', () => {
+      const forged = row('k', '/k/forged-document.js')
+      expect(hops(forged.observed.initiatorChain)).toEqual(['document:localhost/k/frame'])
+      expect(forged.status).toBe('unknown')
+    })
+
+    // Chrome was observed to abort the request when its frame navigates
+    // (2026-10-06), so usually there is no row at all; if a response ever
+    // lands, the frame it was sent from (127.0.0.1) must not agree with the
+    // vendor document the frame has moved to.
+    it('never satisfies it from a request whose frame was navigated to the vendor before the response', () => {
+      const raced = rows('k').find((candidate) => candidate.name.endsWith('/k/forged-race.js'))
+      expect(raced?.status ?? 'aborted').not.toBe('authorised')
+    })
   })
 
   it('never lets an inline load inherit, even when page code forges the shim into naming the granting loader as its inserter', () => {

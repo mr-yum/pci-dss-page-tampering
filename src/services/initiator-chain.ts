@@ -35,7 +35,10 @@
  *
  * Neither source is unforgeable by code already running on the page: the
  * shim lives in the page's world, and a call frame's URL is whatever the
- * script was named, which `//# sourceURL` lets `eval`'d code choose. Chains
+ * script was named, which `//# sourceURL` lets `eval`'d code choose — a
+ * script's URL, or a document's, which then classifies as a `document` hop
+ * (that is why `kinds: ["document"]` binds document hops to the script's own
+ * frame instead of trusting the hop kind). Chains
  * are evidence for display, for identification and for following a grant —
  * never, on their own, a reason to authorise: a load grant also requires the
  * loaded script's own URL to pass the grant's `loadsMatching` guard, an

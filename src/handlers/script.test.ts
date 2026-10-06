@@ -518,6 +518,74 @@ describe('scriptResponseHandler', () => {
     expect(detectedScripts).toHaveLength(2)
   })
 
+  describe('the frame a script was loaded into (browser evidence for binding document hops)', () => {
+    const frameOf = (script: ScriptInfo | undefined) => (script?.source.type === 'external' ? script.source.frameUrl : 'not external')
+    const VENDOR_FRAME = 'https://pay.vendor.example/frame?session=1'
+
+    it('records the frame that issued the request', async () => {
+      const detectedScripts: ScriptInfo[] = []
+      await scriptResponseHandler(scriptResponse('body', 'https://cdn.vendor.example/c.js', undefined, VENDOR_FRAME), detectedScripts)
+      expect(frameOf(detectedScripts[0])).toBe(VENDOR_FRAME)
+    })
+
+    it('records none for a request without a frame (a worker)', async () => {
+      const detectedScripts: ScriptInfo[] = []
+      await scriptResponseHandler(scriptResponse('body', 'https://cdn.vendor.example/c.js'), detectedScripts)
+      expect(detectedScripts[0]!.source).not.toHaveProperty('frameUrl')
+    })
+
+    it('keeps the frame when another copy comes from the same origin', async () => {
+      const detectedScripts: ScriptInfo[] = []
+      await scriptResponseHandler(scriptResponse('body', 'https://cdn.vendor.example/c.js', undefined, VENDOR_FRAME), detectedScripts)
+      await scriptResponseHandler(scriptResponse('body', 'https://cdn.vendor.example/c.js', undefined, 'https://pay.vendor.example/frame/step-2'), detectedScripts)
+      expect(detectedScripts).toHaveLength(1)
+      expect(frameOf(detectedScripts[0])).toBe(VENDOR_FRAME)
+    })
+
+    // The page loading the very script the vendor's frame loaded must not ride
+    // on the frame copy's binding: the kept copy then has no single frame.
+    it.each([
+      ['another origin', 'https://shop.example.com/checkout'],
+      ['no frame', undefined],
+    ])('drops the frame when another copy comes from %s', async (_label, otherFrame) => {
+      const detectedScripts: ScriptInfo[] = []
+      await scriptResponseHandler(scriptResponse('body', 'https://cdn.vendor.example/c.js', undefined, VENDOR_FRAME), detectedScripts)
+      await scriptResponseHandler(scriptResponse('body', 'https://cdn.vendor.example/c.js', undefined, otherFrame), detectedScripts)
+      await scriptResponseHandler(scriptResponse('body', 'https://cdn.vendor.example/c.js', undefined, VENDOR_FRAME), detectedScripts)
+      expect(detectedScripts).toHaveLength(1)
+      expect(detectedScripts[0]!.source).not.toHaveProperty('frameUrl')
+    })
+
+    // A frame navigated (by itself or its parent) between request and
+    // response: the URL it had when the request left must still hold.
+    it.each([
+      ['the frame still on the origin the request left from', VENDOR_FRAME, VENDOR_FRAME],
+      ['a frame that moved within its origin', 'https://pay.vendor.example/frame/step-1', VENDOR_FRAME],
+    ])('binds %s', async (_label, issued, current) => {
+      const detectedScripts: ScriptInfo[] = []
+      await scriptResponseHandler(scriptResponse('body', 'https://cdn.vendor.example/c.js', undefined, current), detectedScripts, undefined, undefined, undefined, () => issued)
+      // The URL the frame had when the request left.
+      expect(frameOf(detectedScripts[0])).toBe(issued)
+    })
+
+    it.each([
+      ['a frame the page navigated to the vendor after sending the request', 'https://shop.example.com/blank', VENDOR_FRAME],
+      ['a request whose sending was never recorded', undefined, VENDOR_FRAME],
+      ['a frame that left the vendor', VENDOR_FRAME, 'https://shop.example.com/'],
+    ])('binds nothing for %s', async (_label, issued, current) => {
+      const detectedScripts: ScriptInfo[] = []
+      await scriptResponseHandler(scriptResponse('body', 'https://cdn.vendor.example/c.js', undefined, current), detectedScripts, undefined, undefined, undefined, () => issued)
+      expect(detectedScripts[0]!.source).not.toHaveProperty('frameUrl')
+    })
+
+    it('never adopts a frame for a copy first captured without one', async () => {
+      const detectedScripts: ScriptInfo[] = []
+      await scriptResponseHandler(scriptResponse('body', 'https://cdn.vendor.example/c.js'), detectedScripts)
+      await scriptResponseHandler(scriptResponse('body', 'https://cdn.vendor.example/c.js', undefined, VENDOR_FRAME), detectedScripts)
+      expect(detectedScripts[0]!.source).not.toHaveProperty('frameUrl')
+    })
+  })
+
   describe('initiator attribution (CDP request initiator → Matchable.initiator)', () => {
     const sourceOf = (scripts: ScriptInfo[]) => scripts[0]!.source as { type: 'external'; initiator?: string }
 

@@ -2,6 +2,7 @@ import type { Frame, HTTPRequest, HTTPResponse } from 'puppeteer'
 
 import { requestIdOf } from '../services/document-ledger.js'
 import type { DocumentId } from '../types/document.js'
+import { agreedFrameUrl } from '../types/initiator-chain.js'
 import type { InitiatorEvidence, ScriptInfo, UnansweredScriptRequest, UnreadScriptResponse } from '../types/script.js'
 import { createSha256Hash } from '../utils/hash.js'
 import { redactUrl } from '../utils/url.js'
@@ -136,12 +137,27 @@ export function recordUnreadScript(unread: UnreadScriptResponse[], record: Unrea
  *   Never silently dropped: an unread script is an unmonitored one, and the run
  *   has to say so (see `UnreadScriptResponse`).
  */
-export async function scriptResponseHandler(response: HTTPResponse, detectedScripts: ScriptInfo[], document?: DocumentId, accounting?: UnreadScriptAccounting, shimSourceUrl?: string): Promise<void> {
+export async function scriptResponseHandler(
+  response: HTTPResponse,
+  detectedScripts: ScriptInfo[],
+  document?: DocumentId,
+  accounting?: UnreadScriptAccounting,
+  shimSourceUrl?: string,
+  issuedFrameUrlOf?: (request: HTTPRequest) => string | undefined,
+): Promise<void> {
   if (!isMonitoredScriptResponse(response)) return
 
   // Read the step now, before the await: the record names the step the
   // response arrived in, which is the step that caused it.
   const step = accounting?.step ?? 0
+  // And the frame that issued the request, from the browser's frame tree,
+  // before the frame can navigate on: see `Matchable.frameUrl`. When the
+  // caller recorded the frame's URL as the request was sent, the two readings
+  // must agree on its origin: a frame that navigated (or was navigated by
+  // its parent) between request and response has no single frame to bind
+  // to. Chrome was observed to abort such a request anyway (2026-10-06);
+  // this keeps the binding from depending on that.
+  const frameUrl = issuedFrameUrlOf === undefined ? frameUrlOf(response) : agreedFrameUrl(issuedFrameUrlOf(response.request()), frameUrlOf(response))
   let scriptContent: string
   try {
     scriptContent = await response.text()
@@ -176,7 +192,14 @@ export async function scriptResponseHandler(response: HTTPResponse, detectedScri
   // payment page must keep the payment page's copy, or scoping would drop
   // it along with the earlier page. Payment scoping collapses the copies
   // again within each scope.
-  if (!detectedScripts.some((scriptInfo) => scriptInfo.source.type === 'external' && scriptInfo.source.url === scriptUrl && scriptInfo.hash.value === scriptHash.value && scriptInfo.document === document) && scriptContent) {
+  const kept = detectedScripts.find((scriptInfo) => scriptInfo.source.type === 'external' && scriptInfo.source.url === scriptUrl && scriptInfo.hash.value === scriptHash.value && scriptInfo.document === document)
+  if (kept !== undefined && kept.source.type === 'external' && kept.source.frameUrl !== undefined) {
+    // A second copy from a frame on another origin: the kept copy no longer
+    // has a single frame to bind a document hop to.
+    const agreed = agreedFrameUrl(kept.source.frameUrl, frameUrl)
+    if (agreed === undefined) delete kept.source.frameUrl
+  }
+  if (kept === undefined && scriptContent) {
     detectedScripts.push({
       source: {
         type: 'external',
@@ -184,10 +207,26 @@ export async function scriptResponseHandler(response: HTTPResponse, detectedScri
         content: scriptContent,
         ...(initiator !== undefined ? { initiator } : {}),
         ...(initiatorEvidence !== undefined ? { initiatorEvidence } : {}),
+        ...(frameUrl !== undefined ? { frameUrl } : {}),
       },
       hash: scriptHash,
       ...(document !== undefined ? { document } : {}),
     })
+  }
+}
+
+/** The URL of the frame that issued a response's request, as it reads now; undefined without a frame (a worker) or a URL. */
+function frameUrlOf(response: HTTPResponse): string | undefined {
+  return requestFrameUrl(response.request())
+}
+
+/** The current URL of the frame a request belongs to; undefined without a frame (a worker) or a URL. Read it when the request is sent to pass as `issuedFrameUrlOf`. */
+export function requestFrameUrl(request: HTTPRequest): string | undefined {
+  try {
+    const url = request.frame()?.url()
+    return url === undefined || url === '' ? undefined : url
+  } catch {
+    return undefined
   }
 }
 

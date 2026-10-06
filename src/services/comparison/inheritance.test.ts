@@ -400,3 +400,28 @@ describe('authorisesLoads validation', () => {
     expect(result.success).toBe(false)
   })
 })
+
+// Not inheritance, but its sibling: trust that passes through a vendor's frame
+// document. The comparison must hand the matcher the frame the browser loaded
+// the script into, or a `document` hop could never be bound.
+describe('scripts loaded inside a vendor frame (initiatorHostMatcher kinds: ["document"])', () => {
+  const FRAME = 'https://pay.vendor.example/frame'
+  const CAPTCHA = 'https://cdn.captcha.example/c.js'
+  const inVendorFrames = { host: '^([a-z0-9-]+\\.)*vendor\\.example$', transitive: true as const, kinds: ['document' as const] }
+  const ownUrl = { nameMatcher: '^(https|blob:https):\\/\\/([a-z0-9-]+\\.)*(vendor\\.example|captcha\\.example)\\/' }
+  // The README's pattern: identify and authorise on the frame document AND the script's own URL.
+  const framedEntry = () => entry({ identifyWith: { andMatcher: [{ initiatorHostMatcher: inVendorFrames }, ownUrl] }, authoriseWith: { andMatcher: [{ initiatorHostMatcher: inVendorFrames }, ownUrl], authorisationInfo: AUTHORISED } })
+  const loadedIn = (frameUrl: string | null, chain: InitiatorHop[] = [s(LOADER), { url: FRAME, kind: 'document' }]): ScriptInfo => {
+    const base = external(CAPTCHA, 'captcha', chain)
+    return frameUrl === null ? base : { ...base, source: { ...(base.source as { type: 'external'; url: string; content: string }), frameUrl } }
+  }
+
+  it('identifies and authorises a script the browser loaded into the vendor frame', async () => {
+    expect((await compare(inventory(framedEntry()), [loadedIn(FRAME)])).get(CAPTCHA)?.type).toBe('authorized_script')
+  })
+
+  it('leaves the same chain unknown when the script was loaded into the page, or into no known frame', async () => {
+    expect((await compare(inventory(framedEntry()), [loadedIn(PAGE)])).get(CAPTCHA)?.type).toBe('unknown_script_found')
+    expect((await compare(inventory(framedEntry()), [loadedIn(null)])).get(CAPTCHA)?.type).toBe('unknown_script_found')
+  })
+})

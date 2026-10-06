@@ -128,6 +128,7 @@ export class ScriptComparisonService implements IScriptComparisonService {
       ...(initiator !== undefined ? { initiator } : {}),
       ...(scriptInfo.initiatorChain !== undefined ? { initiatorChain: scriptInfo.initiatorChain } : {}),
       ...(scriptInfo.alternateInitiatorChains !== undefined ? { alternateInitiatorChains: scriptInfo.alternateInitiatorChains } : {}),
+      ...(scriptInfo.source.type === 'external' && scriptInfo.source.frameUrl !== undefined ? { frameUrl: scriptInfo.source.frameUrl } : {}),
     }
   }
 

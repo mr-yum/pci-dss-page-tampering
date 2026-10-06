@@ -29,6 +29,13 @@ export type ExternalScriptSource = {
    * Undefined when the CDP initiator could not be read.
    */
   initiatorEvidence?: InitiatorEvidence
+  /**
+   * URL of the frame that issued the request, read from the browser's frame
+   * tree when the response arrived — see `Matchable.frameUrl`. Undefined
+   * when the request had no frame, or when copies of this script were
+   * captured from frames on different origins (no single frame to bind to).
+   */
+  frameUrl?: string
 }
 
 /**
