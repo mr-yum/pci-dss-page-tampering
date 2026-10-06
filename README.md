@@ -1213,9 +1213,9 @@ granting script and the chain) and cites the granting entry's
   match, nothing below it inherits. The same holds for every script between
   the load and the grant: each must itself be authorised (explicitly or by
   inheritance), so an unvouched-for loader cuts its loads off.
-- **A broken chain stops inheritance.** The walk ends at the page, at an
-  `unknown` hop, or at a script the run did not observe; a script with no
-  chain at all inherits nothing.
+- **A broken chain stops inheritance.** The walk ends at any `document` hop
+  (the page or a frame), at an `unknown` hop, or at a script the run did not
+  observe; a script with no chain at all inherits nothing.
 - **Only an authorised entry can grant**, and never an inline script.
   `--mode validate` refuses `authorisesLoads` on an entry whose
   `authorisationInfo.authorised` is `false`, without `loadsMatching`, or with
