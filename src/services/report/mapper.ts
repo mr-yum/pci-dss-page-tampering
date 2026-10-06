@@ -10,8 +10,9 @@
  */
 
 import type { ComparisonResultType } from '../../types/comparison.js'
+import { chainText, type InitiatorHop, INLINE_SCRIPT_NAME_PREFIX } from '../../types/initiator-chain.js'
 import type { Inventory, InventoryHeaderInfo, InventoryScriptInfo } from '../../types/inventory/model.js'
-import type { ReportAuthorisation, ReportAuthorisationInfo, ReportObservedContent, ReportResourceKind, ReportResourceRow, ReportRowStatus } from '../../types/report.js'
+import type { ReportAuthorisation, ReportAuthorisationInfo, ReportInitiatorHop, ReportObservedContent, ReportResourceKind, ReportResourceRow, ReportRowStatus } from '../../types/report.js'
 import { createSha256Hash } from '../../utils/hash.js'
 import { inventoryHeaderInfoToRawInventoryHeaderInfo } from '../../utils/inventory.js'
 import type { ProvenanceResolver } from '../../utils/provenance.js'
@@ -96,6 +97,28 @@ export function toObservedContent(content: string | null | undefined, hash: stri
   }
 }
 
+/**
+ * A hop as every display surface shows it. URL hops are redacted like every
+ * other URL (a loader's query string can carry a token as easily as a
+ * script's); an inline identity is not a URL — `redactUrl` would reduce it to
+ * `(unknown)` — so it is sanitised as text instead.
+ */
+export function redactInitiatorHop(hop: InitiatorHop): ReportInitiatorHop {
+  if (hop.url.startsWith(INLINE_SCRIPT_NAME_PREFIX)) return { url: redactForDisplay(hop.url, 512).text, kind: hop.kind }
+  if (hop.url === '') return { url: '(unattributed)', kind: hop.kind }
+  return { url: redactUrl(hop.url), kind: hop.kind }
+}
+
+/** A chain as one line of display text, redacted: `a ← b ← page c`. Empty string when there is no chain. */
+export function displayInitiatorChain(chain: readonly InitiatorHop[] | undefined): string {
+  return chain === undefined || chain.length === 0 ? '' : chainText(chain, (hop) => redactInitiatorHop(hop).url)
+}
+
+/** A whole chain, redacted hop by hop. */
+export function redactInitiatorChain(chain: readonly InitiatorHop[]): ReportInitiatorHop[] {
+  return chain.map(redactInitiatorHop)
+}
+
 const STATUS_BY_RESULT_TYPE: Record<string, ReportRowStatus> = {
   authorized_script: 'authorised',
   authorized_header: 'authorised',
@@ -135,6 +158,20 @@ function toAuthorisation(result: ComparisonResultType): ReportAuthorisation {
   // assessor actually reads — is blank for the commonest entry shape.
   const entryInfo = 'inventoryEntry' in result ? toReportAuthorisationInfo(result.inventoryEntry.authoriseWith.authorisationInfo) : null
   const effective = metadataPath.length > 0 ? metadataPath[metadataPath.length - 1]! : entryInfo
+
+  if (result.type === 'authorized_script' && result.inherited !== undefined) {
+    // Nothing identified this script and no matcher of the granting entry ran
+    // against it: naming one here would claim a match that never happened.
+    const inherited = result.inherited
+    return {
+      matcher: null,
+      decision: 'authorised',
+      failureReason: null,
+      metadataPath,
+      effective,
+      inherited: { from: redactInitiatorHop({ url: inherited.from, kind: 'script' }).url, chain: redactInitiatorChain(inherited.via), mode: inherited.mode },
+    }
+  }
 
   if (result.type === 'authorized_script' || result.type === 'authorized_header') {
     return { matcher: toReportMatcherRefOrNull(result.inventoryEntry.authoriseWith.matcher), decision: 'authorised', failureReason: null, metadataPath, effective }
@@ -212,7 +249,16 @@ function describeResource(result: ComparisonResultType): { kind: ReportResourceK
 export function toReportRow(result: ComparisonResultType, inventory: Inventory, workflowId: string, resolveProvenance: ProvenanceResolver | null): ReportResourceRow {
   const resource = describeResource(result)
   const status = STATUS_BY_RESULT_TYPE[result.type] ?? 'unknown'
-  const identification = 'inventoryEntry' in result ? toReportMatcherRefOrNull(result.inventoryEntry.identifyWith) : null
+  // An inherited row's entry is the GRANTING entry, whose identifyWith never
+  // identified this script.
+  const inherited = result.type === 'authorized_script' && result.inherited !== undefined
+  const identification = 'inventoryEntry' in result && !inherited ? toReportMatcherRefOrNull(result.inventoryEntry.identifyWith) : null
+  const script = result.type === 'authorized_script' || result.type === 'known_script_unauthorised_content' || result.type === 'unknown_script_found' ? result.script : null
+  const observed: ReportObservedContent = {
+    ...toObservedContent(resource.content, resource.hash),
+    ...(script?.initiatorChain !== undefined && script.initiatorChain.length > 0 ? { initiatorChain: redactInitiatorChain(script.initiatorChain) } : {}),
+    ...(script?.alternateInitiatorChains !== undefined && script.alternateInitiatorChains.length > 0 ? { alternateInitiatorChains: script.alternateInitiatorChains.map(redactInitiatorChain) } : {}),
+  }
 
   return {
     rowId: buildRowId([resource.kind, resource.name, resource.hash, resource.value, redactUrl(resource.url), workflowId]),
@@ -228,7 +274,7 @@ export function toReportRow(result: ComparisonResultType, inventory: Inventory, 
     origin: { url: resource.url === null ? null : redactUrl(resource.url), host: resource.url === null ? null : extractHost(resource.url) },
     workflowId,
     occurrences: 1,
-    observed: toObservedContent(resource.content, resource.hash),
+    observed,
     identification,
     authorisation: toAuthorisation(result),
     inventoryEntry: toInventoryEntryRef(result, inventory, resolveProvenance),

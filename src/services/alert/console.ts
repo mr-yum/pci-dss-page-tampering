@@ -13,6 +13,7 @@ import { type AlertDeliveryFailure, type ExecutionSummary, getExecutionOutcome, 
 import type { InventoryAlert } from '../../types/inventory/model.js'
 import type { Target } from '../../types/target.js'
 import { extractHost, redactUrl } from '../../utils/url.js'
+import { displayInitiatorChain } from '../report/mapper.js'
 import { resolveRumAlertDestination, rumAlertContextLines, rumAlertTitle } from './rum.js'
 
 /**
@@ -102,6 +103,7 @@ export class ConsoleAlertService implements IAlertService {
       console.log(`    ${index + 1}. ${this.truncate(identifier)}`)
       console.log(`       Hash: ${this.truncate(hash)}`)
       console.log(`       From host: ${extractHost(result.script.url)} (url: ${result.script.url || '(unknown)'})`)
+      console.log(`       Loaded by: ${displayInitiatorChain(result.script.initiatorChain) || '(no initiator evidence)'}`)
     })
     console.log()
   }
@@ -121,6 +123,7 @@ export class ConsoleAlertService implements IAlertService {
       console.log(`    ${index + 1}. ${this.truncate(identifier)}`)
       console.log(`       Hash: ${this.truncate(hash)}`)
       console.log(`       From host: ${extractHost(result.script.url)} (url: ${result.script.url || '(unknown)'})`)
+      console.log(`       Loaded by: ${displayInitiatorChain(result.script.initiatorChain) || '(no initiator evidence)'}`)
       console.log(`       Failed Matcher: ${matcherType}`)
       console.log(`       Reason: ${reason}`)
       if (outcome !== null) {

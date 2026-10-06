@@ -11,7 +11,7 @@
 export { ComparisonResult } from './comparison-result.js'
 export { UnknownScriptFound } from './unknown-script-found.js'
 export { KnownScriptWithUnauthorisedContentFound } from './known-script-unauthorised-content-found.js'
-export { AuthorizedScriptFound } from './authorized-script-found.js'
+export { AuthorizedScriptFound, type InheritedAuthorisation } from './authorized-script-found.js'
 export { MissingRequiredScript } from './missing-required-script.js'
 
 // Header comparison results

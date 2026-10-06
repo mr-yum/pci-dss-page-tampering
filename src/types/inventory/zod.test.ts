@@ -13,6 +13,7 @@
  * @see ../../../specs/001-refactor-script-identification/research.md R6 for error message requirements
  */
 
+import { inventoryScriptInfoToRawInventoryScriptInfo, rawInventoryScriptInfoToInventoryScriptInfo } from '../../utils/script.js'
 import { MatcherConfigSchema } from './matcher-config-schema.js'
 import { AlertDestinationSchema, InventoryAlertSchema, RawInventoryHeaderInfoSchema, RawInventoryScriptInfoSchema, RawInventoryTargetSchema } from './zod.js'
 
@@ -1343,5 +1344,44 @@ describe('initiatorHostMatcher config (feature 011 — inventory-decided initiat
 
   it('rejects unknown sibling keys (strict schema)', () => {
     expect(RawInventoryScriptInfoSchema.safeParse(scriptWith({ initiatorHostMatcher: '^x$', extra: true })).success).toBe(false)
+  })
+
+  describe('transitive object form', () => {
+    it('accepts { host, transitive: true } with and without maxDepth', () => {
+      expect(RawInventoryScriptInfoSchema.safeParse(scriptWith({ initiatorHostMatcher: { host: '^js\\.vendor\\.example$', transitive: true } })).success).toBe(true)
+      expect(RawInventoryScriptInfoSchema.safeParse(scriptWith({ initiatorHostMatcher: { host: '^js\\.vendor\\.example$', transitive: true, maxDepth: 3 } })).success).toBe(true)
+    })
+
+    it('validates the regex under host, naming the field', () => {
+      const result = RawInventoryScriptInfoSchema.safeParse(scriptWith({ initiatorHostMatcher: { host: '[unclosed', transitive: true } }))
+      expect(result.success).toBe(false)
+      expect(JSON.stringify(result.error?.issues)).toContain('initiatorHostMatcher.host')
+    })
+
+    it('never lets the object form silently mean the immediate-hop form: transitive must be true', () => {
+      expect(RawInventoryScriptInfoSchema.safeParse(scriptWith({ initiatorHostMatcher: { host: '^x$' } })).success).toBe(false)
+      expect(RawInventoryScriptInfoSchema.safeParse(scriptWith({ initiatorHostMatcher: { host: '^x$', transitive: false } })).success).toBe(false)
+    })
+
+    it.each([0, 9, 1.5])('rejects maxDepth %p', (maxDepth) => {
+      expect(RawInventoryScriptInfoSchema.safeParse(scriptWith({ initiatorHostMatcher: { host: '^x$', transitive: true, maxDepth } })).success).toBe(false)
+    })
+
+    it('rejects unknown keys and an empty host', () => {
+      expect(RawInventoryScriptInfoSchema.safeParse(scriptWith({ initiatorHostMatcher: { host: '^x$', transitive: true, hops: 2 } })).success).toBe(false)
+      expect(RawInventoryScriptInfoSchema.safeParse(scriptWith({ initiatorHostMatcher: { host: '', transitive: true } })).success).toBe(false)
+    })
+
+    it('round-trips through the loaded model unchanged, beside the string form', () => {
+      const raw = {
+        identifyWith: { andMatcher: [{ initiatorHostMatcher: '^pay\\.example\\.com$' }, { initiatorHostMatcher: { host: '^js\\.vendor\\.example$', transitive: true, maxDepth: 4 } }] },
+        authoriseWith: scriptWith(null).authoriseWith,
+        authorisesLoads: 'transitive',
+        maxDepth: 5,
+        loadsMatching: { nameMatcher: '^https:' },
+      }
+      const parsed = RawInventoryScriptInfoSchema.parse(raw)
+      expect(inventoryScriptInfoToRawInventoryScriptInfo(rawInventoryScriptInfoToInventoryScriptInfo(parsed))).toEqual(parsed)
+    })
   })
 })

@@ -9,7 +9,7 @@ import type { Target } from '../types/target.js'
 import { redactUrl } from '../utils/url.js'
 import { compareOutsidePayment } from './outside-payment.js'
 import { partitionByPaymentScope } from './payment-scope.js'
-import { redactForDisplay } from './report/mapper.js'
+import { redactForDisplay, redactInitiatorChain } from './report/mapper.js'
 
 export type ScopedComparison = {
   /** What the run alerts on and feeds to the inventory diff. The whole run when not scoped. */
@@ -58,6 +58,7 @@ function displayFields(documents: readonly DocumentTrailEntry[]): (item: Unanswe
       step: item.step,
       documentUrl: documentUrl === undefined ? null : redactUrl(documentUrl),
       reason: redactForDisplay(item.reason, 1000).text,
+      ...(item.initiatorChain !== undefined && item.initiatorChain.length > 0 ? { initiatorChain: redactInitiatorChain(item.initiatorChain) } : {}),
     }
   }
 }

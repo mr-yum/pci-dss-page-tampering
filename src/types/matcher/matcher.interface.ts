@@ -9,6 +9,7 @@
  */
 
 import type { SHA256Hash } from '../hash.js'
+import type { InitiatorHop } from '../initiator-chain.js'
 import type { InventoryScriptHashInfo } from '../inventory/model.js'
 import type { AuthorizationResult } from './authorization-result.js'
 import type { AuthorizeOptions } from './authorization-trace.js'
@@ -143,6 +144,31 @@ export interface Matchable {
    * fails secure when it is missing or unparseable.
    */
   initiator?: string
+
+  /**
+   * Who loaded this script, hop by hop: immediate inserter first, outward to
+   * the root (see `../initiator-chain.ts`). Consumed by the transitive form of
+   * `InitiatorHostMatcher` and by the `authorisesLoads` trust grant.
+   *
+   * `chain[0].url` equals `initiator` whenever the immediate inserter is a
+   * URL. The one exception is an inline inserter: `initiator` keeps the URL it
+   * always carried (so existing inventories behave exactly as before), while
+   * `chain[0]` names the inline script itself by its inline identity, so the
+   * walk can continue through it.
+   *
+   * Populated by the synthetic chain resolver after a run. RUM observations
+   * do not carry it yet. Undefined or empty means no evidence; every
+   * consumer fails secure on that.
+   */
+  initiatorChain?: InitiatorHop[]
+
+  /**
+   * Further paths when an ancestor URL was observed with more than one
+   * initiator (the walk forks). Every path shares `initiatorChain[0]` — the
+   * immediate inserter is exact evidence — and differs only above it.
+   * Consumers treat a match on any path as a match.
+   */
+  alternateInitiatorChains?: InitiatorHop[][]
 }
 
 /**

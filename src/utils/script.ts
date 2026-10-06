@@ -1,6 +1,8 @@
-import type { InventoryAuthorisationInfo, InventoryScriptInfo } from '../types/inventory/model.js'
+import { INITIATOR_CHAIN_MAX_DEPTH } from '../types/initiator-chain.js'
+import type { InventoryAuthorisationInfo, InventoryScriptInfo, LoadGrant } from '../types/inventory/model.js'
 import type { RawInventoryScriptInfo } from '../types/inventory/raw.js'
 import { processAuthorizeWith } from '../types/inventory/zod.js'
+import type { Matcher } from '../types/matcher/matcher.interface.js'
 import { createMatcher } from '../types/matcher/matcher-factory.js'
 import type { ScriptInfo } from '../types/script.js'
 
@@ -49,6 +51,28 @@ export function rawInventoryScriptInfoToInventoryScriptInfo(rawInventoryScriptIn
     identifyWith: createMatcher(rawInventoryScriptInfo.identifyWith),
     authoriseWith: processAuthorizeWith(rawInventoryScriptInfo.authoriseWith),
     ...(rawInventoryScriptInfo.requiredOn !== undefined ? { requiredOn: rawInventoryScriptInfo.requiredOn } : {}),
+    ...(rawInventoryScriptInfo.authorisesLoads !== undefined ? { authorisesLoads: toLoadGrant(rawInventoryScriptInfo) } : {}),
+  }
+}
+
+/** The loaded form of an entry's `authorisesLoads` / `maxDepth` / `loadsMatching`. */
+function toLoadGrant(raw: RawInventoryScriptInfo): LoadGrant {
+  const mode = raw.authorisesLoads === 'direct' ? 'direct' : 'transitive'
+  return {
+    mode,
+    maxDepth: mode === 'direct' ? 1 : (raw.maxDepth ?? INITIATOR_CHAIN_MAX_DEPTH),
+    ...(raw.maxDepth !== undefined ? { declaredMaxDepth: raw.maxDepth } : {}),
+    ...(raw.loadsMatching !== undefined ? { loadsMatching: createMatcher(raw.loadsMatching) } : {}),
+  }
+}
+
+/** `authorisesLoads` written back exactly as it was declared. */
+function fromLoadGrant(grant: LoadGrant | undefined, toConfig: (matcher: Matcher) => unknown): Pick<RawInventoryScriptInfo, 'authorisesLoads' | 'maxDepth' | 'loadsMatching'> {
+  if (grant === undefined) return {}
+  return {
+    authorisesLoads: grant.mode,
+    ...(grant.declaredMaxDepth !== undefined ? { maxDepth: grant.declaredMaxDepth } : {}),
+    ...(grant.loadsMatching !== undefined ? { loadsMatching: toConfig(grant.loadsMatching) as RawInventoryScriptInfo['loadsMatching'] } : {}),
   }
 }
 
@@ -118,7 +142,9 @@ export function inventoryScriptInfoToRawInventoryScriptInfo(inventoryScriptInfo:
         return config
       }
       case 'initiator-host': {
-        const config: any = { initiatorHostMatcher: pattern as string }
+        // The transitive form round-trips as its object form; the string form stays a string.
+        const options = (matcher as unknown as { getOptions?: () => { transitive: true; maxDepth?: number } | undefined }).getOptions?.()
+        const config: any = { initiatorHostMatcher: options === undefined ? (pattern as string) : { host: pattern as string, ...options } }
         const authInfo = (matcher as any).getAuthorisationInfo?.()
         if (authInfo) {
           config.authorisationInfo = serializeAuthorisationInfo(authInfo)
@@ -208,6 +234,7 @@ export function inventoryScriptInfoToRawInventoryScriptInfo(inventoryScriptInfo:
         identifyWith: matcherToConfig(inventoryScriptInfo.identifyWith),
         authoriseWith: arrayConfig,
         ...(inventoryScriptInfo.requiredOn !== undefined ? { requiredOn: inventoryScriptInfo.requiredOn } : {}),
+        ...fromLoadGrant(inventoryScriptInfo.authorisesLoads, (matcher) => matcherToConfig(matcher)),
       }
     }
     // Fall through to use orMatcher format (OrMatcher has its own authorisationInfo)
@@ -227,5 +254,6 @@ export function inventoryScriptInfoToRawInventoryScriptInfo(inventoryScriptInfo:
       },
     },
     ...(inventoryScriptInfo.requiredOn !== undefined ? { requiredOn: inventoryScriptInfo.requiredOn } : {}),
+    ...fromLoadGrant(inventoryScriptInfo.authorisesLoads, (matcher) => matcherToConfig(matcher)),
   }
 }

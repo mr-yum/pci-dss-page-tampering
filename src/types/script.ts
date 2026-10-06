@@ -1,5 +1,6 @@
 import type { DocumentId } from './document.js'
 import type { SHA256Hash } from './hash.js'
+import type { InitiatorHop } from './initiator-chain.js'
 
 export type ExternalScriptSource = {
   type: 'external'
@@ -22,6 +23,36 @@ export type ExternalScriptSource = {
    * Consumed by `InitiatorHostMatcher`.
    */
   initiator?: string
+  /**
+   * Raw evidence behind `initiator`, kept so the chain resolver can tell a
+   * real inserter URL from a fallback (see `deriveInitiatorEvidence`).
+   * Undefined when the CDP initiator could not be read.
+   */
+  initiatorEvidence?: InitiatorEvidence
+}
+
+/**
+ * What the CDP request initiator actually said, before `initiator` folded it
+ * into one URL.
+ *
+ * - `stack` — script-issued: `topFrameUrl` is the top call frame's URL, which
+ *   is empty for code with no script URL of its own (a dynamically inserted
+ *   inline script, `eval`). Inline scripts parsed from the document report the
+ *   document URL.
+ * - `parser` — the parser requested it (a `<script src>` in markup): the
+ *   inserter is the document, `url` names it.
+ * - `other` — any other initiator type, or none; `url` is whatever fallback
+ *   `initiator` used, never evidence of a script inserter.
+ */
+export type InitiatorEvidence = { type: 'stack'; topFrameUrl: string } | { type: 'parser'; url: string } | { type: 'other'; url: string | null }
+
+/** Who inserted an inline script element, as the attribution shim recorded it (see `ScriptElementRecord`). */
+export type InlineScriptInstance = {
+  /** Per-element token from the attribution shim. */
+  token: string
+  kind: 'script' | 'inline' | 'none' | 'parser'
+  /** For `kind: 'inline'`: the token of the inline script that inserted this one. */
+  inserterToken: string | null
 }
 
 export type InlineScriptSource = {
@@ -37,6 +68,15 @@ export type InlineScriptSource = {
    * the page hadn't navigated yet.
    */
   url?: string
+  /**
+   * The script elements this observation stands for, as the attribution shim
+   * identified them — usually one; more when identical inline scripts in the
+   * same document were collapsed into one observation. The first is this
+   * script's identity in an initiator chain (`inline_script/<name>#<token>`);
+   * any of them may be named as an inserter. Undefined when the shim did not
+   * run, which leaves the script without chain evidence.
+   */
+  instances?: InlineScriptInstance[]
 }
 
 export type ScriptSource = ExternalScriptSource | InlineScriptSource
@@ -52,6 +92,14 @@ export type ScriptInfo = {
    * the payment-page copy would be lost to scoping.
    */
   document?: DocumentId
+  /**
+   * Who loaded this script, out to the page — resolved after the run from
+   * everything it observed (`resolveInitiatorChains`). Undefined when there
+   * was no initiator evidence at all.
+   */
+  initiatorChain?: InitiatorHop[]
+  /** Forked paths above the immediate inserter; see `Matchable.alternateInitiatorChains`. */
+  alternateInitiatorChains?: InitiatorHop[][]
 }
 
 /**
@@ -121,10 +169,17 @@ export type UnansweredScriptRequest = {
   document?: DocumentId
   /** Workflow step running when the request was issued (0 = initial navigation). */
   step: number
+  /** The request's CDP initiator, read when it was issued — the request's first hop. */
+  initiatorEvidence?: InitiatorEvidence
+  /** Resolved after the run like a script's (see `ScriptInfo.initiatorChain`): who asked for it. */
+  initiatorChain?: InitiatorHop[]
 }
 
 /** An unanswered script request as every report and notification shows it; see `UnreadScriptRecord`. */
-export type UnansweredRequestRecord = Omit<UnreadScriptRecord, 'status'>
+export type UnansweredRequestRecord = Omit<UnreadScriptRecord, 'status'> & {
+  /** Redacted hops of the request's initiator chain; absent when there was no evidence. */
+  initiatorChain?: InitiatorHop[]
+}
 
 export type ScriptDetectionSummary = {
   externalScripts: ScriptInfo[]

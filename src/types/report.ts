@@ -48,8 +48,16 @@ import type { TargetType } from './target.js'
  * Patch when a value's derivation is corrected without its meaning or shape
  * changing — a `rowId` whose inputs were fixed, for instance — so a consumer
  * that keyed on it across runs knows why it moved.
+ *
+ * 1.7.0 adds initiator chains (`observed.initiatorChain`,
+ * `unansweredRequests[].initiatorChain`) and inherited authorisation
+ * (`authorisation.inherited`, `inventoryEntry.provenance.grantedBy`): an
+ * `authorised` script row may now be authorised by a load grant on an
+ * ancestor rather than by an entry identifying it. `status: 'authorised'`
+ * still means exactly what it meant — the inventory authorises this script —
+ * so this is minor; a consumer that needs to know HOW reads `inherited`.
  */
-export const REPORT_SCHEMA_VERSION = '1.6.1'
+export const REPORT_SCHEMA_VERSION = '1.7.0'
 
 /**
  * Where an observation sits relative to the payment page, when the target's
@@ -118,6 +126,14 @@ export type ReportMatcherRef = {
 }
 
 /**
+ * One hop of an initiator chain as the report shows it: a script URL or
+ * document URL redacted like every other URL (origin and path only; `blob:`
+ * keeps its minting host), or an inline identity (`inline_script/<name>#<token>`)
+ * sanitised for display. See `src/types/initiator-chain.ts` for the kinds.
+ */
+export type ReportInitiatorHop = { url: string; kind: 'script' | 'document' | 'unknown' }
+
+/**
  * What was actually observed on the page.
  *
  * The hash is the integrity anchor and the thing the inventory authorises; the
@@ -132,6 +148,14 @@ export type ReportObservedContent = {
   /** Sanitised, truncated excerpt. Never the basis for an integrity decision. */
   contentExcerpt: string | null
   contentTruncated: boolean
+  /**
+   * Scripts only (added in 1.7.0): who loaded this script, immediate inserter
+   * first, out to the page. Absent when the run had no initiator evidence for
+   * it. A walk that forked records its other paths in
+   * `alternateInitiatorChains`.
+   */
+  initiatorChain?: ReportInitiatorHop[]
+  alternateInitiatorChains?: ReportInitiatorHop[][]
 }
 
 export type ReportAuthorisation = {
@@ -143,6 +167,21 @@ export type ReportAuthorisation = {
   metadataPath: ReportAuthorisationInfo[]
   /** The justification that actually decided this row — the last of `metadataPath`. */
   effective: ReportAuthorisationInfo | null
+  /**
+   * Present (since 1.7.0) only on a script authorised by inheritance: no
+   * entry identified it, but an ancestor in its initiator chain was
+   * authorised in the same run by an entry with `authorisesLoads`.
+   * `inventoryEntry` is then the granting entry (its provenance carries
+   * `grantedBy`), `identification` and `matcher` are null, and `effective` is
+   * the granting entry's justification.
+   */
+  inherited?: {
+    /** The granting script: redacted URL or inline identity. */
+    from: string
+    /** The chain from this script out to and including the granting script. */
+    chain: ReportInitiatorHop[]
+    mode: 'direct' | 'transitive'
+  }
 }
 
 export type ReportInventoryEntryRef = {
@@ -236,6 +275,8 @@ export type ReportUnansweredRequest = {
   documentUrl: string | null
   /** Why it is recorded: still unanswered at the deadline, or its frame went away first. */
   reason: string
+  /** Who asked for it (added in 1.7.0), from the request's own initiator; absent without evidence. */
+  initiatorChain?: ReportInitiatorHop[]
   /** See `ReportScope`. Absent when the target's workflow marks no payment page. */
   scope?: ReportScope
 }

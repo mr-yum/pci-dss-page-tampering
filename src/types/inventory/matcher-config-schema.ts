@@ -17,6 +17,7 @@
 
 import { z } from 'zod'
 
+import { INITIATOR_CHAIN_MAX_DEPTH } from '../initiator-chain.js'
 import { SHA256HashSchema } from '../zod.js'
 
 /**
@@ -80,9 +81,26 @@ const UrlMatcherConfigSchema = z
   })
   .strict()
 
+/**
+ * Two forms. The string form matches the immediate inserter's host (unchanged
+ * since it was introduced). The object form with `transitive: true` matches
+ * the host of any hop of the initiator chain, up to `maxDepth` hops out —
+ * see InitiatorHostMatcher. `transitive` is required (and must be `true`) in
+ * the object form, so the object form can never silently mean the
+ * immediate-hop form.
+ */
 const InitiatorHostMatcherConfigSchema = z
   .object({
-    initiatorHostMatcher: z.string().min(1, 'initiatorHostMatcher must not be empty'),
+    initiatorHostMatcher: z.union([
+      z.string().min(1, 'initiatorHostMatcher must not be empty'),
+      z
+        .object({
+          host: z.string().min(1, 'initiatorHostMatcher.host must not be empty'),
+          transitive: z.literal(true),
+          maxDepth: z.number().int().min(1).max(INITIATOR_CHAIN_MAX_DEPTH).optional(),
+        })
+        .strict(),
+    ]),
     authorisationInfo: InventoryAuthorisationInfoRawSchema.optional(),
   })
   .strict()
@@ -244,14 +262,19 @@ export const MatcherConfigSchema: z.ZodType<any> = z
     }
 
     if ('initiatorHostMatcher' in val) {
+      // The regex lives at the top level in the string form and under `host`
+      // in the transitive object form; validate whichever is present.
+      const spec: string | { host: string } = val.initiatorHostMatcher
+      const transitive = typeof spec !== 'string'
+      const pattern = typeof spec === 'string' ? spec : spec.host
       try {
-        new RegExp(val.initiatorHostMatcher)
+        new RegExp(pattern)
       } catch (e: unknown) {
         const errorMessage = e instanceof Error ? e.message : 'Unknown regex error'
         ctx.addIssue({
           code: 'custom',
-          message: `Invalid regex in initiatorHostMatcher: "${val.initiatorHostMatcher}". Error: ${errorMessage}. Ensure all brackets are closed and escape sequences are valid.`,
-          path: ['initiatorHostMatcher'],
+          message: `Invalid regex in initiatorHostMatcher${transitive ? '.host' : ''}: "${pattern}". Error: ${errorMessage}. Ensure all brackets are closed and escape sequences are valid.`,
+          path: transitive ? ['initiatorHostMatcher', 'host'] : ['initiatorHostMatcher'],
         })
       }
     }

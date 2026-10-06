@@ -65,7 +65,7 @@ export type MatcherConfig =
   | { headerNameMatcher: string }
   | { contentMatcher: string; authorisationInfo?: RawAuthorisationInfo }
   | { hostMatcher: string; authorisationInfo?: RawAuthorisationInfo }
-  | { initiatorHostMatcher: string; authorisationInfo?: RawAuthorisationInfo }
+  | { initiatorHostMatcher: string | { host: string; transitive: true; maxDepth?: number }; authorisationInfo?: RawAuthorisationInfo }
   | { urlMatcher: string; authorisationInfo?: RawAuthorisationInfo }
   | { workflowMatcher: string; authorisationInfo?: RawAuthorisationInfo }
   | { targetTypeMatcher: string; authorisationInfo?: RawAuthorisationInfo }
@@ -128,7 +128,9 @@ export function createMatcher(config: MatcherConfig): Matcher {
   }
 
   if ('initiatorHostMatcher' in config) {
-    return new InitiatorHostMatcher(config.initiatorHostMatcher, convertAuthorisationInfo(config.authorisationInfo))
+    const spec = config.initiatorHostMatcher
+    if (typeof spec === 'string') return new InitiatorHostMatcher(spec, convertAuthorisationInfo(config.authorisationInfo))
+    return new InitiatorHostMatcher(spec.host, convertAuthorisationInfo(config.authorisationInfo), { transitive: true, ...(spec.maxDepth !== undefined ? { maxDepth: spec.maxDepth } : {}) })
   }
 
   if ('urlMatcher' in config) {

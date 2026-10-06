@@ -23,6 +23,12 @@ export type RawInventoryScriptInfo = {
   identifyWith: RawMatcherConfig
   authoriseWith: RawAuthorizeWithConfig
   requiredOn?: TargetType[] | undefined
+  /** Trust grant for what this entry's script loads; see `LoadGrant`. */
+  authorisesLoads?: 'direct' | 'transitive' | undefined
+  /** Only with `authorisesLoads: "transitive"`: furthest hop that inherits (1..8, default 8). */
+  maxDepth?: number | undefined
+  /** Required with `authorisesLoads`: which loaded scripts may inherit. */
+  loadsMatching?: RawMatcherConfig | undefined
 }
 
 /**

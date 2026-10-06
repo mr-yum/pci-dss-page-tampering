@@ -849,7 +849,7 @@ describe('DetectionService payment page scope', () => {
       logger: { log: jest.fn(), error: jest.fn() },
     } as unknown as Target
 
-    const service = serviceInternals() as DetectionServiceInternals & { getInlineScriptsSettled: () => Promise<unknown[]> }
+    const service = serviceInternals() as DetectionServiceInternals & { getInlineScriptsSettled: () => Promise<unknown> }
     service.applyRealisticUserAgent = jest.fn().mockResolvedValue(undefined)
     service.navigateToTarget = jest.fn().mockImplementation(async (...args: unknown[]) => {
       if (options.hooks) options.hooks.initialNavigation = args[4]
@@ -871,7 +871,7 @@ describe('DetectionService payment page scope', () => {
       }
       return { context: page }
     })
-    service.getInlineScriptsSettled = jest.fn().mockResolvedValue([])
+    service.getInlineScriptsSettled = jest.fn().mockResolvedValue({ inlineScripts: [], insertions: [] })
     let action = 0
     service.executeAction = jest.fn().mockImplementation(async () => options.onAction?.(action++))
 
@@ -986,7 +986,7 @@ describe('DetectionService payment page scope', () => {
 describe('DetectionService inline script attribution', () => {
   type Internals = {
     detectNewInlineScripts(page: Page, existing: unknown[], matchers: unknown[], tracker?: unknown): Promise<{ hash: { value: string }; document?: string }[]>
-    getInlineScriptsSettled: () => Promise<unknown[]>
+    getInlineScriptsSettled: () => Promise<unknown>
   }
   const inline = (hash: string) => ({ source: { type: 'inline', id: `inline_script/${hash}`, content: hash }, hash: { value: hash } })
   // Each read of the current document returns the next value in turn: before the scan, then after it.
@@ -994,7 +994,7 @@ describe('DetectionService inline script attribution', () => {
 
   function service(scanned: unknown[]): Internals {
     const internals = new DetectionService() as unknown as Internals
-    internals.getInlineScriptsSettled = jest.fn().mockResolvedValue(scanned)
+    internals.getInlineScriptsSettled = jest.fn().mockResolvedValue({ inlineScripts: scanned, insertions: [] })
     return internals
   }
 
@@ -1224,11 +1224,11 @@ describe('DetectionService script accounting wiring', () => {
       logger,
     } as unknown as Target
 
-    const service = new DetectionService({ scriptSettle: SETTLE }) as unknown as DetectionServiceInternals & { getInlineScriptsSettled: () => Promise<unknown[]> }
+    const service = new DetectionService({ scriptSettle: SETTLE }) as unknown as DetectionServiceInternals & { getInlineScriptsSettled: () => Promise<unknown> }
     service.applyRealisticUserAgent = jest.fn().mockResolvedValue(undefined)
     service.navigateToTarget = jest.fn().mockResolvedValue(undefined)
     service.waitForInitialActionTarget = jest.fn().mockResolvedValue({ context: page })
-    service.getInlineScriptsSettled = jest.fn().mockResolvedValue([])
+    service.getInlineScriptsSettled = jest.fn().mockResolvedValue({ inlineScripts: [], insertions: [] })
     service.executeAction = jest.fn().mockImplementation(async () => options.onAction?.(emit, sessionEmit))
     return service.detectAttempt(workflowBrowser, workflowTarget)
   }

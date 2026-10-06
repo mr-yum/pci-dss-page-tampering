@@ -540,4 +540,44 @@ describe('scriptResponseHandler', () => {
       expect(sourceOf(detectedScripts).initiator).toBeUndefined()
     })
   })
+
+  describe("the attribution shim's own frame", () => {
+    const SHIM = 'pci-attribution-0b6e1c2a.js'
+    const sourceOf = (scripts: ScriptInfo[]) => scripts[0]!.source as { type: 'external'; initiator?: string; initiatorEvidence?: unknown }
+    const through = async (callFrames: { url?: string }[], shim: string | null = SHIM) => {
+      const detectedScripts: ScriptInfo[] = []
+      await scriptResponseHandler(scriptResponse('body', 'https://cdn.example.net/sdk.js', { type: 'script', stack: { callFrames } }, 'https://pay.example.com/menu'), detectedScripts, undefined, undefined, shim ?? undefined)
+      return sourceOf(detectedScripts)
+    }
+
+    // Seen in real Chrome: every DOM-inserted script's top frame was the
+    // shim's appendChild wrapper, and the initiator fell back to the page.
+    it('is taken off the top, so the script that called appendChild is the initiator', async () => {
+      const source = await through([{ url: SHIM }, { url: 'https://js.vendor.example/loader.js' }])
+      expect(source.initiator).toBe('https://js.vendor.example/loader.js')
+      expect(source.initiatorEvidence).toEqual({ type: 'stack', topFrameUrl: 'https://js.vendor.example/loader.js' })
+    })
+
+    it('leaves an anonymous caller (a dynamically inserted inline script) anonymous', async () => {
+      const source = await through([{ url: SHIM }, { url: '' }, { url: SHIM }, { url: 'https://js.vendor.example/loader.js' }])
+      expect(source.initiator).toBe('https://pay.example.com/menu')
+      expect(source.initiatorEvidence).toEqual({ type: 'stack', topFrameUrl: '' })
+    })
+
+    it('removes one frame only: a second frame claiming the shim name reads as anonymous, never as its caller', async () => {
+      const source = await through([{ url: SHIM }, { url: SHIM }, { url: 'https://js.vendor.example/loader.js' }])
+      expect(source.initiatorEvidence).toEqual({ type: 'stack', topFrameUrl: '' })
+      expect(source.initiator).toBe('https://pay.example.com/menu')
+    })
+
+    it('is not skipped when it is not on top', async () => {
+      const source = await through([{ url: 'https://evil.example/x.js' }, { url: SHIM }, { url: 'https://js.vendor.example/loader.js' }])
+      expect(source.initiator).toBe('https://evil.example/x.js')
+    })
+
+    it('is left alone without a shim name', async () => {
+      const source = await through([{ url: SHIM }, { url: 'https://js.vendor.example/loader.js' }], null)
+      expect(source.initiator).toBe(SHIM)
+    })
+  })
 })

@@ -11,10 +11,25 @@
  * @see specs/005-enhance-the-schema/data-model.md for metadataPath enhancement
  */
 
+import type { InitiatorHop } from '../initiator-chain.js'
 import type { InventoryAuthorisationInfo, InventoryScriptInfo } from '../inventory/model.js'
 import type { DetectedScript } from '../matcher/matcher.interface.js'
 import type { Target } from '../target.js'
 import { ComparisonResult } from './comparison-result.js'
+
+/**
+ * How a script that no entry identified came to be authorised anyway: an
+ * ancestor in its initiator chain was authorised in the same run by an entry
+ * that grants its loads (`authorisesLoads`).
+ */
+export type InheritedAuthorisation = {
+  /** The granting script, as its hop names it (URL, or inline identity). */
+  from: string
+  /** The chain from this script out to and including the granting hop. */
+  via: InitiatorHop[]
+  /** `direct` or `transitive`, as the granting entry declares it. */
+  mode: 'direct' | 'transitive'
+}
 
 /**
  * Result indicating a script that is both identified and authorized.
@@ -54,6 +69,14 @@ export class AuthorizedScriptFound extends ComparisonResult {
   public readonly metadataPath: InventoryAuthorisationInfo[]
 
   /**
+   * Set only when the script was authorised by inheritance rather than by an
+   * entry identifying it. `inventoryEntry` is then the GRANTING entry — what
+   * an auditor follows to the justification — and nothing identified this
+   * script itself.
+   */
+  public readonly inherited: InheritedAuthorisation | undefined
+
+  /**
    * Creates a new AuthorizedScriptFound result.
    *
    * @param target - The target being processed
@@ -62,10 +85,11 @@ export class AuthorizedScriptFound extends ComparisonResult {
    * @param inventoryEntry - The inventory entry that matched and authorized this script
    * @param metadataPath - Authorization metadata path from composite matcher evaluation (default: empty array)
    */
-  constructor(target: Target, timestamp: Date, script: DetectedScript, inventoryEntry: InventoryScriptInfo, metadataPath: InventoryAuthorisationInfo[] = []) {
+  constructor(target: Target, timestamp: Date, script: DetectedScript, inventoryEntry: InventoryScriptInfo, metadataPath: InventoryAuthorisationInfo[] = [], inherited?: InheritedAuthorisation) {
     super(target, timestamp)
     this.script = script
     this.inventoryEntry = inventoryEntry
     this.metadataPath = metadataPath
+    this.inherited = inherited
   }
 }

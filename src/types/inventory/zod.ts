@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import { RESPONSE_RESOURCE_TYPES } from '../header.js'
+import { INITIATOR_CHAIN_MAX_DEPTH } from '../initiator-chain.js'
 import { createMatcher } from '../matcher/matcher-factory.js'
 import { OrMatcher } from '../matcher/or-matcher.js'
 import { TARGET_TYPES } from '../target.js'
@@ -189,8 +190,53 @@ export const RawInventoryScriptInfoSchema: z.ZodType<RawInventoryScriptInfo> = z
     // against real detected scripts (which carry name, content, hash, url), so
     // every matcher type evaluates with its normal semantics.
     requiredOn: z.array(z.enum(TARGET_TYPES)).min(1).optional(),
+    // Trust grant: scripts this entry's script loads inherit its authorisation
+    // (see LoadGrant in model.ts and the transitive-trust section of AGENTS.md).
+    authorisesLoads: z.enum(['direct', 'transitive']).optional(),
+    maxDepth: z.number().int().min(1).max(INITIATOR_CHAIN_MAX_DEPTH).optional(),
+    loadsMatching: MatcherConfigSchema.optional(),
   })
   .superRefine((entry, ctx) => {
+    if (entry.authorisesLoads === undefined) {
+      for (const field of ['maxDepth', 'loadsMatching'] as const) {
+        if (entry[field] !== undefined) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, path: [field], message: `${field} only applies to an entry that declares authorisesLoads.` })
+        }
+      }
+    } else {
+      if (entry.authorisesLoads === 'direct' && entry.maxDepth !== undefined) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['maxDepth'], message: 'maxDepth only applies to authorisesLoads: "transitive" — a direct grant covers exactly the scripts this entry\'s script inserted itself.' })
+      }
+      // A grant is a statement about an authorised script. An entry that is not
+      // authorised never authorises anything (the comparison skips it), so a
+      // grant on it can only be a mistake — or a grant waiting to switch on
+      // silently the day someone flips `authorised`. Refuse it outright.
+      const entryInfo = Array.isArray(entry.authoriseWith) ? entry.authoriseWith[0]?.authorisationInfo : entry.authoriseWith.authorisationInfo
+      if (entryInfo?.authorised !== true) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['authorisesLoads'],
+          message: 'authorisesLoads requires an authorised entry (authoriseWith.authorisationInfo.authorised: true): only a script this entry authorised can vouch for what it loads.',
+        })
+      }
+      // Required: chain evidence comes partly from the page itself (an
+      // attribution shim in the page's own world, and call stacks whose frame
+      // URLs `//# sourceURL` can rename), so the one unforgeable check on a
+      // load — its own URL — must always be made. Name hosts that serve only
+      // the vendor's own code.
+      if (entry.loadsMatching === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['loadsMatching'],
+          message:
+            "authorisesLoads requires loadsMatching: a matcher on the loaded script (e.g. a nameMatcher naming the vendor hosts that serve only its own code). Chain evidence can be influenced by code running on the page; the load's own URL cannot.",
+        })
+      }
+      if (entry.loadsMatching !== undefined && containsHeaderNameMatcher(entry.loadsMatching)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['loadsMatching'], message: 'headerNameMatcher is not valid in loadsMatching: it guards script URLs, which are case-sensitive. Use nameMatcher.' })
+      }
+    }
+
     // HeaderNameMatcher matches case-insensitively (RFC 7230 header names).
     // Script names are URLs, where case is significant — identifying a script
     // entry case-insensitively would let a case-variant URL reach the entry's

@@ -2,31 +2,85 @@ import type { Frame, HTTPRequest, HTTPResponse } from 'puppeteer'
 
 import { requestIdOf } from '../services/document-ledger.js'
 import type { DocumentId } from '../types/document.js'
-import type { ScriptInfo, UnansweredScriptRequest, UnreadScriptResponse } from '../types/script.js'
+import type { InitiatorEvidence, ScriptInfo, UnansweredScriptRequest, UnreadScriptResponse } from '../types/script.js'
 import { createSha256Hash } from '../utils/hash.js'
 import { redactUrl } from '../utils/url.js'
+
+/**
+ * The top call frame of a script-issued request, with the monitor's own
+ * attribution shim taken off the top.
+ *
+ * The shim (`src/utils/page-attribution.ts`) wraps `appendChild` and the other
+ * insertion methods, so for every script the page inserts through the DOM
+ * the top frame Chrome reports is the shim's wrapper — not the script that
+ * called it. Until this was seen in a real-Chrome test (2026-10-06) that made
+ * `deriveInitiatorUrl` fall through to the document URL for nearly every
+ * dynamically inserted script, so a synthetic `initiatorHostMatcher` was
+ * matching the page's host rather than the loader's.
+ *
+ * The shim is given a per-run random `sourceURL` (`shimSourceUrl`) so its
+ * frame can be recognised. Exactly one leading shim frame is removed: the
+ * wrapper adds one frame per call. A second frame claiming the same URL is
+ * not trusted as the caller — a page that learnt the name and reused it for
+ * its own code would otherwise hide its own frame — and reads as anonymous.
+ * Undefined `shimSourceUrl` (tests, or callers without a shim) leaves the
+ * stack as Chrome reported it.
+ */
+function topCallFrameUrl(request: HTTPRequest, shimSourceUrl: string | undefined): string | undefined {
+  const frames = request.initiator?.()?.stack?.callFrames
+  if (frames === undefined || frames.length === 0) return undefined
+  const [first, second] = frames
+  if (shimSourceUrl === undefined || first?.url !== shimSourceUrl) return first?.url ?? ''
+  // The shim's own frame, with nothing under it: the shim was called by code
+  // with no stack of its own to report.
+  if (second === undefined) return ''
+  return second.url === shimSourceUrl ? '' : (second.url ?? '')
+}
 
 /**
  * Derive the initiator URL for a script request from the CDP initiator info,
  * mirroring the RUM agent's attribution semantics so `initiatorHostMatcher`
  * entries behave identically across the synthetic and RUM passes:
- * - script-issued requests: the top call frame is the script that caused the
- *   load (the RUM insertion patch's `document.currentScript` equivalent);
+ * - script-issued requests: the top call frame (below the attribution shim's
+ *   own wrapper, see `topCallFrameUrl`) is the script that caused the load —
+ *   the RUM insertion patch's `document.currentScript` equivalent;
  * - parser-inserted tags: the initiator/document URL (the RUM agent's
  *   `location.href` fallback for parser-inserted scripts);
- * - anonymous stacks (eval'd code): the requesting frame's document URL, the
- *   same honest fallback the agent uses when `currentScript` is null.
+ * - anonymous stacks (eval'd code, dynamically inserted inline scripts): the
+ *   requesting frame's document URL, the same honest fallback the agent uses
+ *   when `currentScript` is null.
  * Returns undefined only when attribution genuinely failed — matchers then
  * fail secure on the missing evidence.
  */
-function deriveInitiatorUrl(request: HTTPRequest): string | undefined {
+export function deriveInitiatorUrl(request: HTTPRequest, shimSourceUrl?: string): string | undefined {
   try {
     const initiator = request.initiator?.()
-    const frameUrl = initiator?.stack?.callFrames?.[0]?.url
+    const frameUrl = topCallFrameUrl(request, shimSourceUrl)
     if (frameUrl) return frameUrl
     if (initiator?.url) return initiator.url
     const documentUrl = request.frame()?.url()
     return documentUrl && documentUrl !== '' ? documentUrl : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * The CDP initiator as it was, before `deriveInitiatorUrl` folded it into one
+ * URL — which the chain resolver needs, because the folded URL cannot say
+ * whether it named the inserting script or was a fallback. An anonymous top
+ * frame (empty URL) is the tell for code with no script URL of its own: a
+ * dynamically inserted inline script, or `eval`. Undefined when the
+ * initiator cannot be read.
+ */
+export function deriveInitiatorEvidence(request: HTTPRequest, shimSourceUrl?: string): InitiatorEvidence | undefined {
+  try {
+    const initiator = request.initiator?.()
+    if (initiator === undefined) return undefined
+    const topFrameUrl = topCallFrameUrl(request, shimSourceUrl)
+    if (topFrameUrl !== undefined) return { type: 'stack', topFrameUrl }
+    if (initiator.type === 'parser' && initiator.url) return { type: 'parser', url: initiator.url }
+    return { type: 'other', url: deriveInitiatorUrl(request, shimSourceUrl) ?? null }
   } catch {
     return undefined
   }
@@ -82,7 +136,7 @@ export function recordUnreadScript(unread: UnreadScriptResponse[], record: Unrea
  *   Never silently dropped: an unread script is an unmonitored one, and the run
  *   has to say so (see `UnreadScriptResponse`).
  */
-export async function scriptResponseHandler(response: HTTPResponse, detectedScripts: ScriptInfo[], document?: DocumentId, accounting?: UnreadScriptAccounting): Promise<void> {
+export async function scriptResponseHandler(response: HTTPResponse, detectedScripts: ScriptInfo[], document?: DocumentId, accounting?: UnreadScriptAccounting, shimSourceUrl?: string): Promise<void> {
   if (!isMonitoredScriptResponse(response)) return
 
   // Read the step now, before the await: the record names the step the
@@ -112,7 +166,8 @@ export async function scriptResponseHandler(response: HTTPResponse, detectedScri
 
   const scriptUrl = response.url()
   const scriptHash = createSha256Hash(scriptContent)
-  const initiator = deriveInitiatorUrl(response.request())
+  const initiator = deriveInitiatorUrl(response.request(), shimSourceUrl)
+  const initiatorEvidence = deriveInitiatorEvidence(response.request(), shimSourceUrl)
 
   // Reload recovery can observe more than one body at the same URL. Keep
   // every distinct version so a failed first render cannot mask changed
@@ -128,6 +183,7 @@ export async function scriptResponseHandler(response: HTTPResponse, detectedScri
         url: scriptUrl,
         content: scriptContent,
         ...(initiator !== undefined ? { initiator } : {}),
+        ...(initiatorEvidence !== undefined ? { initiatorEvidence } : {}),
       },
       hash: scriptHash,
       ...(document !== undefined ? { document } : {}),
@@ -208,6 +264,9 @@ export class PendingScriptReads {
    */
   private readonly answeredLate = new Map<HTTPRequest, number>()
   private wake: (() => void) | undefined
+
+  /** @param options.shimSourceUrl The attribution shim's `sourceURL`, so its frame is not read as a request's initiator (see `topCallFrameUrl`). */
+  constructor(private readonly options: { shimSourceUrl?: string } = {}) {}
 
   /**
    * Note a script request the page has issued, so `settle` waits for its
@@ -376,7 +435,12 @@ export class PendingScriptReads {
       for (const [request, { step, documentOf }] of entries) {
         const document = documentOf(request)
         if (bodyFinished(request)) unread.push(withoutResponse(request, step, document))
-        else this.unanswered.set(request, { url: request.url(), resourceType: request.resourceType(), reason, step, ...(document !== undefined ? { document } : {}) })
+        else {
+          // The request's initiator is known from the moment it was issued:
+          // recorded so the evidence names who asked for a script that never came.
+          const initiatorEvidence = deriveInitiatorEvidence(request, this.options.shimSourceUrl)
+          this.unanswered.set(request, { url: request.url(), resourceType: request.resourceType(), reason, step, ...(document !== undefined ? { document } : {}), ...(initiatorEvidence !== undefined ? { initiatorEvidence } : {}) })
+        }
       }
       entries.clear()
     }
