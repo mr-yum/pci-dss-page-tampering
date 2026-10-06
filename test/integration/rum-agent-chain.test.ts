@@ -59,9 +59,10 @@ describe('RUM agent initiator chains in real Chrome', () => {
     const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
     // Puppeteer is ESM-only, so the browser is driven from a child process
     // while this process keeps serving. Leaving the page hides it: the agent
-    // flushes its beacons.
+    // flushes its beacons. Launched with the same flags as main.ts: CI's
+    // container has no usable Chrome sandbox, and the page is a local fixture.
     const drive = `import puppeteer from 'puppeteer'
-const browser = await puppeteer.launch({ headless: true })
+const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] })
 const page = await browser.newPage()
 await page.goto(process.argv[1] + '/checkout?order=secret-42', { waitUntil: 'networkidle0' })
 await page.goto(process.argv[1] + '/done', { waitUntil: 'networkidle0' })
