@@ -135,6 +135,7 @@ function toObservation(capture: ScriptCapture): ExternalScriptObservation | null
   if (capture.initiator && capture.initiator.length <= MAX_URL_LENGTH) {
     observation.initiator = capture.initiator
   }
+  if (capture.initiatorChain && capture.initiatorChain.length > 0) observation.initiatorChain = capture.initiatorChain
   return observation
 }
 
@@ -263,6 +264,7 @@ function toInlineObservation(capture: InlineScriptCapture, hash: string | undefi
   if (capture.initiator && capture.initiator.length <= MAX_URL_LENGTH) {
     observation.initiator = capture.initiator
   }
+  if (capture.initiatorChain && capture.initiatorChain.length > 0) observation.initiatorChain = capture.initiatorChain
   return observation
 }
 
@@ -366,7 +368,7 @@ function pageUrl(): string {
 
 function serialiseBeacon(observations: AgentObservation[]): string {
   const beacon: Beacon = {
-    v: 1,
+    v: 2,
     session: { id: getSessionId(), agentVersion: AGENT_VERSION },
     page: { url: pageUrl() },
     observations,
@@ -403,7 +405,20 @@ export function splitObservations(observations: readonly AgentObservation[], ser
         body = candidate
         break
       }
-      if (size === 1) break
+      if (size === 1) {
+        // One observation alone over the cap: its chain is the only part of
+        // it that can be shed without losing the observation itself.
+        const only = slice[0]
+        if (only !== undefined && 'initiatorChain' in only && only.initiatorChain !== undefined) {
+          const { initiatorChain: _shed, ...withoutChain } = only
+          const fallback = serialise([withoutChain as AgentObservation])
+          if (utf8ByteLength(fallback) <= MAX_BEACON_BYTES) {
+            slice = [withoutChain as AgentObservation]
+            body = fallback
+          }
+        }
+        break
+      }
       size = Math.ceil(size / 2)
     }
     if (body === null) {

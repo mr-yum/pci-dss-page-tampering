@@ -172,9 +172,9 @@ export interface Matchable {
    * the transitive form sees the inserter's. Neither is ever a reason to
    * authorise on its own (the shim is page-forgeable).
    *
-   * Populated by the synthetic chain resolver after a run. RUM observations
-   * do not carry it yet. Undefined or empty means no evidence; every
-   * consumer fails secure on that.
+   * Populated by the synthetic chain resolver after a run, and on the RUM
+   * lane from the agent's insertion map (beacon v2, bound by `normalise.ts`).
+   * Undefined or empty means no evidence; every consumer fails secure on that.
    */
   initiatorChain?: InitiatorHop[]
 

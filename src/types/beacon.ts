@@ -25,11 +25,32 @@ const observationCommon = {
   route: z.string().max(512),
 }
 
+/**
+ * One hop of an initiator chain (schema v2): who inserted the script, then
+ * who inserted that, out to the page. A hop's `url` is a URL under the same
+ * 2048-char cap as every URL field, or an inline script's agent-assigned
+ * identity (`inline_script/rum#<n>` — a session-local counter, never content).
+ * `kind` says what the hop is: `script`, `document`, or `unknown`. The agent
+ * emits only `script` and `unknown` — every chain it records ends at the page
+ * as an `unknown` hop, since it cannot tell who inserted a script it never
+ * saw inserted; `document` belongs to the shared hop type and is accepted,
+ * never produced. See src/types/initiator-chain.ts.
+ */
+export const InitiatorHopSchema = z.strictObject({
+  // http(s) and blob only: a data: URL would put script source on the wire.
+  url: z.union([BoundedUrlSchema.regex(/^(https?|blob):/i), z.string().regex(/^inline_script\/rum#[0-9]{1,9}$/)]),
+  kind: z.enum(['script', 'document', 'unknown']),
+})
+
+/** At most 8 hops — the same depth cap the comparator applies. */
+const InitiatorChainSchema = z.array(InitiatorHopSchema).min(1).max(8)
+
 export const ExternalScriptObservationSchema = z.strictObject({
   kind: z.literal('external-script'),
   ...observationCommon,
   url: BoundedUrlSchema,
   initiator: BoundedUrlSchema.optional(),
+  initiatorChain: InitiatorChainSchema.optional(),
 })
 
 /**
@@ -51,6 +72,7 @@ export const InlineScriptObservationSchema = z.strictObject({
   tail: z.string().max(128),
   oversize: z.boolean().optional(),
   initiator: BoundedUrlSchema.optional(),
+  initiatorChain: InitiatorChainSchema.optional(),
 })
 
 export const CspViolationObservationSchema = z.strictObject({
@@ -69,8 +91,12 @@ export const AgentHealthObservationSchema = z.strictObject({
 
 export const ObservationSchema = z.discriminatedUnion('kind', [ExternalScriptObservationSchema, InlineScriptObservationSchema, CspViolationObservationSchema, AgentHealthObservationSchema])
 
+/**
+ * Version 2 added `initiatorChain` to script observations. No version-1 agent
+ * was ever deployed, so version 1 is not accepted.
+ */
 export const BeaconSchema = z.strictObject({
-  v: z.literal(1),
+  v: z.literal(2),
   session: z.strictObject({
     id: z.uuid({ version: 'v4' }),
     agentVersion: z
@@ -90,6 +116,7 @@ export type ExternalScriptObservation = z.infer<typeof ExternalScriptObservation
 export type InlineScriptObservation = z.infer<typeof InlineScriptObservationSchema>
 export type CspViolationObservation = z.infer<typeof CspViolationObservationSchema>
 export type AgentHealthObservation = z.infer<typeof AgentHealthObservationSchema>
+export type InitiatorHop = z.infer<typeof InitiatorHopSchema>
 
 export type ParseBeaconResult = { ok: true; beacon: Beacon } | { ok: false; reason: 'size' | 'json' | 'schema'; detail?: string }
 

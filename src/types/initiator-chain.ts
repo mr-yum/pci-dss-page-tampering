@@ -10,11 +10,15 @@
  * Shape: immediate inserter first, outward to the root. Each hop says what
  * kind of thing it is, because only a script hop can carry a verdict:
  *
- * - `script` — a script observed in this run. Its `url` is the script's URL, or, for
- *   an inline script, its inline identity (`inline_script/<name>#<instance>`,
- *   never a parseable URL, so host matchers skip it).
+ * - `script` — a script observed in this run (synthetic) or recorded by the
+ *   RUM agent's insertion patch. Its `url` is the script's URL, or, for
+ *   an inline script, its inline identity (`inline_script/<name>#<instance>`
+ *   synthetic, `inline_script/rum#<n>` RUM — never a parseable URL, so host
+ *   matchers skip it).
  * - `document` — the document itself: the walk reached the page (or a frame
- *   document) and stops.
+ *   document) and stops. Synthetic lane only: the RUM agent cannot tell who
+ *   inserted a script it never saw inserted, so it records the page as an
+ *   `unknown` hop.
  * - `unknown` — the URL named as inserter could not be tied to anything
  *   observed (an unread script, a guess such as the document fallback for an
  *   async insertion). The walk ends there and nothing beyond it is assumed;

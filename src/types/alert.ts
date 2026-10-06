@@ -1,3 +1,4 @@
+import type { InitiatorHop } from './initiator-chain.js'
 import type { InventoryAuthorisationInfo } from './inventory/model.js'
 
 export const AlertType = {
@@ -85,4 +86,6 @@ export type RumAlertContext = {
    * the comparison produced none (leaf matchers without nested metadata).
    */
   metadataPath?: InventoryAuthorisationInfo[] | undefined
+  /** Who loaded the script, as the agent reported it (beacon v2); absent without evidence. */
+  initiatorChain?: InitiatorHop[] | undefined
 }

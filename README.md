@@ -1213,9 +1213,9 @@ granting script and the chain) and cites the granting entry's
   match, nothing below it inherits. The same holds for every script between
   the load and the grant: each must itself be authorised (explicitly or by
   inheritance), so an unvouched-for loader cuts its loads off.
-- **A broken chain stops inheritance.** The walk ends at the page, at an
-  `unknown` hop, or at a script the run did not observe; a script with no
-  chain at all inherits nothing.
+- **A broken chain stops inheritance.** The walk ends at any `document` hop
+  (the page or a frame), at an `unknown` hop, or at a script the run did not
+  observe; a script with no chain at all inherits nothing.
 - **Only an authorised entry can grant**, and never an inline script.
   `--mode validate` refuses `authorisesLoads` on an entry whose
   `authorisationInfo.authorised` is `false`, without `loadsMatching`, or with
@@ -1244,9 +1244,39 @@ The string form (`"initiatorHostMatcher": "^pay\\.example\\.com$"`) is
 unchanged and matches the immediate inserter only. The object form matches
 when the host of **any** hop within `maxDepth` matches; a chain ending in an
 `unknown` hop is judged on the hops before it, and a script with no chain is
-never matched. Page and frame documents are hops too, so a pattern matching
-your own page's host identifies every script on the page — aim it at vendor
-hosts, and authorise on content as well.
+never matched. On the synthetic passes, page and frame documents are hops too,
+so a pattern matching your own page's host identifies every script on the
+page — aim it at vendor hosts, and authorise on content as well.
+
+**On real-user observations** (`--mode rum-compare`) both shapes apply, with
+the browser agent's chain (beacon v2) as the evidence and stricter rules,
+because a browser observer never sees a script's body and the ancestors are
+not in the same batch (a known loader is not re-reported):
+
+- **The page is never a known hop.** The agent ends every chain at the page as
+  an `unknown` hop — it cannot tell a script parsed from the markup from one
+  inserted by an async callback — so the transitive form never matches the
+  page's host through the page itself, only through a script hop served from
+  it (a first-party bundle that inserted the script). The string form still
+  sees the page URL as `initiator` whenever no script was running.
+- **An ancestor vouches only on URL evidence.** Each hop is judged from the
+  hop alone: it must be identified **and authorised on URL evidence alone** —
+  its `authoriseWith` uses only `nameMatcher` / `urlMatcher` / `hostMatcher` /
+  `initiatorHostMatcher` / `targetTypeMatcher`. The `authorisesLoads` example
+  above, authorised by `urlMatcher`, qualifies; an SDK authorised by hash
+  vouches on the synthetic lane only. An `initiatorHostMatcher` authoriser
+  counts only when the hop it reads is a real one, not the page's `unknown`
+  hop.
+- **Intermediates are authorised on URL evidence, never by inheritance.** A
+  script between the load and the grant must itself be identified and
+  authorised on URL evidence; one that would only inherit ends the walk.
+- **An inline hop ends the walk**, and an inline observation never inherits —
+  the same rule as the synthetic lane, and stricter in one respect: the agent
+  names an inline hop by a session counter, so it carries no evidence an
+  entry could authorise.
+- The rest is as above: an entry that identifies the observation — pending or
+  declined included — is never overridden, and the grant's `loadsMatching`
+  must accept the observation's own URL.
 
 ### Validating Inventory
 

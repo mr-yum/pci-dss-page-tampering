@@ -73,6 +73,30 @@ describe('createHandler', () => {
     expect(record.beacon).toEqual(JSON.parse(fixture('external-unknown.json')))
   })
 
+  it('archives and enqueues an initiator chain verbatim, and keeps it out of the novelty key', async () => {
+    const deps = makeDeps()
+    const beacon = JSON.parse(fixture('canonical.json')) as Beacon
+    const result = await createHandler(makeConfig(), deps)(makeEvent(fixture('canonical.json')))
+
+    expectNoContent(result)
+    expect(JSON.parse(deps.firehose.putRecord.mock.calls[0][0].data).beacon).toEqual(beacon)
+    const external = beacon.observations[0]!
+    const queued = deps.sqs.sendMessage.mock.calls.map((call: [{ body: string }]) => JSON.parse(call[0].body)).find((message: { observation: { kind: string } }) => message.observation.kind === 'external-script')
+    expect(queued.observation).toEqual(external)
+    // The key is still target#identity#IMMEDIATE initiator host: a different
+    // grandparent is not a new sighting.
+    expect(queued.novelty.pk).toBe('1.0#https://cdn.example.net/sdk.js#pay.example.com')
+  })
+
+  it('rejects a beacon whose chain breaks the schema caps without storing anything', async () => {
+    const deps = makeDeps()
+    const result = await createHandler(makeConfig(), deps)(makeEvent(fixture('invalid/chain-too-long.json')))
+
+    expectNoContent(result)
+    expect(deps.firehose.putRecord).not.toHaveBeenCalled()
+    expect(deps.sqs.sendMessage).not.toHaveBeenCalled()
+  })
+
   it('stamps a production-origin beacon as the detection pass', async () => {
     const deps = makeDeps()
     const result = await createHandler(makeConfig(), deps)(makeEvent(fixture('external-unknown.json'), { Origin: PROD_ORIGIN }))

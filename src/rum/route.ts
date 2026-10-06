@@ -1,13 +1,17 @@
 import type { IAlertService } from '../interfaces/alert.js'
 import type { IScriptComparisonService } from '../interfaces/comparison.js'
+import { redactForDisplay, redactInitiatorHop } from '../services/report/mapper.js'
 import type { RumAlertCategory, RumAlertContext } from '../types/alert.js'
+import type { InheritedAuthorisation } from '../types/comparison/index.js'
 import { UnknownScriptFound } from '../types/comparison/unknown-script-found.js'
-import type { Inventory, InventoryAuthorisationInfo } from '../types/inventory/model.js'
+import { describeChain } from '../types/initiator-chain.js'
+import type { Inventory, InventoryAuthorisationInfo, InventoryScriptInfo } from '../types/inventory/model.js'
 import type { DetectedScript } from '../types/matcher/matcher.interface.js'
 import type { Target } from '../types/target.js'
 import type { Logger } from '../utils/logger.js'
 import type { DrainOutcome } from './drain.js'
 import type { NormalisedCspObservation, NormalisedObservation, NormalisedScriptObservation } from './normalise.js'
+import { consumesOnlyUrlEvidence, inheritOnUrlEvidence } from './url-evidence.js'
 
 /**
  * Per-message routing for real-user observations (data-model.md §7,
@@ -87,20 +91,24 @@ export const rumDedupeKey = (pk: string, inventoryRef: string): string => `${pk}
 /**
  * Routes one normalised observation per the detection rows of data-model §7:
  *
- * - external script (identification-only, R8): identified → recorded, no
- *   authorisation attempt (content is unverifiable, so there is nothing an
- *   authorisation failure could truthfully assert); unidentified →
- *   `rum_uninventoried_script_detected`. Identification judges the script by
- *   its own URL (`Matchable.name`/`url`); the initiator travels only as
- *   alert provenance.
+ * - external script (URL-only evidence, R8): identified by an entry whose
+ *   authoriser consumes only URL evidence → authorised (recorded) or denied
+ *   (`rum_mismatched_script_detected`); identified by any other entry →
+ *   recorded with no authorisation attempt (content is unverifiable, so
+ *   there is nothing such an authorisation failure could truthfully assert);
+ *   unidentified → inherited from an ancestor vouching on URL evidence
+ *   (recorded), else `rum_uninventoried_script_detected`. Identification
+ *   judges the script by its own URL (`Matchable.name`/`url`); the initiator
+ *   and chain are evidence only for an authoriser or grant that consumes
+ *   them, and alert provenance otherwise.
  * - inline script: full identify → authorise with whatever evidence exists.
  *   A client-computed hash IS evidence, and so are the anchored head/tail
  *   windows (T028): matchers are evidence-aware, so an authorised hash — or
  *   a sound anchored-window content match — authorises even though full
  *   content is never transported.
- *   Unidentified → `rum_uninventoried_script_detected`; identified but
- *   unauthorised → `rum_mismatched_script_detected` with the matcher's
- *   failure reason; identified + authorised → recorded.
+ *   Unidentified → `rum_uninventoried_script_detected` (an inline load never
+ *   inherits); identified but unauthorised → `rum_mismatched_script_detected`
+ *   with the matcher's failure reason; identified + authorised → recorded.
  * - CSP violation: opt-in per target (T035). The category alerts ONLY when
  *   the target's alert config explicitly provides
  *   `alerts.rum.cspViolationReported`; without it the violation is recorded
@@ -141,11 +149,18 @@ export async function routeMessage(normalised: NormalisedObservation, deps: RumR
  * inventory-candidate flow instead of alerting.
  *
  * - identified + authorised (inline, via client-computed hash or anchored
- *   head/tail window evidence — T028), or identified at all for
- *   identification-only external scripts (research R8): recorded.
- * - everything the inventory does not positively cover — unidentified
- *   scripts, and inline scripts whose evidence fails (or cannot soundly
- *   satisfy) authorisation — becomes a candidate:
+ *   head/tail window evidence — T028); for external scripts (URL-only
+ *   evidence, research R8) identified by an entry whose authoriser needs
+ *   more than a URL, authorised on URL evidence, or inherited from an
+ *   ancestor vouching on URL evidence: recorded.
+ * - an external script identified but DENIED on URL evidence: recorded with
+ *   the reason, never proposed — a new exact-name candidate would sit behind
+ *   the identifying entry (first match wins) and never apply; the detection
+ *   lane alerts on it, and the identifying entry is what a human amends.
+ * - everything else the inventory does not positively cover — unidentified
+ *   scripts (an inline one never inherits), and inline scripts whose
+ *   evidence fails (or cannot soundly satisfy) authorisation — becomes a
+ *   candidate:
  *   an UnknownScriptFound the caller hands to ScriptInventoryService.diff(),
  *   which generates the matcher config (exact-name identification; hash
  *   authorisation when a hash exists) and enforces pending-entry idempotency.
@@ -170,17 +185,32 @@ function routeInventoryMessage(normalised: NormalisedObservation, deps: RumRoute
   const { matchable } = normalised
 
   if (normalised.identificationOnly) {
-    const entry = deps.scriptComparison.identifyScript(matchable, deps.inventory.scripts)
-
-    if (entry !== undefined) {
-      // External scripts are identification-only (research R8): identified IS
-      // the whole check, same as the detection lane.
-      deps.log.log(`inventory pass: external script '${matchable.name}' identified by ${entry.identifyWith.getDescription()} — recorded`)
-      return { drain: 'routed', outcome: 'recorded', alertDeliveryFailed: false }
+    // The same judgement as the detection lane (judgeExternal): identified
+    // (its authoriser needs evidence a URL cannot supply), authorised on URL
+    // evidence, or inherited → recorded; unknown → a candidate, never an
+    // automated authorisation. Denied on URL evidence is recorded with the
+    // reason, not proposed: a new exact-name candidate would sit behind the
+    // entry that identified it (first match wins) and never apply — the
+    // identifying entry is what a human has to amend, and the detection lane
+    // alerts on the same observation.
+    const verdict = judgeExternal(normalised, deps)
+    switch (verdict.kind) {
+      case 'identified':
+      case 'authorised':
+        deps.log.log(`inventory pass: external script '${matchable.name}' ${verdict.kind} by ${verdict.entry.identifyWith.getDescription()} — recorded`)
+        return { drain: 'routed', outcome: 'recorded', alertDeliveryFailed: false }
+      case 'inherited':
+        deps.log.log(`inventory pass: external script '${matchable.name}' authorised by inheritance from ${verdict.entry.identifyWith.getDescription()} — recorded`)
+        return { drain: 'routed', outcome: 'recorded', alertDeliveryFailed: false }
+      case 'denied':
+        deps.log.log(
+          `inventory pass: external script '${matchable.name}' identified by ${verdict.entry.identifyWith.getDescription()} but denied on URL evidence (${redactForDisplay(verdict.reason, 500).text}) — recorded; amend that entry if this load is legitimate`,
+        )
+        return { drain: 'routed', outcome: 'recorded', alertDeliveryFailed: false }
+      case 'unknown':
+        deps.log.log(`inventory pass: external script '${matchable.name}' not identified by any inventory entry — proposing a pending candidate`)
+        return buildCandidateOutcome(normalised, deps)
     }
-
-    deps.log.log(`inventory pass: external script '${matchable.name}' not identified by any inventory entry — proposing a pending candidate`)
-    return buildCandidateOutcome(normalised, deps)
   }
 
   // Inline scripts always run the full evidence-aware comparison: a
@@ -194,6 +224,7 @@ function routeInventoryMessage(normalised: NormalisedObservation, deps: RumRoute
 
   switch (result.type) {
     case 'unknown_script_found':
+      // Never inherited: an inline load's name and chain are page-controlled.
       deps.log.log(`inventory pass: inline script '${matchable.name}' not identified by any inventory entry — proposing a pending candidate`)
       return buildCandidateOutcome(normalised, deps)
     case 'known_script_unauthorised_content':
@@ -310,17 +341,57 @@ function buildCspAlertContext(normalised: NormalisedCspObservation, deps: RumRou
   }
 }
 
-/** External scripts: identification-only (research R8). */
+/**
+ * External scripts: identification-only (research R8) — unless the
+ * identifying entry's authoriser consumes only URL evidence, in which case
+ * it is evaluated exactly (see `consumesOnlyUrlEvidence`): authorised →
+ * recorded, denied → `rum_mismatched_script_detected` with the matcher's
+ * reason. An unidentified script may still inherit from a granting ancestor
+ * in its chain (`inheritOnUrlEvidence`) before it is alerted on.
+ */
 async function routeExternalScript(normalised: NormalisedScriptObservation, deps: RumRouteDeps): Promise<RumRouteOutcome> {
   const { matchable } = normalised
-  const entry = deps.scriptComparison.identifyScript(matchable, deps.inventory.scripts)
+  const verdict = judgeExternal(normalised, deps)
 
-  if (entry !== undefined) {
-    deps.log.log(`external script '${matchable.name}' identified by ${entry.identifyWith.getDescription()} — recorded (identification-only: content is unverifiable client-side, no authorisation attempted)`)
-    return { drain: 'routed', outcome: 'recorded', alertDeliveryFailed: false }
+  switch (verdict.kind) {
+    case 'identified':
+      deps.log.log(`external script '${matchable.name}' identified by ${verdict.entry.identifyWith.getDescription()} — recorded (identification-only: its authoriser needs evidence a URL cannot supply)`)
+      return { drain: 'routed', outcome: 'recorded', alertDeliveryFailed: false }
+    case 'authorised':
+      deps.log.log(`external script '${matchable.name}' authorised on URL evidence by ${verdict.entry.authoriseWith.matcher.getDescription()} — recorded`)
+      return { drain: 'routed', outcome: 'recorded', alertDeliveryFailed: false }
+    case 'inherited':
+      deps.log.log(`external script '${matchable.name}' authorised by inheritance from ${verdict.entry.identifyWith.getDescription()} (${describeChain(verdict.inherited.via, (hop) => redactInitiatorHop(hop).url)}) — recorded`)
+      return { drain: 'routed', outcome: 'recorded', alertDeliveryFailed: false }
+    case 'denied':
+      return sendRumAlert(
+        'rum_mismatched_script_detected',
+        buildAlertContext(normalised, deps, { failureReason: verdict.reason, matcherDescription: verdict.entry.authoriseWith.matcher.getDescription(), metadataPath: verdict.metadataPath }),
+        deps,
+      )
+    case 'unknown':
+      return sendRumAlert('rum_uninventoried_script_detected', buildAlertContext(normalised, deps), deps)
   }
+}
 
-  return sendRumAlert('rum_uninventoried_script_detected', buildAlertContext(normalised, deps), deps)
+type ExternalVerdict =
+  | { kind: 'identified'; entry: InventoryScriptInfo }
+  | { kind: 'authorised'; entry: InventoryScriptInfo }
+  | { kind: 'denied'; entry: InventoryScriptInfo; reason: string; metadataPath: InventoryAuthorisationInfo[] }
+  | { kind: 'inherited'; entry: InventoryScriptInfo; inherited: InheritedAuthorisation }
+  | { kind: 'unknown' }
+
+/** One judgement for an external (URL-only) observation, shared by both lanes. */
+function judgeExternal(normalised: NormalisedScriptObservation, deps: RumRouteDeps): ExternalVerdict {
+  const { matchable } = normalised
+  const entry = deps.scriptComparison.identifyScript(matchable, deps.inventory.scripts)
+  if (entry !== undefined) {
+    if (!consumesOnlyUrlEvidence(entry.authoriseWith.matcher, matchable)) return { kind: 'identified', entry }
+    const result = entry.authoriseWith.matcher.authorize(matchable)
+    return result.authorized ? { kind: 'authorised', entry } : { kind: 'denied', entry, reason: result.reason ?? 'Unknown authorization failure', metadataPath: result.metadataPath ?? [] }
+  }
+  const inheritance = inheritOnUrlEvidence(matchable, deps.inventory.scripts, (ancestor) => deps.scriptComparison.identifyScript(ancestor, deps.inventory.scripts))
+  return inheritance === null ? { kind: 'unknown' } : { kind: 'inherited', ...inheritance }
 }
 
 /**
@@ -350,6 +421,8 @@ async function routeInlineScript(normalised: NormalisedScriptObservation, deps: 
 
   switch (result.type) {
     case 'unknown_script_found':
+      // Never inherited, on either lane: an inline load's name and chain are
+      // page-controlled evidence (see inheritOnUrlEvidence).
       return sendRumAlert('rum_uninventoried_script_detected', buildAlertContext(normalised, deps), deps)
     case 'known_script_unauthorised_content':
       return sendRumAlert(
@@ -385,6 +458,7 @@ function buildAlertContext(normalised: NormalisedScriptObservation, deps: RumRou
     // store. They stay optional in the contract for when a counters snapshot
     // becomes available.
     prevalence: { first_seen: rum.firstSeen },
+    ...(matchable.initiatorChain !== undefined && matchable.initiatorChain.length > 0 ? { initiatorChain: matchable.initiatorChain } : {}),
     first_route: rum.firstRoute,
     targetType: rum.targetType,
     inventoryRef: deps.inventoryRef,

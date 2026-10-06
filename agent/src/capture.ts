@@ -33,6 +33,7 @@
  * network, no storage writes beyond the deferred dedupe persist.
  */
 
+import type { InitiatorHop } from '../../src/types/beacon.js'
 import { getRoute, hasSeen, markSeenIfNew } from './session.js'
 
 /** A raw capture: the cheap facts recorded inside an observer callback. */
@@ -41,6 +42,8 @@ export interface ScriptCapture {
   url: string
   /** URL of the inserting script (or document) when attributable. */
   initiator?: string
+  /** Who inserted it, out to the page — insertion-patch captures only (see {@link chainFor}). */
+  initiatorChain?: InitiatorHop[]
   /** SPA route active at capture (pathname only). */
   route: string
   /** Capture timestamp, epoch ms. */
@@ -69,6 +72,8 @@ export interface InlineScriptCapture {
   source: string
   /** URL of the inserting script (or document) when attributable. */
   initiator?: string
+  /** Who inserted it, out to the page — insertion-patch captures only (see {@link chainFor}). */
+  initiatorChain?: InitiatorHop[]
   /** SPA route active at capture (pathname only). */
   route: string
   /** Capture timestamp, epoch ms. */
@@ -81,6 +86,81 @@ export interface InlineScriptCapture {
  * — the agent must never degrade the page it monitors (FR-003).
  */
 const MAX_PENDING_CAPTURES = 500
+
+/** Matches the beacon schema's chain caps (`src/types/beacon.ts`). */
+const MAX_CHAIN_HOPS = 8
+const MAX_HOP_URL_CHARS = 2048
+
+/**
+ * The chain each script element was inserted with, so a script IT inserts
+ * can extend it: `[its own hop, ...its chain]`. Recorded synchronously in the
+ * insertion patch, where `document.currentScript` still names the inserter —
+ * O(depth) array work, no hashing, no serialisation (FR-003).
+ */
+let chains = new WeakMap<HTMLScriptElement, InitiatorHop[]>()
+/** Per-element identity for an inline script used as a hop (it has no URL). */
+let inlineIds = new WeakMap<HTMLScriptElement, string>()
+let inlineCounter = 0
+const INLINE_HOP_PREFIX = 'inline_script/rum#'
+
+/**
+ * Record an element's chain BEFORE the original insertion runs: inserting an
+ * inline script executes it synchronously inside the call, and whatever it
+ * inserts must already find its chain. Idempotent: a re-inserted (moved)
+ * element keeps the chain of its first insertion.
+ */
+function recordChain(node: Node): void {
+  if (node instanceof HTMLScriptElement && !chains.has(node)) chains.set(node, chainFor(document.currentScript))
+}
+
+function inlineHopUrl(script: HTMLScriptElement): string {
+  let id = inlineIds.get(script)
+  if (id === undefined) {
+    inlineCounter += 1
+    id = `${INLINE_HOP_PREFIX}${inlineCounter}`
+    inlineIds.set(script, id)
+  }
+  return id
+}
+
+/**
+ * The initiator chain for a script being inserted right now, immediate
+ * inserter first:
+ * - inserter is an external script → its URL, then that script's own chain;
+ * - inserter is an inline script → its per-element identity, then its chain;
+ * - an inserter the patch never saw inserted (parser markup, or an insertion
+ *   path the agent does not patch, such as `append()`) → the document as an
+ *   `unknown` hop: nothing is known about who inserted it;
+ * - no `currentScript` at all (async callback, event handler) → the document
+ *   URL as an `unknown` hop: nothing is known about who inserted it.
+ * Capped at 8 hops; a hop whose URL exceeds the schema cap, or is not an
+ * http(s) or blob URL (a `data:` URL would carry script source), ends the
+ * chain there — a shorter chain can only remove ways to match, never add one.
+ */
+function chainFor(currentScript: Element | null): InitiatorHop[] {
+  if (!(currentScript instanceof HTMLScriptElement)) return capped([{ url: documentHopUrl(), kind: 'unknown' }])
+  const self: InitiatorHop = currentScript.src ? { url: currentScript.src, kind: 'script' } : { url: inlineHopUrl(currentScript), kind: 'script' }
+  const above = chains.get(currentScript) ?? [{ url: documentHopUrl(), kind: 'unknown' }]
+  return capped([self, ...above])
+}
+
+/**
+ * The document as a hop: origin and path only, like the beacon's `page.url`
+ * — a query or fragment can carry tokens and PII, and a long one would push
+ * the hop past the schema's URL cap and get the whole beacon rejected.
+ */
+function documentHopUrl(): string {
+  return location.origin + location.pathname
+}
+
+function capped(hops: readonly InitiatorHop[]): InitiatorHop[] {
+  const chain: InitiatorHop[] = []
+  for (const hop of hops) {
+    if (chain.length >= MAX_CHAIN_HOPS || hop.url.length > MAX_HOP_URL_CHARS || !(hop.url.startsWith(INLINE_HOP_PREFIX) || /^(https?|blob):/i.test(hop.url))) break
+    chain.push(hop)
+  }
+  return chain
+}
 
 /** Matches the beacon schema's `directive` cap (`src/types/beacon.ts`). */
 const MAX_CSP_DIRECTIVE_CHARS = 128
@@ -190,7 +270,7 @@ function resolveSrc(script: HTMLScriptElement): string | null {
  * character — no copies, no slicing) and the WeakSet/capacity bookkeeping;
  * everything expensive is deferred (FR-003).
  */
-function captureInline(script: HTMLScriptElement, initiator: string): void {
+function captureInline(script: HTMLScriptElement, initiator: string, initiatorChain?: InitiatorHop[]): void {
   if (capturedInlineElements.has(script)) return
   const source = script.textContent ?? ''
   // Whitespace-only: nothing meaningful was observed.
@@ -199,7 +279,9 @@ function captureInline(script: HTMLScriptElement, initiator: string): void {
   // re-capturable once the queue drains (same ordering as external capture).
   if (!hasCapacity()) return
   capturedInlineElements.add(script)
-  inlineQueue.push({ source, initiator, route: getRoute(), ts: Date.now() })
+  const capture: InlineScriptCapture = { source, initiator, route: getRoute(), ts: Date.now() }
+  if (initiatorChain !== undefined && initiatorChain.length > 0) capture.initiatorChain = initiatorChain
+  inlineQueue.push(capture)
 }
 
 /**
@@ -212,8 +294,12 @@ function captureFromInsertion(script: HTMLScriptElement): void {
   const url = resolveSrc(script)
   const currentScript = document.currentScript
   const initiator = currentScript instanceof HTMLScriptElement && currentScript.src ? currentScript.src : location.href
+  // Recorded for every inserted script, captured or not, so whatever it
+  // inserts in turn can extend the chain.
+  const initiatorChain = chains.get(script) ?? chainFor(currentScript)
+  if (!chains.has(script)) chains.set(script, initiatorChain)
   if (!url) {
-    captureInline(script, initiator)
+    captureInline(script, initiator, initiatorChain)
     return
   }
   if (hasSeen(urlWithInitiatorKey(url, initiator))) return
@@ -223,7 +309,7 @@ function captureFromInsertion(script: HTMLScriptElement): void {
   markSeenIfNew(urlWithInitiatorKey(url, initiator))
   // Also mark the bare URL so the attribution-less safety nets stay silent.
   markSeenIfNew(urlKey(url))
-  enqueue({ url, initiator, route: getRoute(), ts: Date.now() })
+  enqueue({ url, initiator, ...(initiatorChain.length > 0 ? { initiatorChain } : {}), route: getRoute(), ts: Date.now() })
 }
 
 /**
@@ -249,6 +335,11 @@ function patchInsertion(): void {
 
   const originalAppendChild = Node.prototype.appendChild
   Node.prototype.appendChild = function <T extends Node>(this: Node, node: T): T {
+    try {
+      recordChain(node)
+    } catch {
+      // Monitoring must never break the host page.
+    }
     const result = originalAppendChild.call(this, node) as T
     try {
       if (node instanceof HTMLScriptElement) captureFromInsertion(node)
@@ -260,6 +351,11 @@ function patchInsertion(): void {
 
   const originalInsertBefore = Node.prototype.insertBefore
   Node.prototype.insertBefore = function <T extends Node>(this: Node, node: T, reference: Node | null): T {
+    try {
+      recordChain(node)
+    } catch {
+      // Monitoring must never break the host page.
+    }
     const result = originalInsertBefore.call(this, node, reference) as T
     try {
       if (node instanceof HTMLScriptElement) captureFromInsertion(node)
@@ -393,6 +489,9 @@ export function resetCaptureForTesting(): void {
   inlineQueue.length = 0
   cspQueue.length = 0
   capturedInlineElements = new WeakSet()
+  chains = new WeakMap()
+  inlineIds = new WeakMap()
+  inlineCounter = 0
   dropped = 0
   started = false
   mutationObserver?.disconnect()

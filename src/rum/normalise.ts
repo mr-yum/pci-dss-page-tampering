@@ -78,8 +78,11 @@ export type NormalisedScriptObservation = {
   matchable: Matchable
   /**
    * True for external scripts: content and hash are unobtainable client-side
-   * (research R8), so evaluation short-circuits to identification only —
-   * identified means recorded, never an authorisation attempt.
+   * (research R8), so the observation carries URL-only evidence (its own URL,
+   * initiator, chain and pass). It is authorised or denied when the
+   * identifying entry's authoriser consumes only that evidence
+   * (`consumesOnlyUrlEvidence`, `src/rum/url-evidence.ts`); otherwise
+   * identified means recorded, with no authorisation attempt.
    */
   identificationOnly: boolean
   /** Present for inline scripts only. */
@@ -143,6 +146,9 @@ export function normaliseMessage(msg: QueueMessage): NormalisedObservation {
           // its own field, where only InitiatorHostMatcher consumes it.
           url: observation.url,
           ...(observation.initiator !== undefined ? { initiator: observation.initiator } : {}),
+          // Who loaded it, as the agent recorded it (schema v2): consumed by
+          // the transitive initiatorHostMatcher and by load grants.
+          ...(observation.initiatorChain !== undefined ? { initiatorChain: observation.initiatorChain } : {}),
           targetType: msg.target_type,
         },
         rum: rumContextOf(msg, observation.initiator),
@@ -170,6 +176,7 @@ export function normaliseMessage(msg: QueueMessage): NormalisedObservation {
           // ALSO bound to `initiator` so entries written with
           // initiatorHostMatcher behave uniformly across script kinds.
           ...(observation.initiator !== undefined ? { url: observation.initiator, initiator: observation.initiator } : {}),
+          ...(observation.initiatorChain !== undefined ? { initiatorChain: observation.initiatorChain } : {}),
           targetType: msg.target_type,
         },
         evidence: {
