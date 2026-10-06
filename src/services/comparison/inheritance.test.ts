@@ -12,11 +12,13 @@ import type { InitiatorHop } from '../../types/initiator-chain.js'
 import type { Inventory } from '../../types/inventory/model.js'
 import type { RawInventoryScriptInfo } from '../../types/inventory/raw.js'
 import { RawInventoryScriptInfoSchema } from '../../types/inventory/zod.js'
+import { createMatcher } from '../../types/matcher/matcher-factory.js'
 import type { ScriptInfo } from '../../types/script.js'
 import type { Target } from '../../types/target.js'
 import { createSha256Hash } from '../../utils/hash.js'
 import { createLogger } from '../../utils/logger.js'
 import { rawInventoryScriptInfoToInventoryScriptInfo } from '../../utils/script.js'
+import { ScriptInventoryService } from '../inventory.js'
 import { ScriptComparisonService } from './script.js'
 
 const target: Target = { type: 'detection', url: 'https://shop.example/pay', workflow: { fileName: 'w.json', definition: { steps: [] } }, logger: createLogger('test') }
@@ -245,18 +247,70 @@ describe('inherited authorisation (authorisesLoads)', () => {
     expect(forked.get(ASSET)?.type).toBe('authorized_script')
   })
 
-  it('passes through an inline hop named by its instance token', async () => {
+  it('passes through an inline hop that an entry authorised on its content — the inline script itself never inherits', async () => {
     const inline: ScriptInfo = {
       source: { type: 'inline', id: 'inline_script/id_not_found', content: 'var s=document.createElement("script")', instances: [{ token: 'k1-7', kind: 'script', inserterToken: null }], url: LOADER },
-      hash: { value: 'inline' } as SHA256Hash,
+      hash: { value: h('inline') } as SHA256Hash,
       initiatorChain: [s(LOADER), page],
     }
-    // The guard has to admit inline loads explicitly: an inline script has no URL of its own.
-    const grant = loaderEntry({ authorisesLoads: 'transitive', loadsMatching: { orMatcher: [ANY_HTTPS, { nameMatcher: '^inline_script/' }] } })
-    expect((await compare(inventory(loaderEntry()), [external(LOADER, 'loader-v1', [page])], [inline])).get('inline_script/id_not_found')?.type).toBe('unknown_script_found')
-    const results = await compare(inventory(grant), [external(LOADER, 'loader-v1', [page]), external(ASSET, 'asset', [s('inline_script/id_not_found#k1-7'), s(LOADER), page])], [inline])
-    expect(results.get('inline_script/id_not_found')?.type).toBe('authorized_script')
+    const observed = [external(LOADER, 'loader-v1', [page]), external(ASSET, 'asset', [s('inline_script/id_not_found#k1-7'), s(LOADER), page])]
+
+    // Inserted by the granting loader, but an inline load never inherits — so
+    // nothing it inserted can reach the grant either.
+    const ungranted = await compare(inventory(loaderEntry()), observed, [inline])
+    expect(ungranted.get('inline_script/id_not_found')?.type).toBe('unknown_script_found')
+    expect(ungranted.get(ASSET)?.type).toBe('unknown_script_found')
+
+    // Authorised by an entry of its own, it carries the walk to the grant.
+    const inlineEntry = entry({ identifyWith: { contentMatcher: '^var s=document\\.createElement\\("script"\\)$' }, authoriseWith: { hashes: hashes('inline'), authorisationInfo: AUTHORISED } })
+    const results = await compare(inventory(loaderEntry(), inlineEntry), observed, [inline])
+    expect((results.get('inline_script/id_not_found') as AuthorizedScriptFound).inherited).toBeUndefined()
     expect((results.get(ASSET) as AuthorizedScriptFound).inherited?.via.map((hop) => hop.url)).toEqual(['inline_script/id_not_found#k1-7', LOADER])
+  })
+
+  describe('inline loads never inherit', () => {
+    // What a page that overrides the shim's built-ins (WeakMap.prototype.get/has)
+    // can make the shim report for an inline script it inserted itself: an
+    // insertion "by" the granting loader, under any element id it likes.
+    const forged = (id: string): ScriptInfo => ({
+      source: { type: 'inline', id, content: 'exfiltrate(document.forms)', instances: [{ token: 'forged-1', kind: 'script', inserterToken: null }], url: LOADER },
+      hash: { value: h('payload') } as SHA256Hash,
+      initiatorChain: [s(LOADER), page],
+    })
+
+    it('refuses a forged inline load even under a guard that would admit it by name and by content (built outside validation)', async () => {
+      const grant = loaderEntry()
+      grant.authorisesLoads = { mode: 'transitive', maxDepth: 8, loadsMatching: createMatcher({ orMatcher: [{ nameMatcher: '^inline_script/' }, { contentMatcher: 'exfiltrate' }] }) }
+      const results = await compare(inventory(grant), [external(LOADER, 'loader-v1', [page])], [forged('inline_script/vendor-config')])
+      expect(results.get(LOADER)?.type).toBe('authorized_script')
+      expect(results.get('inline_script/vendor-config')?.type).toBe('unknown_script_found')
+    })
+  })
+
+  describe('an entry pending review or declined is a standing verdict a grant cannot override', () => {
+    const NEW = 'https://assets.vendor.example/new.js'
+    const pendingEntry = (description: string) =>
+      entry({ identifyWith: { nameMatcher: `^${NEW.replaceAll('.', '\\.')}$` }, authoriseWith: { nameMatcher: `^${NEW.replaceAll('.', '\\.')}$`, authorisationInfo: { ...AUTHORISED, description, authorised: false } } })
+
+    it.each(['NO_DESCRIPTION', 'Declined: not needed on the payment page'])('a script identified only by an unauthorised entry (%s) stays unknown under a granting loader', async (description) => {
+      const results = await compare(inventory(loaderEntry(), pendingEntry(description)), [external(LOADER, 'loader-v1', [page]), external(NEW, 'new', [s(LOADER), page])])
+      expect(results.get(NEW)?.type).toBe('unknown_script_found')
+      // Without the pending entry, the same load inherits.
+      expect((await compare(inventory(loaderEntry()), [external(LOADER, 'loader-v1', [page]), external(NEW, 'new', [s(LOADER), page])])).get(NEW)?.type).toBe('authorized_script')
+    })
+
+    it('so detection alerts on it, and the inventory pass sees it as already covered by the pending entry', async () => {
+      const inv = inventory(loaderEntry(), pendingEntry('NO_DESCRIPTION'))
+      const observed = { externalScripts: [external(LOADER, 'loader-v1', [page]), external(NEW, 'new', [s(LOADER), page])], inlineScripts: [] }
+      const unknownNames = (results: ComparisonResultType[]) => results.filter((result) => result.type === 'unknown_script_found').map((result) => (result as { script: { name: string } }).script.name)
+      expect(unknownNames(await new ScriptComparisonService().compare(target, inv, observed))).toEqual([NEW])
+
+      const inventoryPass = await new ScriptComparisonService().compare({ ...target, type: 'inventory' }, inv, observed)
+      expect(unknownNames(inventoryPass)).toEqual([NEW])
+      const diff = await new ScriptInventoryService({ inventoryRepository: {} as never }).diff(inv, inventoryPass)
+      expect(diff.appliedResults).toEqual([])
+      expect(diff.newInventory.scripts).toHaveLength(2)
+    })
   })
 })
 
@@ -297,6 +351,48 @@ describe('authorisesLoads validation', () => {
     const result = RawInventoryScriptInfoSchema.safeParse({ identifyWith: { nameMatcher: '^x$' }, authoriseWith: { hashes: hashes('h'), authorisationInfo: AUTHORISED }, authorisesLoads: 'transitive' })
     expect(result.success).toBe(false)
     expect(JSON.stringify(result.error?.issues)).toContain('authorisesLoads requires loadsMatching')
+  })
+
+  describe('the guard must judge the load itself', () => {
+    const base = { identifyWith: { nameMatcher: '^x$' }, authoriseWith: { hashes: hashes('h'), authorisationInfo: AUTHORISED }, authorisesLoads: 'transitive' }
+    const issues = (loadsMatching: unknown): string => {
+      const result = RawInventoryScriptInfoSchema.safeParse({ ...base, loadsMatching })
+      return result.success ? '' : JSON.stringify(result.error.issues)
+    }
+
+    it.each([
+      ['a workflowMatcher alone', { workflowMatcher: '.*' }],
+      ['a targetTypeMatcher alone', { targetTypeMatcher: '^detection$' }],
+      ['an initiatorHostMatcher alone (the guard never sees the initiator)', { initiatorHostMatcher: '^js\\.vendor\\.example$' }],
+      ['an andMatcher of run metadata only', { andMatcher: [{ workflowMatcher: '^checkout$' }, { targetTypeMatcher: '^detection$' }] }],
+      ['an orMatcher with a run-metadata alternative', { orMatcher: [{ nameMatcher: '^https://js\\.vendor\\.example/' }, { workflowMatcher: '^checkout$' }] }],
+    ])('refuses %s', (_label, loadsMatching) => {
+      expect(issues(loadsMatching)).toContain('loadsMatching must judge the loaded script on its own evidence')
+    })
+
+    it.each([
+      ['a nameMatcher', { nameMatcher: '^https://js\\.vendor\\.example/' }],
+      ['a urlMatcher', { urlMatcher: '^https://js\\.vendor\\.example/' }],
+      ['a hostMatcher', { hostMatcher: '^js\\.vendor\\.example$' }],
+      ['a hash list', { hashes: hashes('asset') }],
+      ['an andMatcher narrowing a nameMatcher to one workflow', { andMatcher: [{ nameMatcher: '^https://js\\.vendor\\.example/' }, { workflowMatcher: '^checkout$' }] }],
+    ])('accepts %s', (_label, loadsMatching) => {
+      expect(issues(loadsMatching)).toBe('')
+    })
+
+    it.each([
+      ['the inline prefix', { nameMatcher: '^inline_script/' }],
+      ['one inline name', { nameMatcher: '^inline_script/vendor-config$' }],
+      ['a pattern that admits any name', { nameMatcher: '.*' }],
+      ['an inline alternative beside a URL', { orMatcher: [{ nameMatcher: '^https://js\\.vendor\\.example/' }, { nameMatcher: '^inline_script/' }] }],
+    ])('refuses a guard that admits inline scripts: %s', (_label, loadsMatching) => {
+      expect(issues(loadsMatching)).toContain('loadsMatching must not admit inline scripts')
+    })
+
+    it('refuses a headerNameMatcher: script URLs are case-sensitive', () => {
+      expect(issues({ headerNameMatcher: '^x$' })).toContain('headerNameMatcher is not valid in loadsMatching')
+      expect(issues({ orMatcher: [{ nameMatcher: '^https://' }, { headerNameMatcher: '^x$' }] })).toContain('headerNameMatcher is not valid in loadsMatching')
+    })
   })
 
   it('refuses an invalid regex in loadsMatching', () => {

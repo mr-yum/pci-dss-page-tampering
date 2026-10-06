@@ -557,4 +557,25 @@ describe('ScriptComparisonService', () => {
       expect(rawInventoryScriptInfoToInventoryScriptInfo(raw).requiredOn).toEqual(['inventory', 'detection'])
     })
   })
+
+  describe('a declined alternative inside an authorised entry (FR-011)', () => {
+    it('denies a script only a declined leaf alternative would authorise, naming the declined alternative', async () => {
+      const url = 'https://js.vendor.example/sdk.js'
+      mockInventory.scripts = [
+        rawInventoryScriptInfoToInventoryScriptInfo({
+          identifyWith: { nameMatcher: '^https://js\\.vendor\\.example/sdk\\.js$' },
+          authoriseWith: [
+            { hashes: [{ timestamp: '2026-10-01T00:00:00.000Z', hash: { value: 'the approved release' } }], authorisationInfo: { description: 'v1', authorised: true, date: '2026-10-01T00:00:00.000Z' } },
+            { nameMatcher: '^https://js\\.vendor\\.example/', authorisationInfo: { description: 'Any release (declined)', authorised: false, date: '2026-10-02T00:00:00.000Z' } },
+          ],
+        }),
+      ]
+      const script: ScriptInfo = { source: { type: 'external', url, content: 'vendor.init()' }, hash: { value: 'a new release' } as SHA256Hash }
+
+      const [result] = await service.compare(mockTarget, mockInventory, { externalScripts: [script], inlineScripts: [] })
+
+      expect(result?.type).toBe('known_script_unauthorised_content')
+      expect((result as { failureReason: string }).failureReason).toBe('Top-level authorization denied: Any release (declined)')
+    })
+  })
 })

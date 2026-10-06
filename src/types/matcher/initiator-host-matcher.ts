@@ -50,7 +50,7 @@
  */
 
 import { chainPaths, describeChain, hopHost, hopHostLabel, INITIATOR_CHAIN_MAX_DEPTH, type InitiatorHop, knownPrefix } from '../initiator-chain.js'
-import type { AuthorizationResult } from './authorization-result.js'
+import { type AuthorizationResult, deniedByAuthorisationInfo } from './authorization-result.js'
 import type { AuthorisationInfo, AuthorisationMatcher, Matchable } from './matcher.interface.js'
 
 /** How far out the chain a transitive matcher looks. Omitted options mean the immediate-hop form. */
@@ -152,6 +152,9 @@ export class InitiatorHostMatcher implements AuthorisationMatcher {
       }
     }
 
+    const declined = deniedByAuthorisationInfo(this.authorisationInfo)
+    if (declined) return declined
+
     const matches = this.pattern.test(host)
     const result: AuthorizationResult = matches
       ? { authorized: true }
@@ -170,6 +173,8 @@ export class InitiatorHostMatcher implements AuthorisationMatcher {
   private authorizeTransitive(resource: Matchable): AuthorizationResult {
     const paths = chainPaths(resource)
     if (paths.length === 0) return { authorized: false, reason: 'initiator chain is missing' }
+    const declined = deniedByAuthorisationInfo(this.authorisationInfo)
+    if (declined) return declined
 
     const result: AuthorizationResult = this.transitiveMatch(resource)
       ? { authorized: true }

@@ -4,6 +4,7 @@ import { AuthorizedScriptFound, KnownScriptWithUnauthorisedContentFound, Missing
 import type { InheritedAuthorisation } from '../../types/comparison/index.js'
 import { chainPaths, describeChain, type InitiatorHop, inlineInstanceOf, ownEvidence } from '../../types/initiator-chain.js'
 import type { Inventory, InventoryScriptInfo } from '../../types/inventory/model.js'
+import type { AuthorizationResult } from '../../types/matcher/authorization-result.js'
 import type { DetectedScript, Matchable } from '../../types/matcher/matcher.interface.js'
 import type { ScriptDetectionSummary, ScriptInfo } from '../../types/script.js'
 import type { Target } from '../../types/target.js'
@@ -32,7 +33,11 @@ export class ScriptComparisonService implements IScriptComparisonService {
     // grant on an ancestor that pass 1 authorised (see inheritAuthorisation).
     const pass1 = [...externalScriptsResults, ...inlineScriptsResults]
     const judged = [...detectedExternalScripts, ...detectedInlineScripts].map((script, index) => ({ script, result: pass1[index]! }))
-    const withInheritance = inheritAuthorisation(judged, target, (script) => this.findMatchingInventoryEntry(script, inventoryScripts) !== undefined)
+    // Every entry counts here, pending and declined ones included: an entry
+    // that identifies a script is a standing statement about that script —
+    // a reviewer's "not yet" or "no" — which a load grant must not override.
+    // (Pass 1 skips such entries, so the script reached pass 2 as unknown.)
+    const withInheritance = inheritAuthorisation(judged, target, (script) => inventoryScripts.some((entry) => entry.identifyWith.identify(script)))
 
     return Promise.resolve([...withInheritance, ...missingRequiredResults])
   }
@@ -222,8 +227,20 @@ export class ScriptComparisonService implements IScriptComparisonService {
     const identifyDescription = matchedEntry.identifyWith.getDescription()
     target.logger.log(`${scriptLabel} identified using ${identifyDescription}.`)
 
-    // Authorization using authoriseWith matcher
-    const authorizationResult = matchedEntry.authoriseWith.matcher.authorize(detectedScript)
+    // Authorization using authoriseWith matcher. The entry's own
+    // `authorised` flag gates the verdict exactly as it does for headers:
+    // identification already skips an entry that is not authorised, so this
+    // never fires today, but a declined entry must never authorise through a
+    // leaf authoriser that does not consult the flag itself.
+    const matcherResult = matchedEntry.authoriseWith.matcher.authorize(detectedScript)
+    const authorizationResult: AuthorizationResult =
+      matchedEntry.authoriseWith.authorisationInfo.authorised === true
+        ? matcherResult
+        : {
+            ...matcherResult,
+            authorized: false,
+            reason: `inventory entry is not authorised (authorisationInfo.authorised is ${String(matchedEntry.authoriseWith.authorisationInfo.authorised)}): ${matchedEntry.authoriseWith.authorisationInfo.description}`,
+          }
 
     // Log authorization result with matcher details
     const authorizeDescription = matchedEntry.authoriseWith.matcher.getDescription()
@@ -287,15 +304,21 @@ type Judged = { script: ScriptInfo; result: ComparisonResultType }
 /**
  * Pass 2 of the script comparison: trust inherited through loaders.
  *
- * For every script pass 1 left `unknown`, walk its initiator chain outward.
- * The script inherits authorisation from the first hop that is a script pass
- * 1 AUTHORISED (explicitly, by an entry identifying it) under an entry
- * carrying `authorisesLoads`, provided the hop sits within the grant's depth
- * and, if the grant has a `loadsMatching` guard, the guard identifies the
- * script. Each rule is fail-secure:
+ * For every external script pass 1 left `unknown`, walk its initiator chain
+ * outward. The script inherits authorisation from the first hop that is an
+ * external script pass 1 AUTHORISED (explicitly, by an entry identifying it)
+ * under an entry carrying `authorisesLoads`, provided the hop sits within the
+ * grant's depth and the grant's `loadsMatching` guard identifies the script
+ * on its own evidence. Each rule is fail-secure:
  *
- * - **Only `unknown` inherits.** An explicit verdict beats inheritance: a
- *   script an entry identified and denied stays denied.
+ * - **Only `unknown` inherits, and only when no entry identifies it.** An
+ *   explicit verdict beats inheritance: a script an entry identified and
+ *   denied stays denied, and so does one only a pending or declined entry
+ *   identifies (`identified` sees every entry, whatever its `authorised`).
+ * - **An inline load never inherits; an inline script never grants.** Both
+ *   rest on page-controlled evidence (element ids, shim records, text that
+ *   can be rewritten after it ran). An inline hop that an entry authorised
+ *   still carries the walk.
  * - **A denied ancestor poisons its subtree.** Every observation of a hop's
  *   script must be authorised in this run; one mismatched copy (the walk
  *   cannot tell which copy did the loading) and nothing below it inherits.
@@ -365,9 +388,18 @@ export function inheritAuthorisation(judged: readonly Judged[], target: Target, 
     // A cycle in the evidence: whatever is being decided further down the
     // stack cannot vouch for itself.
     if (inProgress.has(entry) || entry.result.type !== 'unknown_script_found') return null
-    // Unknown only because its content was empty (the synthetic null-content
-    // gate runs before identification): an entry claims it, so its verdict is
-    // that entry's to give, never a grant's.
+    // An inline load never inherits — the mirror of "an inline script never
+    // grants". Everything a guard could judge an inline load on is page-
+    // controlled: its name is its element id (or the shared fallback), and
+    // its chain comes from the attribution shim, whose records page code can
+    // forge. An inline script is authorised by an entry on its content or
+    // hash, or not at all; once it is, it can still carry the walk
+    // (pass-through) for what it inserted.
+    if (entry.script.source.type !== 'external') return null
+    // Some entry identifies it — an authorised one whose verdict pass 1 could
+    // not give (the synthetic null-content gate runs before identification),
+    // or a pending/declined one, whose reviewer has not said yes: either way
+    // the verdict is that entry's to give, never a grant's.
     if (identified(entry.result.script)) return null
     inProgress.add(entry)
     let verdict: InheritedVerdict | null = null

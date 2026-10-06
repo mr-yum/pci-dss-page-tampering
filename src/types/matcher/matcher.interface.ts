@@ -136,9 +136,13 @@ export interface Matchable {
    *     semantics — this field exists so external scripts, whose `url` is
    *     their OWN address, can still expose provenance to matchers).
    *   - Synthetic inline scripts: the page-attribution shim's initiator.
-   *   - Synthetic external scripts: the CDP request initiator (script-stack
-   *     top frame URL, else the initiator/document URL) captured by the
-   *     response handlers.
+   *   - Synthetic external scripts: the CDP request initiator captured by
+   *     the response handlers — the script-stack top frame URL **after the
+   *     attribution shim's own wrapper frame is taken off** (the shim wraps
+   *     `appendChild`, so its frame tops every DOM-inserted request; see
+   *     `topCallFrameUrl` in `src/handlers/script.ts`), else the
+   *     initiator/document URL when that frame is anonymous (empty URL) or
+   *     there is no stack.
    *
    * Undefined when attribution genuinely failed. `InitiatorHostMatcher`
    * fails secure when it is missing or unparseable.
@@ -150,11 +154,23 @@ export interface Matchable {
    * the root (see `../initiator-chain.ts`). Consumed by the transitive form of
    * `InitiatorHostMatcher` and by the `authorisesLoads` trust grant.
    *
-   * `chain[0].url` equals `initiator` whenever the immediate inserter is a
-   * URL. The one exception is an inline inserter: `initiator` keeps the URL it
-   * always carried (so existing inventories behave exactly as before), while
-   * `chain[0]` names the inline script itself by its inline identity, so the
-   * walk can continue through it.
+   * `chain[0].url` equals `initiator` whenever the CDP top frame (below the
+   * shim's wrapper) names the inserting script. Two exceptions, both on the
+   * synthetic lane, both where that frame names no script — it is anonymous
+   * (empty URL) or the document URL — and the attribution shim's insertion
+   * log names the inserter instead:
+   *   - an inline inserter (inline code in the markup, or a dynamically
+   *     inserted inline script): `initiator` keeps the URL it always carried
+   *     (the document), while
+   *     `chain[0]` names the inline script by its inline identity, so the walk
+   *     can continue through it;
+   *   - an external script inserting from inside `eval` / `new Function`
+   *     code (whose frames carry no URL) while it is `currentScript`:
+   *     `initiator` is the document URL (the anonymous-frame fallback), while
+   *     `chain[0]` is that external script, from the shim's record.
+   * In both, the string-form `InitiatorHostMatcher` sees the page's host and
+   * the transitive form sees the inserter's. Neither is ever a reason to
+   * authorise on its own (the shim is page-forgeable).
    *
    * Populated by the synthetic chain resolver after a run. RUM observations
    * do not carry it yet. Undefined or empty means no evidence; every
@@ -283,9 +299,18 @@ export interface Matcher<T extends Matchable = Matchable> {
    *   not pre-gated: RUM inline observations carry a hash but no content)
    * - HostMatcher/UrlMatcher: missing url; WorkflowMatcher: missing workflowId;
    *   TargetTypeMatcher: missing targetType
+   * - InitiatorHostMatcher: string form → missing/unparseable `initiator`
+   *   ("initiator is missing or unparseable"); transitive object form →
+   *   missing/empty `initiatorChain` with no alternate paths ("initiator chain
+   *   is missing"), and a chain ending in an `unknown` hop is judged on its
+   *   known prefix only
    * - OrMatcher/AndMatcher: delegate — no composite content pre-gate; each
    *   child applies its own gate
-   * - Top-level authorisationInfo.authorised: false always denies regardless of matcher result
+   * - The matcher's own authorisationInfo.authorised: false always denies
+   *   regardless of its pattern (FR-011) — every authorising matcher, leaf or
+   *   composite, checks it after its evidence gate ("Top-level authorization
+   *   denied: <description>"). Leaves carry their own info as array-syntax
+   *   `authoriseWith` elements and composite children.
    *
    * @param options - Opt-in extras. `{ collectTrace: true }` additionally
    *   populates `AuthorizationResult.trace` with the child slots visited, which

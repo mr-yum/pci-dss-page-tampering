@@ -7,7 +7,7 @@
  * @see ../../../specs/001-refactor-script-identification/data-model.md for design
  */
 
-import type { AuthorizationResult } from './authorization-result.js'
+import { type AuthorizationResult, deniedByAuthorisationInfo } from './authorization-result.js'
 import type { AuthorisationInfo, AuthorisationMatcher, ContentWindowEvidence, DetectedScript } from './matcher.interface.js'
 
 /**
@@ -167,20 +167,25 @@ export class ContentMatcher implements AuthorisationMatcher {
    */
   authorize(script: DetectedScript): AuthorizationResult {
     if (!script.content || script.content.trim() === '') {
-      if (script.contentEvidence !== undefined) {
-        const result = this.evaluateEvidence(script.contentEvidence)
-        if (this.authorisationInfo) {
-          result.metadataPath = [this.authorisationInfo]
+      if (script.contentEvidence === undefined) {
+        // Truly evidence-less: the legacy shape, deliberately without a
+        // metadataPath (synthetic behaviour unchanged).
+        return {
+          authorized: false,
+          reason: 'content is null or empty',
         }
-        return result
       }
-      // Truly evidence-less: the legacy shape, deliberately without a
-      // metadataPath (synthetic behaviour unchanged).
-      return {
-        authorized: false,
-        reason: 'content is null or empty',
+      const declined = deniedByAuthorisationInfo(this.authorisationInfo)
+      if (declined) return declined
+      const result = this.evaluateEvidence(script.contentEvidence)
+      if (this.authorisationInfo) {
+        result.metadataPath = [this.authorisationInfo]
       }
+      return result
     }
+
+    const declined = deniedByAuthorisationInfo(this.authorisationInfo)
+    if (declined) return declined
 
     const matches = this.pattern.test(script.content)
     const result: AuthorizationResult = matches

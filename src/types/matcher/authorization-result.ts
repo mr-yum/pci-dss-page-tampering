@@ -60,3 +60,23 @@ export type AuthorizationResult = {
    */
   trace?: AuthorizationTrace
 }
+
+/**
+ * The denial every authorising matcher returns when its own
+ * `authorisationInfo` says `authorised: false` (FR-011): a declined or
+ * still-pending alternative never authorises, whatever its pattern matches.
+ * Undefined when the matcher carries no such statement.
+ *
+ * Leaf matchers are reached with their own `authorisationInfo` whenever they
+ * are an element of an array-syntax `authoriseWith` (each element carries one)
+ * or a child of a composite, so a leaf that ignored the flag would let a
+ * pending alternative — appended for review, not yet approved — authorise.
+ */
+export function deniedByAuthorisationInfo(authorisationInfo: InventoryAuthorisationInfo | undefined): AuthorizationResult | undefined {
+  if (authorisationInfo?.authorised !== false) return undefined
+  return {
+    authorized: false,
+    reason: `Top-level authorization denied: ${authorisationInfo.description}`,
+    metadataPath: [authorisationInfo],
+  }
+}

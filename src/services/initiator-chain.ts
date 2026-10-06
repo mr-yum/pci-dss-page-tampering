@@ -38,8 +38,8 @@
  * script was named, which `//# sourceURL` lets `eval`'d code choose. Chains
  * are evidence for display, for identification and for following a grant —
  * never, on their own, a reason to authorise: a load grant also requires the
- * loaded script's own URL to pass the grant's `loadsMatching` guard, and an
- * inline script never grants.
+ * loaded script's own URL to pass the grant's `loadsMatching` guard, an
+ * inline script never grants, and an inline load never inherits.
  */
 
 import type { DocumentId } from '../types/document.js'

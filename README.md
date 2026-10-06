@@ -997,6 +997,12 @@ For complex authorization policies, `authoriseWith` supports composite matchers:
 }
 ```
 
+Each alternative's own `authorisationInfo` counts: an alternative with
+`"authorised": false` — one the inventory pass appended for review, or one a
+reviewer declined — authorises nothing, whatever its matcher type, even while
+the entry's first alternative is approved. Approve an alternative by setting
+its own flag to `true`.
+
 ### CspDirectiveMatcher (Content-Security-Policy)
 
 CSP header values are split per directive before matching, so each directive is authorised on its own. Authorising one with an anchored `contentMatcher` is brittle: the sources in a directive are an unordered set, so merely reordering them produces a semantically identical policy that nonetheless fails to match — and every reorder mints another authorised alternative, until real entries carry a dozen or more near-duplicates. (Dropping a source is a different matter: as the table below shows, a removal can genuinely widen a policy, which is why it is flagged rather than tolerated.)
@@ -1142,8 +1148,12 @@ our own scripts, and we trust the payment provider for what its SDK pulls in".
 Both rest on the **initiator chain** the monitor records for every script:
 who inserted it, who inserted that, and so on out to the page (at most 8
 hops). The auditor report shows it on every script row
-(`observed.initiatorChain`) and every alert carries it as a _Loaded By_
-column. Hops are `script` (a script observed in the same run — an inline
+(`observed.initiatorChain`), and the script alerts that name individual
+scripts — new and uninventoried scripts (`new_inventory_script_identified`,
+`uninventoried_script_detected`) and scripts whose content failed
+authorisation (`mismatched_script_detected`) — carry it as a _Loaded By_
+column in Slack (a `Loaded by:` line in console output). Header,
+missing-required-script and run-summary alerts do not. Hops are `script` (a script observed in the same run — an inline
 script appears by its inline identity, `inline_script/<name>#<instance>`),
 `document` (the page or a frame), or `unknown` (named, but not something the
 run observed — nothing beyond it is assumed).
@@ -1166,11 +1176,22 @@ run observed — nothing beyond it is assumed).
 `loadsMatching` is required. Chain evidence is gathered from inside the page,
 so code already running there could influence it; the loaded script's own URL
 it cannot. Name hosts that serve only the vendor's own code — a guard over a
-public CDN anyone can publish to vouches for anyone's script. The guard sees
-only the loaded script's own evidence: an inline script has no URL of its own
-(its "URL" is just who claims to have inserted it), so a host or URL guard
-never admits one; inline loads inherit only if the guard admits them by name,
-content or hash (e.g. an `orMatcher` with `{ "nameMatcher": "^inline_script/" }`).
+public CDN anyone can publish to vouches for anyone's script. The guard must
+judge the load on its own evidence: every alternative needs a `nameMatcher`,
+`urlMatcher`, `hostMatcher`, `contentMatcher` or hash list (an `andMatcher`
+needs at least one such conjunct), so `workflowMatcher` / `targetTypeMatcher`
+can narrow a guard but never be one, and `initiatorHostMatcher` — the very
+claim being vouched for — is not shown to it.
+
+**Inline scripts never inherit.** Everything a grant could judge an inline
+load on is under the page's control — its name is its element id (or the
+shared `inline_script/id_not_found` fallback), and who inserted it is what the
+attribution shim recorded, which page code can forge. So an inline script a
+vendor's SDK inserts is authorised by an entry of its own, on its content or
+hash, or not at all, and `--mode validate` refuses a `loadsMatching` whose
+`nameMatcher` would admit an `inline_script/` name. Once authorised that way,
+an inline script still carries the chain: what it inserts can inherit from a
+grant further out.
 
 A script that **no entry identifies** is authorised by inheritance when a
 script up its chain was **authorised in the same run** by an entry carrying
@@ -1182,7 +1203,11 @@ granting script and the chain) and cites the granting entry's
 `authorisesLoads` line. The rules are all fail-secure:
 
 - **An explicit verdict wins.** A load an entry identifies and denies stays
-  denied; only scripts nothing identified can inherit.
+  denied; only scripts nothing identified can inherit. That includes an entry
+  still pending review or declined (`authorised: false`): it identifies the
+  script, so the script keeps alerting as unknown until a reviewer approves
+  or removes that entry, and the inventory pass treats it as already
+  proposed.
 - **A mismatched root poisons its subtree.** The granting script must be
   _authorised_ in this run, not merely identified — if its bytes no longer
   match, nothing below it inherits. The same holds for every script between
@@ -1193,9 +1218,10 @@ granting script and the chain) and cites the granting entry's
   chain at all inherits nothing.
 - **Only an authorised entry can grant**, and never an inline script.
   `--mode validate` refuses `authorisesLoads` on an entry whose
-  `authorisationInfo.authorised` is `false`, or without `loadsMatching`. An
-  inline script's text at scan time need not be the code that ran, so an
-  inline script never grants, whatever its entry says.
+  `authorisationInfo.authorised` is `false`, without `loadsMatching`, or with
+  a `loadsMatching` that does not judge the load itself or would admit an
+  inline name. An inline script's text at scan time need not be the code that
+  ran, so an inline script never grants, whatever its entry says.
 
 Inheritance changes what you vouch for, not what is monitored: every
 inherited script is still in the census, with its hash and chain. Decide

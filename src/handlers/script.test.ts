@@ -180,6 +180,22 @@ describe('scriptResponseHandler', () => {
       expect(await settled).toEqual([])
     })
 
+    // The initiator is read from the request itself, so the chain can name
+    // who asked for a script that never came — through the same shim-frame
+    // removal as an answered request.
+    it("records an unanswered request's initiator evidence with the attribution shim's own frame taken off", async () => {
+      const SHIM = 'pci-attribution-0b6e1c2a.js'
+      const request = (frames: { url: string }[]): HTTPRequest => ({ ...scriptRequest(`https://cdn.example.com/never-${frames.length}.js`), initiator: () => ({ type: 'script', stack: { callFrames: frames } }) }) as unknown as HTTPRequest
+      const reads = new PendingScriptReads({ shimSourceUrl: SHIM })
+      reads.trackRequest(request([{ url: SHIM }, { url: 'https://js.vendor.example/loader.js' }]), 4, () => 'loader-confirm')
+      reads.trackRequest(request([{ url: SHIM }, { url: '' }, { url: 'https://js.vendor.example/loader.js' }]), 4, () => 'loader-confirm')
+      await reads.settle(10, REASONS)
+      expect(reads.unansweredRequests().map((listed) => listed.initiatorEvidence)).toEqual([
+        { type: 'stack', topFrameUrl: 'https://js.vendor.example/loader.js' },
+        { type: 'stack', topFrameUrl: '' },
+      ])
+    })
+
     // A request issued by the last step has no read to wait for yet; without
     // this its response would land while the context was closing, after the
     // run had been summarised.

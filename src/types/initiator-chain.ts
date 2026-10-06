@@ -69,11 +69,11 @@ export function knownPrefix(chain: readonly InitiatorHop[]): InitiatorHop[] {
 
 /**
  * What a load grant's `loadsMatching` guard may judge a loaded script on: its
- * own evidence only. An external script keeps its own URL; an inline script's
- * `url` is its initiator (who inserted it), which is exactly the claim the
- * guard must not take on trust, so it is dropped — as are `initiator` and the
- * chain. A `hostMatcher`/`urlMatcher`/`initiatorHostMatcher` guard therefore
- * never admits an inline load; only its name, content or hash can.
+ * own evidence only. An external script keeps its own URL; `initiator` and the
+ * chain — the very claim the grant is about — are dropped, as is an inline
+ * script's `url` (its initiator, not an address of its own). Inline loads
+ * never reach a guard at all (the comparison refuses them first); dropping
+ * their `url` here keeps the function safe for any other caller.
  */
 export function ownEvidence<T extends { name: string; url?: string; initiator?: string; initiatorChain?: InitiatorHop[]; alternateInitiatorChains?: InitiatorHop[][] }>(loaded: T): T {
   const { url, initiator: _initiator, initiatorChain: _chain, alternateInitiatorChains: _alternates, ...rest } = loaded

@@ -33,9 +33,10 @@ import { randomUUID } from 'crypto'
  * lets any page code read every element's token, and an inline script can
  * rewrite its own text after it has run. So shim data is evidence a page
  * could forge. That is why an inline script never grants authorisation to
- * what it loads, and why every load grant must carry a `loadsMatching` guard
- * on the loaded script's own URL (see the transitive-trust section of
- * AGENTS.md). A page can also route around the patched methods (e.g. by
+ * what it loads, why an inline load never inherits one, and why every load
+ * grant must carry a `loadsMatching` guard on the loaded script's own URL
+ * (see the transitive-trust section of AGENTS.md; `test/integration/
+ * transitive-trust.test.ts` forges a record by overriding `WeakMap`). A page can also route around the patched methods (e.g. by
  * borrowing a pristine `appendChild` from a fresh iframe) — the element then
  * has no record, which every consumer treats as "no evidence".
  *
@@ -120,22 +121,31 @@ export const INLINE_SCRIPT_ATTRIBUTION_SCRIPT = `
   }
 
   function tagIfScript(node) {
-    if (!node || node.nodeType !== 1) return
+    // Elements, and DocumentFragments (nodeType 11): a fragment built from a
+    // template or a parsed range carries script descendants no insertion
+    // method ever saw, and inserting the fragment is what runs them.
+    if (!node || (node.nodeType !== 1 && node.nodeType !== 11)) return
     if (isScript(node)) record(node)
     if (node.querySelectorAll) {
-      // Fragment insertions can carry script descendants.
       var nested = node.querySelectorAll('script')
       for (var i = 0; i < nested.length; i++) record(nested[i])
     }
   }
 
-  function wrap(proto, name) {
+  // insertedArgs: how many leading arguments are nodes being inserted (-1 =
+  // all). Only those are recorded: insertBefore's reference node and
+  // replaceChild's old child are already in the document, and recording one
+  // that was never seen — typically the page's first parser-inserted
+  // <script>, which the classic loader snippet passes as the reference —
+  // would attribute it to whoever is inserting now.
+  function wrap(proto, name, insertedArgs) {
     var orig = proto[name]
     if (typeof orig !== 'function') return
     proto[name] = function () {
-      // Record each node argument synchronously, before delegating, while the
+      // Record each inserted node synchronously, before delegating, while the
       // inserting script is still document.currentScript.
-      for (var i = 0; i < arguments.length; i++) {
+      var n = insertedArgs < 0 ? arguments.length : Math.min(insertedArgs, arguments.length)
+      for (var i = 0; i < n; i++) {
         var a = arguments[i]
         if (a && typeof a === 'object') tagIfScript(a)
       }
@@ -143,14 +153,14 @@ export const INLINE_SCRIPT_ATTRIBUTION_SCRIPT = `
     }
   }
 
-  wrap(Node.prototype, 'appendChild')
-  wrap(Node.prototype, 'insertBefore')
-  wrap(Node.prototype, 'replaceChild')
-  wrap(Element.prototype, 'append')
-  wrap(Element.prototype, 'prepend')
-  wrap(Element.prototype, 'before')
-  wrap(Element.prototype, 'after')
-  wrap(Element.prototype, 'replaceWith')
+  wrap(Node.prototype, 'appendChild', 1)
+  wrap(Node.prototype, 'insertBefore', 1)
+  wrap(Node.prototype, 'replaceChild', 1)
+  wrap(Element.prototype, 'append', -1)
+  wrap(Element.prototype, 'prepend', -1)
+  wrap(Element.prototype, 'before', -1)
+  wrap(Element.prototype, 'after', -1)
+  wrap(Element.prototype, 'replaceWith', -1)
 
   var origInsertAdj = Element.prototype.insertAdjacentElement
   if (typeof origInsertAdj === 'function') {

@@ -20,7 +20,7 @@
  * @see url-matcher.ts — sibling matcher for full-URL precision
  */
 
-import type { AuthorizationResult } from './authorization-result.js'
+import { type AuthorizationResult, deniedByAuthorisationInfo } from './authorization-result.js'
 import type { AuthorisationInfo, AuthorisationMatcher, Matchable } from './matcher.interface.js'
 
 export class HostMatcher implements AuthorisationMatcher {
@@ -78,6 +78,9 @@ export class HostMatcher implements AuthorisationMatcher {
         reason: 'url is missing or unparseable',
       }
     }
+
+    const declined = deniedByAuthorisationInfo(this.authorisationInfo)
+    if (declined) return declined
 
     const matches = this.pattern.test(host)
     const result: AuthorizationResult = matches

@@ -4,9 +4,11 @@
  * Every page here loads a loader script that loads more scripts, and the
  * inventory decides what the loads inherit:
  *
- * - `/g/` — the loader is authorised and grants its loads transitively: what
- *   it inserts (an external asset, and an inline script that itself inserts a
- *   further script) is authorised by inheritance, with the chain recorded. A
+ * - `/g/` — the loader is authorised and grants its loads transitively: the
+ *   external asset it inserts is authorised by inheritance, with the chain
+ *   recorded. The inline script it inserts never inherits (an inline load is
+ *   judged on page-controlled evidence only); authorised by an entry of its
+ *   own, it carries the walk, so the script it inserts in turn inherits. A
  *   load the inventory identifies and denies stays denied.
  * - `/p/` — the same grant on a loader whose bytes no longer match: the
  *   mismatched root poisons its subtree, so its asset is unknown.
@@ -20,6 +22,12 @@
  * - `/f/` — the granting loader runs inside a cross-site frame (`localhost`
  *   under a `127.0.0.1` page, so Chrome gives it a process and a DevTools
  *   session of its own): its asset still inherits.
+ * - `/x/` — the shim is forgeable, and this proves it does not matter: page
+ *   code overrides `WeakMap.prototype.get`/`has` so the attribution shim
+ *   reports an inline script the page inserted itself as inserted by the
+ *   authorised, granting loader. The forgery takes (the chain says so), and
+ *   the inline script still does not inherit — even under a guard that would
+ *   admit it by its content.
  *
  * Drives `main.ts` as a subprocess through one `--mode detection` run, one
  * workflow per page, against a file:// inventory. Needs the Chrome that
@@ -48,6 +56,20 @@ const G_INLINE = `/*g-inline*/var d=document.createElement('script');d.src='/g/d
 // The inline bootstrap in /i/'s markup.
 const I_BOOT = `/*i-boot*/var b=document.createElement('script');b.src='/i/loader.js';document.head.appendChild(b)`
 
+// Page code in /x/'s markup that forges the shim's record for an inline
+// script it inserts, so the record names the granting loader as its inserter.
+// The payload marker is split so this source does not contain it.
+const X_FORGE = `/*x-forge*/(function(){
+  var loader = new URL('/x/loader.js', location.href).href;
+  var el = document.createElement('script');
+  var get = WeakMap.prototype.get, has = WeakMap.prototype.has;
+  var forged = { token: 'forged-1', kind: 'script', inserterToken: null, url: loader };
+  WeakMap.prototype.has = function (key) { return key === el ? true : has.call(this, key) };
+  WeakMap.prototype.get = function (key) { return key === el ? forged : get.call(this, key) };
+  el.text = '/*x-pay' + 'load*/window.xPayload=1';
+  document.head.appendChild(el);
+})();`
+
 const scripts = (frameOrigin: string): Record<string, string> => ({
   '/g/loader.js': `${inserts('/g/asset.js', '/g/denied.js')}\nvar t=document.createElement('script');t.text=${JSON.stringify(G_INLINE)};document.head.appendChild(t);`,
   '/g/asset.js': 'window.gAsset=1',
@@ -66,6 +88,7 @@ const scripts = (frameOrigin: string): Record<string, string> => ({
   '/h/asset-near.js': 'window.hAssetNear=1',
   '/f/loader.js': inserts('/f/asset.js'),
   '/f/asset.js': 'window.fAsset=1',
+  '/x/loader.js': 'window.xLoader=1',
 })
 
 const page = (body: string): string => `<!doctype html><html><head></head><body><span>Ready</span>${body}</body></html>`
@@ -78,6 +101,7 @@ const pages = (frameOrigin: string): Record<string, string> => ({
   '/h/page': page(`<script src="${frameOrigin}/h/loader.js"></script>`),
   '/f/page': page(`<iframe src="${frameOrigin}/f/frame"></iframe>`),
   '/f/frame': page('<script src="/f/loader.js"></script>'),
+  '/x/page': page(`<script src="/x/loader.js"></script><script>${X_FORGE}</script>`),
 })
 
 const startServer = (): Promise<http.Server> =>
@@ -98,13 +122,18 @@ const AUTHORISED = { description: 'Fixture', authorised: true, date: '2026-10-01
 const hashOf = (content: string) => [{ timestamp: '2026-10-01T00:00:00.000Z', hash: { value: createSha256Hash(content).value } }]
 const exact = (urlPath: string, host = '127\\.0\\.0\\.1'): string => `^http://${host}:\\d+${urlPath.replaceAll('.', '\\.')}$`
 
-// Every grant names what its loads may be: here, anything served by the fixture (and the inline scripts it inserts).
-const LOADS = { orMatcher: [{ nameMatcher: '^http://(127\\.0\\.0\\.1|localhost):\\d+/' }, { nameMatcher: '^inline_script/' }] }
+// Every grant names what its loads may be: here, anything served by the fixture.
+const LOADS = { nameMatcher: '^http://(127\\.0\\.0\\.1|localhost):\\d+/' }
+// A guard that would admit /x/'s payload by its content: only the rule that an
+// inline load never inherits stands between the forged record and inheritance.
+const X_LOADS = { orMatcher: [LOADS, { contentMatcher: 'xPayload' }] }
 
 const inventoryScripts = (frameOrigin: string) => {
   const bodies = scripts(frameOrigin)
   return [
     { identifyWith: { nameMatcher: exact('/g/loader.js') }, authoriseWith: { hashes: hashOf(bodies['/g/loader.js']!), authorisationInfo: AUTHORISED }, authorisesLoads: 'transitive', loadsMatching: LOADS },
+    // The inline script /g/loader.js inserts, authorised on its own content: an inline load never inherits.
+    { identifyWith: { contentMatcher: '^/\\*g-inline\\*/' }, authoriseWith: { hashes: hashOf(G_INLINE), authorisationInfo: AUTHORISED } },
     // Identified, and denied: an explicit verdict that inheritance must not overturn.
     { identifyWith: { nameMatcher: exact('/g/denied.js') }, authoriseWith: { hashes: hashOf('not these bytes'), authorisationInfo: AUTHORISED } },
     // The grant is real, but the loader's bytes are not the authorised ones.
@@ -120,10 +149,11 @@ const inventoryScripts = (frameOrigin: string) => {
       authoriseWith: { nameMatcher: exact('/h/asset-near.js'), authorisationInfo: AUTHORISED },
     },
     { identifyWith: { nameMatcher: exact('/f/loader.js', 'localhost') }, authoriseWith: { hashes: hashOf(bodies['/f/loader.js']!), authorisationInfo: AUTHORISED }, authorisesLoads: 'transitive', loadsMatching: LOADS },
+    { identifyWith: { nameMatcher: exact('/x/loader.js') }, authoriseWith: { hashes: hashOf(bodies['/x/loader.js']!), authorisationInfo: AUTHORISED }, authorisesLoads: 'transitive', loadsMatching: X_LOADS },
   ]
 }
 
-const WORKFLOWS = ['g', 'p', 'n', 'i', 'h', 'f'] as const
+const WORKFLOWS = ['g', 'p', 'n', 'i', 'h', 'f', 'x'] as const
 
 const createFixtureRepo = (base: string, frameOrigin: string): string => {
   const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'pci-transitive-trust-repo-'))
@@ -210,7 +240,7 @@ describe('trust inherited through loaders, in real Chrome', () => {
   }
   const paths = (chain: Hop[] | undefined): string[] => (chain ?? []).map((hop) => `${hop.kind}:${hop.url.startsWith('inline_script/') ? 'inline' : new URL(hop.url).pathname}`)
 
-  it('authorises what an authorised, granting loader inserts — external and inline, two hops deep — with the chain recorded', () => {
+  it('authorises what an authorised, granting loader inserts — through an authorised inline hop, two hops deep — with the chain recorded', () => {
     expect(row('g', '/g/loader.js').status).toBe('authorised')
     expect(row('g', '/g/loader.js').authorisation.inherited).toBeUndefined()
 
@@ -219,8 +249,10 @@ describe('trust inherited through loaders, in real Chrome', () => {
     expect(asset.authorisation.inherited).toEqual(expect.objectContaining({ mode: 'transitive' }))
     expect(paths(asset.observed.initiatorChain)).toEqual(['script:/g/loader.js', 'document:/g/page'])
 
+    // Authorised by its own entry, never by the grant.
     const inserted = inline('g', 'g-inline')
     expect(inserted.status).toBe('authorised')
+    expect(inserted.authorisation.inherited).toBeUndefined()
     expect(paths(inserted.observed.initiatorChain)).toEqual(['script:/g/loader.js', 'document:/g/page'])
 
     // The external script the inline script inserted: its network initiator
@@ -272,5 +304,14 @@ describe('trust inherited through loaders, in real Chrome', () => {
     expect(asset.status).toBe('authorised')
     expect(asset.authorisation.inherited).toBeDefined()
     expect(asset.observed.initiatorChain?.map((hop) => `${hop.kind}:${new URL(hop.url).hostname}${new URL(hop.url).pathname}`)).toEqual(['script:localhost/f/loader.js', 'document:localhost/f/frame'])
+  })
+
+  it('never lets an inline load inherit, even when page code forges the shim into naming the granting loader as its inserter', () => {
+    expect(row('x', '/x/loader.js').status).toBe('authorised')
+    const payload = inline('x', 'x-payload')
+    // The forgery took: the shim reported the granting loader as the inserter.
+    expect(paths(payload.observed.initiatorChain)).toEqual(['script:/x/loader.js', 'document:/x/page'])
+    expect(payload.status).toBe('unknown')
+    expect(payload.authorisation.inherited).toBeUndefined()
   })
 })
