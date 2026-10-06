@@ -1,0 +1,57 @@
+{
+  "v": 2,
+  "session": {
+    "id": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+    "agentVersion": "1.0.0"
+  },
+  "page": {
+    "url": "https://pay.example.com/checkout"
+  },
+  "observations": [
+    {
+      "kind": "external-script",
+      "url": "https://evil.example/skimmer.js",
+      "initiator": "https://pay.example.com/checkout",
+      "route": "/checkout",
+      "ts": 1755600001000,
+      "initiatorChain": [
+        {
+          "url": "https://cdn.example.net/0.js",
+          "kind": "script"
+        },
+        {
+          "url": "https://cdn.example.net/1.js",
+          "kind": "script"
+        },
+        {
+          "url": "https://cdn.example.net/2.js",
+          "kind": "script"
+        },
+        {
+          "url": "https://cdn.example.net/3.js",
+          "kind": "script"
+        },
+        {
+          "url": "https://cdn.example.net/4.js",
+          "kind": "script"
+        },
+        {
+          "url": "https://cdn.example.net/5.js",
+          "kind": "script"
+        },
+        {
+          "url": "https://cdn.example.net/6.js",
+          "kind": "script"
+        },
+        {
+          "url": "https://cdn.example.net/7.js",
+          "kind": "script"
+        },
+        {
+          "url": "https://cdn.example.net/8.js",
+          "kind": "script"
+        }
+      ]
+    }
+  ]
+}

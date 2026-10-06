@@ -25,6 +25,11 @@ describe('parseBeacon', () => {
       ['head-too-long.json', /head/],
       ['bad-hash.json', /hash/],
       ['missing-ts.json', /\bts\b/],
+      ['chain-too-long.json', /initiatorChain/],
+      ['chain-hop-not-url.json', /initiatorChain\.0\.url/],
+      ['chain-hop-bad-kind.json', /initiatorChain\.0\.kind/],
+      ['chain-hop-url-too-long.json', /initiatorChain\.0\.url/],
+      ['chain-hop-extra-key.json', /initiatorChain\.0/],
     ])('rejects %s with reason schema on the intended constraint', (fixture, constraint) => {
       const result = parseBeacon(readFixture('invalid', fixture))
 
@@ -32,6 +37,28 @@ describe('parseBeacon', () => {
       if (result.ok) return
       expect(result.reason).toBe('schema')
       expect(result.detail).toMatch(constraint)
+    })
+  })
+
+  describe('initiatorChain (schema v2)', () => {
+    it('carries a chain on external and inline script observations, inline hops by agent identity', () => {
+      const result = parseBeacon(readFixture('canonical.json'))
+      if (!result.ok) throw new Error(result.detail)
+      const chains = result.beacon.observations.map((observation) => ('initiatorChain' in observation ? observation.initiatorChain : undefined))
+      expect(chains[0]).toEqual([
+        { url: 'https://pay.example.com/assets/main.js', kind: 'script' },
+        { url: 'https://pay.example.com/checkout', kind: 'document' },
+      ])
+      expect(chains[1]?.[0]).toEqual({ url: 'inline_script/rum#1', kind: 'script' })
+    })
+
+    it('refuses a version-1 beacon: none was ever deployed', () => {
+      expect(parseBeacon(readFixture('canonical.json').replace('"v": 2', '"v": 1'))).toMatchObject({ ok: false, reason: 'schema' })
+    })
+
+    it('refuses an inline identity that could carry anything but a counter', () => {
+      const raw = readFixture('canonical.json').replace('inline_script/rum#1', 'inline_script/rum#window.secret')
+      expect(parseBeacon(raw)).toMatchObject({ ok: false, reason: 'schema' })
     })
   })
 
@@ -84,7 +111,7 @@ describe('parseBeacon', () => {
   describe('non-fixture observations', () => {
     const envelope = (observations: unknown[]): string =>
       JSON.stringify({
-        v: 1,
+        v: 2,
         session: { id: '6f1e2c3d-4b5a-4c7d-8e9f-0a1b2c3d4e5f', agentVersion: '1.0.0' },
         page: { url: 'https://pay.example.com/checkout' },
         observations,

@@ -1240,6 +1240,14 @@ vendor's own release process.
 }
 ```
 
+Both shapes work on real-user observations too: the browser agent sends each
+script's chain (beacon v2), and on that lane an ancestor can vouch for its loads
+only if it is identified **and authorised on URL evidence alone** (its
+`authoriseWith` uses only `nameMatcher` / `urlMatcher` / `hostMatcher` /
+`initiatorHostMatcher` / `targetTypeMatcher`), since a browser observer never
+sees a script's body. The example above, authorised by `urlMatcher`, qualifies;
+an SDK authorised by hash vouches on the synthetic lane only.
+
 The string form (`"initiatorHostMatcher": "^pay\\.example\\.com$"`) is
 unchanged and matches the immediate inserter only. The object form matches
 when the host of **any** hop within `maxDepth` matches; a chain ending in an

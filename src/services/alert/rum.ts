@@ -1,6 +1,8 @@
 import type { RumAlertCategory, RumAlertContext } from '../../types/alert.js'
 import { RUM_ALERT_CATEGORIES } from '../../types/alert.js'
 import type { AlertDestination, InventoryAlert } from '../../types/inventory/model.js'
+import { redactUrl } from '../../utils/url.js'
+import { displayInitiatorChain, redactForDisplay } from '../report/mapper.js'
 
 /**
  * Resolves the destination for one RUM alert category from a target's
@@ -77,7 +79,10 @@ export function rumAlertContextLines(category: RumAlertCategory, context: RumAle
     { label: 'Identity', value: context.observation.identity },
   ]
 
-  if (context.observation.initiator !== undefined) lines.push({ label: 'Initiator', value: context.observation.initiator })
+  // Redacted like every URL an alert shows: an initiator or a URL matcher's
+  // reason can carry the page's query string (tokens, order ids).
+  if (context.observation.initiator !== undefined) lines.push({ label: 'Initiator', value: redactUrl(context.observation.initiator) })
+  if (context.initiatorChain !== undefined && context.initiatorChain.length > 0) lines.push({ label: 'Loaded by', value: displayInitiatorChain(context.initiatorChain) })
   if (context.observation.hash !== undefined) lines.push({ label: 'Hash (client-computed SHA-256)', value: context.observation.hash })
 
   lines.push({ label: 'First Seen', value: new Date(context.prevalence.first_seen).toISOString() })
@@ -89,7 +94,7 @@ export function rumAlertContextLines(category: RumAlertCategory, context: RumAle
   lines.push({ label: 'Inventory Ref', value: context.inventoryRef })
 
   if (context.matcherDescription !== undefined) lines.push({ label: 'Authorisation Matcher', value: context.matcherDescription })
-  if (context.failureReason !== undefined) lines.push({ label: 'Failure Reason', value: context.failureReason })
+  if (context.failureReason !== undefined) lines.push({ label: 'Failure Reason', value: redactForDisplay(context.failureReason, 1000).text })
   // Root → leaf, same rendering as the comparison log's metadata path.
   if (context.metadataPath !== undefined && context.metadataPath.length > 0) lines.push({ label: 'Authorisation Path', value: context.metadataPath.map((info) => info.description).join(' > ') })
 

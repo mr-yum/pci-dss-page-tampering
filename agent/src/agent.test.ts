@@ -182,7 +182,7 @@ describe('idle processing', () => {
     const parsed = parseBeacon(await sentBody(beaconMock))
     expect(parsed.ok).toBe(true)
     if (!parsed.ok) throw new Error(parsed.detail)
-    expect(parsed.beacon.v).toBe(1)
+    expect(parsed.beacon.v).toBe(2)
     expect(parsed.beacon.session.agentVersion).toBe(AGENT_VERSION)
     expect(parsed.beacon.page.url).toBe(location.origin + location.pathname)
     // The flushed script plus the per-flush-cycle agent-health observation.
@@ -193,6 +193,37 @@ describe('idle processing', () => {
     expect(observation.url).toBe('http://localhost/vendor.js')
     expect(observation.initiator).toBe(location.href)
     expect(observation.route).toBe('/')
+  })
+
+  it('ships each script observation with its initiator chain through the real beacon schema', async () => {
+    installWebCrypto()
+    const beaconMock = mockSendBeacon()
+    installCollectorTag()
+    initAgent()
+    const loader = document.createElement('script')
+    loader.src = 'https://js.vendor.example/loader.js'
+    setCurrentScript(loader)
+    insertScript('https://assets.vendor.example/fraud.js')
+    appendInline('window.vendorReady = 1')
+    processPendingCaptures()
+    await processInlineCaptures()
+    hidePage()
+    const parsed = parseBeacon(await sentBody(beaconMock))
+    if (!parsed.ok) throw new Error(parsed.detail)
+    const chains = parsed.beacon.observations.filter((observation) => observation.kind !== 'agent-health').map((observation) => ('initiatorChain' in observation ? observation.initiatorChain : undefined))
+    const expected = [
+      { url: 'https://js.vendor.example/loader.js', kind: 'script' },
+      { url: 'http://localhost/', kind: 'unknown' },
+    ]
+    expect(chains).toEqual([expected, expected])
+  })
+
+  it('sheds an over-cap chain rather than drop the observation it rides on', () => {
+    const hop = { url: `https://cdn.example.com/${'a'.repeat(2000)}`, kind: 'script' as const }
+    const observation: ExternalScriptObservation = { kind: 'external-script', ts: 1, route: '/', url: 'https://example.com/ok.js', initiatorChain: Array.from({ length: 8 }, () => hop) }
+    const { chunks, droppedOversize } = splitObservations([observation], (chunk) => JSON.stringify(chunk).padEnd(chunk.some((o) => 'initiatorChain' in o) ? 40_000 : 0))
+    expect(droppedOversize).toBe(0)
+    expect(chunks[0]?.observations).toEqual([{ kind: 'external-script', ts: 1, route: '/', url: 'https://example.com/ok.js' }])
   })
 
   it('drops captures whose URL exceeds the schema cap and counts them', () => {

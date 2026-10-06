@@ -333,3 +333,100 @@ describe('queue cap', () => {
     expect((captures[0] as ScriptCapture).url).toBe('http://localhost/overflow.js')
   })
 })
+
+describe('initiator chains (insertion patch)', () => {
+  const PAGE = 'http://localhost/'
+  const external = (src: string): HTMLScriptElement => {
+    const script = document.createElement('script')
+    script.src = src
+    return script
+  }
+
+  it('records who inserted a script, out to the page, and extends it for what that script inserts', () => {
+    const loader = external('https://cdn.example.com/loader.js')
+    // Inserted with no script executing (an async callback): nothing is known about who did it.
+    document.body.appendChild(loader)
+    setCurrentScript(loader)
+    insertScript('https://assets.example.com/fraud.js')
+    const captures = drainCaptures()
+    expect(captures[0]?.initiatorChain).toEqual([{ url: PAGE, kind: 'unknown' }])
+    expect(captures[1]?.initiatorChain).toEqual([
+      { url: 'https://cdn.example.com/loader.js', kind: 'script' },
+      { url: PAGE, kind: 'unknown' },
+    ])
+  })
+
+  it('says nothing is known about an inserter the patch never saw inserted (markup, or an unpatched insertion path)', () => {
+    setCurrentScript(external('https://cdn.example.com/sdk.js'))
+    insertScript('/helper.js')
+    expect(drainCaptures()[0]?.initiatorChain).toEqual([
+      { url: 'https://cdn.example.com/sdk.js', kind: 'script' },
+      { url: PAGE, kind: 'unknown' },
+    ])
+  })
+
+  it('ends a chain at a hop that is not an http(s) or blob URL: a data: URL would carry script source', () => {
+    setCurrentScript(external('data:text/javascript,steal(document.cookie)'))
+    insertScript('/after-data.js')
+    expect(drainCaptures()[0]?.initiatorChain).toBeUndefined()
+  })
+
+  it('names an inline inserter by a per-element counter identity, never by its content', () => {
+    const bootstrap = document.createElement('script')
+    bootstrap.textContent = 'window.secret = "card-number"'
+    setCurrentScript(bootstrap)
+    insertScript('/loaded-by-inline.js')
+    insertScript('/also-by-inline.js')
+    const [first, second] = drainCaptures()
+    expect(first?.initiatorChain?.[0]).toEqual({ url: 'inline_script/rum#1', kind: 'script' })
+    expect(second?.initiatorChain?.[0]).toEqual({ url: 'inline_script/rum#1', kind: 'script' })
+    expect(JSON.stringify(first?.initiatorChain)).not.toContain('secret')
+  })
+
+  it('carries the chain on inline captures too', () => {
+    setCurrentScript(external('https://cdn.example.com/sdk.js'))
+    const inline = document.createElement('script')
+    inline.textContent = 'void 0'
+    document.body.appendChild(inline)
+    expect(drainInlineCaptures()[0]?.initiatorChain?.[0]).toEqual({ url: 'https://cdn.example.com/sdk.js', kind: 'script' })
+  })
+
+  it('keeps the query and fragment of the page out of a document hop', () => {
+    history.replaceState(null, '', '/checkout?token=secret#card')
+    setCurrentScript(null)
+    insertScript('/late.js')
+    expect(drainCaptures()[0]?.initiatorChain).toEqual([{ url: 'http://localhost/checkout', kind: 'unknown' }])
+    history.replaceState(null, '', '/')
+  })
+
+  it('caps a chain at 8 hops', () => {
+    let inserter: HTMLScriptElement | null = null
+    for (let index = 0; index < 12; index += 1) {
+      setCurrentScript(inserter)
+      const next = external(`https://cdn.example.com/${index}.js`)
+      document.body.appendChild(next)
+      inserter = next
+    }
+    const drained = drainCaptures()
+    const last = drained[drained.length - 1]
+    expect(last?.initiatorChain).toHaveLength(8)
+    expect(last?.initiatorChain?.[0]).toEqual({ url: 'https://cdn.example.com/10.js', kind: 'script' })
+  })
+
+  it('ends a chain at a hop whose URL exceeds the schema cap', () => {
+    setCurrentScript(external(`https://cdn.example.com/${'a'.repeat(2100)}.js`))
+    insertScript('/after-giant.js')
+    expect(drainCaptures()[0]?.initiatorChain).toBeUndefined()
+  })
+
+  it('gives safety-net captures no chain: they carry no attribution', async () => {
+    const holder = document.createElement('div')
+    holder.innerHTML = '<script src="/parsed.js"></script>'
+    // A non-patched insertion path: only the MutationObserver sees it.
+    document.body.replaceChildren(holder)
+    await nextTick()
+    const capture = drainCaptures().find((candidate) => candidate.url.endsWith('/parsed.js'))
+    expect(capture).toBeDefined()
+    expect(capture?.initiatorChain).toBeUndefined()
+  })
+})
