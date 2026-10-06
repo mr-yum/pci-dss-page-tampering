@@ -165,6 +165,18 @@ describe('inherited authorisation (authorisesLoads)', () => {
       expect(results.get(ASSET)?.type).toBe('unknown_script_found')
     })
 
+    it("judges the guard on the load's own evidence: a host guard never admits an inline load on its initiator's word", async () => {
+      const inline: ScriptInfo = {
+        source: { type: 'inline', id: 'inline_script/id_not_found', content: 'skim()', instances: [{ token: 'k1-9', kind: 'script', inserterToken: null }], url: LOADER },
+        hash: { value: h('skim') } as SHA256Hash,
+        initiatorChain: [s(LOADER), page],
+      }
+      const hostGuard = loaderEntry({ authorisesLoads: 'transitive', loadsMatching: { hostMatcher: '^js\\.vendor\\.example$' } })
+      const results = await compare(inventory(hostGuard), [external(LOADER, 'loader-v1', [page]), external(MID, 'mid', [s(LOADER), page])], [inline])
+      expect(results.get(MID)?.type).toBe('authorized_script')
+      expect(results.get('inline_script/id_not_found')?.type).toBe('unknown_script_found')
+    })
+
     it('honours the loadsMatching guard', async () => {
       const guarded = loaderEntry({ authorisesLoads: 'transitive', loadsMatching: { nameMatcher: '^https://assets\\.vendor\\.example/' } })
       const elsewhere = 'https://cdn.other.example/x.js'

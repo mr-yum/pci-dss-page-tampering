@@ -2,7 +2,7 @@ import type { IScriptComparisonService } from '../../interfaces/comparison.js'
 import type { ComparisonResultType } from '../../types/comparison.js'
 import { AuthorizedScriptFound, KnownScriptWithUnauthorisedContentFound, MissingRequiredScript, UnknownScriptFound } from '../../types/comparison.js'
 import type { InheritedAuthorisation } from '../../types/comparison/index.js'
-import { chainPaths, describeChain, type InitiatorHop, inlineInstanceOf } from '../../types/initiator-chain.js'
+import { chainPaths, describeChain, type InitiatorHop, inlineInstanceOf, ownEvidence } from '../../types/initiator-chain.js'
 import type { Inventory, InventoryScriptInfo } from '../../types/inventory/model.js'
 import type { DetectedScript, Matchable } from '../../types/matcher/matcher.interface.js'
 import type { ScriptDetectionSummary, ScriptInfo } from '../../types/script.js'
@@ -351,7 +351,7 @@ export function inheritAuthorisation(judged: readonly Judged[], target: Target, 
       if (depth > grant.maxDepth) return null
       // Mandatory (validation refuses a grant without it): the one check on a
       // load that rests on the load's own URL, which the page cannot forge.
-      if (grant.loadsMatching === undefined || !grant.loadsMatching.identify(loaded)) return null
+      if (grant.loadsMatching === undefined || !grant.loadsMatching.identify(ownEvidence(loaded))) return null
       entries.push(result.inventoryEntry)
     }
     return entries[0]!

@@ -1166,9 +1166,11 @@ run observed — nothing beyond it is assumed).
 `loadsMatching` is required. Chain evidence is gathered from inside the page,
 so code already running there could influence it; the loaded script's own URL
 it cannot. Name hosts that serve only the vendor's own code — a guard over a
-public CDN anyone can publish to vouches for anyone's script. Inline loads
-inherit only if the guard admits them explicitly (e.g. an `orMatcher` with
-`{ "nameMatcher": "^inline_script/" }`).
+public CDN anyone can publish to vouches for anyone's script. The guard sees
+only the loaded script's own evidence: an inline script has no URL of its own
+(its "URL" is just who claims to have inserted it), so a host or URL guard
+never admits one; inline loads inherit only if the guard admits them by name,
+content or hash (e.g. an `orMatcher` with `{ "nameMatcher": "^inline_script/" }`).
 
 A script that **no entry identifies** is authorised by inheritance when a
 script up its chain was **authorised in the same run** by an entry carrying
