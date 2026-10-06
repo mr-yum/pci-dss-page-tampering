@@ -185,6 +185,30 @@ export interface Matchable {
    * Consumers treat a match on any path as a match.
    */
   alternateInitiatorChains?: InitiatorHop[][]
+
+  /**
+   * URL of the frame the browser loaded this script into: the frame that
+   * issued an external script's network request, as Chrome's frame tree
+   * reports it when the response arrives. Browser evidence, unlike the chain:
+   * page code can name any URL in a call frame, but cannot make a request
+   * issue from a cross-origin frame's document. Consumed only by a transitive
+   * `InitiatorHostMatcher` with `kinds`, to bind a `document` hop to the
+   * script's own frame.
+   *
+   * Synthetic external scripts only. Never set for inline scripts (only the
+   * top-level document's are read, and their frame adds nothing a page
+   * cannot already claim), on the real-user lane (the agent cannot report the
+   * frame tree; a beacon is page-authored), for a request with no frame (a
+   * worker), or when the same script was captured from frames on different
+   * origins and so has no single frame — every case leaves `document` hops
+   * unbound, which can only remove matches.
+   *
+   * When the run recorded the frame's URL as the request was sent, the
+   * reading at the response must agree with it on origin, so a frame that
+   * navigated between the two binds nothing. (Unrelated to a workflow step's
+   * `frameUrl`, which is a pattern locating a frame to act in.)
+   */
+  frameUrl?: string
 }
 
 /**
@@ -303,7 +327,9 @@ export interface Matcher<T extends Matchable = Matchable> {
    *   ("initiator is missing or unparseable"); transitive object form →
    *   missing/empty `initiatorChain` with no alternate paths ("initiator chain
    *   is missing"), and a chain ending in an `unknown` hop is judged on its
-   *   known prefix only
+   *   known prefix only; with `kinds`, a hop of another kind is never
+   *   considered and a `document` hop only when bound to `frameUrl` (missing
+   *   `frameUrl` → no document hop counts)
    * - OrMatcher/AndMatcher: delegate — no composite content pre-gate; each
    *   child applies its own gate
    * - The matcher's own authorisationInfo.authorised: false always denies

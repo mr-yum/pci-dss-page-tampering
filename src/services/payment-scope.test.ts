@@ -92,6 +92,45 @@ describe('partitionByPaymentScope', () => {
     expect(urls(payment.scriptSummary.externalScripts)).toEqual(['https://tagmanager.example/tm.js@loader-booking', 'https://js.payments.example/v3@loader-booking', 'https://cdn.example/unattributed.js@?'])
   })
 
+  // Copies of one script captured in two documents may have been loaded into
+  // frames on different origins; the copy kept for comparison then has no
+  // single frame, so it may not bind a document hop to either.
+  describe('the frame a collapsed script was loaded into', () => {
+    const inFrame = (document: string, frameUrl?: string): ScriptInfo => {
+      const script = external('https://js.payments.example/v3', document)
+      return frameUrl === undefined ? script : { ...script, source: { ...(script.source as { type: 'external'; url: string; content: string }), frameUrl } }
+    }
+    const collapsed = (scripts: ScriptInfo[]) => {
+      const base = summary()
+      return partitionByPaymentScope({ ...base, scriptSummary: { ...base.scriptSummary, externalScripts: scripts } }).payment.scriptSummary.externalScripts
+    }
+
+    it('keeps the frame when every copy agrees on its origin', () => {
+      const [kept] = collapsed([inFrame(BOOKING, 'https://pay.vendor.example/a'), inFrame(CHECKOUT, 'https://pay.vendor.example/b')])
+      expect(kept!.source).toHaveProperty('frameUrl', 'https://pay.vendor.example/a')
+    })
+
+    // Copies that disagree have no single frame, whichever came first: a copy
+    // with no frame never lends the binding to one that has it, or the reverse.
+    it('never adopts a frame from a later copy when the first had none', () => {
+      const [kept] = collapsed([inFrame(BOOKING), inFrame(CHECKOUT, 'https://pay.vendor.example/a')])
+      expect(kept!.source).not.toHaveProperty('frameUrl')
+    })
+
+    it.each([
+      ['a frame on another origin', 'https://book.example.test/venue/checkout'],
+      ['no frame', undefined],
+    ])('drops it when another copy was loaded into %s, without touching the summary', (_label, other) => {
+      const first = inFrame(BOOKING, 'https://pay.vendor.example/a')
+      const scripts = [first, inFrame(CHECKOUT, other)]
+      const result = collapsed(scripts)
+      expect(result).toHaveLength(1)
+      expect(result[0]!.source).not.toHaveProperty('frameUrl')
+      expect(result[0]!.document).toBe(BOOKING)
+      expect(first.source).toHaveProperty('frameUrl', 'https://pay.vendor.example/a')
+    })
+  })
+
   // Detection always deduped inline scripts by hash across scans, but kept two
   // identical scripts found in the same scan (they may differ in initiator).
   // The collapse must undo only the per-document copies capture now keeps.

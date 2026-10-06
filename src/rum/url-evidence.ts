@@ -15,6 +15,7 @@
 import type { InheritedAuthorisation } from '../types/comparison/index.js'
 import { chainPaths, type InitiatorHop, INLINE_SCRIPT_NAME_PREFIX, ownEvidence } from '../types/initiator-chain.js'
 import type { InventoryScriptInfo } from '../types/inventory/model.js'
+import type { InitiatorHostMatcher } from '../types/matcher/initiator-host-matcher.js'
 import type { Matchable, Matcher } from '../types/matcher/matcher.interface.js'
 
 /**
@@ -25,7 +26,8 @@ import type { Matchable, Matcher } from '../types/matcher/matcher.interface.js'
  * cannot supply) and `workflow` (a RUM observation can never prove its
  * checkout variation, so a workflow-scoped authoriser would deny every
  * observation for want of evidence rather than on it). `initiator-host`
- * counts only when the observation's chain starts with a real hop.
+ * counts only when the observation's chain starts with a real hop, and never
+ * when it considers `document` hops only (`kinds: ["document"]`).
  */
 const URL_EVIDENCE_MATCHERS = new Set(['name', 'url', 'host', 'initiator-host', 'targetType'])
 
@@ -42,6 +44,13 @@ export function consumesOnlyUrlEvidence(matcher: Matcher, observation?: Matchabl
     const children = matcher.getPattern() as Matcher[]
     return children.length > 0 && children.every((child) => consumesOnlyUrlEvidence(child, observation))
   }
+  // A transitive matcher limited to `document` hops cannot be satisfied by
+  // anything a real user's browser reports: a document hop counts only when
+  // bound to the frame the browser loaded the script into, which no beacon
+  // carries (and the agent never emits document hops at all). Evaluating it
+  // would deny every observation for want of evidence rather than on it, so
+  // it leaves the authoriser unevaluable — identification-only — like a hash.
+  if (type === 'initiator-host' && !(matcher as Partial<Pick<InitiatorHostMatcher, 'getHopKinds'>>).getHopKinds?.().includes('script')) return false
   // The agent falls back to the document URL as `initiator` whenever no
   // script was executing (async callbacks, safety-net captures), so an
   // initiator is evidence only when the chain's first hop is a real one.

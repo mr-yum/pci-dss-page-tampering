@@ -1,8 +1,8 @@
-import type { Browser, CDPSession, ElementHandle, Frame, HTTPResponse, Page, Protocol } from 'puppeteer'
+import type { Browser, CDPSession, ElementHandle, Frame, HTTPRequest, HTTPResponse, Page, Protocol } from 'puppeteer'
 import { TimeoutError } from 'puppeteer'
 
 import { headerResponseHandler } from '../handlers/header.js'
-import { PendingScriptReads, recordUnreadScript, scriptResponseHandler, type SettleReasons } from '../handlers/script.js'
+import { PendingScriptReads, recordUnreadScript, requestFrameUrl, scriptResponseHandler, type SettleReasons } from '../handlers/script.js'
 import type { IDetectionService } from '../interfaces/detection.js'
 import type { DetectionSummary } from '../types/detection.js'
 import type { DocumentId } from '../types/document.js'
@@ -241,12 +241,17 @@ export class DetectionService implements IDetectionService {
           }
         : undefined
 
+      const issuedFrameUrls = new WeakMap<HTTPRequest, string>()
       // Bootstrap page. The document is read synchronously when the response
       // arrives, before any await, so it names the document that issued it.
       page
         .on('request', (request) => {
           // A request can be the first sign of a frame's new session.
           retainFrameBodies(request.frame())
+          // The frame's URL as the request leaves, for binding document hops
+          // (see scriptResponseHandler): it must still agree at the response.
+          const issuedIn = requestFrameUrl(request)
+          if (issuedIn !== undefined) issuedFrameUrls.set(request, issuedIn)
           pendingScriptReads.trackRequest(request, currentStep, (issued) => tracker?.documentOf(issued))
         })
         // A torn-down frame's requests may never be reported finished or
@@ -264,7 +269,12 @@ export class DetectionService implements IDetectionService {
         })
         .on('response', (response) => {
           const document = documentOf(response)
-          pendingScriptReads.track(scriptResponseHandler(response, externalScripts, document, { unread: unreadScripts, step: currentStep, sealed: () => scriptsSealed }, shimSourceUrl), response, document, currentStep)
+          pendingScriptReads.track(
+            scriptResponseHandler(response, externalScripts, document, { unread: unreadScripts, step: currentStep, sealed: () => scriptsSealed }, shimSourceUrl, (issued) => issuedFrameUrls.get(issued)),
+            response,
+            document,
+            currentStep,
+          )
         })
         .on('response', (response) =>
           headerResponseHandler(response, headers, responses, target.url, inventoryHeaders, target.workflowId ?? 'default', target.type, tracker === undefined ? undefined : { document: documentOf(response), documents: headerDocuments }),

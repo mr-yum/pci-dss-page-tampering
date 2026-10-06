@@ -1,6 +1,7 @@
 import type { DetectionSummary } from '../types/detection.js'
 import type { DocumentId, PaymentScope } from '../types/document.js'
 import { type DetectedResponse, type HeaderDetectionSummary, type HeaderName, headerObservationKey, type HeaderUrl } from '../types/header.js'
+import { agreedFrameUrl } from '../types/initiator-chain.js'
 import type { ScriptInfo } from '../types/script.js'
 
 export type ScopedDetection = {
@@ -173,13 +174,23 @@ function pathKey(url: string): string {
  * each script exactly as it did before documents were tracked.
  */
 function collapseExternal(scripts: ScriptInfo[]): ScriptInfo[] {
-  const seen = new Set<string>()
-  return scripts.filter((script) => {
+  const kept = new Map<string, ScriptInfo>()
+  for (const script of scripts) {
     const key = `${script.source.type === 'external' ? script.source.url : ''}\u0000${script.hash.value}`
-    if (seen.has(key)) return false
-    seen.add(key)
-    return true
-  })
+    const first = kept.get(key)
+    if (first === undefined) {
+      kept.set(key, script)
+      continue
+    }
+    // Copies captured in frames on different origins leave the kept copy
+    // with no single frame (see `agreedFrameUrl`). A copy, not a mutation:
+    // the summary is shared with the other scope.
+    if (first.source.type === 'external' && first.source.frameUrl !== undefined && script.source.type === 'external' && agreedFrameUrl(first.source.frameUrl, script.source.frameUrl) === undefined) {
+      const { frameUrl: _dropped, ...source } = first.source
+      kept.set(key, { ...first, source })
+    }
+  }
+  return [...kept.values()]
 }
 
 function collapseInline(scripts: ScriptInfo[]): ScriptInfo[] {

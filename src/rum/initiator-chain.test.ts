@@ -130,6 +130,38 @@ describe('URL-evidence authorisation of identification-only observations', () =>
     expect((await route([pinned], external(SDK, [s('https://evil.example/loader.js'), page]), 'inventory')).outcome).toBe('recorded')
   })
 
+  describe('a transitive initiatorHostMatcher limited to document hops (a synthetic-lane control)', () => {
+    const FRAME = 'https://pay.vendor.example/frame'
+    const docHops = { host: '^([a-z0-9-]+\\.)*vendor\\.example$', transitive: true as const, kinds: ['document' as const] }
+
+    it('is never URL evidence: no beacon can bind a document hop, so it cannot be evaluated', () => {
+      expect(consumesOnlyUrlEvidence(createMatcher({ initiatorHostMatcher: docHops }))).toBe(false)
+      const observed = normaliseMessage(message(external(SDK, [s(MAIN), page])))
+      if (observed.kind !== 'script') throw new Error('expected a script observation')
+      expect(consumesOnlyUrlEvidence(createMatcher({ initiatorHostMatcher: docHops }), observed.matchable)).toBe(false)
+      expect(consumesOnlyUrlEvidence(createMatcher({ andMatcher: [{ nameMatcher: '^https:' }, { initiatorHostMatcher: docHops }] }))).toBe(false)
+      // Script hops the agent does report: evaluable, as before kinds existed.
+      expect(consumesOnlyUrlEvidence(createMatcher({ initiatorHostMatcher: { ...docHops, kinds: ['script'] } }))).toBe(true)
+      expect(consumesOnlyUrlEvidence(createMatcher({ initiatorHostMatcher: { ...docHops, kinds: ['script', 'document'] } }))).toBe(true)
+      expect(consumesOnlyUrlEvidence(createMatcher({ initiatorHostMatcher: { host: docHops.host, transitive: true } }))).toBe(true)
+    })
+
+    it('leaves an entry that authorises with it identification-only: recorded, never a false mismatch', async () => {
+      const framed = entry({ identifyWith: { nameMatcher: exact(SDK) }, authoriseWith: { andMatcher: [{ initiatorHostMatcher: docHops }, { nameMatcher: '^https:' }], authorisationInfo: AUTHORISED } })
+      const result = await route([framed], external(SDK, [s(MAIN), page]))
+      expect(result.outcome).toBe('recorded')
+      expect(result.category).toBeUndefined()
+    })
+
+    it('never identifies a real-user observation, even one whose beacon claims a document hop on the vendor host', async () => {
+      const framed = entry({ identifyWith: { andMatcher: [{ initiatorHostMatcher: docHops }, { nameMatcher: '^https:\\/\\/([a-z0-9-]+\\.)*vendor\\.example\\/' }] }, authoriseWith: { nameMatcher: '^https:', authorisationInfo: AUTHORISED } })
+      // The beacon schema accepts a `document` hop the agent never produces: a page-authored claim.
+      const claimed = await route([framed], external(ASSET, [{ url: FRAME, kind: 'document' }]))
+      expect(claimed.category).toBe('rum_uninventoried_script_detected')
+      expect((await route([framed], external(ASSET, [s(SDK), page]))).category).toBe('rum_uninventoried_script_detected')
+    })
+  })
+
   it('does not judge an initiator-host authoriser when the first hop is unknown (the agent fell back to the page URL)', async () => {
     const pinned = entry({ identifyWith: { nameMatcher: exact(SDK) }, authoriseWith: { initiatorHostMatcher: '^js\\.vendor\\.example$', authorisationInfo: AUTHORISED } })
     expect((await route([pinned], external(SDK, [{ url: PAGE, kind: 'unknown' }]))).outcome).toBe('recorded')

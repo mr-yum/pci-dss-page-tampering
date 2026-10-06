@@ -1372,6 +1372,35 @@ describe('initiatorHostMatcher config (feature 011 — inventory-decided initiat
       expect(RawInventoryScriptInfoSchema.safeParse(scriptWith({ initiatorHostMatcher: { host: '', transitive: true } })).success).toBe(false)
     })
 
+    it('accepts kinds: a non-empty list of script and document, duplicates tolerated', () => {
+      for (const kinds of [['document'], ['script'], ['script', 'document'], ['document', 'document']]) {
+        expect(RawInventoryScriptInfoSchema.safeParse(scriptWith({ initiatorHostMatcher: { host: '^x$', transitive: true, kinds } })).success).toBe(true)
+      }
+    })
+
+    it.each([[[]], [['unknown']], [['frame']], ['document'], [[1]]])('rejects kinds %p, naming the field', (kinds) => {
+      const result = RawInventoryScriptInfoSchema.safeParse(scriptWith({ initiatorHostMatcher: { host: '^x$', transitive: true, kinds } }))
+      expect(result.success).toBe(false)
+      expect(JSON.stringify(result.error?.issues)).toContain('kinds')
+    })
+
+    it('never accepts kinds outside the transitive object form', () => {
+      expect(RawInventoryScriptInfoSchema.safeParse(scriptWith({ initiatorHostMatcher: { host: '^x$', kinds: ['document'] } })).success).toBe(false)
+      expect(RawInventoryScriptInfoSchema.safeParse(scriptWith({ initiatorHostMatcher: '^x$', kinds: ['document'] })).success).toBe(false)
+    })
+
+    it('round-trips kinds through the loaded model', () => {
+      const raw = {
+        identifyWith: { andMatcher: [{ initiatorHostMatcher: { host: '^([a-z0-9-]+\\.)*vendor\\.example$', transitive: true, kinds: ['document'] } }, { nameMatcher: '^https:\\/\\/([a-z0-9-]+\\.)*vendor\\.example\\/' }] },
+        authoriseWith: {
+          andMatcher: [{ initiatorHostMatcher: { host: '^([a-z0-9-]+\\.)*vendor\\.example$', transitive: true, maxDepth: 4, kinds: ['script', 'document'] } }, { nameMatcher: '^https:' }],
+          authorisationInfo: scriptWith(null).authoriseWith.authorisationInfo,
+        },
+      }
+      const parsed = RawInventoryScriptInfoSchema.parse(raw)
+      expect(inventoryScriptInfoToRawInventoryScriptInfo(rawInventoryScriptInfoToInventoryScriptInfo(parsed))).toEqual(parsed)
+    })
+
     it('round-trips through the loaded model unchanged, beside the string form', () => {
       const raw = {
         identifyWith: { andMatcher: [{ initiatorHostMatcher: '^pay\\.example\\.com$' }, { initiatorHostMatcher: { host: '^js\\.vendor\\.example$', transitive: true, maxDepth: 4 } }] },

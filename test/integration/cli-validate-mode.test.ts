@@ -206,7 +206,13 @@ describe('CLI --mode validate integration tests', () => {
       const payload = structuredClone(validInventoryPayload) as unknown as { scripts: Record<string, unknown>[] }
       payload.scripts[0] = {
         ...payload.scripts[0],
-        identifyWith: { andMatcher: [{ nameMatcher: '^https://example\\.com/app\\.js$' }, { initiatorHostMatcher: { host: '^example\\.com$', transitive: true, maxDepth: 2 } }] },
+        identifyWith: {
+          andMatcher: [
+            { nameMatcher: '^https://example\\.com/app\\.js$' },
+            { initiatorHostMatcher: { host: '^example\\.com$', transitive: true, maxDepth: 2 } },
+            { initiatorHostMatcher: { host: '^example\\.com$', transitive: true, kinds: ['document'] } },
+          ],
+        },
         authorisesLoads: 'transitive',
         maxDepth: 3,
         loadsMatching: { nameMatcher: '^https://example\\.com/' },
@@ -219,6 +225,21 @@ describe('CLI --mode validate integration tests', () => {
       const result = executeCli(['--mode', 'validate', '--repo', `file://${repoPath}`, '--inventory-branch', 'main'], newSandbox())
 
       expect(result.status).toBe(0)
+    })
+
+    it('exits 2 naming the field when a transitive initiatorHostMatcher lists an unknown hop kind', () => {
+      const payload = structuredClone(validInventoryPayload) as unknown as { scripts: Record<string, unknown>[] }
+      payload.scripts[0] = { ...payload.scripts[0], identifyWith: { initiatorHostMatcher: { host: '^example\\.com$', transitive: true, kinds: ['frame'] } } }
+      repoPath = createFixtureRepo((root) => {
+        fs.writeFileSync(path.join(root, 'targets/1.0.json'), JSON.stringify(payload, null, 2))
+        fs.writeFileSync(path.join(root, 'workflows/checkout.json'), JSON.stringify({ steps: [] }))
+      })
+
+      const result = executeCli(['--mode', 'validate', '--repo', `file://${repoPath}`, '--inventory-branch', 'main'], newSandbox())
+
+      expect(result.status).toBe(2)
+      expect(result.stderr).toContain('1.0.json')
+      expect(result.stderr).toContain('kinds')
     })
 
     it('exits 2 for a load grant on an entry that is not authorised', () => {

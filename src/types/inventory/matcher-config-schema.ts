@@ -87,7 +87,9 @@ const UrlMatcherConfigSchema = z
  * the host of any hop of the initiator chain, up to `maxDepth` hops out —
  * see InitiatorHostMatcher. `transitive` is required (and must be `true`) in
  * the object form, so the object form can never silently mean the
- * immediate-hop form.
+ * immediate-hop form. `kinds` (`script`, `document`; at least one) limits the
+ * hops considered, and binds a `document` hop to the frame the script was
+ * loaded into; omitted, every hop counts as before.
  */
 const InitiatorHostMatcherConfigSchema = z
   .object({
@@ -98,6 +100,10 @@ const InitiatorHostMatcherConfigSchema = z
           host: z.string().min(1, 'initiatorHostMatcher.host must not be empty'),
           transitive: z.literal(true),
           maxDepth: z.number().int().min(1).max(INITIATOR_CHAIN_MAX_DEPTH).optional(),
+          kinds: z
+            .array(z.enum(['script', 'document']))
+            .min(1, 'initiatorHostMatcher.kinds must name at least one hop kind')
+            .optional(),
         })
         .strict(),
     ]),

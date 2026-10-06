@@ -7,6 +7,7 @@
  * @see ../../../specs/001-refactor-script-identification/data-model.md for MatcherConfig schema
  */
 
+import type { HostedHopKind } from '../initiator-chain.js'
 import type { InventoryScriptHashInfo } from '../inventory/model.js'
 import { AndMatcher } from './and-matcher.js'
 import { ContentMatcher } from './content-matcher.js'
@@ -65,7 +66,7 @@ export type MatcherConfig =
   | { headerNameMatcher: string }
   | { contentMatcher: string; authorisationInfo?: RawAuthorisationInfo }
   | { hostMatcher: string; authorisationInfo?: RawAuthorisationInfo }
-  | { initiatorHostMatcher: string | { host: string; transitive: true; maxDepth?: number }; authorisationInfo?: RawAuthorisationInfo }
+  | { initiatorHostMatcher: string | { host: string; transitive: true; maxDepth?: number; kinds?: HostedHopKind[] }; authorisationInfo?: RawAuthorisationInfo }
   | { urlMatcher: string; authorisationInfo?: RawAuthorisationInfo }
   | { workflowMatcher: string; authorisationInfo?: RawAuthorisationInfo }
   | { targetTypeMatcher: string; authorisationInfo?: RawAuthorisationInfo }
@@ -130,7 +131,11 @@ export function createMatcher(config: MatcherConfig): Matcher {
   if ('initiatorHostMatcher' in config) {
     const spec = config.initiatorHostMatcher
     if (typeof spec === 'string') return new InitiatorHostMatcher(spec, convertAuthorisationInfo(config.authorisationInfo))
-    return new InitiatorHostMatcher(spec.host, convertAuthorisationInfo(config.authorisationInfo), { transitive: true, ...(spec.maxDepth !== undefined ? { maxDepth: spec.maxDepth } : {}) })
+    return new InitiatorHostMatcher(spec.host, convertAuthorisationInfo(config.authorisationInfo), {
+      transitive: true,
+      ...(spec.maxDepth !== undefined ? { maxDepth: spec.maxDepth } : {}),
+      ...(spec.kinds !== undefined ? { kinds: spec.kinds } : {}),
+    })
   }
 
   if ('urlMatcher' in config) {
