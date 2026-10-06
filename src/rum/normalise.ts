@@ -78,8 +78,11 @@ export type NormalisedScriptObservation = {
   matchable: Matchable
   /**
    * True for external scripts: content and hash are unobtainable client-side
-   * (research R8), so evaluation short-circuits to identification only —
-   * identified means recorded, never an authorisation attempt.
+   * (research R8), so the observation carries URL-only evidence (its own URL,
+   * initiator, chain and pass). It is authorised or denied when the
+   * identifying entry's authoriser consumes only that evidence
+   * (`consumesOnlyUrlEvidence`, `src/rum/url-evidence.ts`); otherwise
+   * identified means recorded, with no authorisation attempt.
    */
   identificationOnly: boolean
   /** Present for inline scripts only. */

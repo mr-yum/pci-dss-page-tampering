@@ -30,8 +30,11 @@ const observationCommon = {
  * who inserted that, out to the page. A hop's `url` is a URL under the same
  * 2048-char cap as every URL field, or an inline script's agent-assigned
  * identity (`inline_script/rum#<n>` — a session-local counter, never content).
- * `kind` says what the hop is: `script`, `document`, or `unknown` (the agent
- * had no `currentScript` to attribute to). See src/types/initiator-chain.ts.
+ * `kind` says what the hop is: `script`, `document`, or `unknown`. The agent
+ * emits only `script` and `unknown` — every chain it records ends at the page
+ * as an `unknown` hop, since it cannot tell who inserted a script it never
+ * saw inserted; `document` belongs to the shared hop type and is accepted,
+ * never produced. See src/types/initiator-chain.ts.
  */
 export const InitiatorHopSchema = z.strictObject({
   // http(s) and blob only: a data: URL would put script source on the wire.

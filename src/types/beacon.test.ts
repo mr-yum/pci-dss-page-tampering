@@ -47,7 +47,8 @@ describe('parseBeacon', () => {
       const chains = result.beacon.observations.map((observation) => ('initiatorChain' in observation ? observation.initiatorChain : undefined))
       expect(chains[0]).toEqual([
         { url: 'https://pay.example.com/assets/main.js', kind: 'script' },
-        { url: 'https://pay.example.com/checkout', kind: 'document' },
+        // The agent ends every chain at the page as an `unknown` hop, never `document`.
+        { url: 'https://pay.example.com/checkout', kind: 'unknown' },
       ])
       expect(chains[1]?.[0]).toEqual({ url: 'inline_script/rum#1', kind: 'script' })
     })

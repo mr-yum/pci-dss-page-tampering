@@ -21,7 +21,7 @@
         },
         {
           "url": "https://pay.example.com/checkout",
-          "kind": "document"
+          "kind": "unknown"
         }
       ]
     },
@@ -41,7 +41,7 @@
         },
         {
           "url": "https://pay.example.com/checkout",
-          "kind": "document"
+          "kind": "unknown"
         }
       ]
     },

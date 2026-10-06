@@ -19,7 +19,7 @@ import { rawInventoryScriptInfoToInventoryScriptInfo } from '../utils/script.js'
 import type { QueueMessage } from './drain.js'
 import { normaliseMessage } from './normalise.js'
 import { routeMessage, type RumRouteDeps } from './route.js'
-import { consumesOnlyUrlEvidence } from './url-evidence.js'
+import { consumesOnlyUrlEvidence, inheritOnUrlEvidence } from './url-evidence.js'
 
 const log: Logger = { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() }
 const target: Target = { type: 'detection', url: 'https://pay.example.com/checkout', workflow: { fileName: 'w.json', definition: { steps: [] } }, logger: log }
@@ -27,9 +27,12 @@ const AUTHORISED = { description: 'Vendor', authorised: true, date: '2026-10-01T
 const HASH = 'a'.repeat(64)
 
 const PAGE = 'https://pay.example.com/checkout'
+const MAIN = 'https://pay.example.com/assets/main.js'
 const SDK = 'https://js.vendor.example/v3/sdk.js'
 const ASSET = 'https://assets.vendor.example/fraud.js'
-const page: InitiatorHop = { url: PAGE, kind: 'document' }
+// The agent never emits a `document` hop: the page is where every chain ends,
+// as an `unknown` hop (no currentScript, or an inserter it never saw inserted).
+const page: InitiatorHop = { url: PAGE, kind: 'unknown' }
 const s = (url: string): InitiatorHop => ({ url, kind: 'script' })
 
 const entry = (raw: Partial<RawInventoryScriptInfo>): InventoryScriptInfo => rawInventoryScriptInfoToInventoryScriptInfo(RawInventoryScriptInfoSchema.parse(raw))
@@ -143,18 +146,22 @@ describe('inheritance on the RUM lane', () => {
     expect((await route([sdkByUrl()], external(ASSET, [s(SDK), page]), 'inventory')).outcome).toBe('recorded')
   })
 
-  it('applies to inline observations', async () => {
-    const result = await route([sdkByUrl({ authorisesLoads: 'direct', loadsMatching: { nameMatcher: '^inline_script\\/' } })], {
-      kind: 'inline-script',
-      ts: 1,
-      route: '/',
-      length: 3,
-      head: 'x()',
-      tail: 'x()',
-      initiator: SDK,
-      initiatorChain: [s(SDK), page],
-    })
-    expect(result.outcome).toBe('recorded')
+  it('never applies to inline observations, even under a guard that would admit one by its content', async () => {
+    const grant = sdkByUrl({ authorisesLoads: 'direct', loadsMatching: { orMatcher: [{ nameMatcher: '^https:\\/\\/[a-z.]*vendor\\.example\\/' }, { contentMatcher: '^x\\(\\)$' }] } })
+    const inline = { kind: 'inline-script' as const, ts: 1, route: '/', length: 3, head: 'x()', tail: 'x()', initiator: SDK, initiatorChain: [s(SDK), page] }
+    expect((await route([grant], inline)).category).toBe('rum_uninventoried_script_detected')
+    expect((await route([grant], inline, 'inventory')).outcome).toBe('candidate')
+    // And the walk itself refuses one, whoever calls it.
+    const normalised = normaliseMessage(message(inline))
+    if (normalised.kind !== 'script') throw new Error('expected a script observation')
+    expect(inheritOnUrlEvidence(normalised.matchable, [grant], (ancestor) => new ScriptComparisonService().identifyScript(ancestor, [grant]))).toBeNull()
+  })
+
+  it('never overrides an entry pending review or declined: the observation keeps alerting, and the inventory pass proposes it to the existing flow', async () => {
+    const pending = entry({ identifyWith: { nameMatcher: exact(ASSET) }, authoriseWith: { nameMatcher: exact(ASSET), authorisationInfo: { ...AUTHORISED, description: 'NO_DESCRIPTION', authorised: false } } })
+    expect((await route([sdkByUrl(), pending], external(ASSET, [s(SDK), page]))).category).toBe('rum_uninventoried_script_detected')
+    expect((await route([sdkByUrl(), pending], external(ASSET, [s(SDK), page]), 'inventory')).outcome).toBe('candidate')
+    expect((await route([sdkByUrl()], external(ASSET, [s(SDK), page]))).outcome).toBe('recorded')
   })
 
   describe('fail-secure rules', () => {
@@ -188,8 +195,10 @@ describe('inheritance on the RUM lane', () => {
         authorisesLoads: 'transitive',
         loadsMatching: { nameMatcher: '^https:' },
       })
-      expect((await route([pinnedSdk], external(ASSET, [s(SDK), { url: PAGE, kind: 'unknown' }]))).category).toBe('rum_uninventoried_script_detected')
-      expect((await route([pinnedSdk], external(ASSET, [s(SDK), page]))).outcome).toBe('recorded')
+      // The SDK sits on the page (an unknown hop): nothing shows who loaded it.
+      expect((await route([pinnedSdk], external(ASSET, [s(SDK), page]))).category).toBe('rum_uninventoried_script_detected')
+      // The page's own bundle inserted it: that hop is evidence.
+      expect((await route([pinnedSdk], external(ASSET, [s(SDK), s(MAIN), page]))).outcome).toBe('recorded')
     })
 
     it('an inline hop never grants, even when an entry would identify and authorise its identity', async () => {
@@ -246,7 +255,7 @@ describe('inheritance on the RUM lane', () => {
     expect(result.context?.['initiatorChain']).toEqual([s(`${SDK}?k=secret`), page])
     const lines = rumAlertContextLines('rum_uninventoried_script_detected', result.context as never)
     const loadedBy = lines.find((line) => line.label === 'Loaded by')
-    expect(loadedBy?.value).toBe(`${SDK} ← page ${PAGE}`)
+    expect(loadedBy?.value).toBe(`${SDK} ← ${PAGE} (unverified)`)
     expect(lines.find((line) => line.label === 'Initiator')?.value).toBe(SDK)
     expect(JSON.stringify(lines)).not.toContain('secret')
   })

@@ -16,7 +16,9 @@
  *   synthetic, `inline_script/rum#<n>` RUM — never a parseable URL, so host
  *   matchers skip it).
  * - `document` — the document itself: the walk reached the page (or a frame
- *   document) and stops.
+ *   document) and stops. Synthetic lane only: the RUM agent cannot tell who
+ *   inserted a script it never saw inserted, so it records the page as an
+ *   `unknown` hop.
  * - `unknown` — the URL named as inserter could not be tied to anything
  *   observed (an unread script, a guess such as the document fallback for an
  *   async insertion). The walk ends there and nothing beyond it is assumed;

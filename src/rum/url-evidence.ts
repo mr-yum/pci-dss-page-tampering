@@ -61,6 +61,11 @@ export type RumInheritance = { entry: InventoryScriptInfo; inherited: InheritedA
  * is not re-reported — so each ancestor hop is judged from the hop alone, as
  * a URL-only observation:
  *
+ * - only an EXTERNAL observation can inherit — an inline load never does,
+ *   on either lane: its name and chain are page-controlled evidence;
+ * - an observation ANY entry identifies — a pending or declined one included
+ *   (`entries` is the whole inventory, whatever each entry's `authorised`) —
+ *   never inherits: that entry's verdict is a reviewer's to give;
  * - an inline hop (`inline_script/rum#<n>`) carries no evidence at all and
  *   ends the walk; so does a `document` or `unknown` hop;
  * - the hop must be identified by an entry whose authoriser consumes only
@@ -75,6 +80,8 @@ export type RumInheritance = { entry: InventoryScriptInfo; inherited: InheritedA
  * in src/services/comparison/script.ts). Returns null when nothing grants.
  */
 export function inheritOnUrlEvidence(observation: Matchable, entries: readonly InventoryScriptInfo[], identify: (matchable: Matchable) => InventoryScriptInfo | undefined): RumInheritance | null {
+  if (observation.name.startsWith(INLINE_SCRIPT_NAME_PREFIX)) return null
+  if (entries.some((entry) => entry.identifyWith.identify(observation))) return null
   for (const path of chainPaths(observation)) {
     for (const [index, hop] of path.entries()) {
       if (hop.kind !== 'script' || hop.url.startsWith(INLINE_SCRIPT_NAME_PREFIX)) break
