@@ -40,6 +40,31 @@ export type InventoryScriptInfo = {
    * their removal from the page alerts.
    */
   requiredOn?: TargetType[] | undefined
+  /**
+   * A trust grant: scripts this entry's script loads inherit its authorisation
+   * (see `LoadGrant`). Only ever consulted for a script this entry authorised
+   * in the same run.
+   */
+  authorisesLoads?: LoadGrant | undefined
+}
+
+/**
+ * `authorisesLoads` as loaded: what an authorised script vouches for.
+ *
+ * - `direct` — scripts it inserted itself (the first hop of their chain).
+ * - `transitive` — anything loaded beneath it, up to `maxDepth` hops out.
+ *
+ * `loadsMatching` (required by validation) says which loaded scripts may inherit
+ * (`identify()` is applied to the loaded script, e.g. a `nameMatcher`
+ * restricting scheme and host).
+ */
+export type LoadGrant = {
+  mode: 'direct' | 'transitive'
+  /** Furthest hop a load may sit at and still inherit: always 1 for `direct`. */
+  maxDepth: number
+  /** The `maxDepth` written in the file, kept so the entry serialises back unchanged. */
+  declaredMaxDepth?: number | undefined
+  loadsMatching?: Matcher | undefined
 }
 
 /**

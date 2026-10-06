@@ -624,6 +624,8 @@ One deliberate widening shipped as a minor: since 1.5.0, `run.status` is `"parti
 
 A 1.5.0 consumer that treated every `status: 0` entry as a gap stays correct for `unreadScripts`, and should read `unansweredRequests` as evidence.
 
+1.7.0 adds initiator chains — `observed.initiatorChain` (and `alternateInitiatorChains` where the walk forked) on script rows, `initiatorChain` on `unansweredRequests` — and inherited authorisation: an `authorised` script row may carry `authorisation.inherited` (the granting script and the chain to it), in which case `identification` and `authorisation.matcher` are null and `inventoryEntry` is the **granting** entry, with `inventoryEntry.provenance.grantedBy` pointing at its `authorisesLoads`. `authorised` still means the inventory authorises the script; read `inherited` to learn how.
+
 ### In CI
 
 The bundled `inventory-and-detection.yml` workflow passes `--report-dir reports` and uploads the directory as an `auditor-report-<run-id>-<attempt>` artefact with `if: always()`, so the evidence survives a failed detection run — the run an assessor is most likely to ask about.
@@ -995,6 +997,12 @@ For complex authorization policies, `authoriseWith` supports composite matchers:
 }
 ```
 
+Each alternative's own `authorisationInfo` counts: an alternative with
+`"authorised": false` — one the inventory pass appended for review, or one a
+reviewer declined — authorises nothing, whatever its matcher type, even while
+the entry's first alternative is approved. Approve an alternative by setting
+its own flag to `true`.
+
 ### CspDirectiveMatcher (Content-Security-Policy)
 
 CSP header values are split per directive before matching, so each directive is authorised on its own. Authorising one with an anchored `contentMatcher` is brittle: the sources in a directive are an unordered set, so merely reordering them produces a semantically identical policy that nonetheless fails to match — and every reorder mints another authorised alternative, until real entries carry a dozen or more near-duplicates. (Dropping a source is a different matter: as the table below shows, a removal can genuinely widen a policy, which is why it is flagged rather than tolerated.)
@@ -1128,6 +1136,117 @@ same `hostMatcher` / `urlMatcher` semantics apply to inline entries —
 useful when a third-party loader injects inline `<script>` elements and
 you want the inventory to refuse anything that's _not_ initiated by an
 approved origin.
+
+### Trust inherited through loaders
+
+A vendor's SDK rarely arrives alone: it loads helpers, frames and fraud
+tooling of its own, which change on the vendor's schedule, not yours. Pinning
+each of them by hash means an alert every time the vendor ships. Two inventory
+shapes let you trust what an authorised script loads instead — "we validate
+our own scripts, and we trust the payment provider for what its SDK pulls in".
+
+Both rest on the **initiator chain** the monitor records for every script:
+who inserted it, who inserted that, and so on out to the page (at most 8
+hops). The auditor report shows it on every script row
+(`observed.initiatorChain`), and the script alerts that name individual
+scripts — new and uninventoried scripts (`new_inventory_script_identified`,
+`uninventoried_script_detected`) and scripts whose content failed
+authorisation (`mismatched_script_detected`) — carry it as a _Loaded By_
+column in Slack (a `Loaded by:` line in console output). Header,
+missing-required-script and run-summary alerts do not. Hops are `script` (a script observed in the same run — an inline
+script appears by its inline identity, `inline_script/<name>#<instance>`),
+`document` (the page or a frame), or `unknown` (named, but not something the
+run observed — nothing beyond it is assumed).
+
+**`authorisesLoads` — an authorised script vouches for what it loads.**
+
+```json
+{
+  "identifyWith": { "nameMatcher": "^https://js\\.stripe\\.com/v3/?$" },
+  "authoriseWith": {
+    "urlMatcher": "^https://js\\.stripe\\.com/v3/?$",
+    "authorisationInfo": { "description": "Stripe.js; Stripe attests its own PCI DSS compliance", "authorised": true, "date": "2026-10-01T00:00:00.000Z" }
+  },
+  "authorisesLoads": "transitive",
+  "maxDepth": 4,
+  "loadsMatching": { "nameMatcher": "^https://([a-z0-9-]+\\.)*(stripe\\.com|stripe\\.network)/" }
+}
+```
+
+`loadsMatching` is required. Chain evidence is gathered from inside the page,
+so code already running there could influence it; the loaded script's own URL
+it cannot. Name hosts that serve only the vendor's own code — a guard over a
+public CDN anyone can publish to vouches for anyone's script. The guard must
+judge the load on its own evidence: every alternative needs a `nameMatcher`,
+`urlMatcher`, `hostMatcher`, `contentMatcher` or hash list (an `andMatcher`
+needs at least one such conjunct), so `workflowMatcher` / `targetTypeMatcher`
+can narrow a guard but never be one, and `initiatorHostMatcher` — the very
+claim being vouched for — is not shown to it.
+
+**Inline scripts never inherit.** Everything a grant could judge an inline
+load on is under the page's control — its name is its element id (or the
+shared `inline_script/id_not_found` fallback), and who inserted it is what the
+attribution shim recorded, which page code can forge. So an inline script a
+vendor's SDK inserts is authorised by an entry of its own, on its content or
+hash, or not at all, and `--mode validate` refuses a `loadsMatching` whose
+`nameMatcher` would admit an `inline_script/` name. Once authorised that way,
+an inline script still carries the chain: what it inserts can inherit from a
+grant further out.
+
+A script that **no entry identifies** is authorised by inheritance when a
+script up its chain was **authorised in the same run** by an entry carrying
+`authorisesLoads`: `"direct"` covers what that script inserted itself;
+`"transitive"` covers anything beneath it, up to `maxDepth` hops (1–8,
+default 8). `loadsMatching` (required) says which loads may inherit. The
+report marks such a row `authorised` with `authorisation.inherited` (the
+granting script and the chain) and cites the granting entry's
+`authorisesLoads` line. The rules are all fail-secure:
+
+- **An explicit verdict wins.** A load an entry identifies and denies stays
+  denied; only scripts nothing identified can inherit. That includes an entry
+  still pending review or declined (`authorised: false`): it identifies the
+  script, so the script keeps alerting as unknown until a reviewer approves
+  or removes that entry, and the inventory pass treats it as already
+  proposed.
+- **A mismatched root poisons its subtree.** The granting script must be
+  _authorised_ in this run, not merely identified — if its bytes no longer
+  match, nothing below it inherits. The same holds for every script between
+  the load and the grant: each must itself be authorised (explicitly or by
+  inheritance), so an unvouched-for loader cuts its loads off.
+- **A broken chain stops inheritance.** The walk ends at the page, at an
+  `unknown` hop, or at a script the run did not observe; a script with no
+  chain at all inherits nothing.
+- **Only an authorised entry can grant**, and never an inline script.
+  `--mode validate` refuses `authorisesLoads` on an entry whose
+  `authorisationInfo.authorised` is `false`, without `loadsMatching`, or with
+  a `loadsMatching` that does not judge the load itself or would admit an
+  inline name. An inline script's text at scan time need not be the code that
+  ran, so an inline script never grants, whatever its entry says.
+
+Inheritance changes what you vouch for, not what is monitored: every
+inherited script is still in the census, with its hash and chain. Decide
+deliberately how the granting script itself is authorised — by hash if you
+want any change to it to cut its loads off, by URL (as above) if you trust the
+vendor's own release process.
+
+**`initiatorHostMatcher` with `transitive: true` — identify by any host up the chain.**
+
+```json
+{
+  "identifyWith": {
+    "andMatcher": [{ "nameMatcher": "^https://assets\\.vendor\\.example/" }, { "initiatorHostMatcher": { "host": "^js\\.vendor\\.example$", "transitive": true, "maxDepth": 3 } }]
+  },
+  "authoriseWith": { "nameMatcher": "^https://assets\\.vendor\\.example/", "authorisationInfo": { "description": "Vendor assets, only when the vendor's SDK loaded them", "authorised": true, "date": "2026-10-01T00:00:00.000Z" } }
+}
+```
+
+The string form (`"initiatorHostMatcher": "^pay\\.example\\.com$"`) is
+unchanged and matches the immediate inserter only. The object form matches
+when the host of **any** hop within `maxDepth` matches; a chain ending in an
+`unknown` hop is judged on the hops before it, and a script with no chain is
+never matched. Page and frame documents are hops too, so a pattern matching
+your own page's host identifies every script on the page — aim it at vendor
+hosts, and authorise on content as well.
 
 ### Validating Inventory
 

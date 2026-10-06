@@ -13,12 +13,13 @@ import type { UnknownScriptFound } from '../../types/comparison/unknown-script-f
 import { ExecutionMode } from '../../types/config.js'
 import { type AlertDeliveryFailure, type ExecutionSummary, type FailedTarget, getExecutionOutcome, type UnansweredRequestEntry, unreadInPaymentScope, type UnreadScriptEntry } from '../../types/execution-summary.js'
 import type { HeaderInfo } from '../../types/header.js'
+import { chainText, type InitiatorHop } from '../../types/initiator-chain.js'
 import type { AlertDestination, InventoryAlert } from '../../types/inventory/model.js'
 import type { DetectedScript } from '../../types/matcher/matcher.interface.js'
 import type { ScriptInfo } from '../../types/script.js'
 import type { Target } from '../../types/target.js'
 import { extractHost, redactUrl } from '../../utils/url.js'
-import { redactForDisplay } from '../report/mapper.js'
+import { displayInitiatorChain, redactForDisplay } from '../report/mapper.js'
 import { resolveRumAlertDestination, rumAlertContextLines, rumAlertTitle } from './rum.js'
 
 /**
@@ -427,6 +428,7 @@ export class SlackAlertService implements IAlertService {
           content: detectedScript.content ?? '',
         },
         hash: detectedScript.hash,
+        ...(detectedScript.initiatorChain !== undefined ? { initiatorChain: detectedScript.initiatorChain } : {}),
       }
     } else {
       return {
@@ -437,6 +439,7 @@ export class SlackAlertService implements IAlertService {
           ...(detectedScript.url !== undefined ? { url: detectedScript.url } : {}),
         },
         hash: detectedScript.hash,
+        ...(detectedScript.initiatorChain !== undefined ? { initiatorChain: detectedScript.initiatorChain } : {}),
       }
     }
   }
@@ -510,8 +513,22 @@ export class SlackAlertService implements IAlertService {
         },
         ...this.boundedTable(
           [
-            [this.buildBoldHeaderCell('Identifier'), this.buildBoldHeaderCell('Hash'), this.buildBoldHeaderCell('Content Snippet'), this.buildBoldHeaderCell('Host'), this.buildBoldHeaderCell('Suggested AI Prompt')],
-            ...scripts.slice(0, 19).map((scriptInfo) => [...this.scriptInfoToTableItem(scriptInfo), this.buildRichTextCell(extractHost(this.getScriptUrl(scriptInfo))), this.buildRichTextCell(this.buildScriptAiPrompt(scriptInfo, target))]),
+            [
+              this.buildBoldHeaderCell('Identifier'),
+              this.buildBoldHeaderCell('Hash'),
+              this.buildBoldHeaderCell('Content Snippet'),
+              this.buildBoldHeaderCell('Host'),
+              this.buildBoldHeaderCell('Loaded By'),
+              this.buildBoldHeaderCell('Suggested AI Prompt'),
+            ],
+            ...scripts
+              .slice(0, 19)
+              .map((scriptInfo) => [
+                ...this.scriptInfoToTableItem(scriptInfo),
+                this.buildRichTextCell(extractHost(this.getScriptUrl(scriptInfo))),
+                this.buildRichTextCell(this.loadedByCell(scriptInfo.initiatorChain)),
+                this.buildRichTextCell(this.buildScriptAiPrompt(scriptInfo, target)),
+              ]),
           ],
           scripts.length,
         ),
@@ -598,13 +615,20 @@ export class SlackAlertService implements IAlertService {
               this.buildBoldHeaderCell('Hash'),
               this.buildBoldHeaderCell('Content'),
               this.buildBoldHeaderCell('Host'),
+              this.buildBoldHeaderCell('Loaded By'),
               this.buildBoldHeaderCell('Failure Reason'),
               this.buildBoldHeaderCell('Suggested AI Prompt'),
             ],
             ...unauthorizedScripts.slice(0, 19).map((result) => {
               const row = this.unauthorizedScriptToTableItem(result)
-              // Splice the host cell in between Content and Failure Reason so column order matches the header row.
-              return [...row.slice(0, 3), this.buildRichTextCell(extractHost(result.script.url)), ...row.slice(3), this.buildRichTextCell(this.buildUnauthorizedScriptAiPrompt(result))]
+              // Splice the host and loaded-by cells in between Content and Failure Reason so column order matches the header row.
+              return [
+                ...row.slice(0, 3),
+                this.buildRichTextCell(extractHost(result.script.url)),
+                this.buildRichTextCell(this.loadedByCell(result.script.initiatorChain)),
+                ...row.slice(3),
+                this.buildRichTextCell(this.buildUnauthorizedScriptAiPrompt(result)),
+              ]
             }),
           ],
           unauthorizedScripts.length,
@@ -1028,6 +1052,17 @@ export class SlackAlertService implements IAlertService {
 
   private log(alertType: AlertType, message: string): void {
     console.log(`[Alert → ${alertType}]: ${message}`)
+  }
+
+  /**
+   * Who loaded a script, redacted like every URL in an alert: `a ← b ← page c`.
+   * The chain is what turns "unknown script on the payment page" into "unknown
+   * script a known vendor's loader pulled in" — or "…that nothing we trust
+   * loaded" — so it travels with every unknown and mismatched script.
+   */
+  private loadedByCell(chain: readonly InitiatorHop[] | undefined): string {
+    const text = displayInitiatorChain(chain)
+    return text === '' ? '(no initiator evidence)' : clipField(text)
   }
 
   private truncateText(text: string): string {
@@ -1455,7 +1490,8 @@ export class SlackAlertService implements IAlertService {
     return this.namedListSections(label, header, unanswered, (request) => {
       const page = request.documentUrl === null ? 'an unattributed page' : `\`${escapeMrkdwn(clipField(request.documentUrl))}\``
       const scope = request.outsidePaymentPage ? ', outside the payment page' : ''
-      return `• \`${escapeMrkdwn(clipField(request.url))}\` on \`${escapeMrkdwn(clipField(request.target))}\` (${request.pass}, step ${request.step}, ${page}${scope}): ${escapeMrkdwn(clipField(request.reason))}`
+      const requestedBy = request.initiatorChain === undefined || request.initiatorChain.length === 0 ? '' : `; requested by ${escapeMrkdwn(clipField(chainText(request.initiatorChain, (hop) => hop.url)))}`
+      return `• \`${escapeMrkdwn(clipField(request.url))}\` on \`${escapeMrkdwn(clipField(request.target))}\` (${request.pass}, step ${request.step}, ${page}${scope}): ${escapeMrkdwn(clipField(request.reason))}${requestedBy}`
     })
   }
 

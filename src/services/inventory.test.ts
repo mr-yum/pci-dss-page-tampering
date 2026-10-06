@@ -1343,9 +1343,20 @@ describe('ScriptInventoryService', () => {
         expect(Array.isArray(raw.authoriseWith)).toBe(true)
         if (!Array.isArray(raw.authoriseWith)) return
         expect(raw.authoriseWith).toHaveLength(2)
-        const authorizer = diff.newInventory.headers[0]!.authoriseWith.matcher
-        expect(authorizer.authorize({ name: 'set-cookie', content: firstValue.header.value, url: firstValue.header.url! }).authorized).toBe(true)
-        expect(authorizer.authorize({ name: 'set-cookie', content: secondValue.header.value, url: secondValue.header.url! }).authorized).toBe(true)
+        // Each value has an alternative of its own...
+        const first = { name: 'set-cookie', content: firstValue.header.value, url: firstValue.header.url! }
+        const second = { name: 'set-cookie', content: secondValue.header.value, url: secondValue.header.url! }
+        const approved = rawInventoryHeaderInfoToInventoryHeaderInfo({ ...raw, authoriseWith: raw.authoriseWith.map((alternative) => ({ ...alternative, authorisationInfo: { ...alternative.authorisationInfo, authorised: true } })) })
+        expect(approved.authoriseWith.matcher.authorize(first).authorized).toBe(true)
+        expect(approved.authoriseWith.matcher.authorize(second).authorized).toBe(true)
+        // ...which authorises nothing until a reviewer approves it.
+        const pending = diff.newInventory.headers[0]!.authoriseWith.matcher
+        expect(pending.authorize(first).authorized).toBe(false)
+        expect(pending.authorize(second).authorized).toBe(false)
+        // Still idempotent: the next run's observations of both values add nothing.
+        const rerun = await service.diff(diff.newInventory, [firstValue, secondValue])
+        expect(rerun.appliedResults).toEqual([])
+        expect(rerun.newInventory.headers).toHaveLength(1)
       })
 
       it('does not weaken a pending composite header policy when a new value appears', async () => {

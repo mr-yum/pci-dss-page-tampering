@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import { RESPONSE_RESOURCE_TYPES } from '../header.js'
+import { INITIATOR_CHAIN_MAX_DEPTH, INLINE_SCRIPT_NAME_PREFIX } from '../initiator-chain.js'
 import { createMatcher } from '../matcher/matcher-factory.js'
 import { OrMatcher } from '../matcher/or-matcher.js'
 import { TARGET_TYPES } from '../target.js'
@@ -179,6 +180,51 @@ function containsHeaderNameMatcher(config: unknown): boolean {
   return containsHeaderNameMatcher(node['orMatcher']) || containsHeaderNameMatcher(node['andMatcher'])
 }
 
+/**
+ * Matchers that judge a loaded script on its own evidence: its URL (as `name`
+ * for an external script, and `url`/host), its content or its hash. Everything
+ * else in a guard is either run metadata every script in the run shares
+ * (`workflowMatcher`, `targetTypeMatcher`) or evidence `ownEvidence` drops
+ * before the guard runs (`initiatorHostMatcher`), so it cannot tell one load
+ * from another.
+ */
+const OWN_EVIDENCE_MATCHERS = ['nameMatcher', 'urlMatcher', 'hostMatcher', 'contentMatcher', 'hashes'] as const
+
+/**
+ * True when a `loadsMatching` config can only admit a load on the load's own
+ * evidence: a leaf must be an own-evidence matcher, every alternative of an OR
+ * (or array) must be, and at least one conjunct of an AND must be.
+ */
+function constrainsOwnEvidence(config: unknown): boolean {
+  if (typeof config !== 'object' || config === null) return false
+  if (Array.isArray(config)) return config.length > 0 && config.every(constrainsOwnEvidence)
+  const node = config as Record<string, unknown>
+  if (Array.isArray(node['orMatcher'])) return constrainsOwnEvidence(node['orMatcher'])
+  if (Array.isArray(node['andMatcher'])) return node['andMatcher'].some(constrainsOwnEvidence)
+  return OWN_EVIDENCE_MATCHERS.some((key) => key in node)
+}
+
+/** Names an inline script can carry, for probing whether a guard pattern would admit one. */
+const INLINE_NAME_PROBES = [INLINE_SCRIPT_NAME_PREFIX, `${INLINE_SCRIPT_NAME_PREFIX}id_not_found`, `${INLINE_SCRIPT_NAME_PREFIX}boot#k1-1`]
+
+/** The `nameMatcher` patterns in a guard that would admit an inline script's name. */
+function inlineAdmittingNamePatterns(config: unknown): string[] {
+  if (typeof config !== 'object' || config === null) return []
+  if (Array.isArray(config)) return config.flatMap(inlineAdmittingNamePatterns)
+  const node = config as Record<string, unknown>
+  const own = node['nameMatcher']
+  const admits = (pattern: string): boolean => {
+    if (/inline_script/i.test(pattern)) return true
+    try {
+      const regex = new RegExp(pattern)
+      return INLINE_NAME_PROBES.some((probe) => regex.test(probe))
+    } catch {
+      return false // reported by the matcher schema
+    }
+  }
+  return [...(typeof own === 'string' && admits(own) ? [own] : []), ...inlineAdmittingNamePatterns(node['orMatcher']), ...inlineAdmittingNamePatterns(node['andMatcher'])]
+}
+
 export const RawInventoryScriptInfoSchema: z.ZodType<RawInventoryScriptInfo> = z
   .object({
     identifyWith: MatcherConfigSchema,
@@ -189,8 +235,76 @@ export const RawInventoryScriptInfoSchema: z.ZodType<RawInventoryScriptInfo> = z
     // against real detected scripts (which carry name, content, hash, url), so
     // every matcher type evaluates with its normal semantics.
     requiredOn: z.array(z.enum(TARGET_TYPES)).min(1).optional(),
+    // Trust grant: scripts this entry's script loads inherit its authorisation
+    // (see LoadGrant in model.ts and the transitive-trust section of AGENTS.md).
+    authorisesLoads: z.enum(['direct', 'transitive']).optional(),
+    maxDepth: z.number().int().min(1).max(INITIATOR_CHAIN_MAX_DEPTH).optional(),
+    loadsMatching: MatcherConfigSchema.optional(),
   })
   .superRefine((entry, ctx) => {
+    if (entry.authorisesLoads === undefined) {
+      for (const field of ['maxDepth', 'loadsMatching'] as const) {
+        if (entry[field] !== undefined) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, path: [field], message: `${field} only applies to an entry that declares authorisesLoads.` })
+        }
+      }
+    } else {
+      if (entry.authorisesLoads === 'direct' && entry.maxDepth !== undefined) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['maxDepth'], message: 'maxDepth only applies to authorisesLoads: "transitive" — a direct grant covers exactly the scripts this entry\'s script inserted itself.' })
+      }
+      // A grant is a statement about an authorised script. An entry that is not
+      // authorised never authorises anything (the comparison skips it), so a
+      // grant on it can only be a mistake — or a grant waiting to switch on
+      // silently the day someone flips `authorised`. Refuse it outright.
+      const entryInfo = Array.isArray(entry.authoriseWith) ? entry.authoriseWith[0]?.authorisationInfo : entry.authoriseWith.authorisationInfo
+      if (entryInfo?.authorised !== true) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['authorisesLoads'],
+          message: 'authorisesLoads requires an authorised entry (authoriseWith.authorisationInfo.authorised: true): only a script this entry authorised can vouch for what it loads.',
+        })
+      }
+      // Required: chain evidence comes partly from the page itself (an
+      // attribution shim in the page's own world, and call stacks whose frame
+      // URLs `//# sourceURL` can rename), so the one unforgeable check on a
+      // load — its own URL — must always be made. Name hosts that serve only
+      // the vendor's own code.
+      if (entry.loadsMatching === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['loadsMatching'],
+          message:
+            "authorisesLoads requires loadsMatching: a matcher on the loaded script (e.g. a nameMatcher naming the vendor hosts that serve only its own code). Chain evidence can be influenced by code running on the page; the load's own URL cannot.",
+        })
+      }
+      if (entry.loadsMatching !== undefined && containsHeaderNameMatcher(entry.loadsMatching)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['loadsMatching'], message: 'headerNameMatcher is not valid in loadsMatching: it guards script URLs, which are case-sensitive. Use nameMatcher.' })
+      }
+      // A guard must judge the load itself. workflowMatcher/targetTypeMatcher
+      // match run metadata every script shares, and initiatorHostMatcher
+      // reads evidence the guard never sees, so a guard made of those alone
+      // (or an OR with such an alternative) admits — or refuses — every load
+      // alike.
+      if (entry.loadsMatching !== undefined && !containsHeaderNameMatcher(entry.loadsMatching) && !constrainsOwnEvidence(entry.loadsMatching)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['loadsMatching'],
+          message: `loadsMatching must judge the loaded script on its own evidence: every alternative needs a ${OWN_EVIDENCE_MATCHERS.join('/')} (an andMatcher needs at least one such conjunct). workflowMatcher and targetTypeMatcher match every script in the run alike, and initiatorHostMatcher is not shown to the guard.`,
+        })
+      }
+      // An inline load never inherits (the comparison refuses it whatever the
+      // guard says), so a guard written to admit inline names says something
+      // the monitor will not do. Refuse it rather than let it read as working.
+      const inlinePatterns = entry.loadsMatching === undefined ? [] : inlineAdmittingNamePatterns(entry.loadsMatching)
+      if (inlinePatterns.length > 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['loadsMatching'],
+          message: `loadsMatching must not admit inline scripts (${inlinePatterns.map((pattern) => `nameMatcher "${pattern}"`).join(', ')}): an inline load never inherits, because its name and chain are page-controlled evidence. Authorise an inline script with its own entry on its content or hash, and anchor guard patterns to the vendor's own origin (e.g. "^https://js\\.vendor\\.example/").`,
+        })
+      }
+    }
+
     // HeaderNameMatcher matches case-insensitively (RFC 7230 header names).
     // Script names are URLs, where case is significant — identifying a script
     // entry case-insensitively would let a case-variant URL reach the entry's

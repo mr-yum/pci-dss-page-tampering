@@ -9,7 +9,18 @@
  * @see ../../../types/report.ts
  */
 
-import type { AuditorReport, ReportAuthorisationInfo, ReportMatcherRef, ReportResourceRow, ReportStatusCounts, ReportTargetSection, ReportUnansweredRequest, ReportUnmatchedEntry, ReportUnreadScript } from '../../../types/report.js'
+import type {
+  AuditorReport,
+  ReportAuthorisationInfo,
+  ReportInitiatorHop,
+  ReportMatcherRef,
+  ReportResourceRow,
+  ReportStatusCounts,
+  ReportTargetSection,
+  ReportUnansweredRequest,
+  ReportUnmatchedEntry,
+  ReportUnreadScript,
+} from '../../../types/report.js'
 import { createSha256Hash } from '../../../utils/hash.js'
 import type { ProvenanceNode, SourceProvenance } from '../../../utils/provenance.js'
 import { artefactRelativeHref, escapeHtml, html, join, raw, type RawHtml, safeHttpsHref } from './escape.js'
@@ -96,6 +107,34 @@ function formatMatcher(matcher: ReportMatcherRef | null): RawHtml {
     </details>`
 }
 
+/** `loaded by a ← b ← page c`: one chain, immediate inserter first. Every hop is already redacted. */
+function formatChain(chain: readonly ReportInitiatorHop[]): RawHtml {
+  return join(
+    chain.map(
+      (hop, index) => html`${index === 0 ? '' : ' ← '}<span class="mono">${hop.kind === 'document' ? 'page ' : ''}${hop.url}</span>${hop.kind === 'unknown' ? html` <span class="muted">(unverified; nothing beyond it assumed)</span>` : ''}`,
+    ),
+  )
+}
+
+function formatLoadedBy(row: ReportResourceRow): RawHtml {
+  const chain = row.observed.initiatorChain
+  if (chain === undefined || chain.length === 0) return raw('')
+  const alternates = row.observed.alternateInitiatorChains ?? []
+  return html`<div class="muted row-meta">
+    loaded by
+    ${formatChain(chain)}${
+      alternates.length === 0
+        ? ''
+        : html`<details>
+            <summary>${String(alternates.length)} other path(s)</summary>
+            <ul>
+              ${join(alternates.map((alternate) => html`<li>${formatChain(alternate)}</li>`))}
+            </ul>
+          </details>`
+    }
+  </div>`
+}
+
 /** Render the authorising path, including every conjunct of an AND. */
 function formatProvenanceNode(node: ProvenanceNode): RawHtml {
   const children = node.children ?? []
@@ -129,6 +168,7 @@ function formatRow(row: ReportResourceRow, targetKey: string): RawHtml {
       <div class="mono resource-name">${row.name}</div>
       ${row.value === null ? '' : html`<div class="mono resource-value">${row.value}</div>`}
       <div class="muted row-meta">${row.origin.host ?? '—'} · ${row.workflowId}${row.occurrences > 1 ? html` · observed ${row.occurrences}×` : ''}</div>
+      ${formatLoadedBy(row)}
       ${
         // A header's excerpt is its value, already shown above — repeating it
         // as a disclosure adds a row of noise per header and nothing else.
@@ -160,7 +200,15 @@ function formatRow(row: ReportResourceRow, targetKey: string): RawHtml {
     </td>
     <td class="integrity">
       <div class="mono">${row.observed.hash === null ? html`<span class="muted">no hash</span>` : html`${row.observed.hash.slice(0, 12)}…`}</div>
-      <div class="muted row-meta">${row.authorisation.matcher === null ? 'not identified' : html`matched by ${row.authorisation.matcher.type}`}</div>
+      <div class="muted row-meta">
+        ${
+          row.authorisation.inherited !== undefined
+            ? html`inherited (${row.authorisation.inherited.mode} grant) from <span class="mono">${row.authorisation.inherited.from}</span> via ${formatChain(row.authorisation.inherited.chain)}`
+            : row.authorisation.matcher === null
+              ? 'not identified'
+              : html`matched by ${row.authorisation.matcher.type}`
+        }
+      </div>
       ${row.authorisation.failureReason === null ? '' : html`<div class="failure">${row.authorisation.failureReason}</div>`}
       <details>
         <summary>Matchers</summary>
@@ -173,7 +221,7 @@ function formatRow(row: ReportResourceRow, targetKey: string): RawHtml {
       </details>
     </td>
     <td class="src">
-      ${formatSource(provenance?.entry)}
+      ${formatSource(provenance?.entry)} ${provenance?.grantedBy === undefined ? '' : html`<div class="muted">load grant at <span class="mono">${provenance.grantedBy.file}:${provenance.grantedBy.line}</span></div>`}
       ${
         authorisingSource === null
           ? provenance?.unresolvedReason === undefined
@@ -336,7 +384,7 @@ function formatUnanswered(requests: readonly ReportUnansweredRequest[]): RawHtml
             requests.map(
               (request) =>
                 html`<tr>
-                  <td class="mono">${request.url}</td>
+                  <td class="mono">${request.url}${request.initiatorChain === undefined || request.initiatorChain.length === 0 ? '' : html`<div class="muted row-meta">requested by ${formatChain(request.initiatorChain)}</div>`}</td>
                   <td>${String(request.step)}</td>
                   <td class="mono">${request.documentUrl ?? html`<span class="muted">unattributed</span>`}</td>
                   <td>${request.scope === 'outside_payment' ? 'outside payment page' : 'payment page'}</td>

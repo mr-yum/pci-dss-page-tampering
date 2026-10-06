@@ -13,13 +13,14 @@ import type { PuppeteerClickAction, PuppeteerClickPopupAction, PuppeteerInputAct
 import type { ScriptInfo, UnreadScriptResponse } from '../types/script.js'
 import type { Target } from '../types/target.js'
 import { resolveDateTemplates } from '../utils/date-template.js'
-import { getInlineScriptsFromPage } from '../utils/page.js'
-import { INLINE_SCRIPT_ATTRIBUTION_SCRIPT } from '../utils/page-attribution.js'
+import { type PageScripts, readPageScripts } from '../utils/page.js'
+import { attributionShimSource, newAttributionShimSourceUrl } from '../utils/page-attribution.js'
 import { generateTotp, millisecondsRemainingInTotpWindow } from '../utils/totp.js'
 import { redactUrl } from '../utils/url.js'
 import { deriveUserAgentMetadata, normaliseHeadlessUserAgent } from '../utils/user-agent.js'
 import { getPuppeteerWorkflowFromTarget, stepsToPuppeteerLocatorAction } from '../utils/workflow.js'
 import { DocumentTracker } from './document-ledger.js'
+import { type AttributedInsertion, resolveInitiatorChains } from './initiator-chain.js'
 import { outsidePaymentDocuments } from './payment-scope.js'
 
 // If fewer than this many milliseconds remain in the current TOTP window,
@@ -130,9 +131,16 @@ export class DetectionService implements IDetectionService {
   private async detectAttempt(browser: Browser, target: Target, scriptContentMatchers: ScriptMatcher[], inventoryHeaders: readonly InventoryHeaderInfo[] = []): Promise<DetectionSummary> {
     const externalScripts: ScriptInfo[] = []
     const internalScripts: ScriptInfo[] = []
+    // Script elements the attribution shim saw inserted with a src, from every
+    // scan (deduplicated by the shim's per-element token). Consulted only to
+    // name the inline script behind an anonymous network initiator.
+    const insertions = new Map<string, AttributedInsertion>()
     // Script responses whose body could not be read: recorded, never dropped.
     const unreadScripts: UnreadScriptResponse[] = []
-    const pendingScriptReads = new PendingScriptReads()
+    // Named per attempt so its own frame can be taken off every request's
+    // initiator stack (see topCallFrameUrl in ../handlers/script.ts).
+    const shimSourceUrl = newAttributionShimSourceUrl()
+    const pendingScriptReads = new PendingScriptReads({ shimSourceUrl })
     // Set once the run has waited for its reads and is being accounted for:
     // from then on a late read is recorded as unread, never compared.
     let scriptsSealed = false
@@ -205,7 +213,7 @@ export class DetectionService implements IDetectionService {
       // Install the inline-script attribution shim before any page script
       // runs so we can tag each inserted <script> element with the URL of
       // the script that initiated the insertion (see src/utils/page-attribution.ts).
-      await page.evaluateOnNewDocument(INLINE_SCRIPT_ATTRIBUTION_SCRIPT)
+      await page.evaluateOnNewDocument(attributionShimSource(shimSourceUrl))
 
       // Attribute every observation to the top-level document it belongs to,
       // so the run can be scoped to the payment page's SPA context (see
@@ -256,7 +264,7 @@ export class DetectionService implements IDetectionService {
         })
         .on('response', (response) => {
           const document = documentOf(response)
-          pendingScriptReads.track(scriptResponseHandler(response, externalScripts, document, { unread: unreadScripts, step: currentStep, sealed: () => scriptsSealed }), response, document, currentStep)
+          pendingScriptReads.track(scriptResponseHandler(response, externalScripts, document, { unread: unreadScripts, step: currentStep, sealed: () => scriptsSealed }, shimSourceUrl), response, document, currentStep)
         })
         .on('response', (response) =>
           headerResponseHandler(response, headers, responses, target.url, inventoryHeaders, target.workflowId ?? 'default', target.type, tracker === undefined ? undefined : { document: documentOf(response), documents: headerDocuments }),
@@ -331,7 +339,7 @@ export class DetectionService implements IDetectionService {
           })
 
           // Detect and add new inline scripts on each workflow action
-          const newInlineScripts = await this.detectNewInlineScripts(page, internalScripts, scriptContentMatchers, tracker)
+          const newInlineScripts = await this.detectNewInlineScripts(page, internalScripts, scriptContentMatchers, tracker, insertions)
           newInlineScripts.forEach((script) => internalScripts.push(script))
         } catch (stepError) {
           // Enhanced error logging for workflow steps
@@ -424,6 +432,21 @@ export class DetectionService implements IDetectionService {
     // Read only now, after the close grace: a response that landed during it
     // has already taken its request off the list.
     const unansweredRequests = pendingScriptReads.unansweredRequests()
+
+    // Who loaded what, out to the page: resolved now, from everything the run
+    // observed, so every observation's chain can pass through scripts seen
+    // later than it (see resolveInitiatorChains).
+    resolveInitiatorChains({
+      externalScripts,
+      inlineScripts: internalScripts,
+      insertions: [...insertions.values()],
+      documentUrls: [
+        ...(navigationUrl !== undefined ? [navigationUrl] : []),
+        ...documents.flatMap((document) => [document.url, ...document.routes]),
+        ...responses.filter((response) => response.resourceType === 'document').map((response) => response.url),
+      ],
+      unansweredRequests,
+    })
     if (unansweredRequests.length > 0) {
       target.logger.log(
         `${unansweredRequests.length} script request(s) never received a response, so the script never ran on the page; recorded as evidence, not as unread: ${unansweredRequests.map((request) => `${redactUrl(request.url)} (step ${request.step})`).join(', ')}`,
@@ -1055,12 +1078,15 @@ export class DetectionService implements IDetectionService {
    * payment scope. Dedupe by (hash, document), so the payment page's copy of a
    * script an earlier page also ran is kept rather than lost to scoping.
    */
-  private async detectNewInlineScripts(page: Page, existingScripts: ScriptInfo[], scriptContentMatchers: ScriptMatcher[], tracker?: DocumentTracker): Promise<ScriptInfo[]> {
+  private async detectNewInlineScripts(page: Page, existingScripts: ScriptInfo[], scriptContentMatchers: ScriptMatcher[], tracker?: DocumentTracker, insertions?: Map<string, AttributedInsertion>): Promise<ScriptInfo[]> {
     const before = await tracker?.currentDocument()
-    const detectedInlineScripts = await this.getInlineScriptsSettled(page, scriptContentMatchers)
+    const scanned = await this.getInlineScriptsSettled(page, scriptContentMatchers)
     const after = await tracker?.currentDocument()
     const document = before !== undefined && before === after ? before : undefined
-    const attributed = document === undefined ? detectedInlineScripts : detectedInlineScripts.map((script) => ({ ...script, document }))
+    for (const record of scanned.insertions) if (!insertions?.has(record.token)) insertions?.set(record.token, { ...record, ...(document !== undefined ? { document } : {}) })
+    const attributed = document === undefined ? scanned.inlineScripts : scanned.inlineScripts.map((script) => ({ ...script, document }))
+    // A duplicate's element is not separately judged, so a script it
+    // inserted names an inserter no observation stands for: an unknown hop.
     return attributed.filter((detectedScript) => !existingScripts.some((existingScript) => existingScript.hash.value === detectedScript.hash.value && existingScript.document === detectedScript.document))
   }
 
@@ -1072,11 +1098,11 @@ export class DetectionService implements IDetectionService {
    * document to settle and rescan, up to a few attempts. Any other error, or
    * destruction on the final attempt, still fails the run (fail-secure).
    */
-  private async getInlineScriptsSettled(page: Page, scriptContentMatchers: ScriptMatcher[]): Promise<ScriptInfo[]> {
+  private async getInlineScriptsSettled(page: Page, scriptContentMatchers: ScriptMatcher[]): Promise<PageScripts> {
     const maxAttempts = 3
     for (let attempt = 1; ; attempt++) {
       try {
-        return await getInlineScriptsFromPage(page, scriptContentMatchers)
+        return await readPageScripts(page, scriptContentMatchers)
       } catch (error) {
         const isContextDestroyed = error instanceof Error && error.message.includes('Execution context was destroyed')
         if (!isContextDestroyed || attempt >= maxAttempts) {

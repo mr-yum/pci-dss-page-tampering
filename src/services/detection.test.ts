@@ -849,7 +849,7 @@ describe('DetectionService payment page scope', () => {
       logger: { log: jest.fn(), error: jest.fn() },
     } as unknown as Target
 
-    const service = serviceInternals() as DetectionServiceInternals & { getInlineScriptsSettled: () => Promise<unknown[]> }
+    const service = serviceInternals() as DetectionServiceInternals & { getInlineScriptsSettled: () => Promise<unknown> }
     service.applyRealisticUserAgent = jest.fn().mockResolvedValue(undefined)
     service.navigateToTarget = jest.fn().mockImplementation(async (...args: unknown[]) => {
       if (options.hooks) options.hooks.initialNavigation = args[4]
@@ -871,7 +871,7 @@ describe('DetectionService payment page scope', () => {
       }
       return { context: page }
     })
-    service.getInlineScriptsSettled = jest.fn().mockResolvedValue([])
+    service.getInlineScriptsSettled = jest.fn().mockResolvedValue({ inlineScripts: [], insertions: [] })
     let action = 0
     service.executeAction = jest.fn().mockImplementation(async () => options.onAction?.(action++))
 
@@ -986,7 +986,7 @@ describe('DetectionService payment page scope', () => {
 describe('DetectionService inline script attribution', () => {
   type Internals = {
     detectNewInlineScripts(page: Page, existing: unknown[], matchers: unknown[], tracker?: unknown): Promise<{ hash: { value: string }; document?: string }[]>
-    getInlineScriptsSettled: () => Promise<unknown[]>
+    getInlineScriptsSettled: () => Promise<unknown>
   }
   const inline = (hash: string) => ({ source: { type: 'inline', id: `inline_script/${hash}`, content: hash }, hash: { value: hash } })
   // Each read of the current document returns the next value in turn: before the scan, then after it.
@@ -994,7 +994,7 @@ describe('DetectionService inline script attribution', () => {
 
   function service(scanned: unknown[]): Internals {
     const internals = new DetectionService() as unknown as Internals
-    internals.getInlineScriptsSettled = jest.fn().mockResolvedValue(scanned)
+    internals.getInlineScriptsSettled = jest.fn().mockResolvedValue({ inlineScripts: scanned, insertions: [] })
     return internals
   }
 
@@ -1191,7 +1191,12 @@ describe('DetectionService script accounting wiring', () => {
   type Handler = (...args: any[]) => void
   const SETTLE = { deadlineMs: 30, closeGraceMs: 30 }
 
-  function run(options: { onAction?: (emit: (event: string, ...args: unknown[]) => void, sessionEmit: (event: string, payload: unknown) => void) => void; onClose?: (emit: (event: string, ...args: unknown[]) => void) => void } = {}) {
+  function run(
+    options: {
+      onAction?: (emit: (event: string, ...args: unknown[]) => void, sessionEmit: (event: string, payload: unknown) => void, page: Record<string, unknown>) => void
+      onClose?: (emit: (event: string, ...args: unknown[]) => void) => void
+    } = {},
+  ) {
     const handlers = new Map<string, Handler[]>()
     const sessionHandlers = new Map<string, Handler[]>()
     const add = (map: Map<string, Handler[]>, event: string, handler: Handler) => map.set(event, [...(map.get(event) ?? []), handler])
@@ -1224,12 +1229,12 @@ describe('DetectionService script accounting wiring', () => {
       logger,
     } as unknown as Target
 
-    const service = new DetectionService({ scriptSettle: SETTLE }) as unknown as DetectionServiceInternals & { getInlineScriptsSettled: () => Promise<unknown[]> }
+    const service = new DetectionService({ scriptSettle: SETTLE }) as unknown as DetectionServiceInternals & { getInlineScriptsSettled: () => Promise<unknown> }
     service.applyRealisticUserAgent = jest.fn().mockResolvedValue(undefined)
     service.navigateToTarget = jest.fn().mockResolvedValue(undefined)
     service.waitForInitialActionTarget = jest.fn().mockResolvedValue({ context: page })
-    service.getInlineScriptsSettled = jest.fn().mockResolvedValue([])
-    service.executeAction = jest.fn().mockImplementation(async () => options.onAction?.(emit, sessionEmit))
+    service.getInlineScriptsSettled = jest.fn().mockResolvedValue({ inlineScripts: [], insertions: [] })
+    service.executeAction = jest.fn().mockImplementation(async () => options.onAction?.(emit, sessionEmit, page))
     return service.detectAttempt(workflowBrowser, workflowTarget)
   }
 
@@ -1306,5 +1311,26 @@ describe('DetectionService script accounting wiring', () => {
     })
     expect(summary.scriptSummary.unreadScripts).toEqual([expect.objectContaining({ url: 'https://pay.example.test/card.js', reason: SCRIPT_BODY_WITHOUT_RESPONSE_REASON })])
     expect(summary.scriptSummary.unansweredRequests).toEqual([])
+  })
+
+  // The shim is injected under a per-run sourceURL; the same name must reach
+  // both readers of a request's call stack, or every DOM-inserted script's
+  // first hop is the shim itself.
+  it("strips the injected shim's own frame from answered and unanswered requests alike", async () => {
+    const stack = (shim: string, caller: string) => ({ type: 'script', stack: { callFrames: [{ url: shim }, { url: caller }] } })
+    const summary = await run({
+      onAction: (emit, _sessionEmit, page) => {
+        const injected = (page['evaluateOnNewDocument'] as jest.Mock).mock.calls.map(([source]) => String(source)).find((source) => source.includes('__pciAttribution'))
+        const shim = /\/\/# sourceURL=(\S+)/.exec(injected ?? '')?.[1]
+        if (shim === undefined) throw new Error('the attribution shim was not injected with a sourceURL')
+        const answered = { ...scriptRequest('https://cdn.example.test/answered.js'), initiator: () => stack(shim, 'https://js.vendor.test/loader.js') } as unknown as HTTPRequest
+        emit('request', answered)
+        emit('response', { request: () => answered, ok: () => true, status: () => 200, url: () => 'https://cdn.example.test/answered.js', headers: () => ({}), text: async () => 'window.answered=1' })
+        emit('request', { ...scriptRequest('https://cdn.example.test/unanswered.js'), initiator: () => stack(shim, 'https://js.vendor.test/other.js') })
+      },
+    })
+    const answered = summary.scriptSummary.externalScripts.find((script) => script.source.type === 'external' && script.source.url === 'https://cdn.example.test/answered.js')
+    expect(answered?.source).toEqual(expect.objectContaining({ initiator: 'https://js.vendor.test/loader.js' }))
+    expect(summary.scriptSummary.unansweredRequests).toEqual([expect.objectContaining({ url: 'https://cdn.example.test/unanswered.js', initiatorEvidence: { type: 'stack', topFrameUrl: 'https://js.vendor.test/other.js' } })])
   })
 })

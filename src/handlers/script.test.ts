@@ -180,6 +180,22 @@ describe('scriptResponseHandler', () => {
       expect(await settled).toEqual([])
     })
 
+    // The initiator is read from the request itself, so the chain can name
+    // who asked for a script that never came — through the same shim-frame
+    // removal as an answered request.
+    it("records an unanswered request's initiator evidence with the attribution shim's own frame taken off", async () => {
+      const SHIM = 'pci-attribution-0b6e1c2a.js'
+      const request = (frames: { url: string }[]): HTTPRequest => ({ ...scriptRequest(`https://cdn.example.com/never-${frames.length}.js`), initiator: () => ({ type: 'script', stack: { callFrames: frames } }) }) as unknown as HTTPRequest
+      const reads = new PendingScriptReads({ shimSourceUrl: SHIM })
+      reads.trackRequest(request([{ url: SHIM }, { url: 'https://js.vendor.example/loader.js' }]), 4, () => 'loader-confirm')
+      reads.trackRequest(request([{ url: SHIM }, { url: '' }, { url: 'https://js.vendor.example/loader.js' }]), 4, () => 'loader-confirm')
+      await reads.settle(10, REASONS)
+      expect(reads.unansweredRequests().map((listed) => listed.initiatorEvidence)).toEqual([
+        { type: 'stack', topFrameUrl: 'https://js.vendor.example/loader.js' },
+        { type: 'stack', topFrameUrl: '' },
+      ])
+    })
+
     // A request issued by the last step has no read to wait for yet; without
     // this its response would land while the context was closing, after the
     // run had been summarised.
@@ -538,6 +554,46 @@ describe('scriptResponseHandler', () => {
       await scriptResponseHandler(scriptResponse('body', 'https://cdn.example.net/sdk.js', undefined), detectedScripts)
 
       expect(sourceOf(detectedScripts).initiator).toBeUndefined()
+    })
+  })
+
+  describe("the attribution shim's own frame", () => {
+    const SHIM = 'pci-attribution-0b6e1c2a.js'
+    const sourceOf = (scripts: ScriptInfo[]) => scripts[0]!.source as { type: 'external'; initiator?: string; initiatorEvidence?: unknown }
+    const through = async (callFrames: { url?: string }[], shim: string | null = SHIM) => {
+      const detectedScripts: ScriptInfo[] = []
+      await scriptResponseHandler(scriptResponse('body', 'https://cdn.example.net/sdk.js', { type: 'script', stack: { callFrames } }, 'https://pay.example.com/menu'), detectedScripts, undefined, undefined, shim ?? undefined)
+      return sourceOf(detectedScripts)
+    }
+
+    // Seen in real Chrome: every DOM-inserted script's top frame was the
+    // shim's appendChild wrapper, and the initiator fell back to the page.
+    it('is taken off the top, so the script that called appendChild is the initiator', async () => {
+      const source = await through([{ url: SHIM }, { url: 'https://js.vendor.example/loader.js' }])
+      expect(source.initiator).toBe('https://js.vendor.example/loader.js')
+      expect(source.initiatorEvidence).toEqual({ type: 'stack', topFrameUrl: 'https://js.vendor.example/loader.js' })
+    })
+
+    it('leaves an anonymous caller (a dynamically inserted inline script) anonymous', async () => {
+      const source = await through([{ url: SHIM }, { url: '' }, { url: SHIM }, { url: 'https://js.vendor.example/loader.js' }])
+      expect(source.initiator).toBe('https://pay.example.com/menu')
+      expect(source.initiatorEvidence).toEqual({ type: 'stack', topFrameUrl: '' })
+    })
+
+    it('removes one frame only: a second frame claiming the shim name reads as anonymous, never as its caller', async () => {
+      const source = await through([{ url: SHIM }, { url: SHIM }, { url: 'https://js.vendor.example/loader.js' }])
+      expect(source.initiatorEvidence).toEqual({ type: 'stack', topFrameUrl: '' })
+      expect(source.initiator).toBe('https://pay.example.com/menu')
+    })
+
+    it('is not skipped when it is not on top', async () => {
+      const source = await through([{ url: 'https://evil.example/x.js' }, { url: SHIM }, { url: 'https://js.vendor.example/loader.js' }])
+      expect(source.initiator).toBe('https://evil.example/x.js')
+    })
+
+    it('is left alone without a shim name', async () => {
+      const source = await through([{ url: SHIM }, { url: 'https://js.vendor.example/loader.js' }], null)
+      expect(source.initiator).toBe(SHIM)
     })
   })
 })

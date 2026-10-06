@@ -13,7 +13,7 @@
  * @see host-matcher.ts — sibling matcher for host-only matching
  */
 
-import type { AuthorizationResult } from './authorization-result.js'
+import { type AuthorizationResult, deniedByAuthorisationInfo } from './authorization-result.js'
 import type { AuthorisationInfo, AuthorisationMatcher, Matchable } from './matcher.interface.js'
 
 export class UrlMatcher implements AuthorisationMatcher {
@@ -55,6 +55,9 @@ export class UrlMatcher implements AuthorisationMatcher {
         reason: 'url is missing or empty',
       }
     }
+
+    const declined = deniedByAuthorisationInfo(this.authorisationInfo)
+    if (declined) return declined
 
     const matches = this.pattern.test(resource.url)
     const result: AuthorizationResult = matches

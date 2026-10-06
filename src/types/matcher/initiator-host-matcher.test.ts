@@ -130,4 +130,80 @@ describe('InitiatorHostMatcher', () => {
       expect(or.identify(make('https://evil.example/'))).toBe(false)
     })
   })
+
+  describe('transitive form', () => {
+    const chain = (...hops: [string, 'script' | 'document' | 'unknown'][]) => hops.map(([url, kind]) => ({ url, kind }))
+    const loaded = (initiatorChain: ReturnType<typeof chain> | undefined, overrides: Partial<Matchable> = {}): Matchable =>
+      make('https://assets.example.net/mid.js', { ...(initiatorChain !== undefined ? { initiatorChain } : {}), ...overrides })
+    const vendorChain = chain(['https://assets.example.net/mid.js', 'script'], ['https://js.vendor.example/loader.js', 'script'], ['https://pay.example.com/checkout', 'document'])
+    const transitive = (pattern: string, maxDepth?: number) => new InitiatorHostMatcher(pattern, undefined, { transitive: true, ...(maxDepth !== undefined ? { maxDepth } : {}) })
+
+    it('matches a host anywhere up the chain, not only the immediate inserter', () => {
+      expect(transitive('^js\\.vendor\\.example$').identify(loaded(vendorChain))).toBe(true)
+      expect(transitive('^pay\\.example\\.com$').identify(loaded(vendorChain))).toBe(true)
+      expect(transitive('^evil\\.example$').identify(loaded(vendorChain))).toBe(false)
+    })
+
+    it('reads the chain, not `initiator`', () => {
+      expect(transitive('^js\\.vendor\\.example$').identify(loaded(undefined, { initiator: 'https://js.vendor.example/loader.js' }))).toBe(false)
+    })
+
+    it('looks no further than maxDepth hops', () => {
+      expect(transitive('^js\\.vendor\\.example$', 1).identify(loaded(vendorChain))).toBe(false)
+      expect(transitive('^js\\.vendor\\.example$', 2).identify(loaded(vendorChain))).toBe(true)
+    })
+
+    it('evaluates a chain ending in an unknown hop over its known prefix only', () => {
+      const broken = chain(['https://assets.example.net/mid.js', 'script'], ['https://js.vendor.example/loader.js', 'unknown'], ['https://pay.example.com/checkout', 'document'])
+      expect(transitive('^js\\.vendor\\.example$').identify(loaded(broken))).toBe(false)
+      expect(transitive('^pay\\.example\\.com$').identify(loaded(broken))).toBe(false)
+      expect(transitive('^assets\\.example\\.net$').identify(loaded(broken))).toBe(true)
+    })
+
+    it('skips inline hops (no host) and keeps walking through them', () => {
+      const throughInline = chain(['inline_script/id_not_found#k-1', 'script'], ['https://js.vendor.example/loader.js', 'script'])
+      expect(transitive('^js\\.vendor\\.example$').identify(loaded(throughInline))).toBe(true)
+      expect(transitive('inline').identify(loaded(throughInline))).toBe(false)
+    })
+
+    it('matches on any recorded path when the walk forked', () => {
+      const other = chain(['https://assets.example.net/mid.js', 'script'], ['https://cdn.example.org/tag.js', 'script'])
+      expect(transitive('^cdn\\.example\\.org$').identify(loaded(vendorChain, { alternateInitiatorChains: [other] }))).toBe(true)
+      expect(transitive('^cdn\\.example\\.org$').identify(loaded(vendorChain))).toBe(false)
+    })
+
+    it('fails secure on a missing or empty chain, saying so', () => {
+      expect(transitive('.*').identify(loaded(undefined))).toBe(false)
+      expect(transitive('.*').identify(loaded([]))).toBe(false)
+      expect(transitive('.*').authorize(loaded(undefined))).toEqual({ authorized: false, reason: 'initiator chain is missing' })
+    })
+
+    it('names the chain in a denial', () => {
+      const result = transitive('^evil\\.example$').authorize(loaded(vendorChain))
+      expect(result.authorized).toBe(false)
+      expect(result.reason).toContain('loaded by assets.example.net ← js.vendor.example ← page pay.example.com')
+    })
+
+    it('authorises on a match and carries its authorisationInfo', () => {
+      const info: AuthorisationInfo = { description: 'Anything the vendor loads', authorised: true, date: new Date('2026-10-01T00:00:00.000Z') }
+      expect(new InitiatorHostMatcher('^js\\.vendor\\.example$', info, { transitive: true }).authorize(loaded(vendorChain))).toEqual({ authorized: true, metadataPath: [info] })
+    })
+
+    it('describes and exposes itself so the entry serialises back to the object form', () => {
+      expect(transitive('^x$', 3).getDescription()).toBe('initiator-host(transitive, ≤3 hops):/^x$/')
+      expect(transitive('^x$', 3).getOptions()).toEqual({ transitive: true, maxDepth: 3 })
+      expect(new InitiatorHostMatcher('^x$').getOptions()).toBeUndefined()
+    })
+
+    it('rejects a maxDepth outside 1..8 at construction', () => {
+      expect(() => transitive('^x$', 0)).toThrow('maxDepth')
+      expect(() => transitive('^x$', 9)).toThrow('maxDepth')
+    })
+
+    it('leaves the string form exactly as it was: the immediate initiator only', () => {
+      const immediate = new InitiatorHostMatcher('^js\\.vendor\\.example$')
+      expect(immediate.identify(loaded(vendorChain, { initiator: 'https://assets.example.net/mid.js' }))).toBe(false)
+      expect(immediate.identify(loaded(vendorChain, { initiator: 'https://js.vendor.example/loader.js' }))).toBe(true)
+    })
+  })
 })

@@ -70,6 +70,13 @@ export type EntryProvenance = {
   /** The `requiredOn` clause, for entries (header or script) that declare one. */
   requiredOn?: SourceProvenance | undefined
   /**
+   * For a script authorised by inheritance: the granting entry's
+   * `authorisesLoads` clause. The entry pointers above are then the GRANTING
+   * entry's, and `authorisedBy` is null — no matcher of it ran against this
+   * script.
+   */
+  grantedBy?: SourceProvenance | undefined
+  /**
    * The node that actually authorised this resource.
    *
    * Populated only for authorised results — naming a node here for a denial
@@ -352,6 +359,19 @@ export function createProvenanceResolver(inventory: Inventory): ProvenanceResolv
         ...(requiredOn !== null ? { requiredOn } : {}),
         authorisedBy: null,
         unresolvedReason: result.type === 'missing_required_header' ? 'required header absent from the response; no authorisation was evaluated' : 'required script absent from the page; no authorisation was evaluated',
+      }
+    }
+
+    // Inherited: the grant is what authorised it, and it lives on the entry.
+    if (result.type === 'authorized_script' && result.inherited !== undefined) {
+      const grantedBy = locate(`${basePointer}/authorisesLoads`)
+      return {
+        entry,
+        identifyWith,
+        authoriseWith,
+        ...(grantedBy !== null ? { grantedBy } : {}),
+        authorisedBy: null,
+        unresolvedReason: 'authorised by inheritance through its initiator chain: no matcher of the granting entry ran against this script (see grantedBy)',
       }
     }
 

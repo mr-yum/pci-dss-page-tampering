@@ -139,7 +139,9 @@ export function inventoryHeaderInfoToRawInventoryHeaderInfo(headerInfo: Inventor
         return config
       }
       case 'initiator-host': {
-        const config: any = { initiatorHostMatcher: pattern as string }
+        // The transitive form round-trips as its object form; the string form stays a string.
+        const options = (matcher as unknown as { getOptions?: () => { transitive: true; maxDepth?: number } | undefined }).getOptions?.()
+        const config: any = { initiatorHostMatcher: options === undefined ? (pattern as string) : { host: pattern as string, ...options } }
         const authInfo = (matcher as any).getAuthorisationInfo?.()
         if (authInfo) {
           config.authorisationInfo = serializeAuthorisationInfo(authInfo)

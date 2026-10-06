@@ -9,4 +9,6 @@ export type PageScriptElement = {
    * run (very early-page race or non-browser context).
    */
   initiatorUrl?: string
+  /** What the attribution shim recorded for this element; undefined when the shim did not run. */
+  instance?: { token: string; kind: 'script' | 'inline' | 'none' | 'parser'; inserterToken: string | null }
 }

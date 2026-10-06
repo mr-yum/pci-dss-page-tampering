@@ -7,7 +7,7 @@
  * @see ../../../specs/001-refactor-script-identification/data-model.md for design
  */
 
-import type { AuthorizationResult } from './authorization-result.js'
+import { type AuthorizationResult, deniedByAuthorisationInfo } from './authorization-result.js'
 import type { AuthorisationInfo, AuthorisationMatcher, DetectedScript } from './matcher.interface.js'
 
 /**
@@ -101,6 +101,9 @@ export class NameMatcher implements AuthorisationMatcher {
         reason: 'name is null or empty',
       }
     }
+
+    const declined = deniedByAuthorisationInfo(this.authorisationInfo)
+    if (declined) return declined
 
     const matches = this.pattern.test(script.name)
     const result: AuthorizationResult = matches
