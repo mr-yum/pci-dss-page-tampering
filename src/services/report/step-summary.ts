@@ -11,7 +11,7 @@
 
 import { appendFile } from 'fs/promises'
 
-import type { AuditorReport, ReportResourceRow, ReportUnreadScript } from '../../types/report.js'
+import type { AuditorReport, ReportResourceRow, ReportUnansweredRequest, ReportUnreadScript } from '../../types/report.js'
 
 /**
  * GitHub truncates the *entire* summary past 1 MiB, so a large report would
@@ -21,6 +21,12 @@ const MAX_SUMMARY_BYTES = 64 * 1024
 
 /** Beyond this, the artefact is the right place to look. */
 const MAX_FINDING_ROWS = 50
+
+/** `, frame detached at step N` (with the frame's URL) after the step a request was issued in; empty when its frame was not seen going away. */
+function detachment(request: ReportUnansweredRequest): string {
+  if (request.detachedAtStep === undefined) return ''
+  return `, frame detached at step ${request.detachedAtStep}${request.detachedFrameUrl === undefined ? '' : ` ${cell(request.detachedFrameUrl)}`}`
+}
 
 /** Make a value safe for a markdown table cell. */
 function cell(value: string): string {
@@ -141,7 +147,7 @@ export function buildStepSummary(report: AuditorReport): string {
     )
     for (const { request, targetKey } of unanswered.slice(0, MAX_FINDING_ROWS)) {
       lines.push(
-        `| ${cell(targetKey)} | ${cell(request.url)} | ${request.step} | ${cell(request.documentUrl ?? 'unattributed')} | ${request.scope === 'outside_payment' ? 'outside payment page' : 'payment page'} | ${cell(request.reason)} |`,
+        `| ${cell(targetKey)} | ${cell(request.url)} | ${request.step}${detachment(request)} | ${cell(request.documentUrl ?? 'unattributed')} | ${request.scope === 'outside_payment' ? 'outside payment page' : 'payment page'} | ${cell(request.reason)} |`,
       )
     }
     if (unanswered.length > MAX_FINDING_ROWS) lines.push('', `…and ${unanswered.length - MAX_FINDING_ROWS} more — see the \`auditor-report\` artefact.`)

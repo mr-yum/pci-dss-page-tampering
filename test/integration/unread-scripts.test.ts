@@ -130,10 +130,16 @@ const stepsFor = (scenario: Scenario): object[] => {
   if (scenario === 'removed-frame') {
     return [
       { description: 'Card entry ready', paymentPage: true, waitFor: [{ type: 'span', identifier: 'Card ready' }], action: { type: 'escape', delay: 300 } },
-      // The card frame requests a script that is never answered...
+      // Step 2: the card frame requests a script that is never answered...
       { description: 'Hang', waitFor: [{ type: 'button', identifier: 'Hang' }], action: { type: 'click', delay: 100, postActionDelay: 300 } },
-      // ...and the page then removes the frame with that request outstanding.
+      // ...a step passes with it outstanding...
+      { description: 'Still waiting', waitFor: [{ type: 'button', identifier: 'Pay' }], action: { type: 'escape', delay: 100 } },
+      // ...step 4 removes the frame with that request still outstanding...
       { description: 'Close card', waitFor: [{ type: 'button', identifier: 'Close card' }], action: { type: 'click', delay: 100, postActionDelay: 300 } },
+      // ...and the workflow carries on for one more step, so the step the
+      // frame went away in is neither the one that issued the request nor
+      // the one the context closed in.
+      { description: 'After the card', waitFor: [{ type: 'button', identifier: 'Hang' }], action: { type: 'escape', delay: 100 } },
     ]
   }
   if (scenario === 'cross-site-frame') {
@@ -188,7 +194,7 @@ const createFixtureRepo = (base: string, scenario: Scenario): string => {
 
 type Row = { name: string; scope?: string; status: string }
 type Unread = { url: string; scope?: string; status: number; reason: string }
-type Unanswered = { url: string; scope?: string; step: number; reason: string }
+type Unanswered = { url: string; scope?: string; step: number; reason: string; detachedAtStep?: number; detachedFrameUrl?: string }
 type ReportTarget = { workflowId: string; scripts: Row[]; unreadScripts: Unread[]; unansweredRequests: Unanswered[] }
 type Report = { run: { status: string }; summary: { scriptsUnread: number; requestsUnanswered: number }; targets: ReportTarget[] }
 type Run = { server: http.Server & { release: () => void }; repoPath: string; workDir: string; output: string; status: number | null; report: Report }
@@ -337,6 +343,17 @@ describe('a cross-site frame removed while one of its script requests is outstan
     expect(target.unansweredRequests[0]!.reason).toContain('its frame was detached')
     expect(target.unansweredRequests[0]!.reason).not.toContain('15s')
     expect(target.unreadScripts).toEqual([])
+  })
+
+  // Issued in step 2, the frame removed in step 4, the workflow ending in
+  // step 5: the record names the step the frame went away in — not the one
+  // that issued the request (which it would if the step were read when the
+  // request was tracked), nor the last — and the frame, redacted.
+  it('records the step the frame was removed in, and the frame, apart from the step that issued the request', () => {
+    const target = run.report.targets.find((candidate) => candidate.workflowId === 'pay')!
+    const [request] = target.unansweredRequests
+    expect(request).toMatchObject({ step: 2, detachedAtStep: 4, detachedFrameUrl: `${new URL(request!.url).origin}/frame/card` })
+    expect(run.output).toContain(`issued at step 2, frame detached at step 4 (${new URL(request!.url).origin}/frame/card)`)
   })
 
   it('does not spend the 15 s deadline on it, and finishes as a complete run that exits 0', () => {

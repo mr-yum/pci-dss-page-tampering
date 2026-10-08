@@ -176,6 +176,22 @@ export type UnansweredScriptRequest = {
   document?: DocumentId
   /** Workflow step running when the request was issued (0 = initial navigation). */
   step: number
+  /**
+   * Workflow step running when the request's frame was detached — removed or
+   * navigated away by the page, or closed with the browser context (then the
+   * last step). Set only when the frame went away with the request still
+   * outstanding and the step was known; absent otherwise. Comparing it with
+   * `step` is what tells a vendor frame replacing itself on its own schedule
+   * from a detach that coincided with one of the workflow's own actions.
+   * A request already listed when the deadline expired carries none, though
+   * its frame is later closed with the context too: its reason already says
+   * it outlived the workflow, and stamping the last step on it would read as
+   * a detach during that step's action — the very confusion this field exists
+   * to remove.
+   */
+  detachedAtStep?: number
+  /** URL of the frame that was detached, as it was when it went away; set alongside `detachedAtStep` when the frame had one. */
+  detachedFrameUrl?: string
   /** The request's CDP initiator, read when it was issued — the request's first hop. */
   initiatorEvidence?: InitiatorEvidence
   /** Resolved after the run like a script's (see `ScriptInfo.initiatorChain`): who asked for it. */
@@ -184,8 +200,24 @@ export type UnansweredScriptRequest = {
 
 /** An unanswered script request as every report and notification shows it; see `UnreadScriptRecord`. */
 export type UnansweredRequestRecord = Omit<UnreadScriptRecord, 'status'> & {
+  /** See `UnansweredScriptRequest.detachedAtStep`. */
+  detachedAtStep?: number
+  /** Redacted (origin and path) URL of the detached frame; see `UnansweredScriptRequest.detachedFrameUrl`. */
+  detachedFrameUrl?: string
   /** Redacted hops of the request's initiator chain; absent when there was no evidence. */
   initiatorChain?: InitiatorHop[]
+}
+
+/**
+ * When an unanswered request was issued and, if its frame went away first,
+ * when and which frame — the phrase every notification names it with:
+ * `step 9` alone, or `issued at step 9, frame detached at step 9 (https://challenge.example/widget)`.
+ * `formatUrl` lets a surface quote or escape the (already redacted) frame URL.
+ */
+export function unansweredRequestTiming(request: Pick<UnansweredRequestRecord, 'step' | 'detachedAtStep' | 'detachedFrameUrl'>, formatUrl: (url: string) => string = (url) => url): string {
+  if (request.detachedAtStep === undefined) return `step ${request.step}`
+  const frame = request.detachedFrameUrl === undefined ? '' : ` (${formatUrl(request.detachedFrameUrl)})`
+  return `issued at step ${request.step}, frame detached at step ${request.detachedAtStep}${frame}`
 }
 
 export type ScriptDetectionSummary = {

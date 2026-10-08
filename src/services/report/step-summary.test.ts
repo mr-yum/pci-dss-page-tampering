@@ -92,4 +92,19 @@ describe('buildStepSummary unanswered script requests', () => {
     expect(markdown).toContain('`https://shop.example.testhttps//shop.example.test/a1b2`')
     expect(markdown).toContain('do not make the run partial')
   })
+
+  it('shows when the frame was detached next to the step that issued the request, and nothing extra when it was not', () => {
+    const collector = new ReportCollector()
+    collector.recordTargetRun({
+      inventory: buildInventory(),
+      target: detectionTarget,
+      comparisonResults: [],
+      unansweredRequests: [{ ...request('https://challenge.example.test/api.js'), step: 2, detachedAtStep: 4, detachedFrameUrl: 'https://challenge.example.test/widget' }, request('https://cdn.example.test/plain.js')],
+    })
+
+    const markdown = buildStepSummary(collector.build('detection', runContext())!)
+
+    expect(markdown).toContain('| `https://challenge.example.test/api.js` | 2, frame detached at step 4 `https://challenge.example.test/widget` |')
+    expect(markdown).toContain('| `https://cdn.example.test/plain.js` | 4 |')
+  })
 })

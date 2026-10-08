@@ -16,7 +16,7 @@ import type { HeaderInfo } from '../../types/header.js'
 import { chainText, type InitiatorHop } from '../../types/initiator-chain.js'
 import type { AlertDestination, InventoryAlert } from '../../types/inventory/model.js'
 import type { DetectedScript } from '../../types/matcher/matcher.interface.js'
-import type { ScriptInfo } from '../../types/script.js'
+import { type ScriptInfo, unansweredRequestTiming } from '../../types/script.js'
 import type { Target } from '../../types/target.js'
 import { extractHost, redactUrl } from '../../utils/url.js'
 import { displayInitiatorChain, redactForDisplay } from '../report/mapper.js'
@@ -1491,7 +1491,8 @@ export class SlackAlertService implements IAlertService {
       const page = request.documentUrl === null ? 'an unattributed page' : `\`${escapeMrkdwn(clipField(request.documentUrl))}\``
       const scope = request.outsidePaymentPage ? ', outside the payment page' : ''
       const requestedBy = request.initiatorChain === undefined || request.initiatorChain.length === 0 ? '' : `; requested by ${escapeMrkdwn(clipField(chainText(request.initiatorChain, (hop) => hop.url)))}`
-      return `• \`${escapeMrkdwn(clipField(request.url))}\` on \`${escapeMrkdwn(clipField(request.target))}\` (${request.pass}, step ${request.step}, ${page}${scope}): ${escapeMrkdwn(clipField(request.reason))}${requestedBy}`
+      const timing = unansweredRequestTiming(request, (url) => `\`${escapeMrkdwn(clipField(url))}\``)
+      return `• \`${escapeMrkdwn(clipField(request.url))}\` on \`${escapeMrkdwn(clipField(request.target))}\` (${request.pass}, ${timing}, ${page}${scope}): ${escapeMrkdwn(clipField(request.reason))}${requestedBy}`
     })
   }
 

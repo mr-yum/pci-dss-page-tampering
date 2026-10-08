@@ -1679,6 +1679,25 @@ describe('SlackAlertService - alertOnRunCompletion (Phase 3)', () => {
         for (let index = 0; index < targetCount; index++) expect(text.split(`\`Target ${index}\``).length - 1).toBeGreaterThanOrEqual(3)
       })
 
+      // When the frame went away, next to when the request was issued: a
+      // detach in the step of one of the monitor's clicks reads differently
+      // from a vendor frame replacing itself later.
+      it('names the step its frame was detached in, and the frame, after the step that issued it', async () => {
+        const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+
+        await service.alertOnRunCompletion(
+          createSummary({ requestsUnanswered: [request({ url: 'https://challenge.example.test/api.js', step: 9, detachedAtStep: 9, detachedFrameUrl: 'https://challenge.example.test/<!channel>' })] }),
+          mockAlertDestinations,
+        )
+
+        const texts = (sendMessageSpy.mock.calls[0]![0] as any).blocks.map((block: any) => block.text?.text ?? '') as string[]
+        const block = texts.find((text) => text.startsWith('*Script Request Unanswered (1)*')) as string
+        expect(block).toContain(
+          '• `https://challenge.example.test/api.js` on `Shop production` (detection, issued at step 9, frame detached at step 9 (`https://challenge.example.test/&lt;!channel&gt;`), `https://shop.example.test/checkout`): ',
+        )
+        expect(block).not.toContain('<!channel>')
+      })
+
       it('escapes a page-influenced URL', async () => {
         const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
 

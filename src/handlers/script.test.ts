@@ -429,6 +429,116 @@ describe('scriptResponseHandler', () => {
         expect(reads.unansweredRequests().map((request) => request.reason)).toEqual([UNANSWERED, SCRIPT_REQUEST_FRAME_DETACHED_REASON])
       })
 
+      // When the frame went away, relative to the step that issued the
+      // request, is what tells a vendor frame replacing itself from a detach
+      // that coincided with one of the workflow's own actions.
+      describe('when the detach happened, and which frame', () => {
+        const urlFrame = (url: string) => {
+          const mutable = { url: () => url, navigate: (next: string) => (url = next) }
+          return mutable as unknown as Frame & { navigate: (next: string) => void }
+        }
+
+        it('records the step running as the frame went away and its URL, not the step the request was issued in', async () => {
+          const challenge = urlFrame('https://challenge.example.test/widget?session=secret')
+          const reads = new PendingScriptReads()
+          reads.trackRequest(scriptRequest('https://challenge.example.test/api.js', 'script', challenge), 2, () => 'loader-checkout')
+          reads.frameDetached(challenge, 4)
+          challenge.navigate('https://elsewhere.example.test/later')
+          await reads.settle(10, REASONS)
+          expect(reads.unansweredRequests()).toEqual([
+            {
+              url: 'https://challenge.example.test/api.js',
+              resourceType: 'script',
+              reason: SCRIPT_REQUEST_FRAME_DETACHED_REASON,
+              step: 2,
+              document: 'loader-checkout',
+              detachedAtStep: 4,
+              detachedFrameUrl: 'https://challenge.example.test/widget?session=secret',
+            },
+          ])
+        })
+
+        // Unredacted here like the request URL; every surface that shows it
+        // redacts it (toUnansweredRequestRecords).
+        it('records neither when the step is not known', async () => {
+          const challenge = urlFrame('https://challenge.example.test/widget')
+          const reads = new PendingScriptReads()
+          reads.trackRequest(scriptRequest('https://challenge.example.test/api.js', 'script', challenge), 2, () => undefined)
+          reads.frameDetached(challenge)
+          await reads.settle(10, REASONS)
+          const [listed] = reads.unansweredRequests()
+          expect(listed).not.toHaveProperty('detachedAtStep')
+          expect(listed).not.toHaveProperty('detachedFrameUrl')
+        })
+
+        it('records the step alone when the frame has no URL', async () => {
+          const blank = urlFrame('')
+          const reads = new PendingScriptReads()
+          reads.trackRequest(scriptRequest('https://challenge.example.test/api.js', 'script', blank), 2, () => undefined)
+          reads.frameDetached(blank, 3)
+          await reads.settle(10, REASONS)
+          const [listed] = reads.unansweredRequests()
+          expect(listed).toMatchObject({ step: 2, detachedAtStep: 3 })
+          expect(listed).not.toHaveProperty('detachedFrameUrl')
+        })
+
+        // Closing the context detaches every frame: a request cut off that
+        // way reads the same as one whose frame the page removed.
+        it('records the step the context closed in for a request still outstanding at the close settle', async () => {
+          const card = urlFrame('https://pay.example.test/card')
+          const reads = new PendingScriptReads()
+          reads.trackRequest(scriptRequest('https://pay.example.test/late.js', 'script', card), 5, () => undefined)
+          await reads.settle(10, { reading: READING, unanswered: 'no response had arrived when the browser context closed' }, 6)
+          expect(reads.unansweredRequests()).toEqual([expect.objectContaining({ step: 5, detachedAtStep: 6, detachedFrameUrl: 'https://pay.example.test/card' })])
+        })
+
+        it('records no detach for a request merely still outstanding at the deadline', async () => {
+          const card = urlFrame('https://pay.example.test/card')
+          const reads = new PendingScriptReads()
+          reads.trackRequest(scriptRequest('https://pay.example.test/late.js', 'script', card), 5, () => undefined)
+          await reads.settle(10, REASONS)
+          const [listed] = reads.unansweredRequests()
+          expect(listed).toMatchObject({ reason: UNANSWERED, step: 5 })
+          expect(listed).not.toHaveProperty('detachedAtStep')
+        })
+
+        it('does not attribute an earlier detach at an unknown step to the close', async () => {
+          const card = urlFrame('https://pay.example.test/card')
+          const reads = new PendingScriptReads()
+          reads.trackRequest(scriptRequest('https://pay.example.test/late.js', 'script', card), 2, () => undefined)
+          reads.frameDetached(card)
+          await reads.settle(10, REASONS, 6)
+          const [listed] = reads.unansweredRequests()
+          expect(listed).toMatchObject({ reason: SCRIPT_REQUEST_FRAME_DETACHED_REASON, step: 2 })
+          expect(listed).not.toHaveProperty('detachedAtStep')
+        })
+
+        // Its reason already says it outlived the workflow; the last step on
+        // it would read as a detach during that step's action.
+        it('stamps nothing on a request already listed at the deadline when its frame later goes with the context', async () => {
+          const card = urlFrame('https://pay.example.test/card')
+          const reads = new PendingScriptReads()
+          reads.trackRequest(scriptRequest('https://pay.example.test/late.js', 'script', card), 5, () => undefined)
+          await reads.settle(10, REASONS)
+          reads.frameDetached(card, 5)
+          await reads.settle(10, REASONS, 5)
+          const [listed] = reads.unansweredRequests()
+          expect(listed).toMatchObject({ reason: UNANSWERED, step: 5 })
+          expect(listed).not.toHaveProperty('detachedAtStep')
+        })
+
+        // The detach already said when the frame went away; the close that
+        // follows must not overwrite it with the last step.
+        it('keeps the detach step over the step the context closed in', async () => {
+          const card = urlFrame('https://pay.example.test/card')
+          const reads = new PendingScriptReads()
+          reads.trackRequest(scriptRequest('https://pay.example.test/late.js', 'script', card), 2, () => undefined)
+          reads.frameDetached(card, 3)
+          await reads.settle(10, REASONS, 6)
+          expect(reads.unansweredRequests()).toEqual([expect.objectContaining({ step: 2, detachedAtStep: 3 })])
+        })
+      })
+
       // Not waited for is not forgotten: a response that lands before the
       // seal is read like any other.
       it('still reads a response that arrives for it after all, and no longer lists it', async () => {

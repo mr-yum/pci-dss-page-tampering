@@ -1195,6 +1195,7 @@ describe('DetectionService script accounting wiring', () => {
     options: {
       onAction?: (emit: (event: string, ...args: unknown[]) => void, sessionEmit: (event: string, payload: unknown) => void, page: Record<string, unknown>) => void
       onClose?: (emit: (event: string, ...args: unknown[]) => void) => void
+      onNavigate?: (emit: (event: string, ...args: unknown[]) => void) => void
     } = {},
   ) {
     const handlers = new Map<string, Handler[]>()
@@ -1231,7 +1232,7 @@ describe('DetectionService script accounting wiring', () => {
 
     const service = new DetectionService({ scriptSettle: SETTLE }) as unknown as DetectionServiceInternals & { getInlineScriptsSettled: () => Promise<unknown> }
     service.applyRealisticUserAgent = jest.fn().mockResolvedValue(undefined)
-    service.navigateToTarget = jest.fn().mockResolvedValue(undefined)
+    service.navigateToTarget = jest.fn().mockImplementation(async () => options.onNavigate?.(emit))
     service.waitForInitialActionTarget = jest.fn().mockResolvedValue({ context: page })
     service.getInlineScriptsSettled = jest.fn().mockResolvedValue({ inlineScripts: [], insertions: [] })
     service.executeAction = jest.fn().mockImplementation(async () => options.onAction?.(emit, sessionEmit, page))
@@ -1290,6 +1291,28 @@ describe('DetectionService script accounting wiring', () => {
       },
     })
     expect(summary.scriptSummary.unansweredRequests).toEqual([expect.objectContaining({ url: 'https://pay.example.test/challenge.js', reason: SCRIPT_REQUEST_FRAME_DETACHED_REASON })])
+  })
+
+  // Issued during the initial navigation (step 0), detached during the
+  // workflow's first step: the record must name the step running at the
+  // detach, not the one the request was issued in.
+  it('records the step running when the frame was detached, and the frame, on a detached request', async () => {
+    const card = frame()
+    const summary = await run({
+      onNavigate: (emit) => emit('request', scriptRequest('https://pay.example.test/challenge.js', { frame: card })),
+      onAction: (emit) => emit('framedetached', card),
+    })
+    expect(summary.scriptSummary.unansweredRequests).toEqual([expect.objectContaining({ step: 0, detachedAtStep: 1, detachedFrameUrl: 'https://pay.example.test/card' })])
+  })
+
+  // Closing the context cuts off whatever is still outstanding with its
+  // frame: the record names the step the context closed in.
+  it('records the step the context closed in on a request still outstanding at the close', async () => {
+    const card = frame()
+    const summary = await run({ onClose: (emit) => emit('request', scriptRequest('https://pay.example.test/late.js', { frame: card })) })
+    expect(summary.scriptSummary.unansweredRequests).toEqual([
+      expect.objectContaining({ reason: 'issued after the workflow finished, and no response had arrived when the browser context closed', detachedAtStep: 1, detachedFrameUrl: 'https://pay.example.test/card' }),
+    ])
   })
 
   it("retains bodies on a frame's own session when a request is the first sign of it", async () => {

@@ -2,7 +2,7 @@ import type { IAlertService } from '../interfaces/alert.js'
 import type { ExecutionMode } from '../types/config.js'
 import { type AlertDeliveryFailure, type AuditorReportLocation, type ExecutionPass, type ExecutionSummary, type FailedTarget, type UnansweredRequestEntry, unreadInPaymentScope, type UnreadScriptEntry } from '../types/execution-summary.js'
 import type { InventoryAlert } from '../types/inventory/model.js'
-import type { UnansweredRequestRecord, UnreadScriptRecord } from '../types/script.js'
+import { type UnansweredRequestRecord, unansweredRequestTiming, type UnreadScriptRecord } from '../types/script.js'
 import { redactForDisplay } from './report/mapper.js'
 
 export type RunLedgerFinishInput = {
@@ -141,7 +141,7 @@ export class RunLedger {
       for (const record of records) {
         this.unanswered.push({ ...record, target, pass, outsidePaymentPage })
         this.log(
-          `Script request ${record.url} on target '${target}' (${pass} pass, step ${record.step}${outsidePaymentPage ? ', outside the payment page' : ''}) never received a response, so the script never ran; recorded as evidence. Reason: ${record.reason}`,
+          `Script request ${record.url} on target '${target}' (${pass} pass, ${unansweredRequestTiming(record)}${outsidePaymentPage ? ', outside the payment page' : ''}) never received a response, so the script never ran; recorded as evidence. Reason: ${record.reason}`,
         )
       }
     }

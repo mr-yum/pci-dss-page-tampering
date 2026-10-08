@@ -385,7 +385,7 @@ function formatUnanswered(requests: readonly ReportUnansweredRequest[]): RawHtml
               (request) =>
                 html`<tr>
                   <td class="mono">${request.url}${request.initiatorChain === undefined || request.initiatorChain.length === 0 ? '' : html`<div class="muted row-meta">requested by ${formatChain(request.initiatorChain)}</div>`}</td>
-                  <td>${String(request.step)}</td>
+                  <td>${String(request.step)}${formatDetachment(request)}</td>
                   <td class="mono">${request.documentUrl ?? html`<span class="muted">unattributed</span>`}</td>
                   <td>${request.scope === 'outside_payment' ? 'outside payment page' : 'payment page'}</td>
                   <td>${request.reason}</td>
@@ -395,6 +395,16 @@ function formatUnanswered(requests: readonly ReportUnansweredRequest[]): RawHtml
         </tbody>
       </table>
     </div>`
+}
+
+/**
+ * When the request's frame went away, under the step that issued it: a
+ * detach in the same step as one of the workflow's own actions reads
+ * differently from a vendor frame replacing itself later on its own.
+ */
+function formatDetachment(request: ReportUnansweredRequest): RawHtml {
+  if (request.detachedAtStep === undefined) return raw('')
+  return html`<div class="muted row-meta">frame detached at step ${String(request.detachedAtStep)}${request.detachedFrameUrl === undefined ? '' : html` (<span class="mono">${request.detachedFrameUrl}</span>)`}</div>`
 }
 
 /**

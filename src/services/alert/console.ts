@@ -11,6 +11,7 @@ import type { UnknownScriptFound } from '../../types/comparison/unknown-script-f
 import { ExecutionMode } from '../../types/config.js'
 import { type AlertDeliveryFailure, type ExecutionSummary, getExecutionOutcome, unreadInPaymentScope } from '../../types/execution-summary.js'
 import type { InventoryAlert } from '../../types/inventory/model.js'
+import { unansweredRequestTiming } from '../../types/script.js'
 import type { Target } from '../../types/target.js'
 import { extractHost, redactUrl } from '../../utils/url.js'
 import { displayInitiatorChain } from '../report/mapper.js'
@@ -260,7 +261,9 @@ export class ConsoleAlertService implements IAlertService {
     if (unanswered.length > 0) {
       console.log(`  Script Requests Unanswered (evidence only; never ran on the page): ${unanswered.length}`)
       for (const request of unanswered) {
-        console.log(`    - ${request.url} on ${request.target} (${request.pass}, step ${request.step}, ${request.documentUrl ?? 'unattributed page'}${request.outsidePaymentPage ? ', outside the payment page' : ''}): ${request.reason}`)
+        console.log(
+          `    - ${request.url} on ${request.target} (${request.pass}, ${unansweredRequestTiming(request)}, ${request.documentUrl ?? 'unattributed page'}${request.outsidePaymentPage ? ', outside the payment page' : ''}): ${request.reason}`,
+        )
       }
     }
 

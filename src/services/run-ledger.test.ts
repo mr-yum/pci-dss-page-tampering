@@ -255,5 +255,13 @@ describe('RunLedger', () => {
       expect(summary.scriptsUnread).toEqual([])
       expect(logs.some((line) => line.includes('never received a response, so the script never ran; recorded as evidence'))).toBe(true)
     })
+
+    it('logs the step a request’s frame was detached in alongside the step that issued it', async () => {
+      ledger.recordUnansweredRequests('Shop production', 'detection', {
+        payment: [{ ...unanswered('https://challenge.example.test/api.js'), step: 2, detachedAtStep: 4, detachedFrameUrl: 'https://challenge.example.test/widget' }],
+        outside: [],
+      })
+      expect(logs.some((line) => line.includes('(detection pass, issued at step 2, frame detached at step 4 (https://challenge.example.test/widget))'))).toBe(true)
+    })
   })
 })

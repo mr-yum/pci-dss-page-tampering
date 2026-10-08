@@ -33,8 +33,10 @@ const timestamp = new Date('2026-01-01T00:00:00.000Z')
 const loaded = makeScript({ name: 'https://assets.example.com/pixel.js', url: 'https://assets.example.com/pixel.js', hash: { value: 'eeee' }, initiatorChain: CHAIN })
 
 describe('initiator chains in the auditor report', () => {
-  it('is a minor schema bump', () => {
-    expect(REPORT_SCHEMA_VERSION).toBe('1.7.0')
+  it('was a minor schema bump (from 1.7.0), and stays on major 1', () => {
+    const [major, minor] = REPORT_SCHEMA_VERSION.split('.').map(Number)
+    expect(major).toBe(1)
+    expect(minor).toBeGreaterThanOrEqual(7)
   })
 
   it('redacts URL hops like every URL and keeps inline identities readable', () => {

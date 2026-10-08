@@ -514,6 +514,17 @@ describe('ReportCollector unanswered script requests', () => {
     expect(report.notes.some((note) => note.startsWith('PARTIAL RUN'))).toBe(false)
   })
 
+  it('carries when a request’s frame was detached, and orders by it after the other fields', () => {
+    const detached = (detachedAtStep: number) => ({ ...request('https://cdn.example.test/a.js'), detachedAtStep, detachedFrameUrl: 'https://challenge.example.test/widget' })
+    const report = build([{ unanswered: [detached(7), request('https://cdn.example.test/a.js'), detached(5)] }])
+    expect(report.targets[0]!.unansweredRequests.map((entry) => [entry.detachedAtStep, entry.detachedFrameUrl])).toEqual([
+      [undefined, undefined],
+      [5, 'https://challenge.example.test/widget'],
+      [7, 'https://challenge.example.test/widget'],
+    ])
+    expect(report.schemaVersion).toBe('1.8.0')
+  })
+
   it('records an empty list when every request was answered', () => {
     const report = build([{ unanswered: [] }])
     expect(report.targets[0]!.unansweredRequests).toEqual([])
