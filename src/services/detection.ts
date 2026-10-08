@@ -417,14 +417,22 @@ export class DetectionService implements IDetectionService {
     } finally {
       // Closes the page and discards cookies/storage. Log-and-continue on
       // failure so cleanup can never mask a workflow error.
-      await context.close().catch((closeError) => target.logger.error(`Failed to close browser context: ${closeError}`))
+      const closed = await context.close().then(
+        () => true,
+        (closeError) => {
+          target.logger.error(`Failed to close browser context: ${closeError}`)
+          return false
+        },
+      )
       // A read the close cut off rejects a moment later; give it that moment
       // so its record lands before the summary is built from these arrays.
       // One that still has not settled — Puppeteer leaves a body read pending
       // forever when its session disconnects — is recorded as unread here.
       // A request still outstanding was cut off with its frame by the close:
-      // it records the step the context closed in, like any detached frame's.
-      this.recordUnsettled(await pendingScriptReads.settle(this.scriptSettle.closeGraceMs, AT_CLOSE, currentStep), unreadScripts, target)
+      // it records the step the context closed in, like any detached frame's
+      // — but only when the close was seen to succeed, so a failed close never
+      // reads as a detach nobody observed.
+      this.recordUnsettled(await pendingScriptReads.settle(this.scriptSettle.closeGraceMs, AT_CLOSE, closed ? currentStep : undefined), unreadScripts, target)
     }
 
     const declared = puppeteerWorkflow.locatorActions.some((step: PuppeteerLocatorAction) => step.paymentPage === true)

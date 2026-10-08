@@ -1196,6 +1196,7 @@ describe('DetectionService script accounting wiring', () => {
       onAction?: (emit: (event: string, ...args: unknown[]) => void, sessionEmit: (event: string, payload: unknown) => void, page: Record<string, unknown>) => void
       onClose?: (emit: (event: string, ...args: unknown[]) => void) => void
       onNavigate?: (emit: (event: string, ...args: unknown[]) => void) => void
+      closeFails?: boolean
     } = {},
   ) {
     const handlers = new Map<string, Handler[]>()
@@ -1220,7 +1221,13 @@ describe('DetectionService script accounting wiring', () => {
     })
     const emit = (event: string, ...args: unknown[]): void => handlers.get(event)?.forEach((handler) => handler(...args))
     const sessionEmit = (event: string, payload: unknown): void => sessionHandlers.get(event)?.forEach((handler) => handler(payload))
-    const context = { newPage: jest.fn().mockResolvedValue(page), close: jest.fn(async () => options.onClose?.(emit)) }
+    const context = {
+      newPage: jest.fn().mockResolvedValue(page),
+      close: jest.fn(async () => {
+        options.onClose?.(emit)
+        if (options.closeFails === true) throw new Error('Target closed')
+      }),
+    }
     const workflowBrowser = { createBrowserContext: jest.fn().mockResolvedValue(context) } as unknown as Browser
     const logger = { log: jest.fn(), error: jest.fn() }
     const workflowTarget = {
@@ -1313,6 +1320,14 @@ describe('DetectionService script accounting wiring', () => {
     expect(summary.scriptSummary.unansweredRequests).toEqual([
       expect.objectContaining({ reason: 'issued after the workflow finished, and no response had arrived when the browser context closed', detachedAtStep: 1, detachedFrameUrl: 'https://pay.example.test/card' }),
     ])
+  })
+
+  // A close that failed was not seen to detach anything: no detach is claimed.
+  it('records no detach step when the context could not be closed', async () => {
+    const card = frame()
+    const summary = await run({ closeFails: true, onClose: (emit) => emit('request', scriptRequest('https://pay.example.test/late.js', { frame: card })) })
+    expect(summary.scriptSummary.unansweredRequests).toHaveLength(1)
+    expect(summary.scriptSummary.unansweredRequests![0]).not.toHaveProperty('detachedAtStep')
   })
 
   it("retains bodies on a frame's own session when a request is the first sign of it", async () => {
