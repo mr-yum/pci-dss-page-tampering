@@ -100,7 +100,13 @@ function compareUnread(left: ReportUnreadScript, right: ReportUnreadScript): num
 /** Total order over unanswered requests, for byte-identical output. */
 function compareUnanswered(left: ReportUnansweredRequest, right: ReportUnansweredRequest): number {
   return (
-    collator.compare(left.scope ?? '', right.scope ?? '') || collator.compare(left.url, right.url) || left.step - right.step || collator.compare(left.documentUrl ?? '', right.documentUrl ?? '') || collator.compare(left.reason, right.reason)
+    collator.compare(left.scope ?? '', right.scope ?? '') ||
+    collator.compare(left.url, right.url) ||
+    left.step - right.step ||
+    collator.compare(left.documentUrl ?? '', right.documentUrl ?? '') ||
+    collator.compare(left.reason, right.reason) ||
+    (left.detachedAtStep ?? -1) - (right.detachedAtStep ?? -1) ||
+    collator.compare(left.detachedFrameUrl ?? '', right.detachedFrameUrl ?? '')
   )
 }
 

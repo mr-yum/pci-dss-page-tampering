@@ -181,6 +181,31 @@ describe('ConsoleAlertService - alertOnRunCompletion (Phase 3)', () => {
       expect(consoleSpy).toHaveBeenCalledWith('    - https://cdn.example.test/landing.js on Shop production (detection, step 4, unattributed page, outside the payment page): no response had arrived 15s after the workflow finished')
     })
 
+    it('names the step an unanswered request’s frame was detached in, and the frame', async () => {
+      const summary = createSummary({
+        requestsUnanswered: [
+          {
+            url: 'https://challenge.example.test/api.js',
+            resourceType: 'script',
+            step: 2,
+            detachedAtStep: 4,
+            detachedFrameUrl: 'https://challenge.example.test/widget',
+            documentUrl: 'https://shop.example.test/checkout',
+            reason: 'its frame was detached',
+            target: 'Shop production',
+            pass: 'detection',
+            outsidePaymentPage: false,
+          },
+        ],
+      })
+
+      await service.alertOnRunCompletion(summary, mockAlertDestinations)
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        '    - https://challenge.example.test/api.js on Shop production (detection, issued at step 2, frame detached at step 4 (https://challenge.example.test/widget), https://shop.example.test/checkout): its frame was detached',
+      )
+    })
+
     it('reports a total failure when nothing was processed', async () => {
       const summary = createSummary({ targetsProcessed: [], targetsFailed: [{ name: '1.0', pass: 'detection', reason: 'boom' }] })
 

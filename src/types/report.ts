@@ -56,8 +56,13 @@ import type { TargetType } from './target.js'
  * ancestor rather than by an entry identifying it. `status: 'authorised'`
  * still means exactly what it meant — the inventory authorises this script —
  * so this is minor; a consumer that needs to know HOW reads `inherited`.
+ *
+ * 1.8.0 adds `unansweredRequests[].detachedAtStep` and `detachedFrameUrl`:
+ * when a request's frame went away with the request outstanding, the step
+ * running then and the frame's redacted URL. Additive and optional — the
+ * entry and its `reason` mean what they meant — so this is minor.
  */
-export const REPORT_SCHEMA_VERSION = '1.7.0'
+export const REPORT_SCHEMA_VERSION = '1.8.0'
 
 /**
  * Where an observation sits relative to the payment page, when the target's
@@ -275,6 +280,16 @@ export type ReportUnansweredRequest = {
   documentUrl: string | null
   /** Why it is recorded: still unanswered at the deadline, or its frame went away first. */
   reason: string
+  /**
+   * Workflow step running when the request's frame was detached with the
+   * request still outstanding — removed or navigated away by the page, or
+   * closed with the browser context, then the last step (added in 1.8.0).
+   * Equal to `step` when the frame went away in the step that issued the
+   * request; absent when no detach was seen.
+   */
+  detachedAtStep?: number
+  /** Redacted URL (origin and path) of the frame that was detached, as it was then (added in 1.8.0); absent when no detach was seen or the frame had no URL. */
+  detachedFrameUrl?: string
   /** Who asked for it (added in 1.7.0), from the request's own initiator; absent without evidence. */
   initiatorChain?: ReportInitiatorHop[]
   /** See `ReportScope`. Absent when the target's workflow marks no payment page. */

@@ -394,4 +394,21 @@ describe('renderReportHtml unanswered script requests', () => {
     expect(html).not.toContain('<b>never</b>')
     expect(html).not.toContain('PARTIAL RUN')
   })
+
+  it('shows when the frame was detached under the step that issued the request, escaped, and nothing when it was not', () => {
+    const collector = new ReportCollector()
+    collector.recordTargetRun({
+      inventory: buildInventory(),
+      target: detectionTarget,
+      comparisonResults: [],
+      unansweredRequests: [{ ...request('https://challenge.example.test/api.js'), step: 2, detachedAtStep: 4, detachedFrameUrl: 'https://challenge.example.test/<i>widget</i>' }],
+    })
+    const html = renderReportHtml(collector.build('detection', runContext())!)
+    expect(html).toMatch(/<td>2<div class="muted row-meta">\s*frame detached at step 4 \(<span class="mono">https:&#x2F;&#x2F;challenge\.example\.test&#x2F;&lt;i&gt;widget&lt;&#x2F;i&gt;<\/span>\)\s*<\/div><\/td>/u)
+    expect(html).not.toContain('<i>widget</i>')
+
+    const plain = new ReportCollector()
+    plain.recordTargetRun({ inventory: buildInventory(), target: detectionTarget, comparisonResults: [], unansweredRequests: [request('https://cdn.example.test/never.js')] })
+    expect(renderReportHtml(plain.build('detection', runContext())!)).not.toContain('frame detached')
+  })
 })

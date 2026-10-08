@@ -10,7 +10,7 @@ import type { DetectedResponse, HeaderDetectionSummary, HeaderName, HeaderUrl } 
 import type { InventoryHeaderInfo } from '../types/inventory/model.js'
 import type { ScriptMatcher } from '../types/matcher.js'
 import type { PuppeteerClickAction, PuppeteerClickPopupAction, PuppeteerInputAction, PuppeteerLocatorAction, PuppeteerNavigateAction, PuppeteerTotpAction } from '../types/puppeteer.js'
-import type { ScriptInfo, UnreadScriptResponse } from '../types/script.js'
+import { type ScriptInfo, unansweredRequestTiming, type UnreadScriptResponse } from '../types/script.js'
 import type { Target } from '../types/target.js'
 import { resolveDateTemplates } from '../utils/date-template.js'
 import { type PageScripts, readPageScripts } from '../utils/page.js'
@@ -256,8 +256,8 @@ export class DetectionService implements IDetectionService {
         })
         // A torn-down frame's requests may never be reported finished or
         // failed; stop waiting for them (those with neither are listed as
-        // unanswered).
-        .on('framedetached', (frame) => pendingScriptReads.frameDetached(frame))
+        // unanswered, with the step the frame went away in).
+        .on('framedetached', (frame) => pendingScriptReads.frameDetached(frame, currentStep))
         .on('requestfailed', (request) => pendingScriptReads.requestSettled(request))
         // Finished without a response surfaced: the body was delivered and the
         // script may have run, but nothing read it — unread, at any time.
@@ -417,12 +417,22 @@ export class DetectionService implements IDetectionService {
     } finally {
       // Closes the page and discards cookies/storage. Log-and-continue on
       // failure so cleanup can never mask a workflow error.
-      await context.close().catch((closeError) => target.logger.error(`Failed to close browser context: ${closeError}`))
+      const closed = await context.close().then(
+        () => true,
+        (closeError) => {
+          target.logger.error(`Failed to close browser context: ${closeError}`)
+          return false
+        },
+      )
       // A read the close cut off rejects a moment later; give it that moment
       // so its record lands before the summary is built from these arrays.
       // One that still has not settled — Puppeteer leaves a body read pending
       // forever when its session disconnects — is recorded as unread here.
-      this.recordUnsettled(await pendingScriptReads.settle(this.scriptSettle.closeGraceMs, AT_CLOSE), unreadScripts, target)
+      // A request still outstanding was cut off with its frame by the close:
+      // it records the step the context closed in, like any detached frame's
+      // — but only when the close was seen to succeed, so a failed close never
+      // reads as a detach nobody observed.
+      this.recordUnsettled(await pendingScriptReads.settle(this.scriptSettle.closeGraceMs, AT_CLOSE, closed ? currentStep : undefined), unreadScripts, target)
     }
 
     const declared = puppeteerWorkflow.locatorActions.some((step: PuppeteerLocatorAction) => step.paymentPage === true)
@@ -459,7 +469,7 @@ export class DetectionService implements IDetectionService {
     })
     if (unansweredRequests.length > 0) {
       target.logger.log(
-        `${unansweredRequests.length} script request(s) never received a response, so the script never ran on the page; recorded as evidence, not as unread: ${unansweredRequests.map((request) => `${redactUrl(request.url)} (step ${request.step})`).join(', ')}`,
+        `${unansweredRequests.length} script request(s) never received a response, so the script never ran on the page; recorded as evidence, not as unread: ${unansweredRequests.map((request) => `${redactUrl(request.url)} (${unansweredRequestTiming(request, redactUrl)})`).join(', ')}`,
       )
     }
 

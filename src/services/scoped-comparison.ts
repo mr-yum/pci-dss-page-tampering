@@ -58,9 +58,21 @@ function displayFields(documents: readonly DocumentTrailEntry[]): (item: Unanswe
       step: item.step,
       documentUrl: documentUrl === undefined ? null : redactUrl(documentUrl),
       reason: redactForDisplay(item.reason, 1000).text,
+      ...(item.detachedAtStep !== undefined ? { detachedAtStep: item.detachedAtStep } : {}),
+      ...(item.detachedFrameUrl !== undefined ? { detachedFrameUrl: redactFrameUrl(item.detachedFrameUrl) } : {}),
       ...(item.initiatorChain !== undefined && item.initiatorChain.length > 0 ? { initiatorChain: redactInitiatorChain(item.initiatorChain) } : {}),
     }
   }
+}
+
+/**
+ * A frame URL reduced to origin and path like every other URL shown — except
+ * a frame still at an `about:` URL (`about:blank`, `about:srcdoc`), which has
+ * no origin to keep and would otherwise read `nullblank`; it is shown as is,
+ * without any query or fragment.
+ */
+function redactFrameUrl(url: string): string {
+  return /^about:/iu.test(url) ? url.replace(/[?#].*$/su, '') : redactUrl(url)
 }
 
 /**

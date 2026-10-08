@@ -113,6 +113,28 @@ describe('compareWithPaymentScope', () => {
       expect(unanswered.payment.map((record) => record.url)).toEqual(['https://pay.example.testhttps//pay.example.test/a1b2'])
       expect(unanswered.outside).toBeNull()
     })
+
+    // The detached frame's URL is shown like every other URL: origin and
+    // path, a blob: URL keeping its scheme, and an about: frame as itself.
+    it('carries when the frame was detached, with the frame URL redacted', async () => {
+      const detached = (frameUrl: string): UnansweredScriptRequest => ({ ...request('/x'), detachedAtStep: 6, detachedFrameUrl: frameUrl })
+      const { unanswered } = await compareWithPaymentScope(
+        detection([], undefined, undefined, [detached('https://challenge.example.test/widget?session=secret#frag'), detached('blob:https://challenge.example.test/5d1c7a8e-0000-4000-8000-000000000000'), detached('about:blank')]),
+        inventory,
+        services,
+      )
+      expect(unanswered.payment.map((record) => [record.detachedAtStep, record.detachedFrameUrl])).toEqual([
+        [6, 'https://challenge.example.test/widget'],
+        [6, 'blob:https://challenge.example.test/5d1c7a8e-0000-4000-8000-000000000000'],
+        [6, 'about:blank'],
+      ])
+    })
+
+    it('leaves both out when no detach was seen', async () => {
+      const { unanswered } = await compareWithPaymentScope(detection([], undefined, undefined, [request('/x')]), inventory, services)
+      expect(unanswered.payment[0]).not.toHaveProperty('detachedAtStep')
+      expect(unanswered.payment[0]).not.toHaveProperty('detachedFrameUrl')
+    })
   })
 
   describe('headers', () => {

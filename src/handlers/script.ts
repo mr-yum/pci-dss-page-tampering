@@ -223,7 +223,16 @@ function frameUrlOf(response: HTTPResponse): string | undefined {
 /** The current URL of the frame a request belongs to; undefined without a frame (a worker) or a URL. Read it when the request is sent to pass as `issuedFrameUrlOf`. */
 export function requestFrameUrl(request: HTTPRequest): string | undefined {
   try {
-    const url = request.frame()?.url()
+    return frameUrl(request.frame())
+  } catch {
+    return undefined
+  }
+}
+
+/** A frame's current URL; undefined without a frame or a URL, or when the frame cannot say. */
+function frameUrl(frame: Frame | null | undefined): string | undefined {
+  try {
+    const url = frame?.url()
     return url === undefined || url === '' ? undefined : url
   } catch {
     return undefined
@@ -250,7 +259,16 @@ export const SCRIPT_BODY_WITHOUT_RESPONSE_REASON = 'the body finished loading bu
 /** What `settle` calls the reads and requests still outstanding at its deadline. */
 export type SettleReasons = { reading: string; unanswered: string }
 
-type InFlightRequest = { request: HTTPRequest; step: number; documentOf: (request: HTTPRequest) => DocumentId | undefined }
+/** When a request's frame went away with the request outstanding, and which frame: see `UnansweredScriptRequest.detachedAtStep`. */
+type Detachment = Pick<UnansweredScriptRequest, 'detachedAtStep' | 'detachedFrameUrl'>
+
+type InFlightRequest = { request: HTTPRequest; step: number; documentOf: (request: HTTPRequest) => DocumentId | undefined; detachment?: Detachment }
+
+/** The detachment fields for a frame that went away at `step` — none when the step is not known. */
+function detachmentAt(step: number | undefined, url: string | undefined): Detachment | undefined {
+  if (step === undefined) return undefined
+  return { detachedAtStep: step, ...(url !== undefined ? { detachedFrameUrl: url } : {}) }
+}
 
 /**
  * The script requests and body reads still in flight, so a run can wait for
@@ -369,13 +387,22 @@ export class PendingScriptReads {
    * a failure — are listed as unanswered with the detached-frame reason; if
    * their response arrives after all it is read like any other, or recorded
    * as unread once the run is sealed.
+   *
+   * `step` is the workflow step running as the frame goes away. With it, each
+   * such request records that step and the frame's URL as it was then, so the
+   * evidence shows whether the detach coincided with one of the workflow's
+   * own actions or happened on the frame's own schedule; without it (an
+   * unknown step) neither is recorded.
    */
-  frameDetached(frame: Frame): void {
+  frameDetached(frame: Frame, step?: number): void {
     let moved = false
+    let detachment: Detachment | undefined
     for (const [request, entry] of this.inFlight) {
       if (frameOf(request) !== frame) continue
       this.inFlight.delete(request)
-      this.detached.set(request, entry)
+      // Read once, as the frame goes away: the URL it had then.
+      detachment ??= detachmentAt(step, frameUrl(frame))
+      this.detached.set(request, detachment === undefined ? entry : { ...entry, detachment })
       moved = true
     }
     if (moved) this.wake?.()
@@ -430,8 +457,13 @@ export class PendingScriptReads {
    * reason). Loops rather than waiting once: a response can arrive — and
    * start a read — while earlier reads are being awaited, and that read gets
    * the same chance to finish rather than being reported as stuck.
+   *
+   * `closedAtStep` is for the settle that follows the browser context
+   * closing: a request still outstanding then was cut off with its frame, so
+   * it records that step (the last one) and its frame's URL exactly as a
+   * request whose frame the page removed does.
    */
-  async settle(timeoutMs: number, reasons: SettleReasons): Promise<UnreadScriptResponse[]> {
+  async settle(timeoutMs: number, reasons: SettleReasons, closedAtStep?: number): Promise<UnreadScriptResponse[]> {
     let timer: NodeJS.Timeout | undefined
     let expired = false
     const deadline = new Promise<void>((resolve) => {
@@ -471,14 +503,25 @@ export class PendingScriptReads {
       [this.inFlight, reasons.unanswered],
       [this.detached, SCRIPT_REQUEST_FRAME_DETACHED_REASON],
     ] as const) {
-      for (const [request, { step, documentOf }] of entries) {
+      for (const [request, { step, documentOf, detachment }] of entries) {
         const document = documentOf(request)
         if (bodyFinished(request)) unread.push(withoutResponse(request, step, document))
         else {
           // The request's initiator is known from the moment it was issued:
           // recorded so the evidence names who asked for a script that never came.
           const initiatorEvidence = deriveInitiatorEvidence(request, this.options.shimSourceUrl)
-          this.unanswered.set(request, { url: request.url(), resourceType: request.resourceType(), reason, step, ...(document !== undefined ? { document } : {}), ...(initiatorEvidence !== undefined ? { initiatorEvidence } : {}) })
+          // Only a request still in flight was cut off by the close: one whose
+          // frame went away earlier, at a step not known, did not go then.
+          const detached = detachment ?? (entries === this.inFlight ? detachmentAt(closedAtStep, requestFrameUrl(request)) : undefined)
+          this.unanswered.set(request, {
+            url: request.url(),
+            resourceType: request.resourceType(),
+            reason,
+            step,
+            ...(document !== undefined ? { document } : {}),
+            ...detached,
+            ...(initiatorEvidence !== undefined ? { initiatorEvidence } : {}),
+          })
         }
       }
       entries.clear()
