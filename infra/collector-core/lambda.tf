@@ -16,9 +16,10 @@ data "aws_iam_policy_document" "lambda_assume" {
 }
 
 resource "aws_iam_role" "ingest" {
-  name               = "${var.name_prefix}-ingest"
-  assume_role_policy = data.aws_iam_policy_document.lambda_assume.json
-  tags               = var.tags
+  name                 = "${var.name_prefix}-ingest"
+  assume_role_policy   = data.aws_iam_policy_document.lambda_assume.json
+  permissions_boundary = var.permissions_boundary_arn
+  tags                 = var.tags
 }
 
 data "aws_iam_policy_document" "ingest" {
