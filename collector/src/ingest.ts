@@ -98,20 +98,153 @@ export interface MetricDatum {
 }
 
 /**
+ * The single novelty write, as the DynamoDB `UpdateItem` input. Exported so a
+ * unit test can pin the shape — the novel-vs-repeat decision lives in this
+ * expression and in {@link upsertSightingWith}, inside an adapter no handler test
+ * reaches, and an inverted mapping or a `ValidationException` here would be
+ * swallowed by the always-204 contract with every unit test still green.
+ *
+ * `first_seen`, `first_route`, `target_type` are pinned to the first sighting
+ * via `if_not_exists`; `last_seen` and `sessions` move on every write; `ttl`
+ * is rewritten on every write so the 90-day novelty window ROLLS from the last
+ * sighting (FR-009, clarification #2) — a script absent for 90 days returns as
+ * a first sighting, a continuously present one never does. (Until 2026-10 the
+ * TTL was anchored to the first sighting, so an ever-present script re-entered
+ * the queue, and alerted, every 90 days.) `ttl` is a DynamoDB reserved word.
+ */
+export const noveltyUpsertInput = (table: string, item: NoveltyItem) => ({
+  TableName: table,
+  Key: { pk: { S: item.pk } },
+  UpdateExpression:
+    'SET first_seen = if_not_exists(first_seen, :first_seen), first_route = if_not_exists(first_route, :first_route), target_type = if_not_exists(target_type, :target_type), last_seen = :last_seen, #ttl = :ttl ADD sessions :one',
+  ExpressionAttributeNames: { '#ttl': 'ttl' },
+  ExpressionAttributeValues: {
+    ':first_seen': { N: String(item.first_seen) },
+    ':first_route': { S: item.first_route },
+    ':target_type': { S: item.target_type },
+    ':last_seen': { N: String(item.last_seen) },
+    ':ttl': { N: String(item.ttl) },
+    ':one': { N: '1' },
+  },
+  // The item as it was BEFORE this write; absent when there was none.
+  ReturnValues: 'ALL_OLD' as const,
+})
+
+/** DynamoDB attribute-value shapes the novelty adapter reads back. */
+type AttributeValue = { N?: string; S?: string }
+export interface UpsertResult {
+  Attributes?: Record<string, AttributeValue>
+}
+
+/**
+ * The prior record `ReturnValues: ALL_OLD` carried, or `null` when there was
+ * none. Only the two attributes the novelty decision needs are read.
+ */
+export const priorSighting = (result: UpsertResult): { firstSeen: number; ttl: number } | null => {
+  const attributes = result.Attributes
+  if (attributes === undefined || Object.keys(attributes).length === 0) return null
+  const num = (name: string): number => {
+    const raw = attributes[name]?.N
+    return raw === undefined ? Number.NaN : Number(raw)
+  }
+  return { firstSeen: num('first_seen'), ttl: num('ttl') }
+}
+
+/**
+ * Resets an EXPIRED record to the current sighting. DynamoDB deletes expired
+ * items lazily (documented as "typically within 48 hours"), so a script that
+ * returns after the 90-day window can meet its own expired record; without
+ * this it would read as a repeat, and because the upsert refreshes `ttl` the
+ * record would never expire again — the returning script suppressed for good.
+ * The condition on the prior `first_seen` makes exactly one of several
+ * concurrent returns win: the losers see ConditionalCheckFailedException and
+ * are repeats of the winner's first sighting. `last_seen`/`ttl` were already
+ * moved by the upsert; `sessions` restarts at 1.
+ */
+export const noveltyResetInput = (table: string, item: NoveltyItem, priorFirstSeen: number) => ({
+  TableName: table,
+  Key: { pk: { S: item.pk } },
+  UpdateExpression: 'SET first_seen = :first_seen, first_route = :first_route, target_type = :target_type, sessions = :one',
+  ConditionExpression: 'first_seen = :prior_first_seen',
+  ExpressionAttributeValues: {
+    ':first_seen': { N: String(item.first_seen) },
+    ':first_route': { S: item.first_route },
+    ':target_type': { S: item.target_type },
+    ':one': { N: '1' },
+    ':prior_first_seen': { N: String(priorFirstSeen) },
+  },
+})
+
+const isConditionalCheckFailed = (error: unknown): boolean => error instanceof Error && error.name === 'ConditionalCheckFailedException'
+
+/**
+ * The novelty decision over a `send`-shaped DynamoDB client, so it is unit
+ * tested with a fake `send` rather than living untested inside the SDK
+ * adapter. Exactly one write on the common paths (no prior record, or a live
+ * one); a second, conditional write only when the prior record had expired.
+ * `item.first_seen` is the receipt time of this sighting, so it is also "now"
+ * for the expiry comparison (the `ttl` attribute is epoch seconds).
+ *
+ * If the reset fails for any reason other than losing the race, the upsert
+ * has already refreshed `ttl`, so the stale record is live again and the next
+ * delivery would read as a repeat — the same suppression the SQS compensating
+ * delete guards against. `remove` deletes the record (best effort) before the
+ * error propagates, so the next delivery is a clean first sighting. A delete
+ * that races a concurrent winner's reset costs one duplicate first sighting,
+ * absorbed by consumer idempotency — the at-least-once side of the trade.
+ */
+export const upsertSightingWith =
+  (send: (input: ReturnType<typeof noveltyUpsertInput> | ReturnType<typeof noveltyResetInput>) => Promise<UpsertResult>, remove: (input: { table: string; pk: string }) => Promise<unknown>) =>
+  async ({ table, item }: { table: string; item: NoveltyItem }): Promise<{ firstSighting: boolean }> => {
+    const prior = priorSighting(await send(noveltyUpsertInput(table, item)))
+    if (prior === null) return { firstSighting: true }
+    const nowSeconds = Math.floor(item.first_seen / 1000)
+    // A live record (ttl in the future, or unreadable — never widen on bad data) is a repeat.
+    if (!(prior.ttl <= nowSeconds)) return { firstSighting: false }
+    try {
+      await send(noveltyResetInput(table, item, prior.firstSeen))
+      return { firstSighting: true }
+    } catch (error) {
+      if (isConditionalCheckFailed(error)) return { firstSighting: false }
+      try {
+        await remove({ table, pk: item.pk })
+      } catch (compensationError) {
+        console.error('collector: novelty reset compensation delete failed', compensationError)
+      }
+      throw error
+    }
+  }
+
+/**
  * Thin domain-shaped dependency ports (not SDK client shapes) so unit tests
  * inject plain jest.fn implementations. The real adapters below translate to
- * AWS SDK v3 commands; the only SDK semantic that leaks through is the
- * conditional-write failure, signalled by an error whose `name` is
- * `ConditionalCheckFailedException` (what the DynamoDB client actually throws).
+ * AWS SDK v3 commands; no SDK semantic leaks through — the novelty port
+ * answers the one question the handler has (was this the first sighting?)
+ * as a value, not as an exception type to recognise.
  */
 export interface CollectorDeps {
   firehose: { putRecord(input: { streamName: string; data: string }): Promise<unknown> }
   dynamo: {
-    /** PutItem with attribute_not_exists(pk); rejects with ConditionalCheckFailedException when the pk exists. */
-    putItemIfAbsent(input: { table: string; item: NoveltyItem }): Promise<unknown>
-    /** SET last_seen, ADD sessions 1 on an existing record. */
-    updateCounters(input: { table: string; pk: string; lastSeen: number }): Promise<unknown>
-    /** DeleteItem by pk — compensates a first-sighting put whose SQS enqueue failed. */
+    /**
+     * ONE write per observation. An UpdateItem upsert: the first-sighting
+     * attributes (`first_seen`, `first_route`, `target_type`) are set only
+     * when absent, `last_seen`/`ttl` are always refreshed and `sessions` always
+     * incremented, and the item's prior state comes back with the write. No
+     * prior item, or an expired one DynamoDB had not yet deleted → first
+     * sighting. Decision: {@link upsertSightingWith}; shape: {@link noveltyUpsertInput}. Replaces a conditional PutItem followed by
+     * an UpdateItem on the repeat path: a failed conditional write is still
+     * billed, so every repeat (the common case) cost two writes for one fact.
+     * DynamoDB serialises writes to one key, so two concurrent sightings of a
+     * new pk still yield exactly one `firstSighting: true`.
+     */
+    upsertSighting(input: { table: string; item: NoveltyItem }): Promise<{ firstSighting: boolean }>
+    /**
+     * DeleteItem by pk — compensates a first-sighting write whose SQS enqueue
+     * failed. The Lambda role must grant `dynamodb:DeleteItem`: until 2026-10
+     * it did not, and because the compensation is best-effort (caught, logged,
+     * 204 regardless) the AccessDenied was invisible — the pk then suppressed
+     * re-enqueue for the whole TTL. infra/tests asserts the grant.
+     */
     deleteItem(input: { table: string; pk: string }): Promise<unknown>
   }
   sqs: { sendMessage(input: { queueUrl: string; body: string; attributes: Record<string, string> }): Promise<unknown> }
@@ -169,8 +302,6 @@ const decodeBody = (event: FunctionUrlEvent): string => {
   const body = event.body ?? ''
   return event.isBase64Encoded ? Buffer.from(body, 'base64').toString('utf8') : body
 }
-
-const isConditionalCheckFailed = (error: unknown): boolean => error instanceof Error && error.name === 'ConditionalCheckFailedException'
 
 /**
  * Cardinality bound for the AgentVersion metric dimension, applied uniformly
@@ -253,28 +384,26 @@ const processObservation = async (observation: Observation, sessionId: string, t
   }
 
   const pk = buildNoveltyKey(target.target_id, observation)
-  try {
-    await deps.dynamo.putItemIfAbsent({
-      table: config.noveltyTable,
-      item: {
-        pk,
-        first_seen: receivedAt,
-        last_seen: receivedAt,
-        sessions: 1,
-        first_route: observation.route,
-        target_type: target.target_type,
-        ttl: ttlEpochSeconds(receivedAt, config.noveltyTtlDays),
-      },
-    })
-  } catch (error) {
-    if (!isConditionalCheckFailed(error)) throw error
-    // Repeat sighting: counters only, nothing enqueued.
-    await deps.dynamo.updateCounters({ table: config.noveltyTable, pk, lastSeen: receivedAt })
+  // One write decides novel-or-repeat and records the sighting either way.
+  const { firstSighting } = await deps.dynamo.upsertSighting({
+    table: config.noveltyTable,
+    item: {
+      pk,
+      first_seen: receivedAt,
+      last_seen: receivedAt,
+      sessions: 1,
+      first_route: observation.route,
+      target_type: target.target_type,
+      ttl: ttlEpochSeconds(receivedAt, config.noveltyTtlDays),
+    },
+  })
+  if (!firstSighting) {
+    // Repeat sighting: the write already moved the counters; nothing enqueued.
     metrics.count('rum_observations_counted', targetDimension)
     return
   }
 
-  // First sighting: enqueue exactly on conditional-write success
+  // First sighting: enqueue exactly when the write found no prior item
   // (queue-message.md producer obligations; duplicates on Lambda retry are
   // absorbed by consumer idempotency on novelty.pk).
   metrics.count('rum_first_sightings', targetDimension)
@@ -627,7 +756,7 @@ export const createHandler = (config: CollectorConfig, deps: CollectorDeps) => {
  * the deployed bundle carries the SDK inside it (see module docstring).
  */
 const createAwsDeps = async (): Promise<CollectorDeps> => {
-  const [{ FirehoseClient, PutRecordCommand }, { DynamoDBClient, PutItemCommand, UpdateItemCommand, DeleteItemCommand }, { SQSClient, SendMessageCommand }, { CloudWatchClient, PutMetricDataCommand }] = await Promise.all([
+  const [{ FirehoseClient, PutRecordCommand }, { DynamoDBClient, UpdateItemCommand, DeleteItemCommand }, { SQSClient, SendMessageCommand }, { CloudWatchClient, PutMetricDataCommand }] = await Promise.all([
     import('@aws-sdk/client-firehose'),
     import('@aws-sdk/client-dynamodb'),
     import('@aws-sdk/client-sqs'),
@@ -643,34 +772,13 @@ const createAwsDeps = async (): Promise<CollectorDeps> => {
     firehose: {
       putRecord: ({ streamName, data }) => firehose.send(new PutRecordCommand({ DeliveryStreamName: streamName, Record: { Data: Buffer.from(data, 'utf8') } })),
     },
-    dynamo: {
-      putItemIfAbsent: ({ table, item }) =>
-        dynamo.send(
-          new PutItemCommand({
-            TableName: table,
-            Item: {
-              pk: { S: item.pk },
-              first_seen: { N: String(item.first_seen) },
-              last_seen: { N: String(item.last_seen) },
-              sessions: { N: String(item.sessions) },
-              first_route: { S: item.first_route },
-              target_type: { S: item.target_type },
-              ttl: { N: String(item.ttl) },
-            },
-            ConditionExpression: 'attribute_not_exists(pk)',
-          }),
-        ),
-      updateCounters: ({ table, pk, lastSeen }) =>
-        dynamo.send(
-          new UpdateItemCommand({
-            TableName: table,
-            Key: { pk: { S: pk } },
-            UpdateExpression: 'SET last_seen = :last_seen ADD sessions :one',
-            ExpressionAttributeValues: { ':last_seen': { N: String(lastSeen) }, ':one': { N: '1' } },
-          }),
-        ),
-      deleteItem: ({ table, pk }) => dynamo.send(new DeleteItemCommand({ TableName: table, Key: { pk: { S: pk } } })),
-    },
+    dynamo: (() => {
+      const deleteItem = ({ table, pk }: { table: string; pk: string }) => dynamo.send(new DeleteItemCommand({ TableName: table, Key: { pk: { S: pk } } }))
+      return {
+        upsertSighting: upsertSightingWith((input) => dynamo.send(new UpdateItemCommand(input)) as Promise<UpsertResult>, deleteItem),
+        deleteItem,
+      }
+    })(),
     sqs: {
       sendMessage: ({ queueUrl, body, attributes }) =>
         sqs.send(

@@ -78,13 +78,16 @@ const makeCollectorHarness = () => {
   const deps: CollectorDeps = {
     firehose: { putRecord: async () => undefined },
     dynamo: {
-      putItemIfAbsent: async ({ item }) => {
-        if (noveltyStore.has(item.pk)) {
-          throw Object.assign(new Error('The conditional request failed'), { name: 'ConditionalCheckFailedException' })
+      upsertSighting: async ({ item }) => {
+        const existing = noveltyStore.get(item.pk)
+        if (existing === undefined) {
+          noveltyStore.set(item.pk, { ...item })
+          return { firstSighting: true }
         }
-        noveltyStore.set(item.pk, { ...item })
+        existing.last_seen = item.last_seen
+        existing.sessions += 1
+        return { firstSighting: false }
       },
-      updateCounters: async () => undefined,
       deleteItem: async ({ pk }) => {
         noveltyStore.delete(pk)
       },
