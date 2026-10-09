@@ -23,7 +23,7 @@ Both edges authenticate to the origin with an edge-injected shared-secret header
 
 ## Processing pipeline (per accepted request)
 
-1. Edge auth (above) → 2. `Origin` → `origin_targets` lookup → stamp `target_id`, `target_type` → 3. strict Zod parse → 4. Firehose `PutRecord` (beacon + stamp + `received_at`; `page.url` is redacted to origin + pathname before archival — query and fragment stripped, the same privacy rule as agent routes and CSP document URLs — so tokens/order ids never enter the one-year archive; observations are otherwise archived verbatim) → 5. per observation (except `agent-health`): novelty conditional write → first sighting? enqueue SQS message (queue-message.md) : update counters.
+1. Edge auth (above) → 2. `Origin` → `origin_targets` lookup → stamp `target_id`, `target_type` → 3. strict Zod parse → 4. Firehose `PutRecord` (beacon + stamp + `received_at`; `page.url` is redacted to origin + pathname before archival — query and fragment stripped, the same privacy rule as agent routes and CSP document URLs — so tokens/order ids never enter the one-year archive; observations are otherwise archived verbatim) → 5. per observation (except `agent-health`): one novelty upsert (`UpdateItem`, prior item returned with the write) → no prior item? enqueue SQS message (queue-message.md) : counters already moved by that write, nothing enqueued.
 
 Failure semantics: steps 4–5 are at-least-once; a crash between them can re-deliver on retry — downstream idempotency (novelty pk, routing) absorbs it. A Firehose failure fails the request internally (retry via client resend is acceptable loss — coverage is statistical) but never changes the 204.
 
@@ -65,7 +65,7 @@ A report missing its directive or a parseable document URL is rejected (`Reason:
 
 ### Pipeline
 
-Identical to beacon observations from there on: Firehose archives the **verbatim** report record wrapped in a marked envelope `{stamp: {target_id, target_type, received_at}, cspReport}` (the `cspReport` key distinguishes the source from `beacon` records); novelty conditional write under the same `csp:{directive}:{blockedUri}` identity (initiator host `-`); SQS enqueue on first sighting with the standard queue-message.md body. `session_id` is the fixed sentinel `"csp-report"` — browser reports carry no agent session — and satisfies the schema's non-empty-string requirement while marking provenance.
+Identical to beacon observations from there on: Firehose archives the **verbatim** report record wrapped in a marked envelope `{stamp: {target_id, target_type, received_at}, cspReport}` (the `cspReport` key distinguishes the source from `beacon` records); novelty upsert under the same `csp:{directive}:{blockedUri}` identity (initiator host `-`); SQS enqueue on first sighting with the standard queue-message.md body. `session_id` is the fixed sentinel `"csp-report"` — browser reports carry no agent session — and satisfies the schema's non-empty-string requirement while marking provenance.
 
 ### Response and metrics
 

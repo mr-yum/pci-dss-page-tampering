@@ -5,8 +5,8 @@ import { z } from 'zod'
 
 import type { Beacon } from '../../src/types/beacon.js'
 import { CspViolationObservationSchema } from '../../src/types/beacon.js'
-import type { CollectorConfig, CollectorDeps, FunctionUrlEvent, FunctionUrlResult, MetricDatum } from './ingest.js'
-import { createHandler, loadConfigFromEnv, resetAttributedAgentVersionsForTesting } from './ingest.js'
+import type { CollectorConfig, CollectorDeps, FunctionUrlEvent, FunctionUrlResult, MetricDatum, UpsertResult } from './ingest.js'
+import { createHandler, loadConfigFromEnv, noveltyResetInput, noveltyUpsertInput, priorSighting, resetAttributedAgentVersionsForTesting, upsertSightingWith } from './ingest.js'
 import { buildNoveltyKey } from './novelty.js'
 
 const FIXTURES = join(__dirname, '../../test/fixtures/beacons')
@@ -32,14 +32,14 @@ const makeConfig = (overrides: Partial<CollectorConfig> = {}): CollectorConfig =
 
 interface MockDeps extends CollectorDeps {
   firehose: { putRecord: jest.Mock }
-  dynamo: { putItemIfAbsent: jest.Mock; updateCounters: jest.Mock; deleteItem: jest.Mock }
+  dynamo: { upsertSighting: jest.Mock; deleteItem: jest.Mock }
   sqs: { sendMessage: jest.Mock }
   metrics: { publish: jest.Mock }
 }
 
 const makeDeps = (): MockDeps => ({
   firehose: { putRecord: jest.fn().mockResolvedValue(undefined) },
-  dynamo: { putItemIfAbsent: jest.fn().mockResolvedValue(undefined), updateCounters: jest.fn().mockResolvedValue(undefined), deleteItem: jest.fn().mockResolvedValue(undefined) },
+  dynamo: { upsertSighting: jest.fn().mockResolvedValue({ firstSighting: true }), deleteItem: jest.fn().mockResolvedValue(undefined) },
   sqs: { sendMessage: jest.fn().mockResolvedValue(undefined) },
   metrics: { publish: jest.fn().mockResolvedValue(undefined) },
   now: () => NOW,
@@ -55,8 +55,6 @@ const expectNoContent = (result: FunctionUrlResult): void => {
   expect(result.statusCode).toBe(204)
   expect(result.body).toBe('')
 }
-
-const conditionalCheckFailed = (): Error => Object.assign(new Error('The conditional request failed'), { name: 'ConditionalCheckFailedException' })
 
 describe('createHandler', () => {
   // The attributed-version set is container-lifetime state; reset it so no
@@ -125,7 +123,7 @@ describe('createHandler', () => {
     const record = JSON.parse(serialised)
     expect(record.beacon.page.url).toBe('https://pay.example.com/checkout')
     // Pipeline behaviour is otherwise unchanged: observations still flow.
-    expect(deps.dynamo.putItemIfAbsent).toHaveBeenCalledTimes(1)
+    expect(deps.dynamo.upsertSighting).toHaveBeenCalledTimes(1)
     expect(deps.sqs.sendMessage).toHaveBeenCalledTimes(1)
     const queued = JSON.parse(deps.sqs.sendMessage.mock.calls[0][0].body)
     expect(JSON.stringify(queued)).not.toContain('secret-abc')
@@ -138,7 +136,7 @@ describe('createHandler', () => {
     expectNoContent(result)
     expect(metricNames(deps)).toEqual(['rum_unmapped_origin'])
     expect(deps.firehose.putRecord).not.toHaveBeenCalled()
-    expect(deps.dynamo.putItemIfAbsent).not.toHaveBeenCalled()
+    expect(deps.dynamo.upsertSighting).not.toHaveBeenCalled()
     expect(deps.sqs.sendMessage).not.toHaveBeenCalled()
   })
 
@@ -166,7 +164,7 @@ describe('createHandler', () => {
       // outcome, no storage — only the auth-failure count.
       expect(metricNames(deps)).toEqual(['rum_edge_auth_failure'])
       expect(deps.firehose.putRecord).not.toHaveBeenCalled()
-      expect(deps.dynamo.putItemIfAbsent).not.toHaveBeenCalled()
+      expect(deps.dynamo.upsertSighting).not.toHaveBeenCalled()
       expect(deps.sqs.sendMessage).not.toHaveBeenCalled()
     })
 
@@ -198,7 +196,7 @@ describe('createHandler', () => {
 
       expectNoContent(result)
       expect(publishedMetrics(deps)).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'rum_beacons_rejected', dimensions: { Reason: 'schema', AgentVersion: '1.0.0' } })]))
-      expect(deps.dynamo.putItemIfAbsent).toHaveBeenCalledTimes(1) // only the accepted beacon
+      expect(deps.dynamo.upsertSighting).toHaveBeenCalledTimes(1) // only the accepted beacon
     })
 
     it('never lets rejected bodies allocate version slots: eight garbage claims then a real candidate — the candidate still attributes', async () => {
@@ -277,7 +275,7 @@ describe('createHandler', () => {
 
     expectNoContent(result)
     const expectedPk = '1.0#https://evil.example/skimmer.js#pay.example.com'
-    expect(deps.dynamo.putItemIfAbsent).toHaveBeenCalledWith({
+    expect(deps.dynamo.upsertSighting).toHaveBeenCalledWith({
       table: 'novelty-table',
       item: {
         pk: expectedPk,
@@ -305,37 +303,75 @@ describe('createHandler', () => {
     expect(metricNames(deps)).toEqual(expect.arrayContaining(['rum_first_sightings', 'rum_beacons_accepted']))
   })
 
-  it('updates counters without enqueueing on a repeat sighting', async () => {
+  it('counts a repeat sighting through the same single write and never enqueues', async () => {
     const deps = makeDeps()
-    deps.dynamo.putItemIfAbsent.mockRejectedValue(conditionalCheckFailed())
+    deps.dynamo.upsertSighting.mockResolvedValue({ firstSighting: false })
     const result = await createHandler(makeConfig(), deps)(makeEvent(fixture('external-unknown.json')))
 
     expectNoContent(result)
-    expect(deps.dynamo.updateCounters).toHaveBeenCalledWith({ table: 'novelty-table', pk: '1.0#https://evil.example/skimmer.js#pay.example.com', lastSeen: NOW })
+    expect(deps.dynamo.upsertSighting).toHaveBeenCalledTimes(1)
+    expect(deps.dynamo.upsertSighting).toHaveBeenCalledWith(expect.objectContaining({ table: 'novelty-table', item: expect.objectContaining({ pk: '1.0#https://evil.example/skimmer.js#pay.example.com', last_seen: NOW }) }))
     expect(deps.sqs.sendMessage).not.toHaveBeenCalled()
     expect(metricNames(deps)).toContain('rum_observations_counted')
     expect(metricNames(deps)).not.toContain('rum_first_sightings')
   })
 
+  /**
+   * A store-backed novelty fake, so the second delivery below is a first
+   * sighting ONLY IF the compensating delete actually removed the record —
+   * a preset `{ firstSighting: true }` mock would pass whether or not the
+   * delete ran, which is exactly what branch-review caught.
+   */
+  const storeBackedNovelty = (deps: MockDeps): Set<string> => {
+    const store = new Set<string>()
+    deps.dynamo.upsertSighting.mockImplementation(async ({ item }: { item: { pk: string } }) => {
+      if (store.has(item.pk)) return { firstSighting: false }
+      store.add(item.pk)
+      return { firstSighting: true }
+    })
+    deps.dynamo.deleteItem.mockImplementation(async ({ pk }: { pk: string }) => {
+      store.delete(pk)
+    })
+    return store
+  }
+
   it('compensates a first-sighting novelty write when the SQS enqueue fails, so a later delivery re-enqueues', async () => {
     const deps = makeDeps()
+    const store = storeBackedNovelty(deps)
     deps.sqs.sendMessage.mockRejectedValueOnce(new Error('sqs down'))
     const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined)
     try {
-      // First delivery: put succeeds, enqueue throws → the novelty item is
-      // deleted (compensation) so the pk does not block re-enqueue for the TTL.
+      // First delivery: the write finds no prior item, the enqueue throws →
+      // the record is deleted (compensation) so the pk cannot block re-enqueue
+      // for the TTL.
       expectNoContent(await createHandler(makeConfig(), deps)(makeEvent(fixture('external-unknown.json'))))
       const pk = '1.0#https://evil.example/skimmer.js#pay.example.com'
-      expect(deps.dynamo.putItemIfAbsent).toHaveBeenCalledTimes(1)
+      expect(deps.dynamo.upsertSighting).toHaveBeenCalledTimes(1)
       expect(deps.dynamo.deleteItem).toHaveBeenCalledWith({ table: 'novelty-table', pk })
+      expect(store.has(pk)).toBe(false)
 
-      // A subsequent identical request re-triggers the first-sighting path and
-      // enqueues (the compensating delete cleared the blocking record).
-      const second = makeDeps()
-      expectNoContent(await createHandler(makeConfig(), second)(makeEvent(fixture('external-unknown.json'))))
-      expect(second.dynamo.putItemIfAbsent).toHaveBeenCalledTimes(1)
-      expect(second.dynamo.deleteItem).not.toHaveBeenCalled()
-      expect(second.sqs.sendMessage).toHaveBeenCalledTimes(1)
+      // Same deps, same beacon: the delivery is a first sighting again because
+      // the store no longer holds the pk, and this time it enqueues.
+      expectNoContent(await createHandler(makeConfig(), deps)(makeEvent(fixture('external-unknown.json'))))
+      expect(deps.dynamo.upsertSighting).toHaveBeenCalledTimes(2)
+      expect(deps.dynamo.deleteItem).toHaveBeenCalledTimes(1)
+      expect(deps.sqs.sendMessage).toHaveBeenCalledTimes(2) // the failed attempt and the successful one
+    } finally {
+      consoleError.mockRestore()
+    }
+  })
+
+  it('without the compensating delete, the failed first sighting stays suppressed as a repeat — the control for the test above', async () => {
+    const deps = makeDeps()
+    storeBackedNovelty(deps)
+    deps.dynamo.deleteItem.mockImplementation(async () => undefined) // AccessDenied-shaped: the delete silently does nothing
+    deps.sqs.sendMessage.mockRejectedValueOnce(new Error('sqs down'))
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      expectNoContent(await createHandler(makeConfig(), deps)(makeEvent(fixture('external-unknown.json'))))
+      expectNoContent(await createHandler(makeConfig(), deps)(makeEvent(fixture('external-unknown.json'))))
+      expect(deps.sqs.sendMessage).toHaveBeenCalledTimes(1) // only the attempt that failed; the repeat never enqueues
+      expect(metricNames(deps)).toContain('rum_observations_counted')
     } finally {
       consoleError.mockRestore()
     }
@@ -347,7 +383,7 @@ describe('createHandler', () => {
 
     expectNoContent(result)
     // canonical.json: external + inline + csp-violation + agent-health.
-    expect(deps.dynamo.putItemIfAbsent).toHaveBeenCalledTimes(3)
+    expect(deps.dynamo.upsertSighting).toHaveBeenCalledTimes(3)
     expect(deps.sqs.sendMessage).toHaveBeenCalledTimes(3)
     const kinds = deps.sqs.sendMessage.mock.calls.map(([input]: [{ attributes: { kind: string } }]) => input.attributes.kind)
     expect(kinds).not.toContain('agent-health')
@@ -375,14 +411,14 @@ describe('createHandler', () => {
       const result = await createHandler(makeConfig(), deps)(makeEvent(fixture('external-unknown.json')))
 
       expectNoContent(result)
-      expect(deps.dynamo.putItemIfAbsent).not.toHaveBeenCalled()
+      expect(deps.dynamo.upsertSighting).not.toHaveBeenCalled()
       expect(deps.sqs.sendMessage).not.toHaveBeenCalled()
       // The beacon was validated intake even though archival failed.
       expect(metricNames(deps)).toContain('rum_beacons_accepted')
     })
 
     it.each<[string, (deps: MockDeps) => void]>([
-      ['DynamoDB', (deps) => deps.dynamo.putItemIfAbsent.mockRejectedValue(new Error('dynamo down'))],
+      ['DynamoDB', (deps) => deps.dynamo.upsertSighting.mockRejectedValue(new Error('dynamo down'))],
       ['SQS', (deps) => deps.sqs.sendMessage.mockRejectedValue(new Error('sqs down'))],
       ['CloudWatch', (deps) => deps.metrics.publish.mockRejectedValue(new Error('cloudwatch down'))],
     ])('returns 204 when %s fails', async (_name, arm) => {
@@ -413,7 +449,7 @@ describe('createHandler', () => {
     // The deliberately uninventoried marker URL is keyed under the canary
     // target id — never a payment-page target — so its expected alert routes
     // to the ops channel via the canary target's alerts config.
-    expect(deps.dynamo.putItemIfAbsent).toHaveBeenCalledWith(expect.objectContaining({ item: expect.objectContaining({ pk: 'canary#https://canary-marker.example.test/rum-canary.js#canary.example.test' }) }))
+    expect(deps.dynamo.upsertSighting).toHaveBeenCalledWith(expect.objectContaining({ item: expect.objectContaining({ pk: 'canary#https://canary-marker.example.test/rum-canary.js#canary.example.test' }) }))
     expect(JSON.parse(deps.sqs.sendMessage.mock.calls[0][0].body)).toMatchObject({ target_id: 'canary', target_type: 'detection' })
   })
 })
@@ -470,7 +506,7 @@ describe('CSP report ingestion (/csp-reports)', () => {
     // Novelty pk must use novelty.ts's csp identity format exactly.
     const expectedPk = buildNoveltyKey('1.0', { ...EXPECTED_OBSERVATION, kind: 'csp-violation' })
     expect(expectedPk).toBe('1.0#csp:script-src:https://evil.example/skimmer.js#-')
-    expect(deps.dynamo.putItemIfAbsent).toHaveBeenCalledWith(expect.objectContaining({ table: 'novelty-table', item: expect.objectContaining({ pk: expectedPk, first_route: '/checkout', target_type: 'detection' }) }))
+    expect(deps.dynamo.upsertSighting).toHaveBeenCalledWith(expect.objectContaining({ table: 'novelty-table', item: expect.objectContaining({ pk: expectedPk, first_route: '/checkout', target_type: 'detection' }) }))
 
     // Enqueued message: valid against the queue-message shape, route stripped
     // of query and fragment, sentinel session id.
@@ -530,7 +566,7 @@ describe('CSP report ingestion (/csp-reports)', () => {
 
     expect(metricNames(deps)).toEqual(['rum_unmapped_origin'])
     expect(deps.firehose.putRecord).not.toHaveBeenCalled()
-    expect(deps.dynamo.putItemIfAbsent).not.toHaveBeenCalled()
+    expect(deps.dynamo.upsertSighting).not.toHaveBeenCalled()
     expect(deps.sqs.sendMessage).not.toHaveBeenCalled()
   })
 
@@ -554,16 +590,17 @@ describe('CSP report ingestion (/csp-reports)', () => {
 
     expect(publishedMetrics(deps)).toEqual([expect.objectContaining({ name: 'rum_csp_reports_rejected', dimensions: { Reason: reason } })])
     expect(deps.firehose.putRecord).not.toHaveBeenCalled()
-    expect(deps.dynamo.putItemIfAbsent).not.toHaveBeenCalled()
+    expect(deps.dynamo.upsertSighting).not.toHaveBeenCalled()
     expect(deps.sqs.sendMessage).not.toHaveBeenCalled()
   })
 
-  it('updates counters without enqueueing on a repeat sighting', async () => {
+  it('counts a repeat sighting through the same single write and never enqueues', async () => {
     const deps = makeDeps()
-    deps.dynamo.putItemIfAbsent.mockRejectedValue(conditionalCheckFailed())
+    deps.dynamo.upsertSighting.mockResolvedValue({ firstSighting: false })
     expectNoContent(await createHandler(makeConfig(), deps)(cspEvent(JSON.stringify(LEGACY_REPORT))))
 
-    expect(deps.dynamo.updateCounters).toHaveBeenCalledWith({ table: 'novelty-table', pk: '1.0#csp:script-src:https://evil.example/skimmer.js#-', lastSeen: NOW })
+    expect(deps.dynamo.upsertSighting).toHaveBeenCalledTimes(1)
+    expect(deps.dynamo.upsertSighting).toHaveBeenCalledWith(expect.objectContaining({ table: 'novelty-table', item: expect.objectContaining({ pk: '1.0#csp:script-src:https://evil.example/skimmer.js#-', last_seen: NOW }) }))
     expect(deps.sqs.sendMessage).not.toHaveBeenCalled()
     expect(metricNames(deps)).toContain('rum_observations_counted')
   })
@@ -586,7 +623,7 @@ describe('CSP report ingestion (/csp-reports)', () => {
     } finally {
       consoleError.mockRestore()
     }
-    expect(deps.dynamo.putItemIfAbsent).not.toHaveBeenCalled()
+    expect(deps.dynamo.upsertSighting).not.toHaveBeenCalled()
     expect(deps.sqs.sendMessage).not.toHaveBeenCalled()
   })
 
@@ -633,5 +670,125 @@ describe('loadConfigFromEnv', () => {
 
   it.each(['not-a-number', '0', '-7', 'NaN'])('rejects NOVELTY_TTL_DAYS=%s at config load (NaN/non-positive)', (value) => {
     expect(() => loadConfigFromEnv({ ...baseEnv, NOVELTY_TTL_DAYS: value })).toThrow('NOVELTY_TTL_DAYS')
+  })
+})
+
+describe('novelty upsert — the real adapter shape (noveltyUpsertInput / priorSighting / upsertSightingWith)', () => {
+  const item = { pk: '1.0#https://cdn.example.com/sdk.js#pay.example.com', first_seen: NOW, last_seen: NOW, sessions: 1, first_route: '/checkout', target_type: 'detection' as const, ttl: Math.floor(NOW / 1000) + 90 * 86400 }
+
+  it('returns the prior item with the write, and pins the first-sighting attributes while moving the counters and the TTL', () => {
+    const input = noveltyUpsertInput('novelty-table', item)
+    expect(input.TableName).toBe('novelty-table')
+    expect(input.Key).toEqual({ pk: { S: item.pk } })
+    expect(input.ReturnValues).toBe('ALL_OLD')
+    // Pinned to the first sighting.
+    expect(input.UpdateExpression).toContain('first_seen = if_not_exists(first_seen, :first_seen)')
+    expect(input.UpdateExpression).toContain('first_route = if_not_exists(first_route, :first_route)')
+    expect(input.UpdateExpression).toContain('target_type = if_not_exists(target_type, :target_type)')
+    // Moved on every write — including the TTL, so the 90-day window rolls from the last sighting (FR-009).
+    expect(input.UpdateExpression).toContain('last_seen = :last_seen')
+    expect(input.UpdateExpression).toContain('#ttl = :ttl')
+    expect(input.UpdateExpression).not.toContain('if_not_exists(#ttl')
+    expect(input.UpdateExpression).not.toContain('if_not_exists(last_seen')
+    expect(input.UpdateExpression).toContain('ADD sessions :one')
+  })
+
+  it('aliases the reserved word ttl and binds every placeholder it uses', () => {
+    const input = noveltyUpsertInput('novelty-table', item)
+    expect(input.ExpressionAttributeNames).toEqual({ '#ttl': 'ttl' })
+    // `ttl` must never appear bare: DynamoDB rejects the reserved word with a ValidationException.
+    expect(input.UpdateExpression).not.toMatch(/(?<![#:])\bttl\b/)
+    const placeholders = [...new Set(input.UpdateExpression.match(/:[a-z_]+/g))].sort()
+    expect(placeholders).toEqual(Object.keys(input.ExpressionAttributeValues).sort())
+    expect(input.ExpressionAttributeValues[':ttl']).toEqual({ N: String(item.ttl) })
+    expect(input.ExpressionAttributeValues[':one']).toEqual({ N: '1' })
+  })
+
+  it('reads the prior record out of ALL_OLD, or null when there was none', () => {
+    expect(priorSighting({})).toBeNull()
+    expect(priorSighting({ Attributes: {} })).toBeNull()
+    expect(priorSighting({ Attributes: { pk: { S: item.pk }, first_seen: { N: '1700000000000' }, ttl: { N: '1707776000' } } })).toEqual({ firstSeen: 1700000000000, ttl: 1707776000 })
+  })
+
+  describe('the decision over a send-shaped client (upsertSightingWith)', () => {
+    const nowSeconds = Math.floor(NOW / 1000)
+    const live = { Attributes: { pk: { S: item.pk }, first_seen: { N: String(NOW - 86_400_000) }, ttl: { N: String(nowSeconds + 86_400) } } }
+    const expired = { Attributes: { pk: { S: item.pk }, first_seen: { N: String(NOW - 100 * 86_400_000) }, ttl: { N: String(nowSeconds - 3_600) } } }
+    const sendReturning = (...results: Array<UpsertResult | Error>) => {
+      const calls: unknown[] = []
+      const send = jest.fn(async (input: unknown) => {
+        calls.push(input)
+        const next = results.shift()
+        if (next instanceof Error) throw next
+        return next ?? {}
+      })
+      const remove = jest.fn(async () => undefined)
+      return { send, calls, remove, decide: upsertSightingWith(send, remove) }
+    }
+
+    it('no prior record: one write, first sighting', async () => {
+      const { calls, decide } = sendReturning({})
+      await expect(decide({ table: 'novelty-table', item })).resolves.toEqual({ firstSighting: true })
+      expect(calls).toHaveLength(1)
+      expect(calls[0]).toEqual(noveltyUpsertInput('novelty-table', item))
+    })
+
+    it('a live prior record: one write, repeat', async () => {
+      const { calls, decide } = sendReturning(live)
+      await expect(decide({ table: 'novelty-table', item })).resolves.toEqual({ firstSighting: false })
+      expect(calls).toHaveLength(1)
+    })
+
+    it('an expired record DynamoDB had not yet deleted: a conditional reset, then first sighting', async () => {
+      // Without this, the upsert's refreshed ttl would keep the expired record
+      // alive and the returning script would stay suppressed indefinitely.
+      const { calls, decide } = sendReturning(expired, {})
+      await expect(decide({ table: 'novelty-table', item })).resolves.toEqual({ firstSighting: true })
+      expect(calls).toHaveLength(2)
+      expect(calls[1]).toEqual(noveltyResetInput('novelty-table', item, NOW - 100 * 86_400_000))
+      const reset = calls[1] as ReturnType<typeof noveltyResetInput>
+      expect(reset.ConditionExpression).toBe('first_seen = :prior_first_seen')
+      expect(reset.UpdateExpression).toContain('sessions = :one')
+      expect(reset.UpdateExpression).not.toContain('ttl')
+    })
+
+    it('concurrent returns of an expired record: the loser of the conditional reset is a repeat', async () => {
+      const lost = Object.assign(new Error('The conditional request failed'), { name: 'ConditionalCheckFailedException' })
+      const { calls, decide } = sendReturning(expired, lost)
+      await expect(decide({ table: 'novelty-table', item })).resolves.toEqual({ firstSighting: false })
+      expect(calls).toHaveLength(2)
+    })
+
+    it('an unreadable prior ttl is a repeat, never a first sighting: bad data must not widen the alert path', async () => {
+      const { decide } = sendReturning({ Attributes: { pk: { S: item.pk }, first_seen: { N: String(NOW) } } })
+      await expect(decide({ table: 'novelty-table', item })).resolves.toEqual({ firstSighting: false })
+    })
+
+    it('a reset that fails for any other reason deletes the now-live stale record before propagating, so the next delivery is a clean first sighting', async () => {
+      const { decide, remove } = sendReturning(expired, new Error('dynamo down'))
+      await expect(decide({ table: 'novelty-table', item })).rejects.toThrow('dynamo down')
+      expect(remove).toHaveBeenCalledWith({ table: 'novelty-table', pk: item.pk })
+    })
+
+    it('a failed compensation delete is logged and the original error still propagates', async () => {
+      const { decide, remove } = sendReturning(expired, new Error('dynamo down'))
+      remove.mockRejectedValueOnce(new Error('delete denied'))
+      const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+      try {
+        await expect(decide({ table: 'novelty-table', item })).rejects.toThrow('dynamo down')
+        expect(consoleError).toHaveBeenCalledWith('collector: novelty reset compensation delete failed', expect.any(Error))
+      } finally {
+        consoleError.mockRestore()
+      }
+    })
+
+    it('never deletes on the common paths or on losing the reset race', async () => {
+      const lost = Object.assign(new Error('The conditional request failed'), { name: 'ConditionalCheckFailedException' })
+      for (const results of [[{}], [live], [expired, {}], [expired, lost]] as Array<Array<UpsertResult | Error>>) {
+        const { decide, remove } = sendReturning(...results)
+        await decide({ table: 'novelty-table', item })
+        expect(remove).not.toHaveBeenCalled()
+      }
+    })
   })
 })

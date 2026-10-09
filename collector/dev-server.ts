@@ -61,17 +61,17 @@ const deps: CollectorDeps = {
     putRecord: async ({ data }) => appendFile(archiveFile, data),
   },
   dynamo: {
-    putItemIfAbsent: async ({ item }) => {
-      if (novelty.has(item.pk)) throw Object.assign(new Error(`novelty pk exists: ${item.pk}`), { name: 'ConditionalCheckFailedException' })
-      novelty.set(item.pk, item)
+    upsertSighting: async ({ item }) => {
+      const existing = novelty.get(item.pk)
+      if (existing === undefined) {
+        novelty.set(item.pk, item)
+        await persistNovelty()
+        return { firstSighting: true }
+      }
+      existing.last_seen = item.last_seen
+      existing.sessions += 1
       await persistNovelty()
-    },
-    updateCounters: async ({ pk, lastSeen }) => {
-      const item = novelty.get(pk)
-      if (!item) return
-      item.last_seen = lastSeen
-      item.sessions += 1
-      await persistNovelty()
+      return { firstSighting: false }
     },
     // Compensating delete when a first-sighting enqueue fails (parity with the
     // real adapter); locally the file queue never fails, so this is rarely hit.

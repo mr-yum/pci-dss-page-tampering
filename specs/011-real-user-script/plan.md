@@ -13,7 +13,7 @@ Design authority: the blueprint and decision log on the Notion page "2026-08-20 
 
 **Language/Version**: TypeScript on Node.js ≥ 24 (repo standard); agent compiled to a single ES2020 IIFE for evergreen browsers (Chrome/Safari/Firefox/Edge, last 2 major)
 **Primary Dependencies**: existing stack (Zod, tsx, SWC, Jest 30); new dev-only: esbuild (agent + Lambda IIFE/ESM bundling — SWC does not bundle); comparator adds `@aws-sdk/client-sqs` (SQS drain); ingest Lambda uses the SDK v3 bundled in the AWS Node runtime (no new runtime dep)
-**Storage**: S3 (verbatim beacon archive via Firehose, SSE-KMS, 1-year lifecycle), DynamoDB (novelty store, conditional writes, 90-day TTL), SQS (novel-observations + DLQ). No database in this repo's code paths beyond AWS SDK calls
+**Storage**: S3 (verbatim beacon archive via Firehose, SSE-KMS, 1-year lifecycle), DynamoDB (novelty store, single-write upsert, 90-day TTL), SQS (novel-observations + DLQ). No database in this repo's code paths beyond AWS SDK calls
 **Testing**: Jest unit tests co-located in `src/`, `agent/src/`, `collector/src/`; integration tests in `test/integration/` (fixture beacons through schema → novelty → comparator normalisation → comparison); `terraform test` with mocked providers for all three modules; agent DOM behaviour against a fixture page in integration
 **Target Platform**: browser (agent), AWS Lambda Node 24 (ingest), GitHub Actions runner (comparator mode), Terraform ≥ 1.7 (modules; AWS + Cloudflare providers)
 **Project Type**: single repo, three new top-level component roots (`agent/`, `collector/`, `infra/`) beside the existing `src/` tool
@@ -68,7 +68,7 @@ agent/
 collector/
 ├── src/
 │   ├── ingest.ts              # Lambda handler: edge auth, origin map, validate, fan out
-│   ├── novelty.ts             # conditional-write key building (target#identity#initiatorHost)
+│   ├── novelty.ts             # novelty key building (target#identity#initiatorHost)
 │   └── *.test.ts
 infra/
 ├── collector-core/            # lambda, firehose→s3, dynamodb, sqs+dlq, alarms, oidc role
