@@ -64,19 +64,10 @@ data "aws_iam_policy_document" "ingest" {
     resources = ["${aws_cloudwatch_log_group.ingest.arn}:*"]
   }
 
-  # PutMetricData supports no resource-level scoping; the namespace condition
-  # key is the tightest available bound (collector-ingest.md metrics obligation).
-  statement {
-    sid       = "Metrics"
-    actions   = ["cloudwatch:PutMetricData"]
-    resources = ["*"]
-
-    condition {
-      test     = "StringEquals"
-      variable = "cloudwatch:namespace"
-      values   = [local.metric_namespace]
-    }
-  }
+  # No cloudwatch:PutMetricData: metrics leave the function as Embedded Metric
+  # Format log lines under the Logs grant above (collector-ingest.md §Metrics,
+  # Emission). It was the one action here that could not be resource-scoped;
+  # the comparator role (oidc.tf) still holds it for the canary heartbeat.
 }
 
 resource "aws_iam_role_policy" "ingest" {

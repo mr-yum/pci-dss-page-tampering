@@ -7,6 +7,10 @@ them lands with an entry under Unreleased in the same pull request.
 
 ## [Unreleased]
 
+### Changed
+
+- The collector emits its metrics as CloudWatch Embedded Metric Format log lines instead of a `PutMetricData` API call at the end of every invocation. Metric names, units, dimensions and the namespace are identical, so existing alarms, the Datadog monitors and dashboards keep their series; what changes is that the request path no longer makes a CloudWatch round-trip, there is no per-request API charge at beacon volume (log ingestion of a few hundred bytes per invocation replaces it), and the ingest role drops `cloudwatch:PutMetricData` — the one action on it that could not be resource-scoped. The comparator role keeps that grant for the canary heartbeat.
+
 ### Fixed
 
 - An `authoriseWith` alternative marked `"authorised": false` now denies whatever its matcher type. `nameMatcher`, `urlMatcher`, `hostMatcher`, `initiatorHostMatcher` and `contentMatcher` ignored their own flag, so in array syntax (or inside a composite) a pending or declined alternative of those types authorised whatever its pattern matched, as long as the entry's first alternative was approved; hash, CSP-directive, workflow and target-type alternatives always denied. **Behaviour change:** such an alternative now has to be approved (its own flag set to `true`) before it authorises anything; pending header values the inventory pass coalesces into one entry are approved per value.
