@@ -6,7 +6,7 @@ import { z } from 'zod'
 import type { Beacon } from '../../src/types/beacon.js'
 import { CspViolationObservationSchema } from '../../src/types/beacon.js'
 import type { CollectorConfig, CollectorDeps, FunctionUrlEvent, FunctionUrlResult, MetricDatum } from './ingest.js'
-import { createHandler, loadConfigFromEnv, resetAttributedAgentVersionsForTesting } from './ingest.js'
+import { createHandler, EMF_MAX_ARRAY_MEMBERS, emfPublisher, emfRecords, loadConfigFromEnv, resetAttributedAgentVersionsForTesting, stdoutLine } from './ingest.js'
 import { buildNoveltyKey } from './novelty.js'
 
 const FIXTURES = join(__dirname, '../../test/fixtures/beacons')
@@ -633,5 +633,133 @@ describe('loadConfigFromEnv', () => {
 
   it.each(['not-a-number', '0', '-7', 'NaN'])('rejects NOVELTY_TTL_DAYS=%s at config load (NaN/non-positive)', (value) => {
     expect(() => loadConfigFromEnv({ ...baseEnv, NOVELTY_TTL_DAYS: value })).toThrow('NOVELTY_TTL_DAYS')
+  })
+})
+
+describe('metrics emission — CloudWatch Embedded Metric Format (emfRecords / emfPublisher)', () => {
+  const ts = 1755600000000
+  const data: MetricDatum[] = [
+    { name: 'rum_beacons_accepted', value: 1, unit: 'Count', dimensions: { TargetId: '1.0' } },
+    { name: 'rum_first_sightings', value: 1, unit: 'Count', dimensions: { TargetId: '1.0' } },
+    { name: 'rum_observations_counted', value: 1, unit: 'Count', dimensions: { TargetId: '1.0' } },
+    { name: 'rum_observations_counted', value: 1, unit: 'Count', dimensions: { TargetId: '1.0' } },
+    { name: 'rum_agent_p95_task_ms', value: 2, unit: 'Milliseconds', dimensions: { AgentVersion: '1.0.0', TargetId: '1.0' } },
+    { name: 'rum_unmapped_origin', value: 1, unit: 'Count', dimensions: {} },
+  ]
+
+  it('emits one record per distinct dimension-value set, declaring the keys once and carrying every metric under them', () => {
+    const records = emfRecords('rum/rum', data, ts)
+    expect(records).toHaveLength(3)
+    const byKeys = Object.fromEntries(records.map((record) => [JSON.stringify((record as { _aws: { CloudWatchMetrics: Array<{ Dimensions: string[][] }> } })._aws.CloudWatchMetrics[0]?.Dimensions), record]))
+    const target = byKeys[JSON.stringify([['TargetId']])] as Record<string, unknown>
+    expect(target).toMatchObject({ TargetId: '1.0', rum_beacons_accepted: 1, rum_first_sightings: 1 })
+    // A metric repeated under one dimension set is an array of samples — what two PutMetricData datums were.
+    expect(target['rum_observations_counted']).toEqual([1, 1])
+    expect((target['_aws'] as { Timestamp: number }).Timestamp).toBe(ts)
+    expect((target['_aws'] as { CloudWatchMetrics: Array<{ Namespace: string; Metrics: unknown[] }> }).CloudWatchMetrics[0]).toMatchObject({
+      Namespace: 'rum/rum',
+      Metrics: expect.arrayContaining([
+        { Name: 'rum_beacons_accepted', Unit: 'Count' },
+        { Name: 'rum_first_sightings', Unit: 'Count' },
+        { Name: 'rum_observations_counted', Unit: 'Count' },
+      ]),
+    })
+  })
+
+  it('keeps dimension keys sorted and multi-key sets distinct, with units preserved', () => {
+    const records = emfRecords('rum/rum', data, ts)
+    const health = records.find((record) => 'AgentVersion' in record) as Record<string, unknown>
+    expect((health['_aws'] as { CloudWatchMetrics: Array<{ Dimensions: string[][] }> }).CloudWatchMetrics[0]?.Dimensions).toEqual([['AgentVersion', 'TargetId']])
+    expect(health).toMatchObject({ AgentVersion: '1.0.0', TargetId: '1.0', rum_agent_p95_task_ms: 2 })
+    expect((health['_aws'] as { CloudWatchMetrics: Array<{ Metrics: unknown[] }> }).CloudWatchMetrics[0]?.Metrics).toEqual([{ Name: 'rum_agent_p95_task_ms', Unit: 'Milliseconds' }])
+  })
+
+  it('represents an undimensioned metric as an empty dimension set, not a missing one', () => {
+    const records = emfRecords('rum/rum', data, ts)
+    const plain = records.find((record) => 'rum_unmapped_origin' in record) as Record<string, unknown>
+    expect((plain['_aws'] as { CloudWatchMetrics: Array<{ Dimensions: string[][] }> }).CloudWatchMetrics[0]?.Dimensions).toEqual([[]])
+    expect(plain['rum_unmapped_origin']).toBe(1)
+  })
+
+  it('treats the same keys with different values as different records — a dimension value is a root property and cannot be two things', () => {
+    const records = emfRecords(
+      'rum/rum',
+      [
+        { name: 'rum_beacons_rejected', value: 1, unit: 'Count', dimensions: { Reason: 'schema', AgentVersion: '1.0.0' } },
+        { name: 'rum_beacons_rejected', value: 1, unit: 'Count', dimensions: { Reason: 'size', AgentVersion: 'unknown' } },
+      ],
+      ts,
+    )
+    expect(records).toHaveLength(2)
+    expect(records.map((record) => (record as { Reason: string }).Reason).sort()).toEqual(['schema', 'size'])
+  })
+
+  it('never lets a dimension name and a metric name collide in the root', () => {
+    for (const record of emfRecords('rum/rum', data, ts)) {
+      const aws = record['_aws'] as { CloudWatchMetrics: Array<{ Dimensions: string[][]; Metrics: Array<{ Name: string }> }> }
+      const dimensionKeys = aws.CloudWatchMetrics[0]?.Dimensions[0] ?? []
+      const metricNames = aws.CloudWatchMetrics[0]?.Metrics.map((metric) => metric.Name) ?? []
+      expect(dimensionKeys.filter((key) => metricNames.includes(key))).toEqual([])
+      for (const key of [...dimensionKeys, ...metricNames]) expect(record).toHaveProperty(key)
+    }
+  })
+
+  it('splits a dimension set whose metric exceeds 100 samples across records — CloudWatch extracts nothing from an event with a longer array', () => {
+    // A single /csp-reports body can carry ~300 reports, each counted under the same TargetId.
+    const flood: MetricDatum[] = [
+      ...Array.from({ length: 300 }, (): MetricDatum => ({ name: 'rum_csp_reports_accepted', value: 1, unit: 'Count', dimensions: { TargetId: '1.0' } })),
+      ...Array.from({ length: 150 }, (): MetricDatum => ({ name: 'rum_first_sightings', value: 1, unit: 'Count', dimensions: { TargetId: '1.0' } })),
+      { name: 'rum_beacons_accepted', value: 1, unit: 'Count', dimensions: { TargetId: '1.0' } },
+    ]
+    const records = emfRecords('rum/rum', flood, ts) as Array<Record<string, unknown> & { _aws: { CloudWatchMetrics: Array<{ Metrics: Array<{ Name: string }> }> } }>
+    expect(records).toHaveLength(3)
+    const members = (record: Record<string, unknown>, name: string): number => (Array.isArray(record[name]) ? (record[name] as number[]).length : record[name] === undefined ? 0 : 1)
+    for (const record of records) {
+      for (const name of ['rum_csp_reports_accepted', 'rum_first_sightings', 'rum_beacons_accepted']) expect(members(record, name)).toBeLessThanOrEqual(EMF_MAX_ARRAY_MEMBERS)
+      // Every record declares exactly the metrics it carries, and carries the dimension value.
+      expect(record._aws.CloudWatchMetrics[0]?.Metrics.map((metric) => metric.Name).sort()).toEqual(
+        Object.keys(record)
+          .filter((key) => key.startsWith('rum_'))
+          .sort(),
+      )
+      expect(record['TargetId']).toBe('1.0')
+    }
+    // Nothing lost: the sample counts add up across the chunks.
+    expect(records.reduce((sum, record) => sum + members(record, 'rum_csp_reports_accepted'), 0)).toBe(300)
+    expect(records.reduce((sum, record) => sum + members(record, 'rum_first_sightings'), 0)).toBe(150)
+    expect(records.reduce((sum, record) => sum + members(record, 'rum_beacons_accepted'), 0)).toBe(1)
+    // The shorter metrics appear only in the records that still have samples of them.
+    expect(members(records[2]!, 'rum_first_sightings')).toBe(0)
+    expect(members(records[1]!, 'rum_beacons_accepted')).toBe(0)
+  })
+
+  it('writes to raw stdout, never console.log, whose output the runtime decorates', () => {
+    const stdout = jest.spyOn(process.stdout, 'write').mockImplementation(() => true)
+    const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+    try {
+      stdoutLine('{"_aws":{}}\n')
+      expect(stdout).toHaveBeenCalledWith('{"_aws":{}}\n')
+      expect(log).not.toHaveBeenCalled()
+    } finally {
+      stdout.mockRestore()
+      log.mockRestore()
+    }
+  })
+
+  it('the publisher writes one newline-terminated JSON line per record and nothing for an empty batch', async () => {
+    const lines: string[] = []
+    const publish = emfPublisher(
+      (line) => lines.push(line),
+      () => ts,
+    )
+    await publish({ namespace: 'rum/rum', data })
+    expect(lines).toHaveLength(3)
+    for (const line of lines) {
+      expect(line.endsWith('\n')).toBe(true)
+      expect(line.slice(0, -1)).not.toContain('\n')
+      expect(JSON.parse(line)).toMatchObject({ _aws: { Timestamp: ts } })
+    }
+    await publish({ namespace: 'rum/rum', data: [] })
+    expect(lines).toHaveLength(3)
   })
 })

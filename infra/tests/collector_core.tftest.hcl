@@ -52,6 +52,44 @@ variables {
   }
 }
 
+# --- IAM: metrics leave as log lines ------------------------------------------
+
+# Metrics are Embedded Metric Format log lines, so the ingest role needs the
+# Logs grant and must NOT hold cloudwatch:PutMetricData — the only action it
+# ever had that could not be resource-scoped. The comparator role keeps that
+# action for the canary heartbeat, asserted separately.
+run "ingest_role_emits_metrics_as_logs_not_api_calls" {
+  command = plan
+
+  module {
+    source = "../collector-core"
+  }
+
+  assert {
+    condition = !anytrue([
+      for st in data.aws_iam_policy_document.ingest.statement :
+      contains(st.actions, "cloudwatch:PutMetricData")
+    ])
+    error_message = "The ingest role must not grant cloudwatch:PutMetricData: metrics are EMF log lines."
+  }
+
+  assert {
+    condition = anytrue([
+      for st in data.aws_iam_policy_document.ingest.statement :
+      contains(st.actions, "logs:PutLogEvents") && contains(st.actions, "logs:CreateLogStream")
+    ])
+    error_message = "The ingest role must be able to write its log group: EMF metrics travel as log lines."
+  }
+
+  assert {
+    condition = anytrue([
+      for st in data.aws_iam_policy_document.gha.statement :
+      contains(st.actions, "cloudwatch:PutMetricData")
+    ])
+    error_message = "The comparator role must keep cloudwatch:PutMetricData for the canary heartbeat."
+  }
+}
+
 # --- Input validation -------------------------------------------------------
 
 run "rejects_invalid_target_type" {

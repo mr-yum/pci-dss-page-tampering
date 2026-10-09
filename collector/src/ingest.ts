@@ -98,6 +98,99 @@ export interface MetricDatum {
 }
 
 /**
+ * CloudWatch Embedded Metric Format (EMF) records for one invocation's
+ * metrics: one record per distinct set of dimension VALUES, each declaring
+ * its dimension keys once and carrying every metric observed under them (a
+ * metric name repeated within a set becomes an array of samples, which
+ * CloudWatch reads exactly as it read the separate PutMetricData datums).
+ * Metric names, units, dimensions and the namespace are unchanged from the
+ * PutMetricData era, so every alarm and the Datadog mirror keep their series.
+ *
+ * The EMF specification caps a numeric array at {@link EMF_MAX_ARRAY_MEMBERS}
+ * members and, past it, extracts NOTHING from the whole log event — silently,
+ * since the publisher cannot see extraction. The beacon route is bounded at 24
+ * observations, but one `/csp-reports` body can carry ~300 reports and each
+ * counts under the same TargetId, so a dimension set whose longest array
+ * exceeds the cap is split across as many records as it needs, each carrying
+ * at most 100 samples per metric (a metric with fewer samples appears only in
+ * the records that still have some). Sample counts and every statistic come
+ * out exactly as they did from the separate datums.
+ *
+ * Why EMF: the Lambda used to end every invocation with a PutMetricData API
+ * call — a network round-trip on the request path and a per-request charge
+ * at beacon volume — and needed `cloudwatch:PutMetricData`, which cannot be
+ * resource-scoped. A log line costs ingestion only, needs the logs grant the
+ * function already has, and cannot slow or fail the response. Exported so the
+ * shape is unit-tested; the adapter never reaches a test.
+ */
+export const EMF_MAX_ARRAY_MEMBERS = 100
+
+export const emfRecords = (namespace: string, data: readonly MetricDatum[], timestamp: number): Record<string, unknown>[] => {
+  const groups = new Map<string, { dimensions: Record<string, string>; metrics: Map<string, { unit: MetricDatum['unit']; values: number[] }> }>()
+  for (const datum of data) {
+    const keys = Object.keys(datum.dimensions).sort()
+    const groupKey = JSON.stringify(keys.map((key) => [key, datum.dimensions[key]]))
+    let group = groups.get(groupKey)
+    if (group === undefined) {
+      group = { dimensions: Object.fromEntries(keys.map((key) => [key, datum.dimensions[key] as string])), metrics: new Map() }
+      groups.set(groupKey, group)
+    }
+    let metric = group.metrics.get(datum.name)
+    if (metric === undefined) {
+      metric = { unit: datum.unit, values: [] }
+      group.metrics.set(datum.name, metric)
+    }
+    metric.values.push(datum.value)
+  }
+  const records: Record<string, unknown>[] = []
+  for (const group of groups.values()) {
+    const longest = Math.max(...[...group.metrics.values()].map((metric) => metric.values.length))
+    for (let chunk = 0; chunk * EMF_MAX_ARRAY_MEMBERS < longest; chunk += 1) {
+      const slice = [...group.metrics].map(([name, metric]) => [name, metric.unit, metric.values.slice(chunk * EMF_MAX_ARRAY_MEMBERS, (chunk + 1) * EMF_MAX_ARRAY_MEMBERS)] as const).filter(([, , values]) => values.length > 0)
+      records.push({
+        _aws: {
+          Timestamp: timestamp,
+          CloudWatchMetrics: [
+            {
+              Namespace: namespace,
+              Dimensions: [Object.keys(group.dimensions)],
+              Metrics: slice.map(([Name, Unit]) => ({ Name, Unit })),
+            },
+          ],
+        },
+        ...group.dimensions,
+        ...Object.fromEntries(slice.map(([name, , values]) => [name, values.length === 1 ? values[0] : values])),
+      })
+    }
+  }
+  return records
+}
+
+/**
+ * The metrics port over a line writer. In Lambda the writer is
+ * `process.stdout.write`, which lands in the function's log group where the
+ * EMF extractor publishes the metrics; it is deliberately not `console.log`,
+ * whose output the Lambda runtime decorates (and, under the JSON log format,
+ * wraps) in ways the extractor does not always see through. One line per
+ * record, newline-terminated, never throws on an empty batch.
+ */
+/**
+ * The Lambda line writer: raw stdout, deliberately not `console.log`. The
+ * runtime decorates console output (and, under the JSON log format, wraps it
+ * in an envelope) in ways the EMF extractor does not always see through.
+ * Exported so the choice is pinned by a test rather than a comment.
+ */
+export const stdoutLine = (line: string): void => {
+  process.stdout.write(line)
+}
+
+export const emfPublisher =
+  (write: (line: string) => void, now: () => number = Date.now) =>
+  async ({ namespace, data }: { namespace: string; data: MetricDatum[] }): Promise<void> => {
+    for (const record of emfRecords(namespace, data, now())) write(`${JSON.stringify(record)}\n`)
+  }
+
+/**
  * Thin domain-shaped dependency ports (not SDK client shapes) so unit tests
  * inject plain jest.fn implementations. The real adapters below translate to
  * AWS SDK v3 commands; the only SDK semantic that leaks through is the
@@ -627,17 +720,15 @@ export const createHandler = (config: CollectorConfig, deps: CollectorDeps) => {
  * the deployed bundle carries the SDK inside it (see module docstring).
  */
 const createAwsDeps = async (): Promise<CollectorDeps> => {
-  const [{ FirehoseClient, PutRecordCommand }, { DynamoDBClient, PutItemCommand, UpdateItemCommand, DeleteItemCommand }, { SQSClient, SendMessageCommand }, { CloudWatchClient, PutMetricDataCommand }] = await Promise.all([
+  const [{ FirehoseClient, PutRecordCommand }, { DynamoDBClient, PutItemCommand, UpdateItemCommand, DeleteItemCommand }, { SQSClient, SendMessageCommand }] = await Promise.all([
     import('@aws-sdk/client-firehose'),
     import('@aws-sdk/client-dynamodb'),
     import('@aws-sdk/client-sqs'),
-    import('@aws-sdk/client-cloudwatch'),
   ])
 
   const firehose = new FirehoseClient({})
   const dynamo = new DynamoDBClient({})
   const sqs = new SQSClient({})
-  const cloudwatch = new CloudWatchClient({})
 
   return {
     firehose: {
@@ -681,20 +772,8 @@ const createAwsDeps = async (): Promise<CollectorDeps> => {
           }),
         ),
     },
-    metrics: {
-      publish: ({ namespace, data }) =>
-        cloudwatch.send(
-          new PutMetricDataCommand({
-            Namespace: namespace,
-            MetricData: data.map((datum) => ({
-              MetricName: datum.name,
-              Value: datum.value,
-              Unit: datum.unit,
-              Dimensions: Object.entries(datum.dimensions).map(([Name, Value]) => ({ Name, Value })),
-            })),
-          }),
-        ),
-    },
+    // EMF log lines, not an API call: see emfRecords / emfPublisher.
+    metrics: { publish: emfPublisher(stdoutLine) },
     now: () => Date.now(),
   }
 }
