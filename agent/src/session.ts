@@ -236,7 +236,11 @@ export function persistSeen(): void {
     // Another tab of this origin may have persisted stamps since this document
     // loaded its copy; a plain overwrite would erase them (last writer wins)
     // and the other tab's reports would repeat next session. Merge, keeping
-    // the newer live stamp per key.
+    // the newer live stamp per key. This is not coordination: a stamp written
+    // by another tab between this read and the write below is still lost. The
+    // merge shrinks that window to one synchronous task, and a lost stamp only
+    // makes its key report once more later (deduped by the collector) — it
+    // can never suppress a report.
     try {
       const parsed: unknown = JSON.parse(deviceStorageGet() ?? '[]')
       if (Array.isArray(parsed)) {
