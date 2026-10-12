@@ -9,6 +9,7 @@ output "monitor_ids" {
     {
       queue_age         = datadog_monitor.queue_age.id
       lambda_error_rate = datadog_monitor.lambda_error_rate.id
+      lambda_throttles  = datadog_monitor.lambda_throttles.id
       dlq_depth         = datadog_monitor.dlq_depth.id
     },
     { for id, m in datadog_monitor.beacon_volume : "beacon_volume_${id}" => m.id },

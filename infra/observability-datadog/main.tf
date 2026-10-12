@@ -125,6 +125,34 @@ resource "datadog_monitor" "lambda_error_rate" {
   tags                = var.tags
 }
 
+# (c2) Ingest Lambda throttles — the concurrency cap is turning beacons away.
+# Mirrors: aws_cloudwatch_metric_alarm.lambda_throttles (Sum > 0 over 5 min).
+# Coverage loss rather than an error, so the error-rate monitor cannot see it.
+resource "datadog_monitor" "lambda_throttles" {
+  name    = "${var.name_prefix}-ingest-throttled"
+  type    = "query alert"
+  message = <<-EOT
+    Ingest Lambda throttled — the reserved-concurrency cap is turning beacons away, so real-user coverage is being lost right now.
+
+    Runbook: a flood, or legitimate growth past the cap? Compare invocation rate against the collector's lambda_reserved_concurrency and raise it if the traffic is real. See docs/rum/IMPLEMENTATION.md step 7.
+
+    Notify: ${var.notification_handle}
+  EOT
+
+  query = "sum(${var.threshold_evaluation_window}):sum:aws.lambda.throttles{functionname:${var.lambda_function_name}}.as_count() > 0"
+
+  monitor_thresholds {
+    critical = 0
+  }
+
+  # Mirrors treat_missing_data = "notBreaching": no throttles is the normal state.
+  notify_no_data      = false
+  require_full_window = false
+  evaluation_delay    = var.evaluation_delay_seconds
+  priority            = local.priority
+  tags                = var.tags
+}
+
 # (d) DLQ depth — an observation failed evaluation three times.
 # Mirrors: aws_cloudwatch_metric_alarm.dlq_depth (Maximum visible > 0).
 resource "datadog_monitor" "dlq_depth" {

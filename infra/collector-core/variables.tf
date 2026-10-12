@@ -88,7 +88,7 @@ variable "novelty_ttl_days" {
 }
 
 variable "create_alarms" {
-  description = "Create the CloudWatch alarms (queue age, per-target beacon-volume anomaly, Lambda error rate, DLQ depth). Disable when the monitors live elsewhere — e.g. the observability-datadog module — because running CloudWatch alarms nobody watches is worse than none: they page no one and their green state reads as cover."
+  description = "Create the CloudWatch alarms (queue age, per-target beacon-volume anomaly, Lambda error rate, Lambda throttles, DLQ depth). Disable when the monitors live elsewhere — e.g. the observability-datadog module — because running CloudWatch alarms nobody watches is worse than none: they page no one and their green state reads as cover."
   type        = bool
   default     = true
 }
@@ -117,5 +117,19 @@ variable "permissions_boundary_arn" {
     # path segments), so a typo such as a space fails here, not at apply.
     condition     = var.permissions_boundary_arn == null || can(regex("^arn:aws[a-zA-Z-]*:iam::(?:[0-9]{12}|aws):policy/[A-Za-z0-9+=,.@_-]+(/[A-Za-z0-9+=,.@_-]+)*$", var.permissions_boundary_arn))
     error_message = "permissions_boundary_arn must be an IAM policy ARN: arn:<partition>:iam::<account-id or aws>:policy/<path/name>."
+  }
+}
+
+variable "lambda_reserved_concurrency" {
+  description = "Reserved concurrency for the ingest Lambda: the cap on how many beacons are processed at once, and therefore the per-hour bound on what a flood of forged beacons can cost downstream (every accepted observation is a DynamoDB write). Unreserved by default (null), so the module applies in any account; set it for production — size it from the function's measured Duration × your peak beacons per second, and 50 is a sensible starting point for a large estate. Precondition: AWS requires the Region to retain at least 100 unreserved executions after ALL functions' reservations, this one included, so the Regional quota minus every other reservation must exceed the cap by 100 (new accounts ship with reduced quotas), or the apply fails at PutFunctionConcurrency. A throttled request is a lost beacon, which is why the module alarms on any throttle."
+  type        = number
+  default     = null
+  nullable    = true
+
+  validation {
+    # A conditional, not ||: Terraform may evaluate both operands, and a numeric
+    # comparison against null would fail the default (unreserved) plan.
+    condition     = var.lambda_reserved_concurrency == null ? true : (var.lambda_reserved_concurrency >= 1 && floor(var.lambda_reserved_concurrency) == var.lambda_reserved_concurrency)
+    error_message = "lambda_reserved_concurrency must be null (unreserved) or a positive whole number."
   }
 }

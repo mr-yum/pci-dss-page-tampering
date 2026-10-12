@@ -1,6 +1,6 @@
 # observability-datadog
 
-Datadog monitors mirroring collector-core's four CloudWatch alarm families — queue age, per-target beacon-volume anomaly (missing data notifies, by design), ingest Lambda error rate, DLQ depth — plus the canary dead-man's switch from `docs/rum/canary-workflow.md`. Deploy it beside collector-core with `create_alarms = false` when your on-call rotation watches Datadog rather than CloudWatch: running CloudWatch alarms nobody watches is worse than none.
+Datadog monitors mirroring collector-core's five CloudWatch alarm families — queue age, per-target beacon-volume anomaly (missing data notifies, by design), ingest Lambda error rate, ingest Lambda throttles (the concurrency cap turning beacons away), DLQ depth — plus the canary dead-man's switch from `docs/rum/canary-workflow.md`. Deploy it beside collector-core with `create_alarms = false` when your on-call rotation watches Datadog rather than CloudWatch: running CloudWatch alarms nobody watches is worse than none.
 
 ## Why a separate module, and why emission stays CloudWatch
 
@@ -11,7 +11,7 @@ The **monitors** are what become pluggable — never the emission. The ingest La
 ## Prerequisites the module cannot manage
 
 - **The Datadog AWS integration** must be installed for the collector's AWS account.
-- **CloudWatch Metric Streams, filtered to include the collector's namespace (`metric_namespace`, default `rum/rum`) and the AWS/SQS and AWS/Lambda namespaces, is REQUIRED for the beacon-volume tripwire and the canary dead-man monitor.** Both treat absence of data as the alert condition; API polling's ~10-minute (often longer for custom namespaces) latency and irregular arrival make "no data" indistinguishable from "not polled yet", which turns the suppression tripwire into a flapping liar. Streams deliver in ~2–3 minutes. For the three threshold monitors (queue age, error rate, DLQ) polling is acceptable but degraded — expect up to ~10 minutes of extra alert latency, and raise `evaluation_delay_seconds` to 900.
+- **CloudWatch Metric Streams, filtered to include the collector's namespace (`metric_namespace`, default `rum/rum`) and the AWS/SQS and AWS/Lambda namespaces, is REQUIRED for the beacon-volume tripwire and the canary dead-man monitor.** Both treat absence of data as the alert condition; API polling's ~10-minute (often longer for custom namespaces) latency and irregular arrival make "no data" indistinguishable from "not polled yet", which turns the suppression tripwire into a flapping liar. Streams deliver in ~2–3 minutes. For the four threshold monitors (queue age, error rate, throttles, DLQ) polling is acceptable but degraded — expect up to ~10 minutes of extra alert latency, and raise `evaluation_delay_seconds` to 900.
 - **Custom-namespace metrics must be collected**: with Metric Streams, include the namespace in the stream's filter; with polling, enable _Collect Custom Metrics_ on the integration tile.
 
 ## The metric-name prefix, and how to verify it
@@ -65,7 +65,7 @@ provider "datadog" {
 
 The monitors mirror `collector-core`'s alarm _semantics_, with two deliberate differences:
 
-- **Queue age and DLQ depth** evaluate a single `last_5m` window (`threshold_evaluation_window`), matching CloudWatch's one 5-minute period — a recovered transient breach stops paging within ~5 minutes.
+- **Queue age, DLQ depth and ingest throttles** evaluate a single `last_5m` window (`threshold_evaluation_window`), matching CloudWatch's one 5-minute period — a recovered transient breach stops paging within ~5 minutes.
 - **Lambda error rate** cannot be a literal translation: the CloudWatch alarm uses 3×5-minute periods with 2-to-alarm, and Datadog metric monitors have no M-of-N evaluation. The monitor uses one traffic-weighted `last_15m` window (`error_rate_evaluation_window`) over the same span — both forms require errors sustained across ~15 minutes; the Datadog form smooths a single bad 5-minute burst slightly more. If your on-call practice needs burst sensitivity, shorten the window rather than expecting M-of-N.
 
 ## What still lives in CloudWatch

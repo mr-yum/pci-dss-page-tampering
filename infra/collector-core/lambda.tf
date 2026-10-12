@@ -92,6 +92,12 @@ resource "aws_lambda_function" "ingest" {
   memory_size      = 256
   timeout          = 15
 
+  # The cost bound, when set: beacons per second × DynamoDB writes per beacon
+  # is capped by how many invocations may run at once. Unreserved by default so
+  # a fresh account can apply; throttles are alarmed (alarms.tf), because a
+  # throttled beacon is a lost observation.
+  reserved_concurrent_executions = var.lambda_reserved_concurrency
+
   # Encrypt environment variables at rest with the module's key rather than
   # the AWS-managed default: EDGE_SHARED_SECRET lives in the environment.
   kms_key_arn = local.kms_key_arn
