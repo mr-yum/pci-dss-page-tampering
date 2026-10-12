@@ -110,7 +110,7 @@ variable "canary_no_data_minutes" {
 }
 
 variable "threshold_evaluation_window" {
-  description = "Datadog query window for the single-period threshold monitors (queue age, DLQ depth). last_5m mirrors the CloudWatch alarms' one 5-minute evaluation period, so a recovered transient breach stops paging within ~5 minutes rather than being retained by a longer max() window."
+  description = "Datadog query window for the single-period threshold monitors (queue age, DLQ depth, ingest throttles). last_5m mirrors the CloudWatch alarms' one 5-minute evaluation period, so a recovered transient breach stops paging within ~5 minutes rather than being retained by a longer max() window."
   type        = string
   default     = "last_5m"
 }

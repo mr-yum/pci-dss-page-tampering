@@ -133,6 +133,17 @@ run "monitors_thresholds_and_no_data" {
     error_message = "The error-rate monitor must not page on missing data (zero invocations is not an error)."
   }
 
+  # (c2) Throttles: any throttle in the short window is lost coverage.
+  assert {
+    condition     = datadog_monitor.lambda_throttles.query == "sum(last_5m):sum:aws.lambda.throttles{functionname:rum-ingest}.as_count() > 0"
+    error_message = "The throttle monitor must fire on any ingest throttle within the short window."
+  }
+
+  assert {
+    condition     = datadog_monitor.lambda_throttles.notify_no_data == false
+    error_message = "The throttle monitor must not page on missing data (no throttles is normal)."
+  }
+
   # (d) DLQ: any visible message.
   assert {
     condition     = datadog_monitor.dlq_depth.query == "max(last_5m):max:aws.sqs.approximate_number_of_messages_visible{queuename:rum-novel-observations-dlq} > 0"
@@ -160,7 +171,7 @@ run "monitors_thresholds_and_no_data" {
   assert {
     condition = alltrue([
       for q in concat(
-        [datadog_monitor.queue_age.message, datadog_monitor.lambda_error_rate.message, datadog_monitor.dlq_depth.message, datadog_monitor.canary_silent[0].message],
+        [datadog_monitor.queue_age.message, datadog_monitor.lambda_error_rate.message, datadog_monitor.lambda_throttles.message, datadog_monitor.dlq_depth.message, datadog_monitor.canary_silent[0].message],
         [for m in datadog_monitor.beacon_volume : m.message],
       ) : strcontains(q, "@slack-ops-channel")
     ])

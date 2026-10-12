@@ -59,6 +59,33 @@ resource "aws_cloudwatch_metric_alarm" "beacon_volume" {
   tags          = var.tags
 }
 
+# Throttles are beacons the cap turned away: coverage loss, not an error, so
+# the error-rate alarm cannot see it. Any throttle in a 5-minute window alarms —
+# a cap that drops beacons silently would defeat the volume tripwire it exists
+# to protect.
+resource "aws_cloudwatch_metric_alarm" "lambda_throttles" {
+  count = var.create_alarms ? 1 : 0
+
+  alarm_name          = "${var.name_prefix}-ingest-throttled"
+  alarm_description   = "Ingest Lambda throttled — the concurrency cap is turning beacons away (coverage loss). Raise lambda_reserved_concurrency, or investigate a flood."
+  namespace           = "AWS/Lambda"
+  metric_name         = "Throttles"
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  comparison_operator = "GreaterThanThreshold"
+  threshold           = 0
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    FunctionName = aws_lambda_function.ingest.function_name
+  }
+
+  alarm_actions = [local.sns_topic_arn]
+  ok_actions    = [local.sns_topic_arn]
+  tags          = var.tags
+}
+
 resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
   count = var.create_alarms ? 1 : 0
 

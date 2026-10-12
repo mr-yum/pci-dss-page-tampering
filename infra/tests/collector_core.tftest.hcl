@@ -225,6 +225,53 @@ run "rejects_malformed_permissions_boundary_arn" {
   expect_failures = [var.permissions_boundary_arn]
 }
 
+# --- Concurrency cap ---------------------------------------------------------
+
+run "reserved_concurrency_reaches_the_function" {
+  command = plan
+
+  module {
+    source = "../collector-core"
+  }
+
+  variables {
+    lambda_reserved_concurrency = 50
+  }
+
+  assert {
+    condition     = aws_lambda_function.ingest.reserved_concurrent_executions == 50
+    error_message = "lambda_reserved_concurrency must set the function's reserved concurrency."
+  }
+}
+
+run "rejects_fractional_reserved_concurrency" {
+  command = plan
+
+  module {
+    source = "../collector-core"
+  }
+
+  variables {
+    lambda_reserved_concurrency = 1.5
+  }
+
+  expect_failures = [var.lambda_reserved_concurrency]
+}
+
+run "rejects_zero_reserved_concurrency" {
+  command = plan
+
+  module {
+    source = "../collector-core"
+  }
+
+  variables {
+    lambda_reserved_concurrency = 0
+  }
+
+  expect_failures = [var.lambda_reserved_concurrency]
+}
+
 # --- Input validation -------------------------------------------------------
 
 run "rejects_invalid_target_type" {
@@ -376,6 +423,19 @@ run "defaults_alarms_and_aws_iam_pairing" {
     error_message = "The ingest Lambda error-rate alarm must fire above 5%."
   }
 
+  # Unreserved by default (a cap can fail to apply in a Region with a small
+  # quota, and the examples must stand alone); any throttle under a cap alarms,
+  # since a cap that drops beacons silently would defeat the volume tripwire.
+  assert {
+    condition     = aws_lambda_function.ingest.reserved_concurrent_executions == null
+    error_message = "The ingest Lambda must be unreserved by default."
+  }
+
+  assert {
+    condition     = aws_cloudwatch_metric_alarm.lambda_throttles[0].threshold == 0 && aws_cloudwatch_metric_alarm.lambda_throttles[0].metric_name == "Throttles" && aws_cloudwatch_metric_alarm.lambda_throttles[0].treat_missing_data == "notBreaching"
+    error_message = "Any ingest throttle must alarm (Throttles > 0, missing data not breaching)."
+  }
+
   # One anomaly alarm per distinct target_id (3 entries, 2 distinct ids).
   assert {
     condition     = length(aws_cloudwatch_metric_alarm.beacon_volume) == 2
@@ -432,6 +492,8 @@ run "create_alarms_false_creates_none" {
     condition     = length(aws_cloudwatch_metric_alarm.lambda_errors) == 0
     error_message = "create_alarms = false must not create the Lambda error-rate alarm."
   }
+
+
 
   assert {
     condition     = length(aws_cloudwatch_metric_alarm.dlq_depth) == 0
