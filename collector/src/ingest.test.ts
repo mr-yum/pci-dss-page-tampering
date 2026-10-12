@@ -890,12 +890,30 @@ describe('metrics emission — CloudWatch Embedded Metric Format (emfRecords / e
     expect(members(records[1]!, 'rum_beacons_accepted')).toBe(0)
   })
 
-  it('writes to raw stdout, never console.log, whose output the runtime decorates', () => {
-    const stdout = jest.spyOn(process.stdout, 'write').mockImplementation(() => true)
+  type WriteCallback = (error?: Error | null) => void
+  const captureWrite = (): { stdout: jest.SpyInstance; callbacks: WriteCallback[] } => {
+    const callbacks: WriteCallback[] = []
+    const stdout = jest.spyOn(process.stdout, 'write').mockImplementation(((_chunk: unknown, callback?: unknown) => {
+      if (typeof callback === 'function') callbacks.push(callback as WriteCallback)
+      return true
+    }) as typeof process.stdout.write)
+    return { stdout, callbacks }
+  }
+
+  it('writes to raw stdout, never console.log, whose output the runtime decorates — and resolves only when the write callback fires', async () => {
+    const { stdout, callbacks } = captureWrite()
     const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
     try {
-      stdoutLine('{"_aws":{}}\n')
-      expect(stdout).toHaveBeenCalledWith('{"_aws":{}}\n')
+      let settled = false
+      const pending = stdoutLine('{"_aws":{}}\n').then(() => {
+        settled = true
+      })
+      expect(stdout).toHaveBeenCalledWith('{"_aws":{}}\n', expect.any(Function))
+      await new Promise((resolve) => setImmediate(resolve))
+      expect(settled).toBe(false) // `write` returned true (buffer capacity), which is not completion
+      callbacks[0]!()
+      await pending
+      expect(settled).toBe(true)
       expect(log).not.toHaveBeenCalled()
     } finally {
       stdout.mockRestore()
@@ -903,10 +921,23 @@ describe('metrics emission — CloudWatch Embedded Metric Format (emfRecords / e
     }
   })
 
+  it('rejects when the write fails, so the handler logs a publication failure instead of assuming the metrics landed', async () => {
+    const { stdout, callbacks } = captureWrite()
+    try {
+      const pending = stdoutLine('{"_aws":{}}\n')
+      callbacks[0]!(new Error('EPIPE'))
+      await expect(pending).rejects.toThrow('EPIPE')
+    } finally {
+      stdout.mockRestore()
+    }
+  })
+
   it('the publisher writes one newline-terminated JSON line per record and nothing for an empty batch', async () => {
     const lines: string[] = []
     const publish = emfPublisher(
-      (line) => lines.push(line),
+      (line) => {
+        lines.push(line)
+      },
       () => ts,
     )
     await publish({ namespace: 'rum/rum', data })

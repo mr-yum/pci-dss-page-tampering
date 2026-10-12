@@ -297,15 +297,24 @@ export const emfRecords = (namespace: string, data: readonly MetricDatum[], time
  * runtime decorates console output (and, under the JSON log format, wraps it
  * in an envelope) in ways the EMF extractor does not always see through.
  * Exported so the choice is pinned by a test rather than a comment.
+ *
+ * Resolves on the write CALLBACK, which Node fires once the chunk has been
+ * handed to the OS (or rejects with the write error, including a destroyed
+ * stream) — `write`'s boolean return only reports buffer capacity, so
+ * resolving on it could let the handler complete with the metrics line still
+ * pending, and the runtime does not promise to wait for stdout I/O. A
+ * rejection reaches the handler's `finally`, which logs the publication
+ * failure instead of pretending the metrics were written.
  */
-export const stdoutLine = (line: string): void => {
-  process.stdout.write(line)
-}
+export const stdoutLine = (line: string): Promise<void> =>
+  new Promise((resolve, reject) => {
+    process.stdout.write(line, (error) => (error ? reject(error) : resolve()))
+  })
 
 export const emfPublisher =
-  (write: (line: string) => void, now: () => number = Date.now) =>
+  (write: (line: string) => void | Promise<void>, now: () => number = Date.now) =>
   async ({ namespace, data }: { namespace: string; data: MetricDatum[] }): Promise<void> => {
-    for (const record of emfRecords(namespace, data, now())) write(`${JSON.stringify(record)}\n`)
+    for (const record of emfRecords(namespace, data, now())) await write(`${JSON.stringify(record)}\n`)
   }
 
 /**
