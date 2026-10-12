@@ -1,7 +1,8 @@
 # collector-core contract tests (contracts/terraform-modules.md §Test obligations):
 # input validation, defaults, alarm presence, edge_auth → Function URL
-# authorization pairing, and the IAM grants the handler's writes depend on.
-# Mocked AWS provider: no credentials, no API calls.
+# authorization pairing, the IAM grants the handler's writes depend on, and the
+# permissions-boundary seam reaching every IAM role. Mocked AWS provider: no
+# credentials, no API calls.
 # `override_during = plan` makes mocked computed attributes known at plan time
 # so plan-level assertions can see them.
 
@@ -121,6 +122,107 @@ run "ingest_role_emits_metrics_as_logs_not_api_calls" {
     ])
     error_message = "The comparator role must keep cloudwatch:PutMetricData for the canary heartbeat."
   }
+}
+
+# --- IAM: permissions boundary seam -------------------------------------------
+
+# Landing-zone deploy roles commonly may create a role only if it carries a
+# specific permissions boundary; without the seam, every role this module
+# creates is denied at iam:CreateRole in such an estate. The input must reach
+# ALL roles (a boundary on two of three is a silent policy gap) and default to
+# none, so the examples still stand alone.
+run "permissions_boundary_reaches_every_role" {
+  command = plan
+
+  module {
+    source = "../collector-core"
+  }
+
+  variables {
+    permissions_boundary_arn = "arn:aws:iam::123456789012:policy/DeployBoundary"
+  }
+
+  assert {
+    condition     = alltrue([for role in [aws_iam_role.ingest, aws_iam_role.firehose, aws_iam_role.gha] : role.permissions_boundary == "arn:aws:iam::123456789012:policy/DeployBoundary"])
+    error_message = "permissions_boundary_arn must be attached to every IAM role the module creates (ingest, firehose, gha)."
+  }
+}
+
+run "permissions_boundary_defaults_to_none" {
+  command = plan
+
+  module {
+    source = "../collector-core"
+  }
+
+  assert {
+    condition     = alltrue([for role in [aws_iam_role.ingest, aws_iam_role.firehose, aws_iam_role.gha] : role.permissions_boundary == null])
+    error_message = "With no permissions_boundary_arn the roles must carry no boundary."
+  }
+}
+
+# Both policy kinds IAM accepts as a boundary, any partition, with a path.
+run "accepts_aws_managed_boundary_in_any_partition" {
+  command = plan
+
+  module {
+    source = "../collector-core"
+  }
+
+  variables {
+    permissions_boundary_arn = "arn:aws-us-gov:iam::aws:policy/PowerUserAccess"
+  }
+
+  assert {
+    condition     = aws_iam_role.ingest.permissions_boundary == "arn:aws-us-gov:iam::aws:policy/PowerUserAccess"
+    error_message = "An AWS-managed policy in a non-default partition is a valid boundary and must be accepted."
+  }
+}
+
+run "accepts_customer_boundary_with_path" {
+  command = plan
+
+  module {
+    source = "../collector-core"
+  }
+
+  variables {
+    permissions_boundary_arn = "arn:aws-cn:iam::123456789012:policy/landing-zone/DeployBoundary"
+  }
+
+  assert {
+    condition     = aws_iam_role.gha.permissions_boundary == "arn:aws-cn:iam::123456789012:policy/landing-zone/DeployBoundary"
+    error_message = "A customer-managed boundary under an IAM path in another partition must be accepted."
+  }
+}
+
+# A well-formed prefix with a character IAM never allows in a path or name.
+run "rejects_boundary_arn_with_invalid_name_characters" {
+  command = plan
+
+  module {
+    source = "../collector-core"
+  }
+
+  variables {
+    permissions_boundary_arn = "arn:aws:iam::123456789012:policy/Deploy Boundary"
+  }
+
+  expect_failures = [var.permissions_boundary_arn]
+}
+
+run "rejects_malformed_permissions_boundary_arn" {
+  command = plan
+
+  module {
+    source = "../collector-core"
+  }
+
+  variables {
+    permissions_boundary_arn = "DeployBoundary"
+  }
+
+  expect_failures = [var.permissions_boundary_arn]
 }
 
 # --- Input validation -------------------------------------------------------

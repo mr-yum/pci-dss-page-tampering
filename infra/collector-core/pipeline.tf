@@ -51,9 +51,10 @@ data "aws_iam_policy_document" "firehose_assume" {
 }
 
 resource "aws_iam_role" "firehose" {
-  name               = "${var.name_prefix}-rum-firehose"
-  assume_role_policy = data.aws_iam_policy_document.firehose_assume.json
-  tags               = var.tags
+  name                 = "${var.name_prefix}-rum-firehose"
+  assume_role_policy   = data.aws_iam_policy_document.firehose_assume.json
+  permissions_boundary = var.permissions_boundary_arn
+  tags                 = var.tags
 }
 
 data "aws_iam_policy_document" "firehose" {

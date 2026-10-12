@@ -104,3 +104,18 @@ variable "lambda_package" {
   type        = string
   default     = "../../dist/collector/ingest.zip"
 }
+
+variable "permissions_boundary_arn" {
+  description = "ARN of an IAM permissions boundary policy attached to every IAM role this module creates (ingest Lambda, Firehose delivery, OIDC comparator). Estates whose Terraform deploy role may only create roles that carry a specific boundary (a common landing-zone control) must set it, or every role creation is denied; when null (default) no boundary is attached."
+  type        = string
+  default     = null
+
+  validation {
+    # Customer-managed (12-digit account) or AWS-managed ("aws" in the account
+    # position) policies are both valid boundaries; any partition; paths allowed.
+    # The path/name suffix is IAM's character set ([\w+=,.@-] and "/" between
+    # path segments), so a typo such as a space fails here, not at apply.
+    condition     = var.permissions_boundary_arn == null || can(regex("^arn:aws[a-zA-Z-]*:iam::(?:[0-9]{12}|aws):policy/[A-Za-z0-9+=,.@_-]+(/[A-Za-z0-9+=,.@_-]+)*$", var.permissions_boundary_arn))
+    error_message = "permissions_boundary_arn must be an IAM policy ARN: arn:<partition>:iam::<account-id or aws>:policy/<path/name>."
+  }
+}
