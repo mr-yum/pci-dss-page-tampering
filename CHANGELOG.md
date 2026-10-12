@@ -10,6 +10,7 @@ them lands with an entry under Unreleased in the same pull request.
 ### Changed
 
 - A repeat sighting in the collector now costs one DynamoDB write instead of two. Novelty is decided by a single `UpdateItem` upsert that returns the item's prior state (no prior item = first sighting, enqueued; otherwise the same write has already moved `last_seen` and `sessions`), replacing a conditional `PutItem` whose failure — still billed — was followed by a counter update on every repeat. The same first sightings reach the queue and the same counters move. The Lambda role's novelty grant drops `dynamodb:PutItem`.
+- The collector emits its metrics as CloudWatch Embedded Metric Format log lines instead of a `PutMetricData` API call at the end of every invocation. Metric names, units, dimensions and the namespace are identical, so existing alarms, the Datadog monitors and dashboards keep their series; what changes is that the request path no longer makes a CloudWatch round-trip, there is no per-request API charge at beacon volume (log ingestion of a few hundred bytes per invocation replaces it), and the ingest role drops `cloudwatch:PutMetricData` — the one action on it that could not be resource-scoped. The comparator role keeps that grant for the canary heartbeat.
 
 ### Fixed
 
