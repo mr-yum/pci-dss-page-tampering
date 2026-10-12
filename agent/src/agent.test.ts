@@ -7,8 +7,22 @@
  * ever imports types from it.
  */
 import { type AgentHealthObservation, type CspViolationObservation, type ExternalScriptObservation, type InlineScriptObservation, parseBeacon } from '../../src/types/beacon.js'
-import { AGENT_VERSION, flushObservations, getOversizeDroppedCount, getPendingObservationCount, initAgent, processInlineCaptures, processPendingCaptures, resetAgentCountersForTesting, splitObservations, stopAgent } from './agent.js'
-import { resetCaptureForTesting } from './capture.js'
+import {
+  AGENT_VERSION,
+  flushObservations,
+  getOversizeDroppedCount,
+  getPendingObservationCount,
+  initAgent,
+  inlineHashKey,
+  inlineWireKey,
+  observationKeys,
+  processInlineCaptures,
+  processPendingCaptures,
+  resetAgentCountersForTesting,
+  splitObservations,
+  stopAgent,
+} from './agent.js'
+import { cspKey, initiatorHost, resetCaptureForTesting, urlKey, urlWithInitiatorKey } from './capture.js'
 import { INLINE_HASH_CEILING_BYTES } from './fingerprint.js'
 import { resetSessionStateForTesting } from './session.js'
 
@@ -118,6 +132,7 @@ function sentBody(beaconMock: jest.Mock, call = 0): Promise<string> {
 
 beforeEach(() => {
   window.sessionStorage.clear()
+  window.localStorage.clear()
   resetSessionStateForTesting()
   resetCaptureForTesting()
   resetAgentCountersForTesting()
@@ -516,12 +531,50 @@ describe('inline scripts', () => {
 })
 
 describe('flush and splitting', () => {
-  it('sends nothing when there are no observations', () => {
+  it('sends one health-only heartbeat per SESSION when there is nothing new — a later document in the same session sends nothing', async () => {
     const beaconMock = mockSendBeacon()
     installCollectorTag()
     initAgent()
     hidePage()
-    expect(beaconMock).not.toHaveBeenCalled()
+    expect(beaconMock).toHaveBeenCalledTimes(1)
+    const parsed = parseBeacon(await sentBody(beaconMock))
+    if (!parsed.ok) throw new Error(parsed.detail)
+    expect(parsed.beacon.observations.map((observation) => observation.kind)).toEqual(['agent-health'])
+    hidePage()
+    expect(beaconMock).toHaveBeenCalledTimes(1)
+    // A full-page navigation within the session: new document, same sessionStorage.
+    stopAgent()
+    resetCaptureForTesting()
+    resetAgentCountersForTesting()
+    initAgent()
+    hidePage()
+    expect(beaconMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not add a heartbeat to a document that already shipped a beacon', () => {
+    const beaconMock = mockSendBeacon()
+    installCollectorTag()
+    initAgent()
+    insertScript('/a.js')
+    processPendingCaptures()
+    hidePage()
+    expect(beaconMock).toHaveBeenCalledTimes(1)
+    hidePage()
+    expect(beaconMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps retrying the heartbeat until a transport accepts it', () => {
+    const beaconMock = mockSendBeacon(false)
+    removeFetch()
+    installCollectorTag()
+    initAgent()
+    hidePage()
+    expect(beaconMock).toHaveBeenCalledTimes(1)
+    beaconMock.mockReturnValue(true)
+    hidePage()
+    expect(beaconMock).toHaveBeenCalledTimes(2)
+    hidePage()
+    expect(beaconMock).toHaveBeenCalledTimes(2)
   })
 
   it('splits at 24 observations per beacon', async () => {
@@ -827,5 +880,148 @@ describe('transport', () => {
     flushObservations()
     expect(workingBeacon).toHaveBeenCalledTimes(1)
     expect(getPendingObservationCount()).toBe(0)
+  })
+})
+
+describe('device-long dedupe is stamped at transport handoff', () => {
+  const DEVICE_SEEN_KEY = '__rum.seen.device'
+  const deviceKeys = (): string[] => (JSON.parse(window.localStorage.getItem(DEVICE_SEEN_KEY) ?? '[]') as Array<[string, number]>).map(([key]) => key)
+
+  /** The same device opens a new tab: in-memory and session state gone, localStorage kept. */
+  const newSessionSameDevice = (): void => {
+    stopAgent()
+    window.sessionStorage.clear()
+    resetSessionStateForTesting()
+    resetCaptureForTesting()
+    resetAgentCountersForTesting()
+    initAgent()
+  }
+
+  it('stamps the keys of what a transport accepted, and withholds exactly those next session', async () => {
+    const beaconMock = mockSendBeacon()
+    installCollectorTag()
+    initAgent()
+    insertScript('https://cdn.example.com/a.js')
+    processPendingCaptures()
+    hidePage()
+    expect(beaconMock).toHaveBeenCalledTimes(1)
+    expect(deviceKeys()).toEqual(expect.arrayContaining([urlKey('https://cdn.example.com/a.js'), urlWithInitiatorKey('https://cdn.example.com/a.js', location.href)]))
+
+    newSessionSameDevice()
+    insertScript('https://cdn.example.com/a.js')
+    insertScript('https://cdn.example.com/b.js')
+    processPendingCaptures()
+    hidePage()
+    expect(beaconMock).toHaveBeenCalledTimes(2)
+    const parsed = parseBeacon(await sentBody(beaconMock, 1))
+    if (!parsed.ok) throw new Error(parsed.detail)
+    const urls = parsed.beacon.observations.flatMap((observation) => (observation.kind === 'external-script' ? [observation.url] : []))
+    expect(urls).toEqual(['https://cdn.example.com/b.js'])
+  })
+
+  it('stamps nothing when no transport accepted the beacon, so a lost first sighting is re-reported next session', async () => {
+    const beaconMock = mockSendBeacon(false)
+    removeFetch()
+    installCollectorTag()
+    initAgent()
+    insertScript('https://cdn.example.com/lost.js')
+    processPendingCaptures()
+    hidePage()
+    expect(beaconMock).toHaveBeenCalledTimes(1)
+    expect(deviceKeys()).toEqual([])
+
+    beaconMock.mockReturnValue(true)
+    newSessionSameDevice()
+    insertScript('https://cdn.example.com/lost.js')
+    processPendingCaptures()
+    hidePage()
+    const parsed = parseBeacon(await sentBody(beaconMock, 1))
+    if (!parsed.ok) throw new Error(parsed.detail)
+    expect(parsed.beacon.observations.some((observation) => observation.kind === 'external-script' && observation.url === 'https://cdn.example.com/lost.js')).toBe(true)
+  })
+
+  it('maps every observation kind back to the keys the capture layer marked', () => {
+    expect(observationKeys({ kind: 'external-script', ts: 1, route: '/', url: 'https://cdn.example.com/a.js', initiator: 'https://js.vendor.example/loader.js' })).toEqual([
+      urlKey('https://cdn.example.com/a.js'),
+      urlWithInitiatorKey('https://cdn.example.com/a.js', 'https://js.vendor.example/loader.js'),
+    ])
+    expect(observationKeys({ kind: 'csp-violation', ts: 1, route: '/', directive: 'script-src', blockedUri: 'https://evil.example/x.js' })).toEqual([cspKey('script-src', 'https://evil.example/x.js')])
+    const host = initiatorHost('https://pay.example.com/checkout')
+    expect(observationKeys({ kind: 'inline-script', ts: 1, route: '/', length: 3, head: 'x()', tail: 'x()', hash: 'a'.repeat(64), initiator: 'https://pay.example.com/checkout' })).toEqual([inlineHashKey(host, 'a'.repeat(64))])
+    // An unhashed inline observation's wire key embeds plaintext source excerpts: never persisted.
+    expect(observationKeys({ kind: 'inline-script', ts: 1, route: '/', length: 3, head: 'x()', tail: 'x()', initiator: 'https://pay.example.com/checkout' })).toEqual([])
+    expect(inlineWireKey(host, { length: 3, head: 'x()', tail: 'x()' })).toContain('x()') // why: the excerpt is in the key
+    expect(observationKeys({ kind: 'agent-health', ts: 1, route: '/', p95TaskMs: 1, dropped: 0 })).toEqual([])
+  })
+
+  it('stamps the keys the CAPTURE marked even when the wire shape dropped an over-long initiator', () => {
+    const beaconMock = mockSendBeacon()
+    installCollectorTag()
+    initAgent()
+    const longInitiator = `https://js.vendor.example/${'l'.repeat(2100)}.js`
+    const loader = document.createElement('script')
+    loader.src = longInitiator
+    setCurrentScript(loader)
+    insertScript('https://cdn.example.com/sdk.js')
+    processPendingCaptures()
+    hidePage()
+    expect(beaconMock).toHaveBeenCalledTimes(1)
+    // The capture layer gates the insertion path on the host-qualified key built from the FULL initiator.
+    expect(deviceKeys()).toEqual(expect.arrayContaining([urlKey('https://cdn.example.com/sdk.js'), urlWithInitiatorKey('https://cdn.example.com/sdk.js', longInitiator)]))
+    expect(deviceKeys()).not.toContain(urlWithInitiatorKey('https://cdn.example.com/sdk.js', undefined))
+  })
+
+  it('never persists an unhashed inline observation to the device set, so a degraded client re-reports it next session', async () => {
+    // No WebCrypto: hashing is unavailable, so the inline script ships hash-absent on the wire fallback.
+    const beaconMock = mockSendBeacon()
+    installCollectorTag()
+    initAgent()
+    appendInline('window.customerRef = "acct-4242"')
+    await processInlineCaptures()
+    hidePage()
+    expect(beaconMock).toHaveBeenCalledTimes(1)
+    const first = parseBeacon(await sentBody(beaconMock, 0))
+    if (!first.ok) throw new Error(first.detail)
+    expect(first.beacon.observations.some((observation) => observation.kind === 'inline-script' && observation.hash === undefined)).toBe(true)
+    expect(window.localStorage.getItem('__rum.seen.device') ?? '').not.toContain('acct-4242')
+    expect(deviceKeys().some((key) => key.startsWith('inl-wire:'))).toBe(false)
+
+    newSessionSameDevice()
+    appendInline('window.customerRef = "acct-4242"')
+    await processInlineCaptures()
+    hidePage()
+    const second = parseBeacon(await sentBody(beaconMock, 1))
+    if (!second.ok) throw new Error(second.detail)
+    expect(second.beacon.observations.some((observation) => observation.kind === 'inline-script')).toBe(true)
+  })
+
+  it('withholds an inline script and a CSP violation this device already reported, next session', async () => {
+    installWebCrypto()
+    const beaconMock = mockSendBeacon()
+    installCollectorTag()
+    initAgent()
+    appendInline('window.vendorReady = 1')
+    await processInlineCaptures()
+    const violation = new Event('securitypolicyviolation')
+    Object.assign(violation, { effectiveDirective: 'script-src', blockedURI: 'https://evil.example/x.js' })
+    document.dispatchEvent(violation)
+    processPendingCaptures()
+    hidePage()
+    expect(beaconMock).toHaveBeenCalledTimes(1)
+    const first = parseBeacon(await sentBody(beaconMock, 0))
+    if (!first.ok) throw new Error(first.detail)
+    expect(first.beacon.observations.map((observation) => observation.kind).sort()).toEqual(['agent-health', 'csp-violation', 'inline-script'])
+
+    newSessionSameDevice()
+    appendInline('window.vendorReady = 1')
+    await processInlineCaptures()
+    document.dispatchEvent(violation)
+    processPendingCaptures()
+    hidePage()
+    // Only the per-session heartbeat leaves: the inline script and the violation were reported within the window.
+    expect(beaconMock).toHaveBeenCalledTimes(2)
+    const second = parseBeacon(await sentBody(beaconMock, 1))
+    if (!second.ok) throw new Error(second.detail)
+    expect(second.beacon.observations.map((observation) => observation.kind)).toEqual(['agent-health'])
   })
 })

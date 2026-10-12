@@ -5,7 +5,7 @@
  * initiator; fingerprinting is agent.ts's concern, not capture's), and
  * CSP-violation events (dedupe + clamping).
  */
-import { type CspViolationCapture, drainCaptures, drainCspCaptures, drainInlineCaptures, getDroppedCount, type InlineScriptCapture, resetCaptureForTesting, type ScriptCapture, startCapture } from './capture.js'
+import { type CspViolationCapture, drainCaptures, drainCspCaptures, drainInlineCaptures, getDroppedCount, type InlineScriptCapture, resetCaptureForTesting, type ScriptCapture, startCapture, urlKey, urlWithInitiatorKey } from './capture.js'
 import { resetSessionStateForTesting } from './session.js'
 
 type ResourceEntryLike = { name: string; initiatorType: string }
@@ -57,6 +57,7 @@ function setCurrentScript(script: HTMLScriptElement | null): void {
 
 beforeEach(() => {
   window.sessionStorage.clear()
+  window.localStorage.clear()
   resetSessionStateForTesting()
   resetCaptureForTesting()
   StubPerformanceObserver.last = null
@@ -428,5 +429,43 @@ describe('initiator chains (insertion patch)', () => {
     const capture = drainCaptures().find((candidate) => candidate.url.endsWith('/parsed.js'))
     expect(capture).toBeDefined()
     expect(capture?.initiatorChain).toBeUndefined()
+  })
+})
+
+describe('device set carried in from a prior session', () => {
+  const DEVICE_SEEN_KEY = '__rum.seen.device'
+  const seed = (...keys: string[]): void => {
+    window.localStorage.setItem(DEVICE_SEEN_KEY, JSON.stringify(keys.map((key) => [key, Date.now()])))
+  }
+
+  it('withholds the same observation from the insertion patch and the safety nets alike', async () => {
+    const url = 'https://cdn.example.com/known.js'
+    seed(urlKey(url), urlWithInitiatorKey(url, location.href))
+    startCapture({ performanceObserver: stubObserverClass })
+    setCurrentScript(null)
+    insertScript(url)
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    container.innerHTML = `<script src="${url}"></script>`
+    await nextTick()
+    expect(drainCaptures()).toHaveLength(0)
+  })
+
+  it('still reports the same URL arriving via a new initiator — a new key — but not via the attribution-less safety net', async () => {
+    const url = 'https://cdn.example.com/known.js'
+    seed(urlKey(url), urlWithInitiatorKey(url, location.href))
+    startCapture({ performanceObserver: stubObserverClass })
+    const loader = insertScript('https://js.vendor.example/loader.js')
+    setCurrentScript(loader)
+    insertScript(url)
+    expect(drainCaptures().map((capture) => capture.url)).toContain(url)
+    // The bare-URL key the patch also marks keeps the safety nets quiet across sessions: a
+    // known URL turning up as markup is not re-reported within the window (documented nuance).
+    setCurrentScript(null)
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    container.innerHTML = `<script src="${url}"></script>`
+    await nextTick()
+    expect(drainCaptures().map((capture) => capture.url)).not.toContain(url)
   })
 })

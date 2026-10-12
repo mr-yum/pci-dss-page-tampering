@@ -16,9 +16,9 @@
  */
 
 import type { AgentHealthObservation, Beacon, CspViolationObservation, ExternalScriptObservation, InlineScriptObservation } from '../../src/types/beacon.js'
-import { drainCaptures, drainCspCaptures, drainInlineCaptures, getDroppedCount, initiatorHost, type InlineScriptCapture, type ScriptCapture, startCapture } from './capture.js'
+import { cspKey, drainCaptures, drainCspCaptures, drainInlineCaptures, getDroppedCount, initiatorHost, type InlineScriptCapture, type ScriptCapture, startCapture, urlKey, urlWithInitiatorKey } from './capture.js'
 import { exceedsHashCeiling, fingerprintInline, hashInline, utf8ByteLength } from './fingerprint.js'
-import { getRoute, getSessionId, initRouteTracking, markSeenIfNew, persistSeen } from './session.js'
+import { getRoute, getSessionId, hasSentThisSession, initRouteTracking, markDeviceReported, markSeenIfNew, markSentThisSession, persistSeen } from './session.js'
 
 /** The observation kinds this agent produces. */
 type AgentObservation = ExternalScriptObservation | InlineScriptObservation | CspViolationObservation | AgentHealthObservation
@@ -52,6 +52,28 @@ interface AgentState {
   pending: AgentObservation[]
   /** Keys of EXTERNAL observations already pending/sent — the idle-processing dedupe check (inline dedupe rides the session seen-set instead). */
   pendingKeys: Set<string>
+}
+
+/**
+ * The DEVICE-persistable dedupe keys each pending observation was captured
+ * under, recorded at conversion from the CAPTURE (not re-derived from the wire
+ * shape, whose `initiator` is dropped when it exceeds the URL cap — re-deriving
+ * would stamp a `|-` key the capture layer never consults, and leave the
+ * host-keyed one it does consult unstamped). Read back by
+ * {@link observationKeys} when a chunk is accepted.
+ *
+ * An inline observation WITHOUT a hash (hashing unavailable, or the source
+ * over the ceiling) records no key: its wire identity embeds the 128-char
+ * head and tail of the script's source, and persisting that in localStorage
+ * for a week would let a later page script read excerpts of earlier sessions'
+ * inline scripts — a bootstrap carrying a customer identifier, say. Those
+ * observations dedupe per session only, as before the device set existed.
+ */
+const observationKeyMap = new WeakMap<AgentObservation, string[]>()
+
+/** Device-persistable keys of an inline observation: the hash key, or none. */
+function inlineDeviceKeys(host: string, hash: string | undefined): string[] {
+  return hash !== undefined ? [inlineHashKey(host, hash)] : []
 }
 
 let state: AgentState | null = null
@@ -156,16 +178,19 @@ export function processPendingCaptures(): void {
     const key = `${observation.url}|${observation.initiator ?? ''}`
     if (state.pendingKeys.has(key)) continue
     state.pendingKeys.add(key)
+    observationKeyMap.set(observation, [urlKey(capture.url), urlWithInitiatorKey(capture.url, capture.initiator)])
     state.pending.push(observation)
   }
   for (const capture of drainCspCaptures()) {
-    state.pending.push({
+    const observation: CspViolationObservation = {
       kind: 'csp-violation',
       ts: capture.ts,
       route: capture.route,
       directive: capture.directive,
       blockedUri: capture.blockedUri,
-    })
+    }
+    observationKeyMap.set(observation, [cspKey(capture.directive, capture.blockedUri)])
+    state.pending.push(observation)
   }
   if (startedAt !== null) recordTaskSpan(startedAt)
 }
@@ -211,12 +236,12 @@ function inlineMemoKey(host: string, source: string): string {
  * exact identity the collector keys on for a hash-absent inline observation
  * (`collector/src/novelty.ts`).
  */
-function inlineWireKey(host: string, fp: { length: number; head: string; tail: string }): string {
+export function inlineWireKey(host: string, fp: { length: number; head: string; tail: string }): string {
   return `inl-wire:${fp.length}:${fp.head}:${fp.tail}|${host}`
 }
 
 /** The finest wire identity: the SHA-256 + initiator. */
-function inlineHashKey(host: string, hash: string): string {
+export function inlineHashKey(host: string, hash: string): string {
   return `inl-sha:${hash}|${host}`
 }
 
@@ -313,7 +338,9 @@ export async function processInlineCaptures(): Promise<void> {
     const hash = oversize ? undefined : await memoisedHashInline(host, capture.source)
     if (!state) return
     if (!markInlineEmitted(host, fp, hash)) continue
-    state.pending.push(toInlineObservation(capture, hash, oversize))
+    const observation = toInlineObservation(capture, hash, oversize)
+    observationKeyMap.set(observation, inlineDeviceKeys(host, hash))
+    state.pending.push(observation)
   }
   if (startedAt !== null) recordTaskSpan(startedAt)
 }
@@ -339,7 +366,9 @@ function processInlineCapturesForFlush(): void {
     const fp = fingerprintInline(capture.source)
     const hash = inlineHashMemo.get(inlineMemoKey(host, capture.source))
     if (!markInlineEmitted(host, fp, hash)) continue
-    state.pending.push(toInlineObservation(capture, hash, exceedsHashCeiling(capture.source)))
+    const observation = toInlineObservation(capture, hash, exceedsHashCeiling(capture.source))
+    observationKeyMap.set(observation, inlineDeviceKeys(host, hash))
+    state.pending.push(observation)
   }
   if (startedAt !== null) recordTaskSpan(startedAt)
 }
@@ -488,6 +517,31 @@ function buildHealthObservation(): AgentHealthObservation | null {
 }
 
 /**
+ * The device-persistable dedupe keys an observation was captured under —
+ * what the capture layer marked, minus anything that must not persist (see
+ * {@link observationKeyMap}) — so stamping them on the device after a
+ * successful send keeps the device set in step with the session set. Read
+ * from the map (recorded from the capture at conversion); the derivation from
+ * the wire shape below is the fallback for an observation built elsewhere,
+ * and is exact whenever the wire shape kept its initiator. Health
+ * observations and unhashed inline observations carry no key.
+ */
+export function observationKeys(observation: AgentObservation): string[] {
+  const recorded = observationKeyMap.get(observation)
+  if (recorded) return recorded
+  switch (observation.kind) {
+    case 'external-script':
+      return [urlKey(observation.url), urlWithInitiatorKey(observation.url, observation.initiator)]
+    case 'inline-script':
+      return inlineDeviceKeys(initiatorHost(observation.initiator), observation.hash)
+    case 'csp-violation':
+      return [cspKey(observation.directive, observation.blockedUri)]
+    default:
+      return []
+  }
+}
+
+/**
  * Flushes pending observations to the collector, splitting across beacons.
  * Called on visibilitychange→hidden and pagehide. Observations whose send
  * was not accepted stay pending for a later flush (e.g. the tab returning
@@ -499,6 +553,20 @@ function buildHealthObservation(): AgentHealthObservation | null {
  * re-pended, so the next flush appends a single fresh one instead of
  * accumulating stale duplicates. Counters are cumulative per session —
  * a later health observation supersedes an earlier one.
+ *
+ * A hide with nothing pending sends a health-only heartbeat once per
+ * SESSION (`hasSentThisSession`, sessionStorage-backed so a full-page
+ * navigation does not reset it) and otherwise ships nothing: a target whose
+ * traffic is mostly returning devices, which the device set keeps quiet,
+ * still produces the `rum_beacons_accepted` datapoint the volume tripwire
+ * needs (missing data is breaching), at no DynamoDB cost (agent-health is
+ * never keyed) and without a multi-page checkout multiplying volume by its
+ * page count.
+ *
+ * The device set is stamped here, with the keys of the observations in each
+ * chunk a transport accepted, and persisted synchronously afterwards: a
+ * stamp recorded any earlier would mark as reported something that may
+ * never arrive, and a deferred persist may not run at page-hide.
  */
 export function flushObservations(): void {
   if (!state) return
@@ -507,16 +575,20 @@ export function flushObservations(): void {
   processPendingCaptures()
   processInlineCapturesForFlush()
   persistSeen()
-  // No health-only beacons: a hide with nothing observed ships nothing.
-  // (Drops always coexist with pending observations — the queue cap only
-  // trips when converted captures are already waiting.)
-  if (state.pending.length === 0) return
   const health = buildHealthObservation()
+  if (state.pending.length === 0) {
+    // Nothing new: one heartbeat per session, so a device the device set
+    // keeps quiet still counts towards the target's accepted-beacon volume.
+    if (hasSentThisSession() || !health) return
+    if (send(state.collectorUrl, serialiseBeacon([health]))) markSentThisSession()
+    return
+  }
   const outgoing: AgentObservation[] = health ? [...state.pending, health] : state.pending
   const startedAt = hasPerformanceNow() ? performance.now() : null
   const { chunks, droppedOversize: dropped } = splitObservations(outgoing, serialiseBeacon)
   droppedOversize += dropped
   const unsent: AgentObservation[] = []
+  const reported: string[] = []
   let transportFailed = false
   for (const chunk of chunks) {
     if (transportFailed || !send(state.collectorUrl, chunk.body)) {
@@ -524,9 +596,16 @@ export function flushObservations(): void {
       for (const observation of chunk.observations) {
         if (observation.kind !== 'agent-health') unsent.push(observation)
       }
+      continue
     }
+    markSentThisSession()
+    for (const observation of chunk.observations) reported.push(...observationKeys(observation))
   }
   state.pending = unsent
+  if (reported.length > 0) {
+    markDeviceReported(reported)
+    persistSeen()
+  }
   // Recorded after emission: this span feeds the NEXT health observation.
   if (startedAt !== null) recordTaskSpan(startedAt)
 }

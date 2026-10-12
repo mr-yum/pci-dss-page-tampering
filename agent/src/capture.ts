@@ -207,7 +207,7 @@ export function getDroppedCount(): number {
 }
 
 /** Dedupe key for a script URL regardless of who injected it. */
-function urlKey(url: string): string {
+export function urlKey(url: string): string {
   return `ext:${url}`
 }
 
@@ -216,6 +216,11 @@ function urlKey(url: string): string {
  * mirrors the collector's novelty-key host derivation so agent-side dedupe
  * and server-side novelty agree on what counts as "the same initiator".
  */
+/** Dedupe key of a CSP violation: directive + blocked URI, never the route. */
+export function cspKey(directive: string, blockedUri: string): string {
+  return `csp:${directive}|${blockedUri}`
+}
+
 export function initiatorHost(initiator: string | undefined): string {
   if (!initiator) return '-'
   try {
@@ -230,7 +235,7 @@ export function initiatorHost(initiator: string | undefined): string {
  * identity (FR-009): a known script re-injected by a NEW initiator is a new
  * observation (supply-chain signal), so the host is part of the key.
  */
-function urlWithInitiatorKey(url: string, initiator: string | undefined): string {
+export function urlWithInitiatorKey(url: string, initiator: string | undefined): string {
   return `ext:${url}|${initiatorHost(initiator)}`
 }
 
@@ -426,7 +431,7 @@ function onSecurityPolicyViolation(event: Event): void {
     const directive = violation.effectiveDirective.slice(0, MAX_CSP_DIRECTIVE_CHARS)
     // blockedURI is not always a URL: 'inline', 'eval' etc. pass through.
     const blockedUri = (typeof violation.blockedURI === 'string' ? violation.blockedURI : '').slice(0, MAX_CSP_BLOCKED_URI_CHARS)
-    const key = `csp:${directive}|${blockedUri}`
+    const key = cspKey(directive, blockedUri)
     if (hasSeen(key)) return
     if (!hasCapacity()) return
     markSeenIfNew(key)
