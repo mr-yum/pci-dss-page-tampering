@@ -7,7 +7,7 @@ Mocked-provider `terraform test` suites for the four modules and both examples (
 `terraform test` discovers `*.tftest.hcl` in the configuration directory (or its `tests/` subdirectory), so the suites live in two places:
 
 - **`infra/tests/`** (this directory) — a resource-less harness root whose run blocks target each module via `module { source = "../<module>" }` overrides:
-  - `collector_core.tftest.hcl` — input validation, defaults, alarms, `edge_auth` → Function URL pairing
+  - `collector_core.tftest.hcl` — input validation, defaults, alarms, `edge_auth` → Function URL pairing, the ingest role's novelty grant (`UpdateItem` + `DeleteItem`, no `PutItem`)
   - `edge_cloudfront.tftest.hcl` — input validation (including the required shared secret), custom-domain trio precondition, WAF defaults, shared-secret origin header, CachingDisabled cache policy
   - `edge_cloudflare.tftest.hcl` — input validation, proxied record, rate limit, header injection, endpoint output
   - `observability_datadog.tftest.hcl` — input validation, monitor queries/thresholds wired from variables, per-target `for_each`, `notify_no_data` on the volume tripwire and canary dead-man (silence is the signal), canary omission when `canary_metric = null`, `custom_metric_prefix` derivation and override

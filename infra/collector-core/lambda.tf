@@ -28,11 +28,15 @@ data "aws_iam_policy_document" "ingest" {
     resources = [aws_kinesis_firehose_delivery_stream.archive.arn]
   }
 
+  # UpdateItem is the single novelty write (upsert); DeleteItem is the
+  # compensation when a first-sighting enqueue fails. The delete was missing
+  # from this grant until 2026-10 and, being best-effort behind the always-204
+  # contract, failed silently — infra/tests asserts both actions now.
   statement {
     sid = "NoveltyWrite"
     actions = [
-      "dynamodb:PutItem",
       "dynamodb:UpdateItem",
+      "dynamodb:DeleteItem",
     ]
     resources = [aws_dynamodb_table.novelty.arn]
   }

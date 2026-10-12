@@ -1,6 +1,7 @@
 # collector-core contract tests (contracts/terraform-modules.md §Test obligations):
-# input validation, defaults, alarm presence, and edge_auth → Function URL
-# authorization pairing. Mocked AWS provider: no credentials, no API calls.
+# input validation, defaults, alarm presence, edge_auth → Function URL
+# authorization pairing, and the IAM grants the handler's writes depend on.
+# Mocked AWS provider: no credentials, no API calls.
 # `override_during = plan` makes mocked computed attributes known at plan time
 # so plan-level assertions can see them.
 
@@ -49,6 +50,38 @@ variables {
 
   edge_auth = {
     mode = "aws_iam"
+  }
+}
+
+# --- IAM: novelty grant ------------------------------------------------------
+
+# The collector makes exactly two DynamoDB calls: the single UpdateItem upsert
+# that decides novel-or-repeat, and the DeleteItem that compensates a first
+# sighting whose enqueue failed. The compensation is best-effort behind the
+# always-204 contract, so a missing grant surfaces only in the Lambda log while
+# the record suppresses re-enqueue for its TTL — which is how DeleteItem went
+# ungranted until 2026-10. Assert the grant, not the behaviour.
+run "novelty_grant_covers_upsert_and_compensation" {
+  command = plan
+
+  module {
+    source = "../collector-core"
+  }
+
+  assert {
+    condition = anytrue([
+      for st in data.aws_iam_policy_document.ingest.statement :
+      st.sid == "NoveltyWrite" && contains(st.actions, "dynamodb:UpdateItem") && contains(st.actions, "dynamodb:DeleteItem")
+    ])
+    error_message = "The ingest role's NoveltyWrite statement must grant dynamodb:UpdateItem (the upsert) and dynamodb:DeleteItem (the compensation)."
+  }
+
+  assert {
+    condition = !anytrue([
+      for st in data.aws_iam_policy_document.ingest.statement :
+      contains(st.actions, "dynamodb:PutItem")
+    ])
+    error_message = "The ingest role must not grant dynamodb:PutItem: the collector no longer issues a conditional PutItem."
   }
 }
 

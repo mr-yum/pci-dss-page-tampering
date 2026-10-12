@@ -30,5 +30,5 @@
 
 ## Producer obligations
 
-- Enqueue exactly on novelty conditional-write success (at-least-once; duplicates possible on retry — absorbed by consumer idempotency).
+- Enqueue exactly when the novelty upsert found no prior item (at-least-once; duplicates possible on retry — absorbed by consumer idempotency).
 - Message attributes: `target_type` (for future per-lane consumers), `kind` — body remains the source of truth.

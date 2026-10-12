@@ -68,21 +68,18 @@ const makeCollectorHarness = () => {
       },
     },
     dynamo: {
-      // Conditional PutItem semantics of the real adapter: reject with
-      // ConditionalCheckFailedException when the pk already exists.
-      putItemIfAbsent: async ({ item }) => {
-        if (noveltyStore.has(item.pk)) {
-          throw Object.assign(new Error('The conditional request failed'), { name: 'ConditionalCheckFailedException' })
+      // Upsert semantics of the real adapter: one write, the prior item (if
+      // any) comes back with it — no prior item is the first sighting.
+      upsertSighting: async ({ item }) => {
+        const existing = noveltyStore.get(item.pk)
+        if (existing === undefined) {
+          noveltyStore.set(item.pk, { ...item })
+          return { firstSighting: true }
         }
-        noveltyStore.set(item.pk, { ...item })
-      },
-      updateCounters: async ({ pk, lastSeen }) => {
-        counterUpdates.push({ pk, lastSeen })
-        const existing = noveltyStore.get(pk)
-        if (existing !== undefined) {
-          existing.last_seen = lastSeen
-          existing.sessions += 1
-        }
+        counterUpdates.push({ pk: item.pk, lastSeen: item.last_seen })
+        existing.last_seen = item.last_seen
+        existing.sessions += 1
+        return { firstSighting: false }
       },
       deleteItem: async ({ pk }) => {
         noveltyStore.delete(pk)
@@ -248,8 +245,8 @@ describe('RUM tripwire end-to-end: collector → queue → drain → real compar
       await harness.post(rawBeacon)
       await harness.post(rawBeacon)
 
-      // The conditional write failed on the repeat, so the UpdateItem path ran
-      // instead — counters move, the queue does not.
+      // The repeat's single write found the prior item, so counters move and
+      // the queue does not.
       expect(harness.queueMessages).toHaveLength(1)
       expect(harness.counterUpdates).toEqual([{ pk: SKIMMER_PK, lastSeen: NOW }])
       expect(harness.noveltyStore.get(SKIMMER_PK)?.sessions).toBe(2)
