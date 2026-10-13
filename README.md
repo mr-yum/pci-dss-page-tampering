@@ -661,7 +661,7 @@ These GitHub Actions workflows ship with this repo under [.github/workflows/](.g
 
 #### [ci.yml](.github/workflows/ci.yml) — Continuous Integration
 
-Runs on every push to `main`, every pull request, and on manual dispatch. Installs dependencies, audits them at `--audit-level=high`, then runs linting, type checking, unit tests, and integration tests on Node 24. This is the gate that protects `main`.
+Runs on every push to `main`, every pull request, and on manual dispatch. Installs dependencies, audits them at `--audit-level=high`, then runs linting, type checking, unit tests, and integration tests on Node 24. It is not yet a required status check on `main`, so it protects `main` only when it runs: a pull request whose CI run was never created (a dropped event, an Actions outage) shows its other statuses green, and Renovate, which merges on every status being green, would merge it untested.
 
 #### [inventory-and-detection.yml](.github/workflows/inventory-and-detection.yml) — On-demand and post-merge monitoring
 
@@ -682,7 +682,7 @@ Runs on manual dispatch and on pushes to `main` and pull requests that touch `in
 
 #### Dependency updates — no workflow
 
-Renovate merges its own minor and patch updates of stable (≥ 1.0) packages once every check on the branch is green ([renovate.json](renovate.json)). Majors, any update to a 0.x package, package replacements and security fixes wait for a human. Renovate proposes an npm version only once it is three days old, and regenerates the lockfile with the same cutoff (`npm install --before`), so transitive versions it re-resolves are held too — unless a version already locked is newer than the cutoff, in which case it retries without one. A merge Renovate makes does not start a production run of `inventory-and-detection.yml`.
+Renovate merges its own minor and patch updates of stable (≥ 1.0) packages once every check on the branch is green ([renovate.json](renovate.json)). Majors, any update to a 0.x package, package replacements and updates Renovate raises from vulnerability alerts wait for a human. Renovate proposes an npm version only once it is three days old, and regenerates the lockfile with the same cutoff (`npm install --before`), so transitive versions it re-resolves are held too — unless a version already locked is newer than the cutoff, in which case it retries without one. A merge Renovate makes does not start a production run of `inventory-and-detection.yml`.
 
 No workflow approves or merges anything. An earlier `workflow_run` workflow did: it approved each Renovate PR with `GITHUB_TOKEN` to satisfy the review requirement, and chose which PR to merge by a commit lookup it never checked against the PR's author or head.
 
