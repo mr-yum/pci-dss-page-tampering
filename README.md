@@ -661,7 +661,7 @@ These GitHub Actions workflows ship with this repo under [.github/workflows/](.g
 
 #### [ci.yml](.github/workflows/ci.yml) — Continuous Integration
 
-Runs on every push to `main`, every pull request, and on manual dispatch. Installs dependencies, audits them at `--audit-level=high`, then runs linting, type checking, unit tests, and integration tests on Node 24. It is not yet a required status check on `main`, so it protects `main` only when it runs: a pull request whose CI run was never created (a dropped event, an Actions outage) shows its other statuses green, and Renovate, which merges on every status being green, would merge it untested.
+Runs on every push to `main`, every pull request, and on manual dispatch. Installs dependencies, audits them at `--audit-level=high`, then runs linting, type checking, unit tests, and integration tests on Node 24. Its `continuous-integration (24.x)` job is a required status check on `main`, pinned to GitHub Actions so a commit status of the same name from anywhere else cannot satisfy it. The check is named after the job and its Node matrix value: renaming the job or changing the matrix blocks every pull request until branch protection is updated to match.
 
 #### [inventory-and-detection.yml](.github/workflows/inventory-and-detection.yml) — On-demand and post-merge monitoring
 

@@ -1,6 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "description": "Renovate merges its own minor and patch updates of stable (>= 1.0) packages once every check on the branch is green; everything else — majors, any update to a 0.x package, replacements, updates raised from vulnerability alerts — waits for a human. It merges directly as its own app (platformAutomerge off): main has no required status checks, so GitHub's native auto-merge would merge before CI finished.",
+  "description": "Renovate merges its own minor and patch updates of stable (>= 1.0) packages once every check on the branch is green; everything else — majors, any update to a 0.x package, replacements, updates raised from vulnerability alerts — waits for a human. It merges directly as its own app (platformAutomerge off), which waits for every status on the branch rather than only the CI check main requires.",
   "extends": ["config:recommended", ":automergeStableNonMajor"],
   "platformAutomerge": false,
   "vulnerabilityAlerts": {
