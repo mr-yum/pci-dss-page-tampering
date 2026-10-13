@@ -682,7 +682,7 @@ Runs on manual dispatch and on pushes to `main` and pull requests that touch `in
 
 #### Dependency updates — no workflow
 
-Renovate merges its own minor and patch updates of stable (≥ 1.0) packages once every check on the branch is green ([renovate.json](renovate.json)). Majors, any update to a 0.x package, package replacements, security fixes and anything under `infra/` (which CODEOWNERS routes to infra review) wait for a human. Renovate proposes an npm version only once it is three days old, and regenerates the lockfile with the same cutoff (`npm install --before`), so transitive versions it re-resolves are held too — unless a version already locked is newer than the cutoff, in which case it retries without one. A merge Renovate makes does not start a production run of `inventory-and-detection.yml`.
+Renovate merges its own minor and patch updates of stable (≥ 1.0) packages once every check on the branch is green ([renovate.json](renovate.json)). Majors, any update to a 0.x package, package replacements and security fixes wait for a human. Renovate proposes an npm version only once it is three days old, and regenerates the lockfile with the same cutoff (`npm install --before`), so transitive versions it re-resolves are held too — unless a version already locked is newer than the cutoff, in which case it retries without one. A merge Renovate makes does not start a production run of `inventory-and-detection.yml`.
 
 No workflow approves or merges anything. An earlier `workflow_run` workflow did: it approved each Renovate PR with `GITHUB_TOKEN` to satisfy the review requirement, and chose which PR to merge by a commit lookup it never checked against the PR's author or head.
 

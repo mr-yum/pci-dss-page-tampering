@@ -1,17 +1,12 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "description": "Renovate merges its own minor and patch updates of stable (>= 1.0) packages outside infra/ once every check on the branch is green; everything else — majors, any update to a 0.x package, replacements, security fixes, anything under infra/ — waits for a human. It merges directly as its own app (platformAutomerge off): main has no required status checks, so GitHub's native auto-merge would merge before CI finished.",
+  "description": "Renovate merges its own minor and patch updates of stable (>= 1.0) packages once every check on the branch is green; everything else — majors, any update to a 0.x package, replacements, security fixes — waits for a human. It merges directly as its own app (platformAutomerge off): main has no required status checks, so GitHub's native auto-merge would merge before CI finished.",
   "extends": ["config:recommended", ":automergeStableNonMajor"],
   "platformAutomerge": false,
   "vulnerabilityAlerts": {
     "automerge": false
   },
   "packageRules": [
-    {
-      "description": "infra/ is routed to infra review by CODEOWNERS. Renovate merges past that requirement, so updates there (Terraform provider lockfiles) must wait for the review instead.",
-      "matchFileNames": ["infra/**"],
-      "automerge": false
-    },
     {
       "description": "Hold npm releases for three days before proposing them. A merge to main reaches the production runs, which hold the inventory and Slack credentials, so the version Renovate proposes must not be hours old; the wait gives the registry and the community time to catch and pull a compromised release. Renovate also passes npm the same cutoff (--before) when it regenerates the lockfile, so transitive versions it re-resolves are held too, except when a version already locked is newer than the cutoff, where it retries without one. Scoped to npm because it always reports release timestamps; a datasource that does not would have its updates held indefinitely.",
       "matchDatasources": ["npm"],
