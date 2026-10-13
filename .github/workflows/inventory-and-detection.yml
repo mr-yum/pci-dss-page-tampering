@@ -30,23 +30,67 @@ on:
 # They are not dry runs. Their value is exercising a tool change end to end;
 # narrow the mode or drop the trigger if that is not wanted.
 
+# The run writes to the inventory repository with INVENTORY_REPO_PAT, never
+# with this token; checkout is all this one is for.
+permissions:
+  contents: read
+
 jobs:
+  # Derives the container tag from the lockfile so the image and the npm
+  # package cannot drift apart, as the inventory repository's scheduled run
+  # already does. A pinned tag is a second thing to bump, and Renovate cannot
+  # be made to bump it in step: npm updates are held for three days, and the
+  # image registry reports no release timestamps to hold it by.
+  resolve-runtime:
+    # A merge Renovate made itself does not start a production run. Merges by
+    # the GITHUB_TOKEN workflow that preceded it never triggered workflows at
+    # all, and the scheduled run in the inventory repository exercises every
+    # dependency change daily.
+    if: github.event_name != 'push' || github.actor != 'renovate[bot]'
+    runs-on: ubuntu-latest
+    # A checkout and a JSON read; anything longer is a hang.
+    timeout-minutes: 5
+    outputs:
+      puppeteer: ${{ steps.resolve.outputs.puppeteer }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Resolve Puppeteer version
+        id: resolve
+        run: |
+          set -euo pipefail
+
+          # The lockfile, not package.json: the caret range there would match a
+          # Puppeteer whose Chrome the image does not contain.
+          VERSION=$(node -p "require('./package-lock.json').packages['node_modules/puppeteer'].version" 2>/dev/null || true)
+
+          if [ -z "$VERSION" ] || [ "$VERSION" = "undefined" ]; then
+            echo "::error::Could not read the puppeteer version from package-lock.json; the container tag cannot be derived."
+            exit 1
+          fi
+
+          # Interpolated into an image reference, so require a bare semver.
+          case "$VERSION" in
+            *[!0-9.]*|''|.*|*.) echo "::error::Refusing to build an image tag from '$VERSION' — expected a bare semver."; exit 1 ;;
+          esac
+
+          echo "Container image: ghcr.io/puppeteer/puppeteer:$VERSION"
+          echo "puppeteer=$VERSION" >> "$GITHUB_OUTPUT"
+
   run-inventory-and-detection:
+    needs: resolve-runtime
     runs-on: ubuntu-latest
 
     # Run inside Puppeteer's official image, which ships Node 24, the Chrome
     # build pinned by this Puppeteer version, and all of Chrome's system
     # libraries. This removes the need to install Node, download Chrome, or
-    # apt-install Chrome's dependencies in the workflow itself.
-    #
-    # The image tag MUST track the `puppeteer` version in package.json so the
-    # bundled Chrome matches the build the app launches. A Renovate rule
-    # (renovate.json) caps this image below the next major so it cannot jump
-    # ahead of the npm package; bump both together when upgrading Puppeteer. Run
-    # as root so checkout, npm, and git can write the workspace; the app launches
-    # Chrome with --no-sandbox so root is safe.
+    # apt-install Chrome's dependencies in the workflow itself. Both jobs check
+    # out the commit that triggered the run, so the tag and the lockfile `npm
+    # ci` installs from agree. Run as root so checkout, npm, and git can write
+    # the workspace; the app launches Chrome with --no-sandbox so root is safe.
     container:
-      image: ghcr.io/puppeteer/puppeteer:25.13.0
+      image: ghcr.io/puppeteer/puppeteer:${{ needs.resolve-runtime.outputs.puppeteer }}
       options: --user root
 
     # The image installs Chrome under pptruser's home; point Puppeteer at it so
