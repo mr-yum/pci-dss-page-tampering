@@ -661,7 +661,7 @@ These GitHub Actions workflows ship with this repo under [.github/workflows/](.g
 
 #### [ci.yml](.github/workflows/ci.yml) — Continuous Integration
 
-Runs on every push to `main`, every pull request, and on manual dispatch. Installs dependencies, audits them at `--audit-level=high`, then runs linting, type checking, unit tests, and integration tests on Node 24. This is the gate that protects `main`.
+Runs on every push to `main`, every pull request, and on manual dispatch. Installs dependencies, audits them at `--audit-level=high`, then runs linting, type checking, unit tests, and integration tests on Node 24. It is not yet a required status check on `main`, so it protects `main` only when it runs: a pull request whose CI run was never created (a dropped event, an Actions outage) shows its other statuses green, and Renovate, which merges on every status being green, would merge it untested.
 
 #### [inventory-and-detection.yml](.github/workflows/inventory-and-detection.yml) — On-demand and post-merge monitoring
 
@@ -674,15 +674,17 @@ There is **no schedule here.** The daily run moved to the inventory repository, 
 
 Both remaining triggers are still **full production runs** against the real inventory: `--mode all` writes to the inventory repository, opens a pull request there, and sends Slack alerts. They are not dry runs.
 
-Requires repo secrets `INVENTORY_REPO_PAT` and `SLACK_OAUTH_TOKEN`, and repo variables `INVENTORY_REPO_URL`, `GIT_USER_NAME`, `GIT_USER_EMAIL`. Installs Chrome system dependencies for Puppeteer before invoking `npm start`.
+Requires repo secrets `INVENTORY_REPO_PAT` and `SLACK_OAUTH_TOKEN`, and repo variables `INVENTORY_REPO_URL`, `GIT_USER_NAME`, `GIT_USER_EMAIL`. Runs inside the `ghcr.io/puppeteer/puppeteer` image whose tag is read from the `puppeteer` version in `package-lock.json` at run time, so the bundled Chrome always matches the build the app launches and there is no image tag to bump.
 
 #### [infra.yml](.github/workflows/infra.yml) — Terraform module checks
 
 Runs on manual dispatch and on pushes to `main` and pull requests that touch `infra/**` or `.tflint.hcl` — a paths filter, because every step downloads provider schemas from the registry and the Terraform sources change far less often than `src/`. Checks formatting (`terraform fmt -check -recursive`), lints with TFLint, then runs the mocked-provider `terraform test` suites for the modules and both example stacks, and finally the source-level no-VPC guard (`infra/tests/no-vpc-check.sh`). No cloud credentials are involved — nothing is planned against a real account.
 
-#### [auto-merge-renovate.yml](.github/workflows/auto-merge-renovate.yml) — Renovate auto-merge
+#### Dependency updates — no workflow
 
-Listens for completed CI runs (via `workflow_run`) and, when the run was triggered by a `renovate[bot]` PR and succeeded, approves and squash-merges the PR. Gating on `workflow_run` (rather than `pull_request`) ensures CI has actually passed before merging — the previous `pull_request` setup let broken lockfiles land on `main`.
+Renovate merges its own minor and patch updates of stable (≥ 1.0) packages once every check on the branch is green ([renovate.json](renovate.json)). Majors, any update to a 0.x package, package replacements and updates Renovate raises from vulnerability alerts wait for a human. Renovate proposes an npm version only once it is three days old, and regenerates the lockfile with the same cutoff (`npm install --before`), so transitive versions it re-resolves are held too — unless a version already locked is newer than the cutoff, in which case it retries without one. A merge Renovate makes does not start a production run of `inventory-and-detection.yml`.
+
+No workflow approves or merges anything. An earlier `workflow_run` workflow did: it approved each Renovate PR with `GITHUB_TOKEN` to satisfy the review requirement, and chose which PR to merge by a commit lookup it never checked against the PR's author or head.
 
 #### [release.yml](.github/workflows/release.yml) — Versioned release artefacts
 
