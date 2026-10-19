@@ -893,6 +893,96 @@ describe('DetectionService framed workflow actions', () => {
     expect(error.message).toContain(`Observed frame URLs: https://shop.example.com/checkout, ${cardUrl} (×4)`)
   })
 
+  it('keeps searching when frame-tree reads throw mid-teardown, instead of throwing from its timer', async () => {
+    const mainFrame = {} as Frame
+    const element = { dispose: jest.fn() }
+    const teardown = (): never => {
+      throw new Error('Requesting main frame too early!')
+    }
+    const frameUrl = jest.fn().mockImplementation(teardown)
+    const cardFrame = { url: frameUrl, waitForSelector: jest.fn().mockResolvedValue(element) } as unknown as Frame
+    const page = {
+      getDefaultTimeout: jest.fn().mockReturnValue(5000),
+      frames: jest.fn().mockImplementationOnce(teardown).mockReturnValue([mainFrame, cardFrame]),
+      mainFrame: jest.fn().mockImplementationOnce(teardown).mockReturnValue(mainFrame),
+    } as unknown as Page
+    // Every read of the frame's URL throws until the tree settles.
+    setTimeout(() => frameUrl.mockReturnValue('https://payments.example.com/card-frame'), 250)
+
+    await expect(serviceInternals().waitForActionTarget(page, splitFieldStep)).resolves.toEqual({ context: cardFrame, element })
+  })
+
+  it('never waits in a frame while the main frame cannot be read', async () => {
+    // With mainFrame() unreadable the main frame cannot be told apart, so no
+    // frame is waited in at all.
+    const topLevel = { url: jest.fn().mockReturnValue('https://payments.example.com/card-frame'), waitForSelector: jest.fn() } as unknown as Frame
+    const page = {
+      getDefaultTimeout: jest.fn().mockReturnValue(300),
+      frames: jest.fn().mockReturnValue([topLevel]),
+      mainFrame: jest.fn(() => {
+        throw new Error('Requesting main frame too early!')
+      }),
+    } as unknown as Page
+
+    const error = (await serviceInternals()
+      .waitForActionTarget(page, splitFieldStep)
+      .catch((e: unknown) => e)) as Error
+
+    expect(error.constructor.name).toBe('TimeoutError')
+    expect(topLevel.waitForSelector).not.toHaveBeenCalled()
+  })
+
+  it('does not accept a frame whose URL cannot be read once its element is held', async () => {
+    const mainFrame = {} as Frame
+    const element = { dispose: jest.fn().mockResolvedValue(undefined) }
+    const url = jest.fn().mockReturnValue('https://payments.example.com/card-frame')
+    const detaching = {
+      url,
+      // The element arrives as the frame detaches: its URL is unreadable from then on.
+      waitForSelector: jest.fn(async () => {
+        url.mockImplementation(() => {
+          throw new Error('Frame detached')
+        })
+        return element
+      }),
+    } as unknown as Frame
+    const page = { getDefaultTimeout: jest.fn().mockReturnValue(300), frames: jest.fn().mockReturnValue([mainFrame, detaching]), mainFrame: jest.fn().mockReturnValue(mainFrame) } as unknown as Page
+
+    const error = (await serviceInternals()
+      .waitForActionTarget(page, splitFieldStep)
+      .catch((e: unknown) => e)) as Error
+
+    expect(error.constructor.name).toBe('TimeoutError')
+    expect(element.dispose).toHaveBeenCalledTimes(1)
+  })
+
+  it('still times out with a TimeoutError when frame reads fail while the timeout is described', async () => {
+    const mainFrame = {} as Frame
+    const unreadable = {
+      url: jest.fn(() => {
+        throw new Error('Frame detached')
+      }),
+    } as unknown as Frame
+    const frames = jest.fn().mockReturnValue([mainFrame, unreadable])
+    const page = { getDefaultTimeout: jest.fn().mockReturnValue(200), frames, mainFrame: jest.fn().mockReturnValue(mainFrame) } as unknown as Page
+    // The tree is torn down by the time the timeout is described.
+    setTimeout(
+      () =>
+        frames.mockImplementation(() => {
+          throw new Error('Requesting main frame too early!')
+        }),
+      150,
+    )
+
+    const error = (await serviceInternals()
+      .waitForActionTarget(page, splitFieldStep)
+      .catch((e: unknown) => e)) as Error
+
+    expect(error.constructor.name).toBe('TimeoutError')
+    expect(error.message).toContain('Matching frames: none.')
+    expect(error.message).toContain('Observed frame URLs: (none)')
+  })
+
   it('reports a frame that does not answer the timeout probe without waiting on it', async () => {
     const mainFrame = { url: jest.fn().mockReturnValue('https://shop.example.com/checkout') } as unknown as Frame
     const hung = {

@@ -1000,15 +1000,23 @@ export class DetectionService implements IDetectionService {
       const waitIn = async (frame: Frame): Promise<void> => {
         waitingIn.add(frame)
         const element = await frame.waitForSelector(selector, { visible: true, timeout: Math.max(1, deadline - Date.now()), signal: controller.signal }).catch(() => null)
-        if (element !== null && !settled && matcher.test(frame.url())) return finish({ context: frame, element })
+        const url = safeFrameUrl(frame)
+        if (element !== null && !settled && url !== undefined && matcher.test(url)) return finish({ context: frame, element })
         await element?.dispose().catch(() => undefined)
         waitingIn.delete(frame)
       }
 
+      // Runs from a timer, so a frame-tree read that throws mid-teardown would
+      // escape as an uncaught exception: every read is a safe one. With the
+      // main frame unreadable the pass is skipped rather than risk waiting in
+      // it, and the next rescan tries again.
       const scan = (): void => {
         if (settled) return
-        for (const frame of page.frames()) {
-          if (frame === page.mainFrame() || waitingIn.has(frame) || !matcher.test(frame.url())) continue
+        const mainFrame = safeMainFrame(page)
+        if (mainFrame === undefined) return
+        for (const frame of safeFrames(page)) {
+          const url = safeFrameUrl(frame)
+          if (frame === mainFrame || waitingIn.has(frame) || url === undefined || !matcher.test(url)) continue
           void waitIn(frame)
         }
       }
@@ -1031,10 +1039,14 @@ export class DetectionService implements IDetectionService {
    * page content.
    */
   private async describeMatchingFrames(page: Page, selector: string, matcher: RegExp): Promise<string> {
-    const frames = page.frames().filter((frame) => frame !== page.mainFrame() && matcher.test(frame.url()))
+    const mainFrame = safeMainFrame(page)
+    const frames = safeFrames(page).flatMap((frame) => {
+      const url = safeFrameUrl(frame)
+      return frame !== mainFrame && url !== undefined && matcher.test(url) ? [{ frame, url }] : []
+    })
     if (frames.length === 0) return 'Matching frames: none.'
-    const states = await Promise.all(frames.map((frame) => this.selectorStateIn(frame, selector)))
-    return `Matching frames: ${frames.length} (${frames.map((frame, index) => `#${index + 1} ${this.redactFrameUrl(frame.url())}: ${states[index]}`).join('; ')}).`
+    const states = await Promise.all(frames.map(({ frame }) => this.selectorStateIn(frame, selector)))
+    return `Matching frames: ${frames.length} (${frames.map(({ url }, index) => `#${index + 1} ${this.redactFrameUrl(url)}: ${states[index]}`).join('; ')}).`
   }
 
   private async selectorStateIn(frame: Frame, selector: string): Promise<string> {
@@ -1061,8 +1073,8 @@ export class DetectionService implements IDetectionService {
   /** Every frame's redacted URL, with repeats counted rather than collapsed. */
   private observedFrameUrls(page: Page): string {
     const counts = new Map<string, number>()
-    for (const frame of page.frames()) {
-      const url = this.redactFrameUrl(frame.url())
+    for (const frame of safeFrames(page)) {
+      const url = this.redactFrameUrl(safeFrameUrl(frame) ?? '')
       counts.set(url, (counts.get(url) ?? 0) + 1)
     }
     return [...counts].map(([url, count]) => (count > 1 ? `${url} (×${count})` : url)).join(', ') || '(none)'
