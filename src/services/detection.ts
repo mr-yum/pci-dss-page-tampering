@@ -40,6 +40,14 @@ const TOTP_TYPING_DELAY_MS = 100
 // target load while retaining the pinned, origin-validated ElementHandle.
 const FRAMED_INPUT_TYPING_DELAY_MS = 25
 
+// How often a framed step's search looks for matching frames it is not yet
+// waiting in: frames that attach, or navigate onto the pattern, mid-wait.
+const FRAME_RESCAN_INTERVAL_MS = 100
+
+// Bound on each per-frame probe that describes a framed step's timeout. A
+// frame that cannot answer within it is reported as such, not waited for.
+const FRAME_DIAGNOSIS_TIMEOUT_MS = 2000
+
 // Bound the combined initial navigation, selector waits, and reload retries.
 // Without one shared deadline, their nested per-attempt timeouts can compound
 // into a multi-minute delay for every later variation in the same inventory.
@@ -948,23 +956,128 @@ export class DetectionService implements IDetectionService {
     }
 
     const matcher = new RegExp(step.frameUrl)
-    const deadline = Date.now() + timeout
+    const found = await this.waitInMatchingFrames(page, step.querySelector, matcher, timeout)
+    if (found) return found
 
-    while (Date.now() < deadline) {
-      for (const frame of page.frames().filter((candidate) => candidate !== page.mainFrame() && matcher.test(candidate.url()))) {
-        const remainingTime = deadline - Date.now()
-        if (remainingTime <= 0) break
-        const element = await frame.waitForSelector(step.querySelector, { visible: true, timeout: Math.min(100, remainingTime) }).catch(() => null)
-        if (element) {
-          if (matcher.test(frame.url())) return { context: frame, element }
-          await element.dispose()
+    const matchingFrames = await this.describeMatchingFrames(page, step.querySelector, matcher)
+    throw new TimeoutError(`Timed out waiting for selector '${step.querySelector}' in a frame URL matching /${step.frameUrl}/. ${matchingFrames} Observed frame URLs: ${this.observedFrameUrls(page)}`)
+  }
+
+  /**
+   * Wait for a visible `selector` in every frame whose URL matches, all at
+   * once, each with a single wait that lasts until the deadline; the first to
+   * find it wins and the others are aborted.
+   *
+   * Not a round robin of short waits: that is what this replaced, and it
+   * starves. A wait in an out-of-process frame is several DevTools round
+   * trips into that frame's renderer, and when the renderer is busy and the
+   * runner's CPU contended — a card provider's frames right after a complete
+   * card number goes in — every round trip can outlast a short per-frame
+   * timeout, so every attempt is cut off and a field that is visible the
+   * whole time is never found. Split card fields put each input in its own
+   * same-URL frame, so the field is usually not in the first frame tried.
+   *
+   * A match counts only if the frame's URL still matches once the element is
+   * held: a frame that navigated off the pattern is let go, and waited in
+   * again if a later rescan finds it back on the pattern.
+   */
+  private waitInMatchingFrames(page: Page, selector: string, matcher: RegExp, timeout: number): Promise<ActionTarget | undefined> {
+    return new Promise((resolve) => {
+      const controller = new AbortController()
+      const waitingIn = new Set<Frame>()
+      const deadline = Date.now() + timeout
+      let settled = false
+
+      const finish = (result: ActionTarget | undefined): void => {
+        if (settled) return
+        settled = true
+        clearInterval(rescan)
+        clearTimeout(expiry)
+        controller.abort()
+        resolve(result)
+      }
+
+      const waitIn = async (frame: Frame): Promise<void> => {
+        waitingIn.add(frame)
+        const element = await frame.waitForSelector(selector, { visible: true, timeout: Math.max(1, deadline - Date.now()), signal: controller.signal }).catch(() => null)
+        const url = safeFrameUrl(frame)
+        if (element !== null && !settled && url !== undefined && matcher.test(url)) return finish({ context: frame, element })
+        await element?.dispose().catch(() => undefined)
+        waitingIn.delete(frame)
+      }
+
+      // Runs from a timer, so a frame-tree read that throws mid-teardown would
+      // escape as an uncaught exception: every read is a safe one. With the
+      // main frame unreadable the pass is skipped rather than risk waiting in
+      // it, and the next rescan tries again.
+      const scan = (): void => {
+        if (settled) return
+        const mainFrame = safeMainFrame(page)
+        if (mainFrame === undefined) return
+        for (const frame of safeFrames(page)) {
+          const url = safeFrameUrl(frame)
+          if (frame === mainFrame || waitingIn.has(frame) || url === undefined || !matcher.test(url)) continue
+          void waitIn(frame)
         }
       }
-      await this.sleep(100)
-    }
 
-    const observedFrameUrls = [...new Set(page.frames().map((frame) => this.redactFrameUrl(frame.url())))].join(', ')
-    throw new TimeoutError(`Timed out waiting for selector '${step.querySelector}' in a frame URL matching /${step.frameUrl}/. Observed frame URLs: ${observedFrameUrls || '(none)'}`)
+      // Declared after the closures that clear them, which run only later.
+      const rescan = setInterval(scan, FRAME_RESCAN_INTERVAL_MS)
+      const expiry = setTimeout(() => finish(undefined), timeout)
+      scan()
+    })
+  }
+
+  /**
+   * What each frame matching a timed-out step's pattern held: the selector
+   * absent, present but hidden, or visible; unreachable when the probe itself
+   * failed (the frame detached, its session closed); or no answer when the
+   * frame did not respond within the bound. Split card fields put
+   * every input in a frame of the same URL, so naming the URL alone cannot
+   * say which frame was missing the field; "visible" in a timeout means the
+   * wait itself never got an answer from that frame. States only — never
+   * page content.
+   */
+  private async describeMatchingFrames(page: Page, selector: string, matcher: RegExp): Promise<string> {
+    const mainFrame = safeMainFrame(page)
+    const frames = safeFrames(page).flatMap((frame) => {
+      const url = safeFrameUrl(frame)
+      return frame !== mainFrame && url !== undefined && matcher.test(url) ? [{ frame, url }] : []
+    })
+    if (frames.length === 0) return 'Matching frames: none.'
+    const states = await Promise.all(frames.map(({ frame }) => this.selectorStateIn(frame, selector)))
+    return `Matching frames: ${frames.length} (${frames.map(({ url }, index) => `#${index + 1} ${this.redactFrameUrl(url)}: ${states[index]}`).join('; ')}).`
+  }
+
+  private async selectorStateIn(frame: Frame, selector: string): Promise<string> {
+    const probe = (async (): Promise<string> => {
+      const element = await frame.$(selector)
+      if (element === null) return 'selector absent'
+      try {
+        return (await element.isVisible()) ? 'selector visible' : 'selector present but not visible'
+      } finally {
+        await element.dispose().catch(() => undefined)
+      }
+    })().catch((error: unknown) => `unreachable (${error instanceof Error ? error.name : 'error'})`)
+    let bound: ReturnType<typeof setTimeout> | undefined
+    const noAnswer = new Promise<string>((resolve) => {
+      bound = setTimeout(() => resolve(`no answer within ${FRAME_DIAGNOSIS_TIMEOUT_MS} ms`), FRAME_DIAGNOSIS_TIMEOUT_MS)
+    })
+    try {
+      return await Promise.race([probe, noAnswer])
+    } finally {
+      clearTimeout(bound)
+    }
+  }
+
+  /** Every frame's redacted URL, with repeats counted rather than collapsed. */
+  private observedFrameUrls(page: Page): string {
+    const counts = new Map<string, number>()
+    for (const frame of safeFrames(page)) {
+      const url = this.redactFrameUrl(safeFrameUrl(frame) ?? '')
+      counts.set(url, (counts.get(url) ?? 0) + 1)
+    }
+    return [...counts].map(([url, count]) => (count > 1 ? `${url} (×${count})` : url)).join(', ') || '(none)'
   }
 
   /**

@@ -760,7 +760,243 @@ describe('DetectionService framed workflow actions', () => {
 
     await expect(serviceInternals().waitForActionTarget(page, step)).resolves.toEqual({ context: childFrame, element })
     expect(mainFrame.waitForSelector).not.toHaveBeenCalled()
-    expect(childFrame.waitForSelector).toHaveBeenCalledWith(step.querySelector, { visible: true, timeout: 100 })
+    expect(childFrame.waitForSelector).toHaveBeenCalledWith(step.querySelector, { visible: true, timeout: expect.any(Number), signal: expect.any(AbortSignal) })
+  })
+
+  // A frame whose wait is still pending: it answers only when aborted.
+  function pendingFrame(url: string): Frame & { signals: AbortSignal[] } {
+    const signals: AbortSignal[] = []
+    return {
+      signals,
+      url: jest.fn().mockReturnValue(url),
+      waitForSelector: jest.fn((_selector: string, options: { signal: AbortSignal }) => {
+        signals.push(options.signal)
+        return new Promise((_resolve, reject) => options.signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true }))
+      }),
+    } as unknown as Frame & { signals: AbortSignal[] }
+  }
+
+  const splitFieldStep: PuppeteerLocatorAction = {
+    description: 'Enter card expiry',
+    querySelector: 'input[name="exp-date"]',
+    frameUrl: '^https://payments\\.example\\.com/card-frame$',
+    action: { type: 'input', value: '1229' },
+    delay: 0,
+  }
+
+  it('gives every matching frame one wait lasting the whole deadline, not a short slice each', async () => {
+    // The regression this pins: a 100 ms wait per frame, frame after frame,
+    // never completes when each round trip into a busy frame outlasts it.
+    const mainFrame = {} as Frame
+    const numberFrame = pendingFrame('https://payments.example.com/card-frame')
+    const element = { dispose: jest.fn() }
+    const expiryFrame = {
+      url: jest.fn().mockReturnValue('https://payments.example.com/card-frame'),
+      waitForSelector: jest.fn(() => new Promise((resolve) => setTimeout(() => resolve(element), 300))),
+    } as unknown as Frame
+    const page = {
+      getDefaultTimeout: jest.fn().mockReturnValue(5000),
+      frames: jest.fn().mockReturnValue([mainFrame, numberFrame, expiryFrame]),
+      mainFrame: jest.fn().mockReturnValue(mainFrame),
+    } as unknown as Page
+
+    await expect(serviceInternals().waitForActionTarget(page, splitFieldStep)).resolves.toEqual({ context: expiryFrame, element })
+    expect(expiryFrame.waitForSelector).toHaveBeenCalledTimes(1)
+    const [, options] = (expiryFrame.waitForSelector as jest.Mock).mock.calls[0] as [string, { timeout: number }]
+    expect(options.timeout).toBeGreaterThan(4000)
+    // The frame that never answered was waited in at the same time, and let go.
+    expect(numberFrame.waitForSelector).toHaveBeenCalledTimes(1)
+    expect(numberFrame.signals[0]!.aborted).toBe(true)
+  })
+
+  it('waits in a matching frame that attaches after the search began', async () => {
+    const mainFrame = {} as Frame
+    const element = { dispose: jest.fn() }
+    const lateFrame = {
+      url: jest.fn().mockReturnValue('https://payments.example.com/card-frame'),
+      waitForSelector: jest.fn().mockResolvedValue(element),
+    } as unknown as Frame
+    const frames = jest.fn().mockReturnValue([mainFrame])
+    const page = { getDefaultTimeout: jest.fn().mockReturnValue(5000), frames, mainFrame: jest.fn().mockReturnValue(mainFrame) } as unknown as Page
+    setTimeout(() => frames.mockReturnValue([mainFrame, lateFrame]), 250)
+
+    await expect(serviceInternals().waitForActionTarget(page, splitFieldStep)).resolves.toEqual({ context: lateFrame, element })
+  })
+
+  it('disposes the element a losing frame found after another frame won', async () => {
+    const mainFrame = {} as Frame
+    const winner = { dispose: jest.fn() }
+    const loser = { dispose: jest.fn().mockResolvedValue(undefined) }
+    const winningFrame = { url: jest.fn().mockReturnValue('https://payments.example.com/card-frame'), waitForSelector: jest.fn().mockResolvedValue(winner) } as unknown as Frame
+    const losingFrame = {
+      url: jest.fn().mockReturnValue('https://payments.example.com/card-frame'),
+      waitForSelector: jest.fn(() => new Promise((resolve) => setTimeout(() => resolve(loser), 100))),
+    } as unknown as Frame
+    const page = { getDefaultTimeout: jest.fn().mockReturnValue(5000), frames: jest.fn().mockReturnValue([mainFrame, winningFrame, losingFrame]), mainFrame: jest.fn().mockReturnValue(mainFrame) } as unknown as Page
+
+    await expect(serviceInternals().waitForActionTarget(page, splitFieldStep)).resolves.toEqual({ context: winningFrame, element: winner })
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    expect(loser.dispose).toHaveBeenCalledTimes(1)
+    expect(winner.dispose).not.toHaveBeenCalled()
+  })
+
+  it('waits in a frame again once it navigates back onto the pattern', async () => {
+    const mainFrame = {} as Frame
+    const offPattern = { dispose: jest.fn().mockResolvedValue(undefined) }
+    const onPattern = { dispose: jest.fn() }
+    const url = jest.fn().mockReturnValue('https://payments.example.com/card-frame')
+    const frame = {
+      url,
+      waitForSelector: jest
+        .fn()
+        // Found while the frame was elsewhere: let go...
+        .mockImplementationOnce(async () => {
+          url.mockReturnValue('https://attacker.example.org/card-frame')
+          setTimeout(() => url.mockReturnValue('https://payments.example.com/card-frame'), 250)
+          return offPattern
+        })
+        // ...and found again once it is back.
+        .mockResolvedValue(onPattern),
+    } as unknown as Frame
+    const page = { getDefaultTimeout: jest.fn().mockReturnValue(5000), frames: jest.fn().mockReturnValue([mainFrame, frame]), mainFrame: jest.fn().mockReturnValue(mainFrame) } as unknown as Page
+
+    await expect(serviceInternals().waitForActionTarget(page, splitFieldStep)).resolves.toEqual({ context: frame, element: onPattern })
+    expect(offPattern.dispose).toHaveBeenCalledTimes(1)
+  })
+
+  it('says what each same-URL frame held when a framed step times out', async () => {
+    const mainFrame = { url: jest.fn().mockReturnValue('https://shop.example.com/checkout') } as unknown as Frame
+    const cardUrl = 'https://payments.example.com/card-frame'
+    const neverAnswers = (): Frame =>
+      ({
+        url: jest.fn().mockReturnValue(cardUrl),
+        waitForSelector: jest.fn((_s: string, options: { signal: AbortSignal }) => new Promise((_r, reject) => options.signal.addEventListener('abort', () => reject(new Error('aborted'))))),
+      }) as unknown as Frame
+    const absent = Object.assign(neverAnswers(), { $: jest.fn().mockResolvedValue(null) })
+    const hidden = Object.assign(neverAnswers(), { $: jest.fn().mockResolvedValue({ isVisible: jest.fn().mockResolvedValue(false), dispose: jest.fn().mockResolvedValue(undefined) }) })
+    const visible = Object.assign(neverAnswers(), { $: jest.fn().mockResolvedValue({ isVisible: jest.fn().mockResolvedValue(true), dispose: jest.fn().mockResolvedValue(undefined) }) })
+    const unreachable = Object.assign(neverAnswers(), { $: jest.fn().mockRejectedValue(Object.assign(new Error('Session closed'), { name: 'TargetCloseError' })) })
+    const page = {
+      getDefaultTimeout: jest.fn().mockReturnValue(200),
+      frames: jest.fn().mockReturnValue([mainFrame, absent, hidden, visible, unreachable]),
+      mainFrame: jest.fn().mockReturnValue(mainFrame),
+    } as unknown as Page
+
+    const error = (await serviceInternals()
+      .waitForActionTarget(page, splitFieldStep)
+      .catch((e: unknown) => e)) as Error
+
+    // Puppeteer's TimeoutError still, so whole-workflow recovery treats it as
+    // transient (this file's mock of the class does not set `name`).
+    expect(error.constructor.name).toBe('TimeoutError')
+    expect(error.message).toContain(`Matching frames: 4 (#1 ${cardUrl}: selector absent; #2 ${cardUrl}: selector present but not visible; #3 ${cardUrl}: selector visible; #4 ${cardUrl}: unreachable (TargetCloseError)).`)
+    expect(error.message).toContain(`Observed frame URLs: https://shop.example.com/checkout, ${cardUrl} (×4)`)
+  })
+
+  it('keeps searching when frame-tree reads throw mid-teardown, instead of throwing from its timer', async () => {
+    const mainFrame = {} as Frame
+    const element = { dispose: jest.fn() }
+    const teardown = (): never => {
+      throw new Error('Requesting main frame too early!')
+    }
+    const frameUrl = jest.fn().mockImplementation(teardown)
+    const cardFrame = { url: frameUrl, waitForSelector: jest.fn().mockResolvedValue(element) } as unknown as Frame
+    const page = {
+      getDefaultTimeout: jest.fn().mockReturnValue(5000),
+      frames: jest.fn().mockImplementationOnce(teardown).mockReturnValue([mainFrame, cardFrame]),
+      mainFrame: jest.fn().mockImplementationOnce(teardown).mockReturnValue(mainFrame),
+    } as unknown as Page
+    // Every read of the frame's URL throws until the tree settles.
+    setTimeout(() => frameUrl.mockReturnValue('https://payments.example.com/card-frame'), 250)
+
+    await expect(serviceInternals().waitForActionTarget(page, splitFieldStep)).resolves.toEqual({ context: cardFrame, element })
+  })
+
+  it('never waits in a frame while the main frame cannot be read', async () => {
+    // With mainFrame() unreadable the main frame cannot be told apart, so no
+    // frame is waited in at all.
+    const topLevel = { url: jest.fn().mockReturnValue('https://payments.example.com/card-frame'), waitForSelector: jest.fn() } as unknown as Frame
+    const page = {
+      getDefaultTimeout: jest.fn().mockReturnValue(300),
+      frames: jest.fn().mockReturnValue([topLevel]),
+      mainFrame: jest.fn(() => {
+        throw new Error('Requesting main frame too early!')
+      }),
+    } as unknown as Page
+
+    const error = (await serviceInternals()
+      .waitForActionTarget(page, splitFieldStep)
+      .catch((e: unknown) => e)) as Error
+
+    expect(error.constructor.name).toBe('TimeoutError')
+    expect(topLevel.waitForSelector).not.toHaveBeenCalled()
+  })
+
+  it('does not accept a frame whose URL cannot be read once its element is held', async () => {
+    const mainFrame = {} as Frame
+    const element = { dispose: jest.fn().mockResolvedValue(undefined) }
+    const url = jest.fn().mockReturnValue('https://payments.example.com/card-frame')
+    const detaching = {
+      url,
+      // The element arrives as the frame detaches: its URL is unreadable from then on.
+      waitForSelector: jest.fn(async () => {
+        url.mockImplementation(() => {
+          throw new Error('Frame detached')
+        })
+        return element
+      }),
+    } as unknown as Frame
+    const page = { getDefaultTimeout: jest.fn().mockReturnValue(300), frames: jest.fn().mockReturnValue([mainFrame, detaching]), mainFrame: jest.fn().mockReturnValue(mainFrame) } as unknown as Page
+
+    const error = (await serviceInternals()
+      .waitForActionTarget(page, splitFieldStep)
+      .catch((e: unknown) => e)) as Error
+
+    expect(error.constructor.name).toBe('TimeoutError')
+    expect(element.dispose).toHaveBeenCalledTimes(1)
+  })
+
+  it('still times out with a TimeoutError when frame reads fail while the timeout is described', async () => {
+    const mainFrame = {} as Frame
+    const unreadable = {
+      url: jest.fn(() => {
+        throw new Error('Frame detached')
+      }),
+    } as unknown as Frame
+    const frames = jest.fn().mockReturnValue([mainFrame, unreadable])
+    const page = { getDefaultTimeout: jest.fn().mockReturnValue(200), frames, mainFrame: jest.fn().mockReturnValue(mainFrame) } as unknown as Page
+    // The tree is torn down by the time the timeout is described.
+    setTimeout(
+      () =>
+        frames.mockImplementation(() => {
+          throw new Error('Requesting main frame too early!')
+        }),
+      150,
+    )
+
+    const error = (await serviceInternals()
+      .waitForActionTarget(page, splitFieldStep)
+      .catch((e: unknown) => e)) as Error
+
+    expect(error.constructor.name).toBe('TimeoutError')
+    expect(error.message).toContain('Matching frames: none.')
+    expect(error.message).toContain('Observed frame URLs: (none)')
+  })
+
+  it('reports a frame that does not answer the timeout probe without waiting on it', async () => {
+    const mainFrame = { url: jest.fn().mockReturnValue('https://shop.example.com/checkout') } as unknown as Frame
+    const hung = {
+      url: jest.fn().mockReturnValue('https://payments.example.com/card-frame'),
+      waitForSelector: jest.fn((_s: string, options: { signal: AbortSignal }) => new Promise((_r, reject) => options.signal.addEventListener('abort', () => reject(new Error('aborted'))))),
+      $: jest.fn(() => new Promise(() => undefined)),
+    } as unknown as Frame
+    const page = { getDefaultTimeout: jest.fn().mockReturnValue(50), frames: jest.fn().mockReturnValue([mainFrame, hung]), mainFrame: jest.fn().mockReturnValue(mainFrame) } as unknown as Page
+
+    const error = (await serviceInternals()
+      .waitForActionTarget(page, splitFieldStep)
+      .catch((e: unknown) => e)) as Error
+
+    expect(error.message).toContain('#1 https://payments.example.com/card-frame: no answer within 2000 ms')
   })
 
   it('rechecks the frame origin after acquiring its element handle', async () => {

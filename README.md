@@ -378,8 +378,11 @@ Only run-level failures abort the whole run: the inventory pull, the push or pul
 
 Payment providers commonly isolate card fields in cross-origin iframes. Add a
 `frameUrl` regular expression to a workflow step to run its `waitFor` selector
-and action inside the first matching frame. Without `frameUrl`, the step runs
-against the top-level page as usual:
+and action inside the matching frame that holds it. Providers with split card
+fields put the number, expiry and CVC each in a frame of its own at the same
+URL; the monitor waits in every matching frame at once and acts in the one
+where the selector becomes visible. Without `frameUrl`, the step runs against
+the top-level page as usual:
 
 ```json
 {
@@ -405,6 +408,11 @@ identifies fields by `id` instead, use the `id` selector type:
 Anchor frame matchers to a trusted HTTPS origin and the narrowest stable path.
 The frame is resolved when the step executes, so dynamically mounted payment
 frames are supported. The same mechanism works in nested `clickPopup` steps.
+When a framed step times out, the error lists every matching frame and what it
+held — `selector absent`, `selector present but not visible`, `selector
+visible`, `unreachable (<error>)` when the probe itself failed (the frame
+detached or its session closed), or `no answer` when the frame did not respond
+in time — and counts repeated frame URLs rather than listing them once.
 
 For a later step whose pre-action target occasionally fails to mount, set
 `"reloadOnMissingTarget": true` on its action. This option requires an anchored
