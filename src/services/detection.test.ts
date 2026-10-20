@@ -983,20 +983,98 @@ describe('DetectionService framed workflow actions', () => {
     expect(error.message).toContain('Observed frame URLs: (none)')
   })
 
-  it('reports a frame that does not answer the timeout probe without waiting on it', async () => {
-    const mainFrame = { url: jest.fn().mockReturnValue('https://shop.example.com/checkout') } as unknown as Frame
-    const hung = {
+  // A matching frame that gives Puppeteer no answer, with a DevTools session
+  // whose `send` the test controls.
+  function silentFrame(send: jest.Mock | undefined): Frame {
+    return {
       url: jest.fn().mockReturnValue('https://payments.example.com/card-frame'),
       waitForSelector: jest.fn((_s: string, options: { signal: AbortSignal }) => new Promise((_r, reject) => options.signal.addEventListener('abort', () => reject(new Error('aborted'))))),
       $: jest.fn(() => new Promise(() => undefined)),
+      _id: 'FRAME-1',
+      ...(send === undefined ? {} : { client: { send, on: jest.fn() } }),
     } as unknown as Frame
-    const page = { getDefaultTimeout: jest.fn().mockReturnValue(50), frames: jest.fn().mockReturnValue([mainFrame, hung]), mainFrame: jest.fn().mockReturnValue(mainFrame) } as unknown as Page
+  }
 
-    const error = (await serviceInternals()
-      .waitForActionTarget(page, splitFieldStep)
-      .catch((e: unknown) => e)) as Error
+  // Chrome answering the direct check with `value` (or `exceptionDetails`).
+  const chromeAnswers = (answer: { value?: unknown; exceptionDetails?: object }): jest.Mock =>
+    jest.fn(async (method: string) => (method === 'Page.createIsolatedWorld' ? { executionContextId: 7 } : { result: { value: answer.value }, ...(answer.exceptionDetails ? { exceptionDetails: answer.exceptionDetails } : {}) }))
 
-    expect(error.message).toContain('#1 https://payments.example.com/card-frame: no answer within 2000 ms')
+  // The timeout message for a page with this one matching frame, probes bounded at 100 ms.
+  async function timeoutMessageFor(frame: Frame): Promise<string> {
+    const mainFrame = { url: jest.fn().mockReturnValue('https://shop.example.com/checkout') } as unknown as Frame
+    const page = { getDefaultTimeout: jest.fn().mockReturnValue(50), frames: jest.fn().mockReturnValue([mainFrame, frame]), mainFrame: jest.fn().mockReturnValue(mainFrame) } as unknown as Page
+    const service = new DetectionService({ frameDiagnosisMs: 100 }) as unknown as DetectionServiceInternals
+    const error = (await service.waitForActionTarget(page, splitFieldStep).catch((e: unknown) => e)) as Error
+    expect(error.constructor.name).toBe('TimeoutError')
+    return error.message
+  }
+
+  const ANSWERED = 'Chrome answered within the same 100 ms in which Puppeteer got nothing — most likely Puppeteer’s handle on the frame stopped answering, though a very slow renderer can look the same'
+
+  it('asks Chrome directly, in a fresh isolated world on the frame’s own session, when a frame gives Puppeteer no answer', async () => {
+    const send = chromeAnswers({ value: 'visible' })
+    const message = await timeoutMessageFor(silentFrame(send))
+
+    expect(message).toContain(`#1 https://payments.example.com/card-frame: no answer within 100 ms; asked directly over DevTools: selector visible; ${ANSWERED}).`)
+    expect(send).toHaveBeenCalledWith('Page.createIsolatedWorld', { frameId: 'FRAME-1', worldName: '__pci_frame_diagnosis' })
+    expect(send).toHaveBeenCalledWith('Runtime.evaluate', expect.objectContaining({ contextId: 7, returnByValue: true }))
+  })
+
+  it.each([
+    ['absent', 'selector absent'],
+    ['hidden', 'selector present but not visible'],
+    ['unsupported', 'the selector uses Puppeteer-only syntax, so its state was not checked'],
+  ])('reports Chrome’s %s answer in the fixed wording', async (value, wording) => {
+    const message = await timeoutMessageFor(silentFrame(chromeAnswers({ value })))
+
+    expect(message).toContain(`asked directly over DevTools: ${wording}; ${ANSWERED}`)
+  })
+
+  it('never puts an answer outside the fixed vocabulary into the message', async () => {
+    const message = await timeoutMessageFor(silentFrame(chromeAnswers({ value: '4242 4242 4242 4242' })))
+
+    expect(message).toContain(`asked directly over DevTools: an unexpected answer (not shown); ${ANSWERED}`)
+    expect(message).not.toContain('4242')
+  })
+
+  it('reports a check that threw in the frame without the exception’s text', async () => {
+    const message = await timeoutMessageFor(silentFrame(chromeAnswers({ exceptionDetails: { text: 'Uncaught secret-token-123' } })))
+
+    expect(message).toContain(`asked directly over DevTools: the check threw in the frame; ${ANSWERED}`)
+    expect(message).not.toContain('secret-token-123')
+  })
+
+  it('says the renderer is not responding when Chrome does not answer either', async () => {
+    const message = await timeoutMessageFor(silentFrame(jest.fn(() => new Promise(() => undefined))))
+
+    expect(message).toContain('no answer within 100 ms; asked directly over DevTools: no answer within 100 ms either — the frame’s renderer is not responding')
+  })
+
+  it('says the direct check was unavailable for a frame without a DevTools session', async () => {
+    const message = await timeoutMessageFor(silentFrame(undefined))
+
+    expect(message).toContain('asked directly over DevTools: unavailable (no DevTools session or frame id for this frame)')
+  })
+
+  it('names the error when the direct check fails', async () => {
+    const message = await timeoutMessageFor(silentFrame(jest.fn().mockRejectedValue(Object.assign(new Error('Session closed'), { name: 'TargetCloseError' }))))
+
+    expect(message).toContain('asked directly over DevTools: failed (TargetCloseError)')
+  })
+
+  it('reports Chrome’s answer only for a frame that gave Puppeteer no answer', async () => {
+    const frame = Object.assign(silentFrame(chromeAnswers({ value: 'visible' })), { $: jest.fn().mockResolvedValue(null) })
+
+    const message = await timeoutMessageFor(frame)
+
+    expect(message).toContain('#1 https://payments.example.com/card-frame: selector absent).')
+    expect(message).not.toContain('asked directly')
+  })
+
+  it('reports a frame that does not answer the timeout probe without waiting on it', async () => {
+    const message = await timeoutMessageFor(silentFrame(undefined))
+
+    expect(message).toContain('#1 https://payments.example.com/card-frame: no answer within 100 ms')
   })
 
   it('rechecks the frame origin after acquiring its element handle', async () => {
