@@ -123,7 +123,7 @@ export function requestIdOf(request: HTTPRequest): string | undefined {
   return typeof id === 'string' ? id : undefined
 }
 
-function frameIdOf(frame: Frame | null): string | undefined {
+export function frameIdOf(frame: Frame | null): string | undefined {
   const id = (frame as unknown as { _id?: unknown } | null)?._id
   return typeof id === 'string' ? id : undefined
 }

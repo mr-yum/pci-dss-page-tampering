@@ -412,7 +412,11 @@ When a framed step times out, the error lists every matching frame and what it
 held — `selector absent`, `selector present but not visible`, `selector
 visible`, `unreachable (<error>)` when the probe itself failed (the frame
 detached or its session closed), or `no answer` when the frame did not respond
-in time — and counts repeated frame URLs rather than listing them once.
+in time — and counts repeated frame URLs rather than listing them once. For a
+frame that gave no answer, it adds what Chrome said when asked directly over
+that frame's own DevTools session in the same window: an answer suggests the
+automation's handle on the frame stopped answering (a very slow renderer can
+look the same), and no answer means the frame's renderer is not responding.
 
 For a later step whose pre-action target occasionally fails to mount, set
 `"reloadOnMissingTarget": true` on its action. This option requires an anchored

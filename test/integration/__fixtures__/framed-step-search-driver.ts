@@ -11,6 +11,7 @@ import type { PuppeteerLocatorAction } from '../../../src/types/puppeteer.js'
 
 type Internals = {
   waitForActionTarget(page: Page, step: PuppeteerLocatorAction, timeout?: number): Promise<{ context: Page | Frame; element?: ElementHandle<Element> }>
+  directSelectorStateIn(frame: Frame, selector: string): Promise<string>
 }
 
 export const FRAME_URL = '^http://localhost:\\d+/frame/card(?:[?#]|$)'
@@ -57,9 +58,35 @@ try {
     () => ({ name: 'resolved', message: '' }),
     (error: Error) => ({ name: error.name, message: error.message }),
   )
+  // The direct check Chrome answers, run for real against a live cross-site
+  // card frame (the CVC one, which also holds a hidden input).
+  const cvcFrame = idle.page.frames().find((frame) => new RegExp(FRAME_URL).test(frame.url()) && frame.url().endsWith('#field=cvc'))!
+  const direct: Record<string, string> = {}
+  for (const [label, selector] of [
+    ['visible', 'input[name="cvc"]'],
+    ['hidden', 'input[name="postcode"]'],
+    ['invisible', 'input[name="ghost"]'],
+    ['absent', 'input[name="expiry"]'],
+    ['unsupported', 'button ::-p-text(Pay)'],
+  ] as const)
+    direct[label] = await service.directSelectorStateIn(cvcFrame, selector)
   await idle.page.browserContext().close()
 
-  console.log(JSON.stringify({ busy: { frames: busy.frames, ...found }, timeout: { frames: idle.frames, ...timedOut } }))
+  // Last, since its renderer never recovers: one card frame that stops
+  // answering 1.5 s after it loads (its load never completes the page's own,
+  // so wait for the frame rather than the page's load event).
+  const hungPage = await (await browser.createBrowserContext()).newPage()
+  await hungPage.goto(`${origin}/hung-checkout`, { waitUntil: 'domcontentloaded' })
+  const frameDeadline = Date.now() + 10_000
+  while (Date.now() < frameDeadline && !hungPage.frames().some((frame) => new RegExp(FRAME_URL).test(frame.url()))) await new Promise((resolve) => setTimeout(resolve, 100))
+  await new Promise((resolve) => setTimeout(resolve, 2_500))
+  const hungFrames = hungPage.frames().filter((frame) => new RegExp(FRAME_URL).test(frame.url())).length
+  const hung = await service.waitForActionTarget(hungPage, step('input[name="postcode"]'), 1_000).then(
+    () => ({ name: 'resolved', message: '' }),
+    (error: Error) => ({ name: error.name, message: error.message }),
+  )
+
+  console.log(JSON.stringify({ busy: { frames: busy.frames, ...found }, timeout: { frames: idle.frames, ...timedOut }, direct, hung: { frames: hungFrames, ...hung } }))
 } finally {
   await browser.close()
 }

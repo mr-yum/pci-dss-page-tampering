@@ -19,7 +19,7 @@ import { generateTotp, millisecondsRemainingInTotpWindow } from '../utils/totp.j
 import { redactUrl } from '../utils/url.js'
 import { deriveUserAgentMetadata, normaliseHeadlessUserAgent } from '../utils/user-agent.js'
 import { getPuppeteerWorkflowFromTarget, stepsToPuppeteerLocatorAction } from '../utils/workflow.js'
-import { DocumentTracker } from './document-ledger.js'
+import { DocumentTracker, frameIdOf } from './document-ledger.js'
 import { type AttributedInsertion, resolveInitiatorChains } from './initiator-chain.js'
 import { outsidePaymentDocuments } from './payment-scope.js'
 
@@ -103,15 +103,19 @@ export class DetectionService implements IDetectionService {
   private readonly totpSeeds: ReadonlyMap<string, string>
 
   private readonly scriptSettle: { deadlineMs: number; closeGraceMs: number }
+  private readonly frameDiagnosisMs: number
 
   /**
    * @param options.scriptSettle How long a finished workflow waits for script
    *   requests and reads, and how long a closed context is given. Overridable
    *   for tests only; production uses the defaults.
+   * @param options.frameDiagnosisMs Bound on each probe that describes a framed
+   *   step's timeout. Overridable for tests only.
    */
-  constructor(options: { totpSeeds?: ReadonlyMap<string, string>; scriptSettle?: { deadlineMs: number; closeGraceMs: number } } = {}) {
+  constructor(options: { totpSeeds?: ReadonlyMap<string, string>; scriptSettle?: { deadlineMs: number; closeGraceMs: number }; frameDiagnosisMs?: number } = {}) {
     this.totpSeeds = options.totpSeeds ?? new Map()
     this.scriptSettle = options.scriptSettle ?? { deadlineMs: SCRIPT_READ_SETTLE_TIMEOUT_MS, closeGraceMs: SCRIPT_READ_CLOSE_GRACE_MS }
+    this.frameDiagnosisMs = options.frameDiagnosisMs ?? FRAME_DIAGNOSIS_TIMEOUT_MS
   }
   async detect(browser: Browser, target: Target, scriptContentMatchers: ScriptMatcher[], inventoryHeaders: readonly InventoryHeaderInfo[] = []): Promise<DetectionSummary> {
     const retry = getPuppeteerWorkflowFromTarget(target).retry
@@ -1032,7 +1036,8 @@ export class DetectionService implements IDetectionService {
    * What each frame matching a timed-out step's pattern held: the selector
    * absent, present but hidden, or visible; unreachable when the probe itself
    * failed (the frame detached, its session closed); or no answer when the
-   * frame did not respond within the bound. Split card fields put
+   * frame did not respond within the bound — followed, for no answer, by what
+   * Chrome itself said when asked directly. Split card fields put
    * every input in a frame of the same URL, so naming the URL alone cannot
    * say which frame was missing the field; "visible" in a timeout means the
    * wait itself never got an answer from that frame. States only — never
@@ -1049,7 +1054,17 @@ export class DetectionService implements IDetectionService {
     return `Matching frames: ${frames.length} (${frames.map(({ url }, index) => `#${index + 1} ${this.redactFrameUrl(url)}: ${states[index]}`).join('; ')}).`
   }
 
+  /**
+   * Both probes run at once, in the same window, so "Chrome answered while
+   * Puppeteer did not" compares like with like; the direct answer is reported
+   * only when Puppeteer got nothing.
+   */
   private async selectorStateIn(frame: Frame, selector: string): Promise<string> {
+    const [state, direct] = await Promise.all([this.puppeteerSelectorStateIn(frame, selector), this.directSelectorStateIn(frame, selector)])
+    return state.startsWith('no answer') ? `${state}; asked directly over DevTools: ${direct}` : state
+  }
+
+  private async puppeteerSelectorStateIn(frame: Frame, selector: string): Promise<string> {
     const probe = (async (): Promise<string> => {
       const element = await frame.$(selector)
       if (element === null) return 'selector absent'
@@ -1061,7 +1076,54 @@ export class DetectionService implements IDetectionService {
     })().catch((error: unknown) => `unreachable (${error instanceof Error ? error.name : 'error'})`)
     let bound: ReturnType<typeof setTimeout> | undefined
     const noAnswer = new Promise<string>((resolve) => {
-      bound = setTimeout(() => resolve(`no answer within ${FRAME_DIAGNOSIS_TIMEOUT_MS} ms`), FRAME_DIAGNOSIS_TIMEOUT_MS)
+      bound = setTimeout(() => resolve(`no answer within ${this.frameDiagnosisMs} ms`), this.frameDiagnosisMs)
+    })
+    try {
+      return await Promise.race([probe, noAnswer])
+    } finally {
+      clearTimeout(bound)
+    }
+  }
+
+  /**
+   * The selector's state in `frame` asked of Chrome itself: a fresh isolated
+   * world on the frame's own DevTools session, so nothing goes through
+   * Puppeteer's record of the frame's execution contexts. Reported only when
+   * Puppeteer got no answer in the same window. An answer here most likely
+   * means Puppeteer's handle on the frame is what stopped answering — but this
+   * check takes two round trips where Puppeteer's takes several, so a renderer
+   * slow enough to fail the longer chain can look the same, and the wording
+   * says so. No answer means the frame's renderer is not responding. Returns a
+   * fixed vocabulary only, never page content.
+   */
+  private async directSelectorStateIn(frame: Frame, selector: string): Promise<string> {
+    const session = frameSessionOf(frame)
+    const frameId = frameIdOf(frame)
+    if (session === undefined || frameId === undefined) return 'unavailable (no DevTools session or frame id for this frame)'
+    const answered = `Chrome answered within the same ${this.frameDiagnosisMs} ms in which Puppeteer got nothing — most likely Puppeteer’s handle on the frame stopped answering, though a very slow renderer can look the same`
+    // Puppeteer-only selector syntax (`::-p-text(…)`) is not CSS, so a parse
+    // failure is answered too: an answer of any kind shows the frame is alive.
+    const expression = `(() => { let element; try { element = document.querySelector(${JSON.stringify(selector)}) } catch { return 'unsupported' } if (element === null) return 'absent'; const box = element.getBoundingClientRect(); return box.width > 0 && box.height > 0 && getComputedStyle(element).visibility !== 'hidden' ? 'visible' : 'hidden' })()`
+    const probe = (async (): Promise<string> => {
+      const { executionContextId } = await session.send('Page.createIsolatedWorld', { frameId, worldName: '__pci_frame_diagnosis' })
+      const { result, exceptionDetails } = await session.send('Runtime.evaluate', { contextId: executionContextId, expression, returnByValue: true })
+      if (exceptionDetails !== undefined) return `the check threw in the frame; ${answered}`
+      switch (result.value) {
+        case 'absent':
+          return `selector absent; ${answered}`
+        case 'hidden':
+          return `selector present but not visible; ${answered}`
+        case 'visible':
+          return `selector visible; ${answered}`
+        case 'unsupported':
+          return `the selector uses Puppeteer-only syntax, so its state was not checked; ${answered}`
+        default:
+          return `an unexpected answer (not shown); ${answered}`
+      }
+    })().catch((error: unknown) => `failed (${error instanceof Error ? error.name : 'error'})`)
+    let bound: ReturnType<typeof setTimeout> | undefined
+    const noAnswer = new Promise<string>((resolve) => {
+      bound = setTimeout(() => resolve(`no answer within ${this.frameDiagnosisMs} ms either — the frame’s renderer is not responding`), this.frameDiagnosisMs)
     })
     try {
       return await Promise.race([probe, noAnswer])
