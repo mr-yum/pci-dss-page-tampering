@@ -245,6 +245,18 @@ npm start -- \
 
 In the bundled GitHub Actions workflow, seeds are discovered by naming convention rather than hardcoded: every `<NAME>_TOTP_SEED` repository secret is passed as `--totp-seed <name>=<value>`, with the name derived from the prefix (`MY_TARGET_TOTP_SEED` → `my-target`). Adding a TOTP-protected target requires only a new secret — no workflow changes. When a step fires with less than 5 seconds left in the current TOTP window, the run waits for the next window so the code cannot expire mid-submission.
 
+A code the page does not take can be retried, for a code field the page submits by itself once its digits are in (no separate Verify click). Mark the action `"autoSubmits": true`:
+
+```json
+{
+  "description": "Enter one-time code (submits itself when complete)",
+  "waitFor": [{ "type": "testid", "identifier": "otp-input" }],
+  "action": { "type": "totp", "seedRef": "checkout-user", "autoSubmits": true }
+}
+```
+
+After typing, such a step gives the code field 10 seconds to go away — the page moving on is the only sign of an accepted code — and if it is still showing, waits for the next 30-second window, looks the field up again, and types that window's code over the old digits — into the field itself, or the first input inside it when the step names a wrapper — up to three codes in all. The usual reason a valid code is refused is that it was already used: sign-in servers reject a code they have accepted once in the same window, so two runs signing in as the same account within one window (pushes to two repositories seconds apart, both starting a full run) would otherwise lose one sign-in. Give each monitoring account to one monitor; the retry covers an overlap, not a second consumer of the same account. A field that goes away for any other reason counts as accepted; a field that is gone, hidden, or (for a `frameUrl` step) in a frame no longer matching the pattern by the time the next window comes gets no further code; and if all three codes are refused the step carries on and the next step reports what the page shows. Without `autoSubmits` the step types one code and moves on, as before — a field that a later Verify click submits stays visible whatever the code, so it says nothing about whether the code was taken.
+
 > **Note**: Automating TOTP means the second factor lives alongside the first in the same secrets store, which weakens what MFA provides for that account. Use a dedicated, least-privileged synthetic-monitoring account.
 
 ### A Step That Accepts More Than One Selector

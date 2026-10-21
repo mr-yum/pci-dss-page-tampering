@@ -150,6 +150,7 @@ function actionToPuppeteerAction(action: WorkflowActionType): PuppeteerAction {
       return {
         type: 'totp',
         seedRef: seedRef,
+        ...(action.autoSubmits === true ? { autoSubmits: true } : {}),
       }
     }
 

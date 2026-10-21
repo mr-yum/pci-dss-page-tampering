@@ -4,6 +4,11 @@ export type WorkflowActionType = {
   // Name of a TOTP seed supplied at runtime via --totp-seed <name>=<seed>.
   // The seed itself must never appear in workflow files (they live in Git).
   seedRef?: string | undefined
+  // For totp actions: the page submits the code by itself once all its
+  // digits are in (no separate Verify click). Only then is a code field still
+  // showing afterwards a refused code, so only then is it retried with the
+  // next window's code.
+  autoSubmits?: true | undefined
   delay?: number | undefined
   waitForNavigation?: true | undefined
   // For click actions, wait for a response whose URL matches this regular

@@ -1319,6 +1319,155 @@ describe('DetectionService framed workflow actions', () => {
   })
 })
 
+describe('DetectionService TOTP step', () => {
+  afterEach(() => jest.restoreAllMocks())
+
+  // 2 s into a 30 s window, so the safety-margin wait never fires on the first code.
+  const WINDOW_START = 30_000 * 56_666_667
+  const SEED = 'JBSWY3DPEHPK3PXP'
+  const autoSubmitting: PuppeteerLocatorAction = { description: 'Enter the one-time code', querySelector: '[data-testid="otp-input"]', action: { type: 'totp', seedRef: 'checkout', autoSubmits: true }, delay: 0 }
+
+  // A clock the service's sleep advances, a code field whose acceptance the
+  // test scripts, the field as looked up again after the wait, and every code
+  // typed into either.
+  function setUp(
+    acceptance: Array<'accepted' | 'rejected' | 'detached'>,
+    options: { step?: PuppeteerLocatorAction; fieldAfterWait?: 'visible' | 'hidden' | 'gone' | 'wrapper-without-input'; frameUrlAfterWait?: string; frameUrlDuringLookup?: string } = {},
+  ) {
+    let now = WINDOW_START + 2_000
+    jest.spyOn(Date, 'now').mockImplementation(() => now)
+    const service = new DetectionService({ totpSeeds: new Map([['checkout', SEED]]) })
+    let frameUrl = 'https://auth.example.com/verify'
+    jest.spyOn(service as unknown as { sleep(ms: number): Promise<void> }, 'sleep').mockImplementation(async (ms: number) => {
+      now += ms
+      if (options.frameUrlAfterWait !== undefined) frameUrl = options.frameUrlAfterWait
+    })
+    const typed: string[] = []
+    const pinned = { evaluate: jest.fn().mockResolvedValue(undefined), type: jest.fn(async (code: string) => void typed.push(code)), dispose: jest.fn().mockResolvedValue(undefined) }
+    // The input the retype types into: the field itself, or the input inside a wrapper.
+    const input = { evaluate: jest.fn().mockResolvedValue(undefined), type: jest.fn(async (code: string) => void typed.push(code)), dispose: jest.fn().mockResolvedValue(undefined) }
+    const fresh = {
+      isVisible: jest.fn().mockResolvedValue(options.fieldAfterWait !== 'hidden'),
+      evaluateHandle: jest.fn(async () => ({ asElement: () => (options.fieldAfterWait === 'wrapper-without-input' ? null : input), dispose: jest.fn().mockResolvedValue(undefined) })),
+      dispose: jest.fn().mockResolvedValue(undefined),
+    }
+    let check = 0
+    const context = {
+      url: jest.fn(() => frameUrl),
+      waitForSelector: jest.fn(async () => {
+        const outcome = acceptance[Math.min(check++, acceptance.length - 1)]
+        if (outcome === 'rejected') throw Object.assign(new Error('Waiting for selector failed'), { name: 'TimeoutError' })
+        if (outcome === 'detached') throw new Error('Frame detached')
+        return null
+      }),
+      $: jest.fn(async () => {
+        if (options.frameUrlDuringLookup !== undefined) frameUrl = options.frameUrlDuringLookup
+        return options.fieldAfterWait === 'gone' ? null : fresh
+      }),
+    }
+    const log = jest.fn()
+    const run = () =>
+      (service as unknown as DetectionServiceInternals).executeAction(
+        {} as Page,
+        { context: context as unknown as Frame, element: pinned as unknown as ElementHandle<Element> },
+        options.step ?? autoSubmitting,
+        { logger: { log } } as unknown as Target,
+        browser,
+      )
+    return { run, typed, context, log, fresh, input, now: () => now }
+  }
+
+  it('types one code and does not wait on the page when the page does not submit it by itself', async () => {
+    const { run, typed, context } = setUp(['rejected'], { step: { ...autoSubmitting, action: { type: 'totp', seedRef: 'checkout' } } })
+    await run()
+    expect(typed).toHaveLength(1)
+    expect(context.waitForSelector).not.toHaveBeenCalled()
+  })
+
+  it('types one code and moves on when the page takes it', async () => {
+    const { run, typed, log } = setUp(['accepted'])
+    await run()
+    expect(typed).toHaveLength(1)
+    expect(log).not.toHaveBeenCalled()
+  })
+
+  it('types the next window’s code into the field as it is now when the field is still showing after the first', async () => {
+    const { run, typed, log, now, input, context } = setUp(['rejected', 'accepted'])
+    await run()
+    expect(typed).toHaveLength(2)
+    // A different code: the next window's, typed after the window turned over,
+    // into the field looked up again rather than the handle pinned before the wait.
+    expect(typed[1]).not.toBe(typed[0])
+    expect(now()).toBeGreaterThanOrEqual(WINDOW_START + 30_000)
+    expect(context.$).toHaveBeenCalledWith('[data-testid="otp-input"]')
+    expect(input.type).toHaveBeenCalledTimes(1)
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("Typing the next window's code"))
+  })
+
+  it('stops after three codes without throwing, so the next step reports what the page shows', async () => {
+    const { run, typed, log } = setUp(['rejected'])
+    await expect(run()).resolves.toBeUndefined()
+    expect(typed).toHaveLength(3)
+    expect(new Set(typed).size).toBe(3)
+    expect(log).toHaveBeenLastCalledWith(expect.stringContaining('still not accepted after 3 codes'))
+  })
+
+  it('counts the field going away for any other reason (a detached frame) as accepted, and never retypes', async () => {
+    const { run, typed } = setUp(['detached'])
+    await run()
+    expect(typed).toHaveLength(1)
+  })
+
+  it('types nothing more when the field has gone by the time the next window comes', async () => {
+    const { run, typed } = setUp(['rejected'], { fieldAfterWait: 'gone' })
+    await run()
+    expect(typed).toHaveLength(1)
+  })
+
+  it('types nothing more when the field is still in the page but hidden by the time the next window comes', async () => {
+    const { run, typed, fresh } = setUp(['rejected'], { fieldAfterWait: 'hidden' })
+    await run()
+    expect(typed).toHaveLength(1)
+    expect(fresh.dispose).toHaveBeenCalled()
+  })
+
+  it('types nothing more into a framed field whose frame left its trusted URL during the wait', async () => {
+    const framed = { ...autoSubmitting, frameUrl: '^https://auth\\.example\\.com/verify$' }
+    const { run, typed, context } = setUp(['rejected'], { step: framed, frameUrlAfterWait: 'https://elsewhere.example.org/verify' })
+    await run()
+    expect(typed).toHaveLength(1)
+    expect(context.$).not.toHaveBeenCalled()
+  })
+
+  const framed = { ...autoSubmitting, frameUrl: '^https://auth\\.example\\.com/verify$' }
+
+  it('retypes into a framed field whose frame still matches its trusted URL', async () => {
+    const { run, typed } = setUp(['rejected', 'accepted'], { step: framed })
+    await run()
+    expect(typed).toHaveLength(2)
+  })
+
+  it('types nothing more when the frame leaves its trusted URL while the field is being looked up', async () => {
+    const { run, typed, fresh } = setUp(['rejected'], { step: framed, frameUrlDuringLookup: 'https://elsewhere.example.org/verify' })
+    await run()
+    expect(typed).toHaveLength(1)
+    expect(fresh.dispose).toHaveBeenCalled()
+  })
+
+  it('gives up cleanly, without throwing, on a field that is a wrapper with no input inside', async () => {
+    const { run, typed, log } = setUp(['rejected'], { fieldAfterWait: 'wrapper-without-input' })
+    await expect(run()).resolves.toBeUndefined()
+    expect(typed).toHaveLength(1)
+    expect(log).toHaveBeenCalledTimes(1)
+  })
+
+  it('waits for the field to be hidden, for a bounded time', async () => {
+    const { run, context } = setUp(['accepted'])
+    await run()
+    expect(context.waitForSelector).toHaveBeenCalledWith('[data-testid="otp-input"]', { hidden: true, timeout: 10_000 })
+  })
+})
+
 describe('DetectionService payment page scope', () => {
   afterEach(() => jest.restoreAllMocks())
 

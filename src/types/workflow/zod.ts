@@ -108,6 +108,7 @@ export const WorkflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() =>
           type: z.enum(['click', 'input', 'escape', 'navigate', 'clickPopup', 'totp']),
           value: z.string().optional(),
           seedRef: z.string().optional(),
+          autoSubmits: z.literal(true).optional(),
           delay: z.number().optional(),
           waitForNavigation: z.literal(true).optional(),
           waitForResponse: WaitForResponseSchema.optional(),
@@ -128,6 +129,13 @@ export const WorkflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() =>
               code: z.ZodIssueCode.custom,
               path: ['seedRef'],
               message: "Workflow actions of type 'totp' require a non-empty seedRef naming a seed passed via --totp-seed",
+            })
+          }
+          if (action.autoSubmits === true && action.type !== 'totp') {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['autoSubmits'],
+              message: "autoSubmits is only supported for workflow actions of type 'totp'",
             })
           }
           const hasResponseOptions =
