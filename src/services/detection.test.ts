@@ -1077,6 +1077,128 @@ describe('DetectionService framed workflow actions', () => {
     expect(message).toContain('#1 https://payments.example.com/card-frame: no answer within 100 ms')
   })
 
+  describe('alternative selector chains', () => {
+    // A selector whose wait never resolves on its own: it ends only when aborted.
+    const neverVisible = (signals: AbortSignal[]) => (_selector: string, options: { signal: AbortSignal }) => {
+      signals.push(options.signal)
+      return new Promise((_resolve, reject) => options.signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true }))
+    }
+    const withAlternatives = (frameUrl?: string): PuppeteerLocatorAction => ({
+      description: 'Open the catalogue',
+      querySelector: 'a[href$="/shop/catalogue"]',
+      alternativeQuerySelectors: ['a[href$="/shop/v2/catalogue"]'],
+      ...(frameUrl === undefined ? {} : { frameUrl }),
+      action: { type: 'navigate', waitForNavigation: true },
+      delay: 0,
+    })
+
+    it('waits for every chain at once on the page and reports the one that became visible, not the first in the list', async () => {
+      const signals: AbortSignal[] = []
+      const element = { dispose: jest.fn().mockResolvedValue(undefined) }
+      const waitForSelector = jest.fn((selector: string, options: { signal: AbortSignal; visible: boolean }) => {
+        // The waitFor chain only ever matches a hidden element; the alternative is visible.
+        if (selector === 'a[href$="/shop/catalogue"]') return neverVisible(signals)(selector, options)
+        return new Promise((resolve) => setTimeout(() => resolve(element), 100))
+      })
+      const page = { getDefaultTimeout: jest.fn().mockReturnValue(5000), waitForSelector } as unknown as Page
+
+      await expect(serviceInternals().waitForActionTarget(page, withAlternatives())).resolves.toEqual({ context: page, querySelector: 'a[href$="/shop/v2/catalogue"]' })
+      expect(waitForSelector).toHaveBeenCalledWith('a[href$="/shop/catalogue"]', expect.objectContaining({ visible: true }))
+      expect(waitForSelector).toHaveBeenCalledWith('a[href$="/shop/v2/catalogue"]', expect.objectContaining({ visible: true }))
+      // The losing wait was let go once the alternative won.
+      expect(signals[0]!.aborted).toBe(true)
+    })
+
+    it('times out naming every chain when none becomes visible on the page', async () => {
+      const page = { getDefaultTimeout: jest.fn().mockReturnValue(5000), waitForSelector: jest.fn().mockRejectedValue(Object.assign(new Error('timeout'), { name: 'TimeoutError' })) } as unknown as Page
+
+      const error = (await serviceInternals()
+        .waitForActionTarget(page, withAlternatives(), 50)
+        .catch((e: unknown) => e)) as Error
+
+      expect(error.constructor.name).toBe('TimeoutError')
+      expect(error.message).toBe('Timed out waiting for any of the selectors \'a[href$="/shop/catalogue"]\' | \'a[href$="/shop/v2/catalogue"]\'')
+    })
+
+    it('waits for every chain in each matching frame and reports the frame and chain that matched', async () => {
+      const signals: AbortSignal[] = []
+      const mainFrame = {} as Frame
+      const element = { dispose: jest.fn() }
+      const frame = {
+        url: jest.fn().mockReturnValue('https://payments.example.com/card-frame'),
+        waitForSelector: jest.fn((selector: string, options: { signal: AbortSignal }) =>
+          selector === 'a[href$="/shop/catalogue"]' ? neverVisible(signals)(selector, options) : new Promise((resolve) => setTimeout(() => resolve(element), 100)),
+        ),
+      } as unknown as Frame
+      const page = { getDefaultTimeout: jest.fn().mockReturnValue(5000), frames: jest.fn().mockReturnValue([mainFrame, frame]), mainFrame: jest.fn().mockReturnValue(mainFrame) } as unknown as Page
+
+      await expect(serviceInternals().waitForActionTarget(page, withAlternatives('^https://payments\\.example\\.com/card-frame$'))).resolves.toEqual({ context: frame, element, querySelector: 'a[href$="/shop/v2/catalogue"]' })
+      expect(signals[0]!.aborted).toBe(true)
+    })
+
+    it('waits for a chain in a frame again once the frame is back on the pattern, while a sibling chain is still waiting', async () => {
+      const signals: AbortSignal[] = []
+      const mainFrame = {} as Frame
+      const offPattern = { dispose: jest.fn().mockResolvedValue(undefined) }
+      const onPattern = { dispose: jest.fn() }
+      const url = jest.fn().mockReturnValue('https://payments.example.com/card-frame')
+      let catalogueCalls = 0
+      const frame = {
+        url,
+        waitForSelector: jest.fn(async (selector: string, options: { signal: AbortSignal }) => {
+          if (selector === 'a[href$="/shop/v2/catalogue"]') return neverVisible(signals)(selector, options)
+          // First match lands while the frame is elsewhere; it comes back 250 ms later.
+          if (catalogueCalls++ === 0) {
+            url.mockReturnValue('https://attacker.example.org/card-frame')
+            setTimeout(() => url.mockReturnValue('https://payments.example.com/card-frame'), 250)
+            return offPattern
+          }
+          return onPattern
+        }),
+      } as unknown as Frame
+      const page = { getDefaultTimeout: jest.fn().mockReturnValue(5000), frames: jest.fn().mockReturnValue([mainFrame, frame]), mainFrame: jest.fn().mockReturnValue(mainFrame) } as unknown as Page
+
+      await expect(serviceInternals().waitForActionTarget(page, withAlternatives('^https://payments\\.example\\.com/card-frame$'))).resolves.toEqual({ context: frame, element: onPattern, querySelector: 'a[href$="/shop/catalogue"]' })
+      expect(offPattern.dispose).toHaveBeenCalledTimes(1)
+    })
+
+    it('rethrows a non-timeout failure instead of reporting it as a timeout', async () => {
+      const page = { getDefaultTimeout: jest.fn().mockReturnValue(5000), waitForSelector: jest.fn().mockRejectedValue(Object.assign(new Error('Session closed'), { name: 'TargetCloseError' })) } as unknown as Page
+
+      const error = (await serviceInternals()
+        .waitForActionTarget(page, withAlternatives())
+        .catch((e: unknown) => e)) as Error
+
+      expect(error.name).toBe('TargetCloseError')
+      expect(error.message).toBe('Session closed')
+    })
+
+    it('describes each chain on its own when a framed step with alternatives times out', async () => {
+      const mainFrame = { url: jest.fn().mockReturnValue('https://shop.example.com/checkout') } as unknown as Frame
+      const frame = {
+        url: jest.fn().mockReturnValue('https://payments.example.com/card-frame'),
+        waitForSelector: jest.fn((_s: string, options: { signal: AbortSignal }) => new Promise((_r, reject) => options.signal.addEventListener('abort', () => reject(new Error('aborted'))))),
+        $: jest.fn(async (selector: string) => (selector === 'a[href$="/shop/catalogue"]' ? null : { isVisible: jest.fn().mockResolvedValue(false), dispose: jest.fn().mockResolvedValue(undefined) })),
+      } as unknown as Frame
+      const page = { getDefaultTimeout: jest.fn().mockReturnValue(50), frames: jest.fn().mockReturnValue([mainFrame, frame]), mainFrame: jest.fn().mockReturnValue(mainFrame) } as unknown as Page
+
+      const error = (await serviceInternals()
+        .waitForActionTarget(page, withAlternatives('^https://payments\\.example\\.com/card-frame$'))
+        .catch((e: unknown) => e)) as Error
+
+      expect(error.message).toContain('#1 https://payments.example.com/card-frame: [a[href$="/shop/catalogue"]] selector absent / [a[href$="/shop/v2/catalogue"]] selector present but not visible')
+    })
+
+    it('keeps the single-chain path exactly as before', async () => {
+      const wait = jest.fn().mockResolvedValue(undefined)
+      const page = { getDefaultTimeout: jest.fn().mockReturnValue(5000), locator: jest.fn().mockReturnValue({ setTimeout: jest.fn().mockReturnValue({ wait }) }) } as unknown as Page
+      const step: PuppeteerLocatorAction = { description: 'Open', querySelector: 'a[href$="/shop/catalogue"]', action: { type: 'navigate', waitForNavigation: true }, delay: 0 }
+
+      await expect(serviceInternals().waitForActionTarget(page, step)).resolves.toEqual({ context: page })
+      expect(page.locator).toHaveBeenCalledWith('a[href$="/shop/catalogue"]')
+    })
+  })
+
   it('rechecks the frame origin after acquiring its element handle', async () => {
     const mainFrame = {} as Frame
     const replacedElement = {

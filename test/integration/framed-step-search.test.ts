@@ -38,8 +38,11 @@ const DRIVER = path.join(__dirname, '__fixtures__/framed-step-search-driver.ts')
 // good 1.5 s after the frame loads.
 const cardFrame = `<!doctype html><html><body><script>
 const field = new URLSearchParams(location.hash.slice(1)).get('field')
+// In the CVC frame the \`visibility: hidden\` input comes FIRST in document order,
+// ahead of the visible field: one selector list naming both would resolve to it.
+if (field === 'cvc') { const ghost = document.createElement('input'); ghost.name = 'ghost'; ghost.style.visibility = 'hidden'; document.body.appendChild(ghost) }
 const input = document.createElement('input'); input.name = field; document.body.appendChild(input)
-if (field === 'cvc') { const hidden = document.createElement('input'); hidden.name = 'postcode'; hidden.hidden = true; document.body.appendChild(hidden); const ghost = document.createElement('input'); ghost.name = 'ghost'; ghost.style.visibility = 'hidden'; document.body.appendChild(ghost) }
+if (field === 'cvc') { const hidden = document.createElement('input'); hidden.name = 'postcode'; hidden.hidden = true; document.body.appendChild(hidden) }
 if (field === 'expiry' && location.search.includes('busy')) (function spin() { const t = performance.now(); while (performance.now() - t < 100) {} setTimeout(spin, 0) })()
 if (location.search.includes('hung')) setTimeout(() => { for (;;) {} }, 1500)
 </script></body></html>`
@@ -51,6 +54,7 @@ type DriverResult = {
   busy: { frames: number; frameField?: string; inputName?: string; elapsedMs: number; error?: string }
   timeout: { frames: number; name: string; message: string }
   direct: Record<'visible' | 'hidden' | 'invisible' | 'absent' | 'unsupported', string>
+  alternative: { querySelector: string | null; frameField: string | null; error?: string }
   hung: { frames: number; name: string; message: string }
 }
 
@@ -110,6 +114,10 @@ describe('framed step search across busy same-URL frames', () => {
     expect(result.direct.invisible).toMatch(/^selector present but not visible; Chrome answered/)
     expect(result.direct.absent).toMatch(/^selector absent; Chrome answered/)
     expect(result.direct.unsupported).toMatch(/^the selector uses Puppeteer-only syntax, so its state was not checked; Chrome answered/)
+  })
+
+  it('resolves a step to its visible alternative when its own chain only matches a hidden element', () => {
+    expect(result.alternative).toEqual({ querySelector: 'input[name="cvc"]', frameField: 'cvc' })
   })
 
   it('asks Chrome directly about a frame that stopped answering, and says when its renderer is hung', () => {

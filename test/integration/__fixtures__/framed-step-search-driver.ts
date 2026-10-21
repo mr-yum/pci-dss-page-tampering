@@ -10,7 +10,7 @@ import { DetectionService, frameSessionOf } from '../../../src/services/detectio
 import type { PuppeteerLocatorAction } from '../../../src/types/puppeteer.js'
 
 type Internals = {
-  waitForActionTarget(page: Page, step: PuppeteerLocatorAction, timeout?: number): Promise<{ context: Page | Frame; element?: ElementHandle<Element> }>
+  waitForActionTarget(page: Page, step: PuppeteerLocatorAction, timeout?: number): Promise<{ context: Page | Frame; element?: ElementHandle<Element>; querySelector?: string }>
   directSelectorStateIn(frame: Frame, selector: string): Promise<string>
 }
 
@@ -70,6 +70,13 @@ try {
     ['unsupported', 'button ::-p-text(Pay)'],
   ] as const)
     direct[label] = await service.directSelectorStateIn(cvcFrame, selector)
+  // A step whose own chain only ever matches an element that is present but
+  // `visibility: hidden`, with a visible alternative: it must resolve to the
+  // alternative, in the frame that holds it.
+  const alternative = await service.waitForActionTarget(idle.page, { ...step('input[name="ghost"]'), alternativeQuerySelectors: ['input[name="cvc"]'] }, 10_000).then(
+    (target) => ({ querySelector: target.querySelector ?? null, frameField: new URLSearchParams(new URL((target.context as Frame).url()).hash.slice(1)).get('field') }),
+    (error: Error) => ({ querySelector: null, frameField: null, error: `${error.name}: ${error.message}` }),
+  )
   await idle.page.browserContext().close()
 
   // Last, since its renderer never recovers: one card frame that stops
@@ -86,7 +93,7 @@ try {
     (error: Error) => ({ name: error.name, message: error.message }),
   )
 
-  console.log(JSON.stringify({ busy: { frames: busy.frames, ...found }, timeout: { frames: idle.frames, ...timedOut }, direct, hung: { frames: hungFrames, ...hung } }))
+  console.log(JSON.stringify({ busy: { frames: busy.frames, ...found }, timeout: { frames: idle.frames, ...timedOut }, direct, alternative, hung: { frames: hungFrames, ...hung } }))
 } finally {
   await browser.close()
 }

@@ -100,6 +100,9 @@ export const WorkflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() =>
       paymentPage: z.literal(true).optional(),
       frameUrl: FrameUrlSchema.optional(),
       waitFor: z.array(WorkflowWaitForDefinitionSchema),
+      // Each alternative is a whole selector chain, never empty: an empty one
+      // would compile to an empty selector and match nothing, or everything.
+      waitForAlternatives: z.array(z.array(WorkflowWaitForDefinitionSchema).min(1)).min(1).max(4).optional(),
       action: z
         .object({
           type: z.enum(['click', 'input', 'escape', 'navigate', 'clickPopup', 'totp']),
@@ -157,6 +160,13 @@ export const WorkflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() =>
         }) satisfies z.ZodType<WorkflowActionType>, // Ensures this object matches the Action type
     })
     .superRefine((step, ctx) => {
+      if (step.waitForAlternatives !== undefined && step.waitFor.length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['waitFor'],
+          message: 'waitForAlternatives needs a non-empty waitFor: the alternatives add to it, they do not replace it',
+        })
+      }
       if (step.action.reloadOnMissingTarget === true && step.frameUrl === undefined) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,

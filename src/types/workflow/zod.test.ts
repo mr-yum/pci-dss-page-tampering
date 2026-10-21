@@ -63,6 +63,38 @@ describe('WorkflowStepSchema', () => {
     expect(result.success).toBe(true)
   })
 
+  describe('waitForAlternatives', () => {
+    const navigate = { type: 'navigate', waitForNavigation: true }
+    const withAlternatives = (alternatives: unknown, waitFor: unknown = [{ type: 'href', identifier: '/shop/catalogue' }]) =>
+      WorkflowStepSchema.safeParse({ description: 'Open the catalogue', waitFor, waitForAlternatives: alternatives, action: navigate })
+
+    it('accepts alternative selector chains', () => {
+      expect(withAlternatives([[{ type: 'href', identifier: '/shop/v2/catalogue' }]]).success).toBe(true)
+    })
+
+    it('rejects an empty alternative, which would compile to an empty selector', () => {
+      expect(withAlternatives([[]]).success).toBe(false)
+    })
+
+    it('rejects an empty list of alternatives', () => {
+      expect(withAlternatives([]).success).toBe(false)
+    })
+
+    it('rejects more than four alternatives', () => {
+      expect(withAlternatives(Array.from({ length: 5 }, (_, n) => [{ type: 'href', identifier: `/route-${n}` }])).success).toBe(false)
+    })
+
+    it('rejects alternatives without a waitFor to add to', () => {
+      const result = withAlternatives([[{ type: 'href', identifier: '/shop/v2/catalogue' }]], [])
+      expect(result.success).toBe(false)
+      expect(result.error?.issues[0]?.message).toContain('waitForAlternatives needs a non-empty waitFor')
+    })
+
+    it('rejects an unknown waitFor type inside an alternative', () => {
+      expect(withAlternatives([[{ type: 'link', identifier: '/shop/v2/catalogue' }]]).success).toBe(false)
+    })
+  })
+
   it('accepts a valid frame URL matcher', () => {
     const result = WorkflowStepSchema.safeParse({
       ...step({ type: 'input', value: '4242424242424242' }),

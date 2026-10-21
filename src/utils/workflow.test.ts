@@ -66,6 +66,39 @@ describe('collectTotpSeedRefs', () => {
     }
   })
 
+  it('keeps waitFor and each alternative as separate chains, each built as waitFor is', () => {
+    const [action] = stepsToPuppeteerLocatorAction([
+      {
+        description: 'Open the basket',
+        waitFor: [{ type: 'href', identifier: '/shop/basket' }],
+        waitForAlternatives: [
+          [{ type: 'href', identifier: '/shop/basket?from=catalogue' }],
+          [
+            { type: 'div', identifier: 'footer' },
+            { type: 'button', identifier: 'View basket' },
+          ],
+        ],
+        action: { type: 'navigate', waitForNavigation: true },
+      },
+    ])
+
+    expect(action?.querySelector).toBe('a[href$="/shop/basket"]')
+    expect(action?.alternativeQuerySelectors).toEqual(['a[href$="/shop/basket?from=catalogue"]', 'div.footer button:enabled ::-p-text(View basket)'])
+  })
+
+  it('leaves a step without alternatives exactly as before', () => {
+    const [action] = stepsToPuppeteerLocatorAction([{ description: 'Pay', waitFor: [{ type: 'button', identifier: 'Pay now' }], action: { type: 'click' } }])
+
+    expect(action?.querySelector).toBe('button:enabled ::-p-text(Pay now)')
+    expect(action).not.toHaveProperty('alternativeQuerySelectors')
+  })
+
+  it('escapes identifiers inside alternatives too', () => {
+    const [action] = stepsToPuppeteerLocatorAction([{ description: 'step', waitFor: [{ type: 'id', identifier: 'a' }], waitForAlternatives: [[{ type: 'id', identifier: 'b"], a[href' }]], action: { type: 'click' } }])
+
+    expect(action?.alternativeQuerySelectors).toEqual(['[id="b\\"], a[href"]'])
+  })
+
   it('escapes quotes and backslashes so an identifier cannot break out of the attribute selector', () => {
     const cases: Array<[string, string]> = [
       ['card:number', '[id="card:number"]'],

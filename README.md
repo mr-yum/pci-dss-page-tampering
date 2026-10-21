@@ -247,6 +247,38 @@ In the bundled GitHub Actions workflow, seeds are discovered by naming conventio
 
 > **Note**: Automating TOTP means the second factor lives alongside the first in the same secrets store, which weakens what MFA provides for that account. Use a dedicated, least-privileged synthetic-monitoring account.
 
+### A Step That Accepts More Than One Selector
+
+An application can serve the same step in more than one shape — a route behind
+a feature flag or experiment, say, where one session's link is
+`/shop/catalogue` and another's `/shop/v2/catalogue`. A workflow written for one
+shape times out on the other. Add `waitForAlternatives` to the step: a list of
+further selector chains, each written exactly like `waitFor`, any one of which
+also satisfies the step.
+
+```json
+{
+  "description": "Open the catalogue",
+  "waitFor": [{ "type": "href", "identifier": "/shop/catalogue" }],
+  "waitForAlternatives": [[{ "type": "href", "identifier": "/shop/v2/catalogue" }]],
+  "action": { "type": "navigate", "waitForNavigation": true }
+}
+```
+
+Each chain is waited for on its own, all at once, and the first to have a
+**visible** match wins; the step then acts through that chain (so a step with
+alternatives always needs a visible target, where a step without them only
+needs one present for an `escape` action). A hidden match of
+one chain — a collapsed menu holding the other shape's link — never blocks a
+visible match of another. `waitFor` stays required; the alternatives add to it
+(at most four, none empty). They work wherever `waitFor` does, `frameUrl` steps
+and text selectors such as `button` included. Prefer one selector when the page
+has one shape: an alternative also widens what the step accepts, so add one only
+for a shape you have seen the application serve. On a `paymentPage` step,
+**every** chain must exist only on the card-entry page, exactly as `waitFor`
+must, because the payment page is the document in which whichever chain matched
+was found.
+
 ### Initial Workflow Timeout
 
 Initial navigation, the first step's delay and selector wait, and any automatic
@@ -330,9 +362,10 @@ confirmation page, an earlier page the browser restores from its
 back/forward cache — and so does a failed render of the payment page that
 reload recovery replaced, whether it was loaded at the payment path, routed
 there, or replaced by the monitor's own recovery onto a different path.
-Choose a step whose `waitFor` only exists on the card-entry page — scoping
-relies on it to recognise the payment page, so a selector that also matches
-an earlier page would let that page be taken for it.
+Choose a step whose `waitFor` — and every one of its `waitForAlternatives` —
+only exists on the card-entry page: scoping relies on whichever chain matched
+to recognise the payment page, so a selector that also matches an earlier page
+would let that page be taken for it.
 
 Mark the **first** step that runs on the payment page, never a later one.
 The rule is asymmetric: a marker placed too early is safe — the real payment
