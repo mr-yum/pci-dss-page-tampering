@@ -13,6 +13,10 @@ export type PuppeteerWorkflow = {
 export type PuppeteerLocatorAction = {
   description: string
   querySelector: string
+  // Further selector chains that also satisfy the step (WorkflowStep.
+  // waitForAlternatives), each compiled like querySelector. The step waits for
+  // whichever has a visible match first and then acts through that chain.
+  alternativeQuerySelectors?: string[] | undefined
   frameUrl?: string | undefined
   action: PuppeteerAction
   delay: number

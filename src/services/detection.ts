@@ -87,6 +87,19 @@ const AT_CLOSE: SettleReasons = {
 type ActionTarget = {
   context: Page | Frame
   element?: ElementHandle<Element>
+  // For a step with alternative selector chains: the chain that matched, which
+  // the payment-page read and the action then use.
+  querySelector?: string
+}
+
+/** A step's selector chains: its own, then its alternatives. */
+function selectorsOf(step: PuppeteerLocatorAction): string[] {
+  return [step.querySelector, ...(step.alternativeQuerySelectors ?? [])]
+}
+
+/** The step as it is acted on: through the chain that matched, if it had a choice. */
+function stepAsMatched(step: PuppeteerLocatorAction, actionTarget: ActionTarget): PuppeteerLocatorAction {
+  return actionTarget.querySelector === undefined ? step : { ...step, querySelector: actionTarget.querySelector, alternativeQuerySelectors: undefined }
 }
 
 class WorkflowAttemptError extends Error {
@@ -345,8 +358,9 @@ export class DetectionService implements IDetectionService {
           // The payment page is the document in which a marked step's target
           // was found. Read it now, before the action runs: a "Pay" click that
           // navigates away must not move the marker onto the next page.
+          const matchedStep = stepAsMatched(step, actionTarget)
           if (step.paymentPage === true) {
-            const paymentDocument = await this.resolvePaymentDocument(page, step, actionTarget, tracker)
+            const paymentDocument = await this.resolvePaymentDocument(page, matchedStep, actionTarget, tracker)
             if (paymentDocument === undefined) {
               paymentDocumentUnresolved = true
               target.logger.error(`Could not identify the payment page document at step ${currentStepIndex}; the whole run stays in payment scope.`)
@@ -356,7 +370,7 @@ export class DetectionService implements IDetectionService {
           }
 
           // Execute action
-          await this.executeAction(page, actionTarget, step, target, browser, () => {
+          await this.executeAction(page, actionTarget, matchedStep, target, browser, () => {
             retryBoundaryCrossed = true
           })
 
@@ -369,7 +383,7 @@ export class DetectionService implements IDetectionService {
             target.logger.error(`TIMEOUT ERROR in step ${currentStepIndex}/${totalStepCount}`)
             target.logger.error(`Step description: ${step.description}`)
             target.logger.error(`Target URL: ${navigationUrl ?? puppeteerWorkflow.target.url}`)
-            target.logger.error(`Element selector: ${step.querySelector}`)
+            target.logger.error(`Element selector: ${selectorsOf(step).join(' | ')}`)
             if (step.frameUrl) target.logger.error(`Frame URL matcher: ${step.frameUrl}`)
             target.logger.error(`Action type: ${step.action.type}`)
             target.logger.error(`Current page URL: ${page.url()}`)
@@ -379,7 +393,7 @@ export class DetectionService implements IDetectionService {
             target.logger.error(`ERROR in step ${currentStepIndex}/${totalStepCount}`)
             target.logger.error(`Step description: ${step.description}`)
             target.logger.error(`Target URL: ${navigationUrl ?? puppeteerWorkflow.target.url}`)
-            target.logger.error(`Element selector: ${step.querySelector}`)
+            target.logger.error(`Element selector: ${selectorsOf(step).join(' | ')}`)
             if (step.frameUrl) target.logger.error(`Frame URL matcher: ${step.frameUrl}`)
             target.logger.error(`Action type: ${step.action.type}`)
             target.logger.error(`Current page URL: ${page.url()}`)
@@ -781,12 +795,12 @@ export class DetectionService implements IDetectionService {
                   await this.sleep(innerStep.delay)
                 }
                 const innerActionTarget = await this.waitForRecoverableActionTarget(popupPage, innerStep, target)
-                await this.executeAction(popupPage, innerActionTarget, innerStep, target, browser, markRetryBoundary)
+                await this.executeAction(popupPage, innerActionTarget, stepAsMatched(innerStep, innerActionTarget), target, browser, markRetryBoundary)
               } catch (popupStepError) {
                 if (popupStepError instanceof Error && popupStepError.name === 'TimeoutError') {
                   target.logger.error(`POPUP TIMEOUT ERROR in step ${popupStepNumber}/${innerSteps.length}`)
                   target.logger.error(`Popup step description: ${innerStep.description}`)
-                  target.logger.error(`Popup element selector: ${innerStep.querySelector}`)
+                  target.logger.error(`Popup element selector: ${selectorsOf(innerStep).join(' | ')}`)
                   if (innerStep.frameUrl) target.logger.error(`Popup frame URL matcher: ${innerStep.frameUrl}`)
                   target.logger.error(`Popup action type: ${innerStep.action.type}`)
                   target.logger.error(`Popup page URL: ${this.redactFrameUrl(popupPage.url())}`)
@@ -795,7 +809,7 @@ export class DetectionService implements IDetectionService {
                 } else {
                   target.logger.error(`POPUP ERROR in step ${popupStepNumber}/${innerSteps.length}`)
                   target.logger.error(`Popup step description: ${innerStep.description}`)
-                  target.logger.error(`Popup element selector: ${innerStep.querySelector}`)
+                  target.logger.error(`Popup element selector: ${selectorsOf(innerStep).join(' | ')}`)
                   if (innerStep.frameUrl) target.logger.error(`Popup frame URL matcher: ${innerStep.frameUrl}`)
                   target.logger.error(`Popup action type: ${innerStep.action.type}`)
                   target.logger.error(`Popup page URL: ${this.redactFrameUrl(popupPage.url())}`)
@@ -954,17 +968,59 @@ export class DetectionService implements IDetectionService {
   }
 
   private async waitForActionTarget(page: Page, step: PuppeteerLocatorAction, timeout = page.getDefaultTimeout()): Promise<ActionTarget> {
+    const selectors = selectorsOf(step)
     if (!step.frameUrl) {
-      await page.locator(step.querySelector).setTimeout(timeout).wait()
-      return { context: page }
+      if (selectors.length === 1) {
+        await page.locator(step.querySelector).setTimeout(timeout).wait()
+        return { context: page }
+      }
+      const { matched, lastFailure } = await this.waitForFirstVisible(page, selectors, timeout)
+      if (matched !== undefined) return { context: page, querySelector: matched }
+      throw new TimeoutError(`Timed out waiting for any of the selectors '${selectors.join("' | '")}'.${lastFailureNote(lastFailure)}`)
     }
 
     const matcher = new RegExp(step.frameUrl)
-    const found = await this.waitInMatchingFrames(page, step.querySelector, matcher, timeout)
+    const { found, lastFailure } = await this.waitInMatchingFrames(page, selectors, matcher, timeout)
     if (found) return found
 
-    const matchingFrames = await this.describeMatchingFrames(page, step.querySelector, matcher)
-    throw new TimeoutError(`Timed out waiting for selector '${step.querySelector}' in a frame URL matching /${step.frameUrl}/. ${matchingFrames} Observed frame URLs: ${this.observedFrameUrls(page)}`)
+    const matchingFrames = await this.describeMatchingFrames(page, selectors, matcher)
+    // The note goes before the per-frame detail, which can run long: run
+    // summaries clip a failure reason, and the note is the part worth keeping.
+    throw new TimeoutError(`Timed out waiting for selector '${selectors.join("' | '")}' in a frame URL matching /${step.frameUrl}/.${lastFailureNote(lastFailure)} ${matchingFrames} Observed frame URLs: ${this.observedFrameUrls(page)}`)
+  }
+
+  /**
+   * The first of several selector chains to have a visible match on the page,
+   * each waited for on its own and all at once. Not one selector list: a list
+   * resolves to its first match in document order and waits for that element
+   * alone to become visible, so a hidden match of one chain would block a
+   * visible match of another.
+   */
+  private async waitForFirstVisible(page: Page, selectors: string[], timeout: number): Promise<{ matched?: string; lastFailure?: string }> {
+    const controller = new AbortController()
+    try {
+      const matched = await Promise.any(
+        selectors.map(async (selector) => {
+          const element = await page.waitForSelector(selector, { visible: true, timeout, signal: controller.signal })
+          if (element === null) throw new Error(`No element for ${selector}`)
+          await element.dispose().catch(() => undefined)
+          return selector
+        }),
+      )
+      return { matched }
+    } catch (error) {
+      // Every chain failed: still a timeout, so recovery treats it as it
+      // always has, but naming the real cause of any chain that failed for
+      // another reason (see describeWaitFailure).
+      const causes = error instanceof AggregateError ? error.errors : [error]
+      const lastFailure = causes
+        .map(describeWaitFailure)
+        .filter((failure) => failure !== undefined)
+        .at(-1)
+      return lastFailure === undefined ? {} : { lastFailure }
+    } finally {
+      controller.abort()
+    }
   }
 
   /**
@@ -985,11 +1041,21 @@ export class DetectionService implements IDetectionService {
    * held: a frame that navigated off the pattern is let go, and waited in
    * again if a later rescan finds it back on the pattern.
    */
-  private waitInMatchingFrames(page: Page, selector: string, matcher: RegExp, timeout: number): Promise<ActionTarget | undefined> {
+  private waitInMatchingFrames(page: Page, selectors: string[], matcher: RegExp, timeout: number): Promise<{ found?: ActionTarget; lastFailure?: string }> {
     return new Promise((resolve) => {
       const controller = new AbortController()
-      const waitingIn = new Set<Frame>()
+      // The chains each frame is being waited in, tracked per chain: a chain
+      // whose wait ended without a usable match (the frame was off the pattern
+      // when it matched) is waited in again by the next rescan on its own,
+      // whatever its sibling chains are still doing.
+      const waitingIn = new Map<Frame, Set<string>>()
       const deadline = Date.now() + timeout
+      // Every failed wait is waited in again by the next rescan, whatever the
+      // reason: Puppeteer wraps lifecycle errors (a frame's session closing as
+      // it changes process) and other failures (a protocol error) alike, and
+      // telling them apart wrongly would turn a step that heals into one that
+      // fails. The last such cause is only reported.
+      let lastFailure: string | undefined
       let settled = false
 
       const finish = (result: ActionTarget | undefined): void => {
@@ -998,16 +1064,23 @@ export class DetectionService implements IDetectionService {
         clearInterval(rescan)
         clearTimeout(expiry)
         controller.abort()
-        resolve(result)
+        resolve({ ...(result === undefined ? {} : { found: result }), ...(lastFailure === undefined ? {} : { lastFailure }) })
       }
 
-      const waitIn = async (frame: Frame): Promise<void> => {
-        waitingIn.add(frame)
-        const element = await frame.waitForSelector(selector, { visible: true, timeout: Math.max(1, deadline - Date.now()), signal: controller.signal }).catch(() => null)
+      // One wait per selector chain in each frame, so a hidden match of one
+      // chain cannot block a visible match of another.
+      const waitIn = async (frame: Frame, selector: string): Promise<void> => {
+        const chains = waitingIn.get(frame) ?? new Set<string>()
+        waitingIn.set(frame, chains.add(selector))
+        const element = await frame.waitForSelector(selector, { visible: true, timeout: Math.max(1, deadline - Date.now()), signal: controller.signal }).catch((error: unknown) => {
+          if (!settled) lastFailure = describeWaitFailure(error) ?? lastFailure
+          return null
+        })
         const url = safeFrameUrl(frame)
-        if (element !== null && !settled && url !== undefined && matcher.test(url)) return finish({ context: frame, element })
+        if (element !== null && !settled && url !== undefined && matcher.test(url)) return finish({ context: frame, element, ...(selectors.length > 1 ? { querySelector: selector } : {}) })
         await element?.dispose().catch(() => undefined)
-        waitingIn.delete(frame)
+        chains.delete(selector)
+        if (chains.size === 0) waitingIn.delete(frame)
       }
 
       // Runs from a timer, so a frame-tree read that throws mid-teardown would
@@ -1020,8 +1093,8 @@ export class DetectionService implements IDetectionService {
         if (mainFrame === undefined) return
         for (const frame of safeFrames(page)) {
           const url = safeFrameUrl(frame)
-          if (frame === mainFrame || waitingIn.has(frame) || url === undefined || !matcher.test(url)) continue
-          void waitIn(frame)
+          if (frame === mainFrame || url === undefined || !matcher.test(url)) continue
+          for (const selector of selectors) if (!waitingIn.get(frame)?.has(selector)) void waitIn(frame, selector)
         }
       }
 
@@ -1043,14 +1116,22 @@ export class DetectionService implements IDetectionService {
    * wait itself never got an answer from that frame. States only — never
    * page content.
    */
-  private async describeMatchingFrames(page: Page, selector: string, matcher: RegExp): Promise<string> {
+  private async describeMatchingFrames(page: Page, selectors: string[], matcher: RegExp): Promise<string> {
     const mainFrame = safeMainFrame(page)
     const frames = safeFrames(page).flatMap((frame) => {
       const url = safeFrameUrl(frame)
       return frame !== mainFrame && url !== undefined && matcher.test(url) ? [{ frame, url }] : []
     })
     if (frames.length === 0) return 'Matching frames: none.'
-    const states = await Promise.all(frames.map(({ frame }) => this.selectorStateIn(frame, selector)))
+    // One probe per chain, never the chains joined: a joined list reports only
+    // its first match in document order, which may be another chain's hidden
+    // element. A single chain reads exactly as it always has.
+    const states = await Promise.all(
+      frames.map(async ({ frame }) => {
+        const perChain = await Promise.all(selectors.map((selector) => this.selectorStateIn(frame, selector)))
+        return selectors.length === 1 ? perChain[0]! : selectors.map((selector, index) => `[${selector}] ${perChain[index]}`).join(' / ')
+      }),
+    )
     return `Matching frames: ${frames.length} (${frames.map(({ url }, index) => `#${index + 1} ${this.redactFrameUrl(url)}: ${states[index]}`).join('; ')}).`
   }
 
@@ -1332,6 +1413,31 @@ export function frameSessionOf(frame: Frame): CDPSession | undefined {
   } catch {
     return undefined
   }
+}
+
+/**
+ * The innermost cause of a wait's failure, for a timeout message, or nothing
+ * when the wait merely timed out or was aborted because another wait won.
+ * Puppeteer rewraps every other failure as "Waiting for selector … failed"
+ * (and, beneath it, "Waiting failed"), keeping the real error only in
+ * `.cause`, so the chain is followed to its end. Name and message only, the
+ * message clipped: protocol and selector errors, never page content.
+ */
+export function describeWaitFailure(error: unknown): string | undefined {
+  if (!(error instanceof Error) || error.name === 'TimeoutError' || error.name === 'AbortError') return undefined
+  let root: Error = error
+  for (let depth = 0; depth < 8 && root.cause instanceof Error; depth++) root = root.cause
+  return `${root.name}: ${root.message.slice(0, 200)}`
+}
+
+/**
+ * The note a timeout carries when a wait in the step failed for a reason
+ * other than not finding its element. Worded as what is known — that wait
+ * failed and was retried — because the failure may have healed long before
+ * the step timed out for an unrelated reason.
+ */
+function lastFailureNote(lastFailure: string | undefined): string {
+  return lastFailure === undefined ? '' : ` A wait in this step also failed with ${lastFailure.replace(/\.+$/u, '')}; it was retried.`
 }
 
 function safeFrameUrl(frame: Frame): string | undefined {

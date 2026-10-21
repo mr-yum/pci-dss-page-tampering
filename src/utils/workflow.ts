@@ -181,6 +181,11 @@ export function stepsToPuppeteerLocatorAction(steps: WorkflowStep[]): PuppeteerL
     return {
       description: step.description,
       querySelector: querySelector,
+      // Kept as separate chains, never joined into one selector list: a list
+      // resolves to its first match in document order and then waits for that
+      // one element to become visible, so a hidden match of one chain would
+      // block a visible match of another.
+      ...(step.waitForAlternatives === undefined ? {} : { alternativeQuerySelectors: step.waitForAlternatives.map(waitForToQuerySelector) }),
       frameUrl: step.frameUrl === undefined ? undefined : FrameUrlSchema.parse(step.frameUrl),
       action: actionToPuppeteerAction(step.action),
       delay: step.action.delay ?? 0,

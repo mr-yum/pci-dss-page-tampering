@@ -52,6 +52,13 @@ export type WorkflowStep = {
   // this regular expression. Omit it to act on the top-level page.
   frameUrl?: string | undefined
   waitFor: WorkflowWaitForDefinition[]
+  // Other selector chains that also satisfy the step, each built exactly like
+  // waitFor. Every chain is waited for on its own; the first to have a visible
+  // match (visible, even for an escape action) wins and the step acts through it — for an app that serves one of
+  // several link shapes (a route behind a flag or experiment) without one
+  // workflow per shape. On a paymentPage step every chain must exist only on
+  // the card-entry page, as waitFor must.
+  waitForAlternatives?: WorkflowWaitForDefinition[][] | undefined
   action: WorkflowActionType
 }
 
