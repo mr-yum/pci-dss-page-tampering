@@ -4,7 +4,7 @@ import { SCRIPT_BODY_WITHOUT_RESPONSE_REASON, SCRIPT_REQUEST_FRAME_DETACHED_REAS
 import type { DetectionSummary } from '../types/detection.js'
 import type { PuppeteerLocatorAction } from '../types/puppeteer.js'
 import type { Target } from '../types/target.js'
-import { DetectionService, frameSessionOf } from './detection.js'
+import { describeWaitFailure, DetectionService, frameSessionOf } from './detection.js'
 
 jest.mock('puppeteer', () => ({
   TimeoutError: class TimeoutError extends Error {},
@@ -1117,7 +1117,7 @@ describe('DetectionService framed workflow actions', () => {
         .catch((e: unknown) => e)) as Error
 
       expect(error.constructor.name).toBe('TimeoutError')
-      expect(error.message).toBe('Timed out waiting for any of the selectors \'a[href$="/shop/catalogue"]\' | \'a[href$="/shop/v2/catalogue"]\'')
+      expect(error.message).toBe('Timed out waiting for any of the selectors \'a[href$="/shop/catalogue"]\' | \'a[href$="/shop/v2/catalogue"]\'.')
     })
 
     it('waits for every chain in each matching frame and reports the frame and chain that matched', async () => {
@@ -1162,15 +1162,60 @@ describe('DetectionService framed workflow actions', () => {
       expect(offPattern.dispose).toHaveBeenCalledTimes(1)
     })
 
-    it('rethrows a non-timeout failure instead of reporting it as a timeout', async () => {
-      const page = { getDefaultTimeout: jest.fn().mockReturnValue(5000), waitForSelector: jest.fn().mockRejectedValue(Object.assign(new Error('Session closed'), { name: 'TargetCloseError' })) } as unknown as Page
+    // The shape Puppeteer 25 rejects a selector wait with when something other
+    // than a timeout or an abort went wrong: the real error two causes deep.
+    const puppeteerWaitFailure = (selector: string, cause: Error): Error => new Error(`Waiting for selector \`${selector}\` failed`, { cause: new Error('Waiting failed', { cause }) })
+
+    it('still times out when every chain on the page fails for another reason, naming the real cause', async () => {
+      const closed = Object.assign(new Error('Session closed. Most likely the page has been closed.'), { name: 'TargetCloseError' })
+      const page = { getDefaultTimeout: jest.fn().mockReturnValue(5000), waitForSelector: jest.fn((selector: string) => Promise.reject(puppeteerWaitFailure(selector, closed))) } as unknown as Page
 
       const error = (await serviceInternals()
         .waitForActionTarget(page, withAlternatives())
         .catch((e: unknown) => e)) as Error
 
-      expect(error.name).toBe('TargetCloseError')
-      expect(error.message).toBe('Session closed')
+      // A timeout, so whole-workflow recovery still retries it in a fresh context.
+      expect(error.constructor.name).toBe('TimeoutError')
+      expect(error.message).toContain('Last wait error: TargetCloseError: Session closed. Most likely the page has been closed.')
+    })
+
+    it('keeps waiting in a still-attached frame whose session closed under the wait, and finds the field', async () => {
+      const mainFrame = {} as Frame
+      const element = { dispose: jest.fn() }
+      const closed = Object.assign(new Error('Target closed'), { name: 'TargetCloseError' })
+      let calls = 0
+      const frame = {
+        url: jest.fn().mockReturnValue('https://payments.example.com/card-frame'),
+        detached: false,
+        // The frame changes process: the first wait dies with its old session, the next one finds the field.
+        waitForSelector: jest.fn((selector: string) => (calls++ === 0 ? Promise.reject(puppeteerWaitFailure(selector, closed)) : Promise.resolve(element))),
+      } as unknown as Frame
+      const page = { getDefaultTimeout: jest.fn().mockReturnValue(5000), frames: jest.fn().mockReturnValue([mainFrame, frame]), mainFrame: jest.fn().mockReturnValue(mainFrame) } as unknown as Page
+      const step: PuppeteerLocatorAction = { ...withAlternatives('^https://payments\\.example\\.com/card-frame$'), alternativeQuerySelectors: undefined }
+
+      await expect(serviceInternals().waitForActionTarget(page, step)).resolves.toEqual({ context: frame, element })
+    })
+
+    it('keeps retrying a framed chain that fails for another reason, and names the cause when the step times out', async () => {
+      const mainFrame = { url: jest.fn().mockReturnValue('https://shop.example.com/checkout') } as unknown as Frame
+      // A protocol failure, which Puppeteer passes on wrapped (an unparseable
+      // selector never gets here: Puppeteer 25 polls it until a plain timeout).
+      const invalid = Object.assign(new Error('Protocol error (Runtime.callFunctionOn): Target crashed'), { name: 'ProtocolError' })
+      const frame = {
+        url: jest.fn().mockReturnValue('https://payments.example.com/card-frame'),
+        waitForSelector: jest.fn((selector: string) => Promise.reject(puppeteerWaitFailure(selector, invalid))),
+        $: jest.fn().mockResolvedValue(null),
+      } as unknown as Frame
+      const page = { getDefaultTimeout: jest.fn().mockReturnValue(400), frames: jest.fn().mockReturnValue([mainFrame, frame]), mainFrame: jest.fn().mockReturnValue(mainFrame) } as unknown as Page
+
+      const error = (await serviceInternals()
+        .waitForActionTarget(page, withAlternatives('^https://payments\\.example\\.com/card-frame$'))
+        .catch((e: unknown) => e)) as Error
+
+      expect(error.constructor.name).toBe('TimeoutError')
+      expect(error.message).toContain('Last wait error: ProtocolError: Protocol error (Runtime.callFunctionOn): Target crashed.')
+      // Never classified and dropped: every rescan waited in it again.
+      expect((frame.waitForSelector as jest.Mock).mock.calls.length).toBeGreaterThan(2)
     })
 
     it('describes each chain on its own when a framed step with alternatives times out', async () => {
@@ -1806,5 +1851,22 @@ describe('DetectionService script accounting wiring', () => {
     const answered = summary.scriptSummary.externalScripts.find((script) => script.source.type === 'external' && script.source.url === 'https://cdn.example.test/answered.js')
     expect(answered?.source).toEqual(expect.objectContaining({ initiator: 'https://js.vendor.test/loader.js' }))
     expect(summary.scriptSummary.unansweredRequests).toEqual([expect.objectContaining({ url: 'https://cdn.example.test/unanswered.js', initiatorEvidence: { type: 'stack', topFrameUrl: 'https://js.vendor.test/other.js' } })])
+  })
+})
+
+describe('describeWaitFailure', () => {
+  it('says nothing for a wait that merely timed out or was aborted', () => {
+    expect(describeWaitFailure(Object.assign(new Error('Waiting for selector `a` failed'), { name: 'TimeoutError' }))).toBeUndefined()
+    expect(describeWaitFailure(Object.assign(new Error('aborted'), { name: 'AbortError' }))).toBeUndefined()
+    expect(describeWaitFailure('not an error')).toBeUndefined()
+  })
+
+  it('names the innermost cause beneath Puppeteer’s wrappers', () => {
+    const root = Object.assign(new Error('Target closed'), { name: 'TargetCloseError' })
+    expect(describeWaitFailure(new Error('Waiting for selector `a` failed', { cause: new Error('Waiting failed', { cause: root }) }))).toBe('TargetCloseError: Target closed')
+  })
+
+  it('clips a long message', () => {
+    expect(describeWaitFailure(new Error('x'.repeat(500)))).toBe(`Error: ${'x'.repeat(200)}`)
   })
 })

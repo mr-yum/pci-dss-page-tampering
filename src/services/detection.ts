@@ -974,17 +974,17 @@ export class DetectionService implements IDetectionService {
         await page.locator(step.querySelector).setTimeout(timeout).wait()
         return { context: page }
       }
-      const matched = await this.waitForFirstVisible(page, selectors, timeout)
+      const { matched, lastFailure } = await this.waitForFirstVisible(page, selectors, timeout)
       if (matched !== undefined) return { context: page, querySelector: matched }
-      throw new TimeoutError(`Timed out waiting for any of the selectors '${selectors.join("' | '")}'`)
+      throw new TimeoutError(`Timed out waiting for any of the selectors '${selectors.join("' | '")}'.${lastFailureNote(lastFailure)}`)
     }
 
     const matcher = new RegExp(step.frameUrl)
-    const found = await this.waitInMatchingFrames(page, selectors, matcher, timeout)
+    const { found, lastFailure } = await this.waitInMatchingFrames(page, selectors, matcher, timeout)
     if (found) return found
 
     const matchingFrames = await this.describeMatchingFrames(page, selectors, matcher)
-    throw new TimeoutError(`Timed out waiting for selector '${selectors.join("' | '")}' in a frame URL matching /${step.frameUrl}/. ${matchingFrames} Observed frame URLs: ${this.observedFrameUrls(page)}`)
+    throw new TimeoutError(`Timed out waiting for selector '${selectors.join("' | '")}' in a frame URL matching /${step.frameUrl}/. ${matchingFrames} Observed frame URLs: ${this.observedFrameUrls(page)}.${lastFailureNote(lastFailure)}`)
   }
 
   /**
@@ -994,10 +994,10 @@ export class DetectionService implements IDetectionService {
    * alone to become visible, so a hidden match of one chain would block a
    * visible match of another.
    */
-  private async waitForFirstVisible(page: Page, selectors: string[], timeout: number): Promise<string | undefined> {
+  private async waitForFirstVisible(page: Page, selectors: string[], timeout: number): Promise<{ matched?: string; lastFailure?: string }> {
     const controller = new AbortController()
     try {
-      return await Promise.any(
+      const matched = await Promise.any(
         selectors.map(async (selector) => {
           const element = await page.waitForSelector(selector, { visible: true, timeout, signal: controller.signal })
           if (element === null) throw new Error(`No element for ${selector}`)
@@ -1005,14 +1005,17 @@ export class DetectionService implements IDetectionService {
           return selector
         }),
       )
+      return { matched }
     } catch (error) {
-      // Every chain failed. Only timeouts mean "not found in time"; anything
-      // else (an invalid selector, a closed session) is the real cause and is
-      // rethrown rather than reported as a timeout.
+      // Every chain failed: still a timeout, so recovery treats it as it
+      // always has, but naming the real cause of any chain that failed for
+      // another reason (see describeWaitFailure).
       const causes = error instanceof AggregateError ? error.errors : [error]
-      const cause = causes.find((candidate) => !(candidate instanceof Error && candidate.name === 'TimeoutError'))
-      if (cause !== undefined) throw cause
-      return undefined
+      const lastFailure = causes
+        .map(describeWaitFailure)
+        .filter((failure) => failure !== undefined)
+        .at(-1)
+      return lastFailure === undefined ? {} : { lastFailure }
     } finally {
       controller.abort()
     }
@@ -1036,7 +1039,7 @@ export class DetectionService implements IDetectionService {
    * held: a frame that navigated off the pattern is let go, and waited in
    * again if a later rescan finds it back on the pattern.
    */
-  private waitInMatchingFrames(page: Page, selectors: string[], matcher: RegExp, timeout: number): Promise<ActionTarget | undefined> {
+  private waitInMatchingFrames(page: Page, selectors: string[], matcher: RegExp, timeout: number): Promise<{ found?: ActionTarget; lastFailure?: string }> {
     return new Promise((resolve) => {
       const controller = new AbortController()
       // The chains each frame is being waited in, tracked per chain: a chain
@@ -1045,6 +1048,12 @@ export class DetectionService implements IDetectionService {
       // whatever its sibling chains are still doing.
       const waitingIn = new Map<Frame, Set<string>>()
       const deadline = Date.now() + timeout
+      // Every failed wait is waited in again by the next rescan, whatever the
+      // reason: Puppeteer wraps lifecycle errors (a frame's session closing as
+      // it changes process) and real ones (a selector Chrome cannot parse)
+      // alike, and telling them apart wrongly would turn a step that heals
+      // into one that fails. The last real cause is only reported.
+      let lastFailure: string | undefined
       let settled = false
 
       const finish = (result: ActionTarget | undefined): void => {
@@ -1053,7 +1062,7 @@ export class DetectionService implements IDetectionService {
         clearInterval(rescan)
         clearTimeout(expiry)
         controller.abort()
-        resolve(result)
+        resolve({ ...(result === undefined ? {} : { found: result }), ...(lastFailure === undefined ? {} : { lastFailure }) })
       }
 
       // One wait per selector chain in each frame, so a hidden match of one
@@ -1061,7 +1070,10 @@ export class DetectionService implements IDetectionService {
       const waitIn = async (frame: Frame, selector: string): Promise<void> => {
         const chains = waitingIn.get(frame) ?? new Set<string>()
         waitingIn.set(frame, chains.add(selector))
-        const element = await frame.waitForSelector(selector, { visible: true, timeout: Math.max(1, deadline - Date.now()), signal: controller.signal }).catch(() => null)
+        const element = await frame.waitForSelector(selector, { visible: true, timeout: Math.max(1, deadline - Date.now()), signal: controller.signal }).catch((error: unknown) => {
+          if (!settled) lastFailure = describeWaitFailure(error) ?? lastFailure
+          return null
+        })
         const url = safeFrameUrl(frame)
         if (element !== null && !settled && url !== undefined && matcher.test(url)) return finish({ context: frame, element, ...(selectors.length > 1 ? { querySelector: selector } : {}) })
         await element?.dispose().catch(() => undefined)
@@ -1399,6 +1411,25 @@ export function frameSessionOf(frame: Frame): CDPSession | undefined {
   } catch {
     return undefined
   }
+}
+
+/**
+ * The innermost cause of a wait's failure, for a timeout message, or nothing
+ * when the wait merely timed out or was aborted because another wait won.
+ * Puppeteer rewraps every other failure as "Waiting for selector … failed"
+ * (and, beneath it, "Waiting failed"), keeping the real error only in
+ * `.cause`, so the chain is followed to its end. Name and message only, the
+ * message clipped: protocol and selector errors, never page content.
+ */
+export function describeWaitFailure(error: unknown): string | undefined {
+  if (!(error instanceof Error) || error.name === 'TimeoutError' || error.name === 'AbortError') return undefined
+  let root: Error = error
+  for (let depth = 0; depth < 8 && root.cause instanceof Error; depth++) root = root.cause
+  return `${root.name}: ${root.message.slice(0, 200)}`
+}
+
+function lastFailureNote(lastFailure: string | undefined): string {
+  return lastFailure === undefined ? '' : ` Last wait error: ${lastFailure}.`
 }
 
 function safeFrameUrl(frame: Frame): string | undefined {
