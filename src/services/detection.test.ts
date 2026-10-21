@@ -1176,7 +1176,44 @@ describe('DetectionService framed workflow actions', () => {
 
       // A timeout, so whole-workflow recovery still retries it in a fresh context.
       expect(error.constructor.name).toBe('TimeoutError')
-      expect(error.message).toContain('Last wait error: TargetCloseError: Session closed. Most likely the page has been closed.')
+      // One period, not the doubled one a cause ending in its own would give.
+      expect(error.message).toContain(' A wait in this step also failed with TargetCloseError: Session closed. Most likely the page has been closed; it was retried.')
+    })
+
+    it('names a cause from one chain even when the other chain on the page merely timed out', async () => {
+      const closed = Object.assign(new Error('Target closed'), { name: 'TargetCloseError' })
+      const timedOut = Object.assign(new Error('Waiting for selector `x` failed'), { name: 'TimeoutError' })
+      const page = {
+        getDefaultTimeout: jest.fn().mockReturnValue(5000),
+        // The first chain failed for a real reason; the last one only timed out.
+        waitForSelector: jest.fn((selector: string) => Promise.reject(selector === 'a[href$="/shop/catalogue"]' ? puppeteerWaitFailure(selector, closed) : timedOut)),
+      } as unknown as Page
+
+      const error = (await serviceInternals()
+        .waitForActionTarget(page, withAlternatives())
+        .catch((e: unknown) => e)) as Error
+
+      expect(error.message).toContain('A wait in this step also failed with TargetCloseError: Target closed; it was retried.')
+    })
+
+    it('keeps an earlier framed failure in the note when later retries only time out, ahead of the per-frame detail', async () => {
+      const mainFrame = { url: jest.fn().mockReturnValue('https://shop.example.com/checkout') } as unknown as Frame
+      const closed = Object.assign(new Error('Target closed'), { name: 'TargetCloseError' })
+      const timedOut = Object.assign(new Error('Waiting for selector `x` failed'), { name: 'TimeoutError' })
+      let calls = 0
+      const frame = {
+        url: jest.fn().mockReturnValue('https://payments.example.com/card-frame'),
+        waitForSelector: jest.fn((selector: string) => Promise.reject(calls++ === 0 ? puppeteerWaitFailure(selector, closed) : timedOut)),
+        $: jest.fn().mockResolvedValue(null),
+      } as unknown as Frame
+      const page = { getDefaultTimeout: jest.fn().mockReturnValue(400), frames: jest.fn().mockReturnValue([mainFrame, frame]), mainFrame: jest.fn().mockReturnValue(mainFrame) } as unknown as Page
+
+      const error = (await serviceInternals()
+        .waitForActionTarget(page, withAlternatives('^https://payments\\.example\\.com/card-frame$'))
+        .catch((e: unknown) => e)) as Error
+
+      expect(error.message).toContain('A wait in this step also failed with TargetCloseError: Target closed; it was retried.')
+      expect(error.message.indexOf('it was retried')).toBeLessThan(error.message.indexOf('Matching frames:'))
     })
 
     it('keeps waiting in a still-attached frame whose session closed under the wait, and finds the field', async () => {
@@ -1213,7 +1250,7 @@ describe('DetectionService framed workflow actions', () => {
         .catch((e: unknown) => e)) as Error
 
       expect(error.constructor.name).toBe('TimeoutError')
-      expect(error.message).toContain('Last wait error: ProtocolError: Protocol error (Runtime.callFunctionOn): Target crashed.')
+      expect(error.message).toContain('A wait in this step also failed with ProtocolError: Protocol error (Runtime.callFunctionOn): Target crashed; it was retried.')
       // Never classified and dropped: every rescan waited in it again.
       expect((frame.waitForSelector as jest.Mock).mock.calls.length).toBeGreaterThan(2)
     })

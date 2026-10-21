@@ -984,7 +984,9 @@ export class DetectionService implements IDetectionService {
     if (found) return found
 
     const matchingFrames = await this.describeMatchingFrames(page, selectors, matcher)
-    throw new TimeoutError(`Timed out waiting for selector '${selectors.join("' | '")}' in a frame URL matching /${step.frameUrl}/. ${matchingFrames} Observed frame URLs: ${this.observedFrameUrls(page)}.${lastFailureNote(lastFailure)}`)
+    // The note goes before the per-frame detail, which can run long: run
+    // summaries clip a failure reason, and the note is the part worth keeping.
+    throw new TimeoutError(`Timed out waiting for selector '${selectors.join("' | '")}' in a frame URL matching /${step.frameUrl}/.${lastFailureNote(lastFailure)} ${matchingFrames} Observed frame URLs: ${this.observedFrameUrls(page)}`)
   }
 
   /**
@@ -1050,9 +1052,9 @@ export class DetectionService implements IDetectionService {
       const deadline = Date.now() + timeout
       // Every failed wait is waited in again by the next rescan, whatever the
       // reason: Puppeteer wraps lifecycle errors (a frame's session closing as
-      // it changes process) and real ones (a selector Chrome cannot parse)
-      // alike, and telling them apart wrongly would turn a step that heals
-      // into one that fails. The last real cause is only reported.
+      // it changes process) and other failures (a protocol error) alike, and
+      // telling them apart wrongly would turn a step that heals into one that
+      // fails. The last such cause is only reported.
       let lastFailure: string | undefined
       let settled = false
 
@@ -1428,8 +1430,14 @@ export function describeWaitFailure(error: unknown): string | undefined {
   return `${root.name}: ${root.message.slice(0, 200)}`
 }
 
+/**
+ * The note a timeout carries when a wait in the step failed for a reason
+ * other than not finding its element. Worded as what is known — that wait
+ * failed and was retried — because the failure may have healed long before
+ * the step timed out for an unrelated reason.
+ */
 function lastFailureNote(lastFailure: string | undefined): string {
-  return lastFailure === undefined ? '' : ` Last wait error: ${lastFailure}.`
+  return lastFailure === undefined ? '' : ` A wait in this step also failed with ${lastFailure.replace(/\.+$/u, '')}; it was retried.`
 }
 
 function safeFrameUrl(frame: Frame): string | undefined {
