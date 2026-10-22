@@ -95,6 +95,14 @@ describe('WorkflowStepSchema', () => {
     })
   })
 
+  it('accepts autoSubmits on a totp action', () => {
+    expect(WorkflowStepSchema.safeParse(step({ type: 'totp', seedRef: 'checkout-user', autoSubmits: true })).success).toBe(true)
+  })
+
+  it('rejects autoSubmits on any other action', () => {
+    expect(WorkflowStepSchema.safeParse(step({ type: 'input', value: 'x', autoSubmits: true })).success).toBe(false)
+  })
+
   it('accepts a valid frame URL matcher', () => {
     const result = WorkflowStepSchema.safeParse({
       ...step({ type: 'input', value: '4242424242424242' }),

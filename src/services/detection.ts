@@ -35,6 +35,16 @@ const TOTP_WINDOW_SAFETY_MARGIN_MS = 5000
 // the component registers each one.
 const TOTP_TYPING_DELAY_MS = 100
 
+// After typing a TOTP code, how long the code field is given to go away (the
+// page moving on is the only signal an accepted code gives), and how many
+// codes are tried in all. A rejected code is retried with the NEXT window's
+// code: the usual cause is the window's code having been used already — two
+// monitor runs signing in as one principal within the same 30 s window, which
+// the server's replay protection refuses — and a dropped digit heals the same
+// way. Retrying replays nothing: it is the same step, typing a new code.
+const TOTP_ACCEPT_WAIT_MS = 10000
+const TOTP_MAX_ATTEMPTS = 3
+
 // Hosted payment fields format and validate after each key event. A small
 // delay prevents their iframe handlers from dropping digits under concurrent
 // target load while retaining the pinned, origin-validated ElementHandle.
@@ -732,10 +742,31 @@ export class DetectionService implements IDetectionService {
           // as possible. A navigation detaches the handle and fails secure.
           await this.evalClick(actionTarget, step)
           const code = generateTotp(seed, Date.now())
-          if (actionTarget.element) {
-            await actionTarget.element.type(code, { delay: TOTP_TYPING_DELAY_MS })
-          } else {
-            await actionTarget.context.type(step.querySelector, code, { delay: TOTP_TYPING_DELAY_MS })
+          if (actionTarget.element) await actionTarget.element.type(code, { delay: TOTP_TYPING_DELAY_MS })
+          else await actionTarget.context.type(step.querySelector, code, { delay: TOTP_TYPING_DELAY_MS })
+          // Only a page that submits the code by itself says anything about it
+          // here; a later Verify click submits the others.
+          if (action.autoSubmits !== true) break
+          for (let attempt = 1; ; attempt++) {
+            if (await this.totpAccepted(actionTarget, step)) break
+            if (attempt >= TOTP_MAX_ATTEMPTS) {
+              target.logger.log(`One-time code still not accepted after ${TOTP_MAX_ATTEMPTS} codes; carrying on, so the next step reports what the page shows.`)
+              break
+            }
+            const untilNextWindow = millisecondsRemainingInTotpWindow(Date.now()) + 50
+            target.logger.log(
+              `One-time code not accepted within ${TOTP_ACCEPT_WAIT_MS / 1000} s (the code field is still showing; most likely this window's code was already used). Typing the next window's code in ${Math.ceil(untilNextWindow / 1000)} s (code ${attempt + 1}/${TOTP_MAX_ATTEMPTS}).`,
+            )
+            await this.sleep(untilNextWindow)
+            const field = await this.currentTotpField(actionTarget, step)
+            if (field === undefined) {
+              target.logger.log('The code field went away during the wait (most likely the earlier code was accepted late), or left its trusted frame; not typing another code.')
+              break
+            }
+            if (!(await this.retypeTotp(field, generateTotp(seed, Date.now())))) {
+              target.logger.log('The code field has no input inside it to type into; not typing another code.')
+              break
+            }
           }
           break
         }
@@ -839,6 +870,76 @@ export class DetectionService implements IDetectionService {
       }
     } finally {
       await actionTarget.element?.dispose().catch(() => undefined)
+    }
+  }
+
+  /**
+   * Whether the page took the TOTP code just typed: the code field going away
+   * (hidden, removed, or the page navigating on) within TOTP_ACCEPT_WAIT_MS.
+   * Only asked of an `autoSubmits` step — a field a later Verify click submits
+   * stays visible whatever the code. Anything that ends the wait other than
+   * the field still showing — a detached frame, a closed context — counts as
+   * accepted; the next step judges what is there.
+   */
+  private async totpAccepted(actionTarget: ActionTarget, step: PuppeteerLocatorAction): Promise<boolean> {
+    try {
+      await actionTarget.context.waitForSelector(step.querySelector, { hidden: true, timeout: TOTP_ACCEPT_WAIT_MS })
+      return true
+    } catch (error) {
+      return !(error instanceof Error && error.name === 'TimeoutError')
+    }
+  }
+
+  /**
+   * The code field as it is NOW, looked up afresh after the wait for the next
+   * window: still in the same context, visible, and — for a framed step — in a
+   * frame whose URL still matches the step's trusted pattern. Anything else
+   * means the page moved on while the step waited, and the fresh code must not
+   * be typed: its keystrokes would go to whatever holds focus. A field the
+   * page re-mounted after refusing a code is found here too.
+   */
+  private async currentTotpField(actionTarget: ActionTarget, step: PuppeteerLocatorAction): Promise<ElementHandle<Element> | undefined> {
+    if (step.frameUrl !== undefined) {
+      const url = safeFrameUrl(actionTarget.context as Frame)
+      if (url === undefined || !new RegExp(step.frameUrl).test(url)) return undefined
+    }
+    const field = await actionTarget.context.$(step.querySelector).catch(() => null)
+    if (field === null) return undefined
+    // The URL is read again once the field is held, as the framed search does:
+    // a navigation committing during the look-up must not hand over a field
+    // from a document outside the trusted pattern.
+    const stillTrusted = step.frameUrl === undefined || new RegExp(step.frameUrl).test(safeFrameUrl(actionTarget.context as Frame) ?? '')
+    if (stillTrusted && (await field.isVisible().catch(() => false))) return field
+    await field.dispose().catch(() => undefined)
+    return undefined
+  }
+
+  /**
+   * Replace the digits in the code field with a fresh code: the field itself
+   * when it is an input, else the first input inside it (a step's selector may
+   * name a wrapper around the code boxes). Selecting the old digits first lets
+   * the new ones replace them. False, typing nothing, when there is no input.
+   */
+  private async retypeTotp(field: ElementHandle<Element>, code: string): Promise<boolean> {
+    try {
+      const input = await field.evaluateHandle((candidate) => (candidate instanceof HTMLInputElement || candidate instanceof HTMLTextAreaElement ? candidate : candidate.querySelector('input, textarea')))
+      const element = input.asElement() as ElementHandle<HTMLInputElement | HTMLTextAreaElement> | null
+      if (element === null) {
+        await input.dispose().catch(() => undefined)
+        return false
+      }
+      try {
+        await element.evaluate((target) => {
+          target.focus()
+          target.select()
+        })
+        await element.type(code, { delay: TOTP_TYPING_DELAY_MS })
+        return true
+      } finally {
+        await element.dispose().catch(() => undefined)
+      }
+    } finally {
+      await field.dispose().catch(() => undefined)
     }
   }
 

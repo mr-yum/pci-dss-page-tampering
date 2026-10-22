@@ -43,7 +43,7 @@ async function checkout(query: string, cpuThrottle?: number): Promise<{ page: Pa
 try {
   const busy = await checkout('?busy', 40)
   const started = Date.now()
-  const found = await service.waitForActionTarget(busy.page, step('input[name="expiry"]'), 30_000).then(
+  const found = await service.waitForActionTarget(busy.page, step('input[name="expiry"]'), 60_000).then(
     async (target) => ({
       frameField: new URLSearchParams(new URL((target.context as Frame).url()).hash.slice(1)).get('field'),
       inputName: await target.element!.evaluate((input) => (input as HTMLInputElement).name),

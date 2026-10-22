@@ -51,6 +51,8 @@ export type PuppeteerInputAction = {
 export type PuppeteerTotpAction = {
   type: 'totp'
   seedRef: string
+  // See WorkflowActionType.autoSubmits: enables retrying a refused code.
+  autoSubmits?: true | undefined
 }
 
 export type PuppeteerEscapeAction = {

@@ -47,6 +47,15 @@ describe('collectTotpSeedRefs', () => {
     ])
   })
 
+  it('carries autoSubmits onto a totp action, and leaves it off otherwise', () => {
+    const [withFlag, without] = stepsToPuppeteerLocatorAction([
+      { description: 'code', waitFor: [{ type: 'input', identifier: 'otp' }], action: { type: 'totp', seedRef: 'x', autoSubmits: true } },
+      { description: 'code', waitFor: [{ type: 'input', identifier: 'otp' }], action: { type: 'totp', seedRef: 'x' } },
+    ])
+    expect(withFlag?.action).toEqual({ type: 'totp', seedRef: 'x', autoSubmits: true })
+    expect(without?.action).toEqual({ type: 'totp', seedRef: 'x' })
+  })
+
   it('maps every waitFor type to its query selector, including id for fields with no name attribute', () => {
     const cases: Array<[WorkflowStep['waitFor'][number], string]> = [
       [{ type: 'div', identifier: 'nav-bar__element' }, 'div.nav-bar__element'],
