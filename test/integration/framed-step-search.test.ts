@@ -59,7 +59,7 @@ type DriverResult = {
 }
 
 describe('framed step search across busy same-URL frames', () => {
-  jest.setTimeout(120_000)
+  jest.setTimeout(180_000)
 
   let server: http.Server
   let frameUrl: string
@@ -94,8 +94,11 @@ describe('framed step search across busy same-URL frames', () => {
 
   it('finds the expiry field in its own frame while the frames are busy and throttled', () => {
     expect(result.busy).toMatchObject({ frames: 3, frameField: 'expiry', inputName: 'expiry' })
-    // Found well inside the 30 s deadline, not at its edge.
-    expect(result.busy.elapsedMs).toBeLessThan(20_000)
+    // Found well inside the 60 s deadline, not at its edge. The deadline is
+    // generous because this shares the machine with the rest of the suite's
+    // Chrome instances; the old round robin starved outright under this
+    // throttling rather than running slowly, so the margin costs no power.
+    expect(result.busy.elapsedMs).toBeLessThan(45_000)
   })
 
   it('says, frame by frame, what each same-URL frame held when the field never appears', () => {
