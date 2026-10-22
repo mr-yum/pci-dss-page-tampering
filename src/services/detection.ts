@@ -759,8 +759,14 @@ export class DetectionService implements IDetectionService {
             )
             await this.sleep(untilNextWindow)
             const field = await this.currentTotpField(actionTarget, step)
-            if (field === undefined) break
-            if (!(await this.retypeTotp(field, generateTotp(seed, Date.now())))) break
+            if (field === undefined) {
+              target.logger.log('The code field went away during the wait (most likely the earlier code was accepted late), or left its trusted frame; not typing another code.')
+              break
+            }
+            if (!(await this.retypeTotp(field, generateTotp(seed, Date.now())))) {
+              target.logger.log('The code field has no input inside it to type into; not typing another code.')
+              break
+            }
           }
           break
         }

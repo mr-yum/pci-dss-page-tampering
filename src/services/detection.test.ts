@@ -1419,9 +1419,11 @@ describe('DetectionService TOTP step', () => {
   })
 
   it('types nothing more when the field has gone by the time the next window comes', async () => {
-    const { run, typed } = setUp(['rejected'], { fieldAfterWait: 'gone' })
+    const { run, typed, log } = setUp(['rejected'], { fieldAfterWait: 'gone' })
     await run()
     expect(typed).toHaveLength(1)
+    // Says why it stopped, after the line announcing another code.
+    expect(log).toHaveBeenLastCalledWith(expect.stringContaining('not typing another code'))
   })
 
   it('types nothing more when the field is still in the page but hidden by the time the next window comes', async () => {
@@ -1458,7 +1460,7 @@ describe('DetectionService TOTP step', () => {
     const { run, typed, log } = setUp(['rejected'], { fieldAfterWait: 'wrapper-without-input' })
     await expect(run()).resolves.toBeUndefined()
     expect(typed).toHaveLength(1)
-    expect(log).toHaveBeenCalledTimes(1)
+    expect(log).toHaveBeenLastCalledWith('The code field has no input inside it to type into; not typing another code.')
   })
 
   it('waits for the field to be hidden, for a bounded time', async () => {
