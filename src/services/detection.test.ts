@@ -1418,27 +1418,31 @@ describe('DetectionService TOTP step', () => {
     expect(typed).toHaveLength(1)
   })
 
+  const FIELD_GONE = 'The code field went away during the wait (most likely the earlier code was accepted late), or left its trusted frame; not typing another code.'
+
   it('types nothing more when the field has gone by the time the next window comes', async () => {
     const { run, typed, log } = setUp(['rejected'], { fieldAfterWait: 'gone' })
     await run()
     expect(typed).toHaveLength(1)
     // Says why it stopped, after the line announcing another code.
-    expect(log).toHaveBeenLastCalledWith(expect.stringContaining('not typing another code'))
+    expect(log).toHaveBeenLastCalledWith(FIELD_GONE)
   })
 
   it('types nothing more when the field is still in the page but hidden by the time the next window comes', async () => {
-    const { run, typed, fresh } = setUp(['rejected'], { fieldAfterWait: 'hidden' })
+    const { run, typed, fresh, log } = setUp(['rejected'], { fieldAfterWait: 'hidden' })
     await run()
     expect(typed).toHaveLength(1)
     expect(fresh.dispose).toHaveBeenCalled()
+    expect(log).toHaveBeenLastCalledWith(FIELD_GONE)
   })
 
   it('types nothing more into a framed field whose frame left its trusted URL during the wait', async () => {
     const framed = { ...autoSubmitting, frameUrl: '^https://auth\\.example\\.com/verify$' }
-    const { run, typed, context } = setUp(['rejected'], { step: framed, frameUrlAfterWait: 'https://elsewhere.example.org/verify' })
+    const { run, typed, context, log } = setUp(['rejected'], { step: framed, frameUrlAfterWait: 'https://elsewhere.example.org/verify' })
     await run()
     expect(typed).toHaveLength(1)
     expect(context.$).not.toHaveBeenCalled()
+    expect(log).toHaveBeenLastCalledWith(FIELD_GONE)
   })
 
   const framed = { ...autoSubmitting, frameUrl: '^https://auth\\.example\\.com/verify$' }
@@ -1450,10 +1454,11 @@ describe('DetectionService TOTP step', () => {
   })
 
   it('types nothing more when the frame leaves its trusted URL while the field is being looked up', async () => {
-    const { run, typed, fresh } = setUp(['rejected'], { step: framed, frameUrlDuringLookup: 'https://elsewhere.example.org/verify' })
+    const { run, typed, fresh, log } = setUp(['rejected'], { step: framed, frameUrlDuringLookup: 'https://elsewhere.example.org/verify' })
     await run()
     expect(typed).toHaveLength(1)
     expect(fresh.dispose).toHaveBeenCalled()
+    expect(log).toHaveBeenLastCalledWith(FIELD_GONE)
   })
 
   it('gives up cleanly, without throwing, on a field that is a wrapper with no input inside', async () => {
