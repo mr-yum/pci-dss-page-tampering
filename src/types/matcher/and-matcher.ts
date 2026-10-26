@@ -24,7 +24,7 @@
 
 import type { AuthorizationResult } from './authorization-result.js'
 import { type AuthorizationTraceStep, type AuthorizeOptions, leafTrace } from './authorization-trace.js'
-import type { AuthorisationInfo, AuthorisationMatcher, Matchable, Matcher } from './matcher.interface.js'
+import type { AuthorisationInfo, AuthorisationMatcher, Matchable, Matcher, MissExplanation } from './matcher.interface.js'
 
 /**
  * AndMatcher - Composite matcher with AND logic (all children must match).
@@ -225,5 +225,27 @@ export class AndMatcher<T extends Matchable = Matchable> implements Authorisatio
       },
       consulted,
     )
+  }
+
+  /**
+   * Explain a miss only when this alternative otherwise applies: exactly one
+   * conjunct fails to identify and it can say why. A scoping conjunct that
+   * fails (a `urlMatcher` for another route tier) means this alternative is
+   * about a different page, and its sources would be the wrong comparison.
+   *
+   * Every other conjunct must also *authorise*, not merely identify: identify()
+   * ignores authorisationInfo, so a scope that is pending or declined at any
+   * depth (a declined urlMatcher inside a nested OR) would otherwise be named
+   * as an approved alternative that, with its sources restored, still denies.
+   */
+  explainMiss(resource: T): MissExplanation | undefined {
+    if (!resource || this.authorisationInfo?.authorised === false) return undefined
+
+    const missing = this.children.filter((child) => !child.identify(resource))
+    if (missing.length !== 1) return undefined
+
+    const applies = this.children.every((child) => child === missing[0] || child.authorize(resource).authorized)
+
+    return applies ? missing[0]!.explainMiss?.(resource) : undefined
   }
 }

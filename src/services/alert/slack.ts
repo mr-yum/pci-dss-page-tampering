@@ -39,6 +39,11 @@ type HeaderAlertRow = HeaderInfo & { url?: string; detectedTarget: Target }
 const TABLE_CHAR_BUDGET = 9500
 /** No single cell may eat the budget: keeps at least a handful of rows visible. */
 const TABLE_CELL_CHAR_CAP = 1200
+/**
+ * Longest failure reason in an unauthorised-header row: room for a CSP
+ * directive's moved sources, a long way inside the per-cell cap.
+ */
+const HEADER_REASON_CHAR_LIMIT = 400
 
 type TextNode = { text?: unknown; elements?: unknown }
 
@@ -828,8 +833,6 @@ export class SlackAlertService implements IAlertService {
    */
   private unauthorizedHeaderToTableItem(result: KnownHeaderWithUnauthorisedContentFound) {
     const matcherType = result.authorizationMatcher.getType()
-    const pattern = JSON.stringify(result.authorizationMatcher.getPattern())
-    const failureReason = `${matcherType}Matcher failed: ${result.failureReason} (expected: ${pattern})`
     const hostCell = this.buildRichTextCell(extractHost(result.header.url))
 
     return [
@@ -870,13 +873,33 @@ export class SlackAlertService implements IAlertService {
             elements: [
               {
                 type: 'text',
-                text: this.truncateText(failureReason),
+                text: this.headerFailureReasonText(matcherType, result),
               },
             ],
           },
         ],
       },
     ]
+  }
+
+  /**
+   * The reason is what a reader acts on — for a CSP directive it names the
+   * sources that moved — so it is kept whole up to HEADER_REASON_CHAR_LIMIT,
+   * where the old 100-character cell cut it off after the matcher type. A
+   * leaf's approved pattern follows only when the whole text still fits that
+   * old cell, so it can never clip the reason; a composite's never does, since
+   * its pattern is a list of matcher objects whose JSON tells a reader nothing.
+   */
+  private headerFailureReasonText(matcherType: string, result: KnownHeaderWithUnauthorisedContentFound): string {
+    const reason = `${matcherType}Matcher failed: ${result.failureReason}`
+    const composite = matcherType === 'or' || matcherType === 'and'
+
+    if (!composite) {
+      const withPattern = `${reason} (expected: ${JSON.stringify(result.authorizationMatcher.getPattern())})`
+      if (withPattern.length <= this.maxStringLength) return withPattern
+    }
+
+    return reason.length > HEADER_REASON_CHAR_LIMIT ? `${reason.slice(0, HEADER_REASON_CHAR_LIMIT - 3)}...` : reason
   }
 
   private createHeaderMessagePayload(title: string, headers: HeaderAlertRow[], target: Target, destination: AlertDestination): object {

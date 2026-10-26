@@ -22,7 +22,9 @@ import { UnknownHeaderFound } from '../../types/comparison/unknown-header-found.
 import { UnknownScriptFound } from '../../types/comparison/unknown-script-found.js'
 import type { DetectedHeader } from '../../types/header.js'
 import type { InventoryAlert, InventoryHeaderInfo, InventoryScriptInfo } from '../../types/inventory/model.js'
+import { CspDirectiveMatcher } from '../../types/matcher/csp-directive-matcher.js'
 import type { DetectedScript, Matcher } from '../../types/matcher/matcher.interface.js'
+import { OrMatcher } from '../../types/matcher/or-matcher.js'
 import type { Target } from '../../types/target.js'
 import { createLogger } from '../../utils/logger.js'
 import { SlackAlertService } from './slack.js'
@@ -2184,6 +2186,77 @@ describe('SlackAlertService - delivery accountability', () => {
     expect(table.rows).toHaveLength(2)
     const valueCell = table.rows[1][1]
     expect(valueCell.elements[0].elements[0].text.endsWith('…')).toBe(true)
+  })
+
+  describe('failure reason cell', () => {
+    const reasonCellOf = async (result: KnownHeaderWithUnauthorisedContentFound): Promise<string> => {
+      const service = new SlackAlertService('t', 'https://github.com/example/inv', 'inventory-updates')
+      const sendMessageSpy = jest.spyOn(service as any, 'sendMessage').mockResolvedValue(undefined)
+      await service.alertForTypedResults([result], target, destinations)
+      const table = (sendMessageSpy.mock.calls[0]![0] as any).blocks.find((block: any) => block.type === 'table')
+      return table.rows[1][3].elements[0].elements[0].text
+    }
+
+    const found = (matcher: Matcher, value: string): KnownHeaderWithUnauthorisedContentFound => {
+      const url = 'https://shop.example.com/checkout'
+      const header = { name: 'content-security-policy', value, url } as unknown as DetectedHeader
+      const entry = { identifyWith: matcher, authoriseWith: { matcher, authorisationInfo: { description: 'x', authorised: true, date: new Date('2026-01-01T00:00:00.000Z') } } } as unknown as InventoryHeaderInfo
+      const reason = matcher.authorize({ name: header.name, content: value, url }).reason!
+      return new KnownHeaderWithUnauthorisedContentFound(target, new Date('2026-10-26T00:00:00.000Z'), header, entry, matcher, reason)
+    }
+
+    const approved = { description: 'approved', authorised: true, date: new Date('2026-08-07T00:00:00.000Z') }
+    const observed = "img-src 'self' data: blob: https: https://assets.example.net"
+
+    it('keeps the CSP source that moved, which the 100-character cell used to cut off', async () => {
+      // The old cell read "orMatcher failed: No child matcher identified the
+      // resource (expected: [{…" and stopped there.
+      const or = new OrMatcher([
+        new CspDirectiveMatcher('frame-src', ["'self'", 'https://js.stripe.com'], approved),
+        new CspDirectiveMatcher('img-src', ["'self'", 'data:', 'blob:', 'https:', 'https://assets.example.net', 'https://storage.example.org'], approved),
+      ])
+
+      const cell = await reasonCellOf(found(or, observed))
+
+      expect(cell).toBe('orMatcher failed: No child matcher identified the resource; nearest approved alternative (2 of 2): img-src differs from the approved policy: 1 approved source no longer present: https://storage.example.org')
+    })
+
+    it('keeps a long leaf reason whole and drops the pattern it would crowd out', async () => {
+      const leaf = new CspDirectiveMatcher('img-src', ["'self'", 'data:', 'blob:', 'https:', 'https://assets.example.net', 'https://storage.example.org'], approved)
+
+      expect(await reasonCellOf(found(leaf, observed))).toBe('csp-directiveMatcher failed: img-src differs from the approved policy: 1 approved source no longer present: https://storage.example.org')
+    })
+
+    it('still shows a short leaf reason with its pattern, in the old 100-character cell', async () => {
+      const leaf = { getType: () => 'content', getPattern: () => '^(DENY|SAMEORIGIN)$', identify: () => true, authorize: () => ({ authorized: false, reason: 'value does not match pattern' }) } as unknown as Matcher
+
+      expect(await reasonCellOf(found(leaf, 'ALLOWALL'))).toBe('contentMatcher failed: value does not match pattern (expected: "^(DENY|SAMEORIGIN)$")')
+    })
+
+    it('drops a pattern that would not fit, rather than clip the reason', async () => {
+      const longPattern = { getType: () => 'content', getPattern: () => 'p'.repeat(200), identify: () => true, authorize: () => ({ authorized: false, reason: 'value does not match pattern' }) } as unknown as Matcher
+      expect(await reasonCellOf(found(longPattern, 'ALLOWALL'))).toBe('contentMatcher failed: value does not match pattern')
+
+      // A reason just under the old cell used to have its tail — the moved
+      // source — cut to make room for the pattern.
+      const leaf = new CspDirectiveMatcher('img-src', ["'self'"], approved)
+      expect(await reasonCellOf(found(leaf, "img-src 'self' https://a.bc"))).toBe('csp-directiveMatcher failed: img-src differs from the approved policy: 1 added source: https://a.bc')
+    })
+
+    it("never appends an AND composite's matcher objects either", async () => {
+      const and = { getType: () => 'and', getPattern: () => [{ some: 'matcher' }], identify: () => true, authorize: () => ({ authorized: false, reason: 'Not all child matchers identified the resource' }) } as unknown as Matcher
+
+      expect(await reasonCellOf(found(and, observed))).toBe('andMatcher failed: Not all child matchers identified the resource')
+    })
+
+    it('clips a composite reason at the reason limit', async () => {
+      const matcher = { getType: () => 'or', getPattern: () => [], identify: () => true, authorize: () => ({ authorized: false, reason: 'r'.repeat(1000) }) } as unknown as Matcher
+
+      const cell = await reasonCellOf(found(matcher, observed))
+
+      expect(cell).toHaveLength(400)
+      expect(cell.endsWith('...')).toBe(true)
+    })
   })
 
   it('records a rejected run summary as an undelivered alert, without throwing', async () => {

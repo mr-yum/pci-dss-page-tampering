@@ -9,8 +9,12 @@
  * @see ./csp-directive-matcher.ts
  */
 
+import { processAuthorizeWith } from '../inventory/zod.js'
+import { AndMatcher } from './and-matcher.js'
 import { CSP_ANY_NONCE, CspDirectiveMatcher } from './csp-directive-matcher.js'
 import type { AuthorisationInfo, Matchable } from './matcher.interface.js'
+import { OrMatcher } from './or-matcher.js'
+import { UrlMatcher } from './url-matcher.js'
 
 describe('CspDirectiveMatcher', () => {
   const ALLOW = ["'self'", 'https://js.stripe.com', 'https://hooks.stripe.com', 'https://m.stripe.network']
@@ -226,6 +230,133 @@ describe('CspDirectiveMatcher', () => {
 
     it('does not treat a malformed nonce-like token as a nonce', () => {
       expect(withNonce.authorize(value(full("'nonce-'"))).authorized).toBe(false)
+    })
+  })
+
+  describe('naming what moved when no alternative identifies the value', () => {
+    // identify() is as strict as authorize(), and OrMatcher picks an
+    // alternative by identify(), so an entry approving several variants of a
+    // directive used to deny any change with the bare "No child matcher
+    // identified the resource" — the alert never said which source moved.
+    const APPROVED: AuthorisationInfo = { description: 'approved', authorised: true, date: new Date('2026-10-01T00:00:00.000Z') }
+    const PENDING: AuthorisationInfo = { description: 'pending', authorised: false, date: new Date('2026-10-01T00:00:00.000Z') }
+    const IMG = ["'self'", 'blob:', 'data:', 'https:', 'https://assets.example.net']
+    const img = (allow: readonly string[], info: AuthorisationInfo | undefined = APPROVED) => new CspDirectiveMatcher('img-src', allow, info)
+    const at = (url: string, content: string): Matchable => ({ name: 'content-security-policy', content, url })
+
+    it('names the nearest approved alternative and the source it lost, without changing the verdict', () => {
+      const or = new OrMatcher([matcher(ALLOW, APPROVED), img([...IMG, 'https://storage.example.org']), img(["'self'", 'https://storage.example.org'])])
+
+      const result = or.authorize(value(`img-src ${IMG.join(' ')}`))
+
+      expect(result.authorized).toBe(false)
+      expect(result.reason).toBe('No child matcher identified the resource; nearest approved alternative (2 of 3): img-src differs from the approved policy: 1 approved source no longer present: https://storage.example.org')
+    })
+
+    it('picks the alternative with the fewest differences, and the first of a tie', () => {
+      const or = new OrMatcher([img(["'self'"]), img([...IMG, 'https://a.example.org']), img([...IMG, 'https://b.example.org'])])
+
+      expect(or.authorize(value(`img-src ${IMG.join(' ')}`)).reason).toContain('(2 of 3): img-src differs from the approved policy: 1 approved source no longer present: https://a.example.org')
+    })
+
+    it('names an added source', () => {
+      const or = new OrMatcher([img(IMG), img(["'self'"])])
+
+      expect(or.authorize(value(`img-src ${IMG.join(' ')} https://evil.example.test`)).reason).toContain('(1 of 2): img-src differs from the approved policy: 1 added source: https://evil.example.test')
+    })
+
+    it('never compares against an alternative that is pending or declined', () => {
+      const or = new OrMatcher([img([...IMG, 'https://storage.example.org'], PENDING), img(["'self'"])])
+
+      expect(or.authorize(value(`img-src ${IMG.join(' ')}`)).reason).toContain('(2 of 2): img-src differs from the approved policy: 4 added sources: blob: data: https: https://assets.example.net')
+      expect(new OrMatcher([img(IMG, PENDING)]).authorize(value("img-src 'self'")).reason).toBe('No child matcher identified the resource')
+    })
+
+    it('never compares against another directive', () => {
+      expect(new OrMatcher([matcher(ALLOW, APPROVED)]).authorize(value(`img-src ${IMG.join(' ')}`)).reason).toBe('No child matcher identified the resource')
+    })
+
+    it("compares against a route-scoped alternative only on that alternative's route", () => {
+      // Each CSP tier is its own alternative: comparing a checkout response
+      // with the default tier's sources would name the wrong differences.
+      const defaultTier = new AndMatcher([new UrlMatcher('^https://shop\\.example\\.com/(?!checkout)'), img([...IMG, 'https://ads.example.net'])], APPROVED)
+      const checkoutTier = new AndMatcher([new UrlMatcher('^https://shop\\.example\\.com/checkout'), img(["'self'", 'https://assets.example.net'])], APPROVED)
+      const or = new OrMatcher([defaultTier, checkoutTier])
+      const observed = `img-src ${IMG.join(' ')}`
+
+      expect(or.authorize(at('https://shop.example.com/checkout?return=%2F', observed)).reason).toBe(
+        'No child matcher identified the resource; nearest approved alternative (2 of 2): img-src differs from the approved policy: 3 added sources: blob: data: https:',
+      )
+      expect(or.authorize(at('https://shop.example.com/menu', observed)).reason).toContain('(1 of 2): img-src differs from the approved policy: 1 approved source no longer present: https://ads.example.net')
+      expect(or.authorize(at('https://elsewhere.example.com/', observed)).reason).toBe('No child matcher identified the resource')
+    })
+
+    it('never compares against a scoped alternative whose own scoping conjunct is declined', () => {
+      const declinedScope = new AndMatcher([new UrlMatcher('^https://shop\\.example\\.com/', PENDING), img([...IMG, 'https://storage.example.org'])], APPROVED)
+
+      expect(new OrMatcher([declinedScope]).authorize(at('https://shop.example.com/', `img-src ${IMG.join(' ')}`)).reason).toBe('No child matcher identified the resource')
+    })
+
+    it('never compares against a scoped alternative whose scope is declined further down', () => {
+      // identify() ignores authorisationInfo, so the nested OR identifies
+      // through its pending /pay leaf; with the sources restored, this tier
+      // still denies on /pay, so it is no approved alternative there.
+      const scope = new OrMatcher([new UrlMatcher('^https://shop\\.example\\.com/checkout', APPROVED), new UrlMatcher('^https://shop\\.example\\.com/pay', PENDING)])
+      const tier = new AndMatcher([scope, img([...IMG, 'https://storage.example.org'])], APPROVED)
+      const or = new OrMatcher([tier])
+
+      expect(or.authorize(at('https://shop.example.com/pay', `img-src ${IMG.join(' ')} https://storage.example.org`)).authorized).toBe(false)
+      expect(or.authorize(at('https://shop.example.com/pay', `img-src ${IMG.join(' ')}`)).reason).toBe('No child matcher identified the resource')
+      expect(or.authorize(at('https://shop.example.com/checkout', `img-src ${IMG.join(' ')}`)).reason).toContain('(1 of 1): img-src differs from the approved policy: 1 approved source no longer present: https://storage.example.org')
+    })
+
+    it('never compares against a scoped alternative that is itself pending or declined', () => {
+      const pendingTier = new AndMatcher([new UrlMatcher('^https://shop\\.example\\.com/'), img([...IMG, 'https://storage.example.org'])], PENDING)
+
+      expect(new OrMatcher([pendingTier]).authorize(at('https://shop.example.com/', `img-src ${IMG.join(' ')}`)).reason).toBe('No child matcher identified the resource')
+    })
+
+    it('reaches through a nested OR', () => {
+      const or = new OrMatcher([matcher(ALLOW, APPROVED), new OrMatcher([img(["'self'"]), img([...IMG, 'https://storage.example.org'])], APPROVED)])
+
+      expect(or.authorize(value(`img-src ${IMG.join(' ')}`)).reason).toContain('(2 of 2): img-src differs from the approved policy: 1 approved source no longer present: https://storage.example.org')
+    })
+
+    it('names no alternative when the OR itself is pending or declined', () => {
+      const or = new OrMatcher([img([...IMG, 'https://storage.example.org'])], PENDING)
+
+      expect(or.authorize(value(`img-src ${IMG.join(' ')}`)).reason).toBe('No child matcher identified the resource')
+    })
+
+    it('never reaches through a nested OR that is pending or declined', () => {
+      const or = new OrMatcher([matcher(ALLOW, APPROVED), new OrMatcher([img([...IMG, 'https://storage.example.org'])], PENDING)])
+
+      expect(or.authorize(value(`img-src ${IMG.join(' ')}`)).reason).toBe('No child matcher identified the resource')
+    })
+
+    it('counts a nonce difference', () => {
+      const withNonce = new CspDirectiveMatcher('script-src', ["'self'", CSP_ANY_NONCE], APPROVED)
+
+      expect(withNonce.explainMiss(value("script-src 'self'"))).toEqual({ distance: 1, reason: 'script-src differs from the approved policy: expected 1 nonce source but found 0' })
+      expect(withNonce.explainMiss(value("script-src 'self' 'nonce-abc123'"))).toBeUndefined()
+    })
+
+    it('says the same thing through the inventory array syntax', () => {
+      // One host, a frame-src and two img-src variants, the app dropping its
+      // storage origin from img-src.
+      const authoriseWith = processAuthorizeWith([
+        { cspDirectiveMatcher: { directive: 'frame-src', allow: ["'self'", 'https://js.stripe.com'] }, authorisationInfo: { description: 'frame-src', authorised: true, date: '2026-08-07T00:00:00.000Z' } },
+        { cspDirectiveMatcher: { directive: 'img-src', allow: [...IMG, 'https://storage.example.org'] }, authorisationInfo: { description: 'img-src', authorised: true, date: '2026-08-07T00:00:00.000Z' } },
+        {
+          cspDirectiveMatcher: { directive: 'img-src', allow: ["'self'", 'blob:', 'data:', 'https:', 'https://storage.example.org'] },
+          authorisationInfo: { description: 'img-src, older', authorised: true, date: '2026-08-07T00:00:00.000Z' },
+        },
+      ] as never)
+
+      const result = authoriseWith.matcher.authorize(at('https://shop.example.com/checkout?return=%2F', `img-src 'self' data: blob: https: https://assets.example.net`))
+
+      expect(result.authorized).toBe(false)
+      expect(result.reason).toBe('No child matcher identified the resource; nearest approved alternative (2 of 3): img-src differs from the approved policy: 1 approved source no longer present: https://storage.example.org')
     })
   })
 

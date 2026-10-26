@@ -1123,6 +1123,14 @@ Note the **array**. `identifyWith` claims the whole header for that host, and id
 
 Membership therefore has to match exactly, and every CSP change gets a human look. Ordering is the only thing safely tolerated.
 
+**What a finding says.** An alternative identifies a value only when it would also authorise it, so a changed directive matches none of the array's alternatives. The denial then names the **nearest approved alternative**, the one with the fewest moved sources, and what moved:
+
+```text
+No child matcher identified the resource; nearest approved alternative (2 of 6): img-src differs from the approved policy: 1 approved source no longer present: https://storage.example.org
+```
+
+The position is 1-based within the `authoriseWith` array. Only approved alternatives for the same directive are compared. An alternative scoped with an `andMatcher` is compared only where its other conjuncts authorise the response, so a route tier is never compared on another route. A bare `cspDirectiveMatcher` alternative carries no scope and is compared on every response. To keep the default tier out of the comparison on checkout responses, scope it away from checkout as well, as the route-scoped tiers do. A value no alternative applies to keeps the bare reason. This only changes the reason text: the verdict is the same.
+
 Notes:
 
 - `'nonce-*'` is the **only** wildcard. It stands for exactly one per-response nonce — a nonce is regenerated on every response, so pinning a value would fail on the next request. Two observed nonces against one `'nonce-*'` is a difference and is reported.

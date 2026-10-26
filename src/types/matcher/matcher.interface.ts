@@ -345,6 +345,34 @@ export interface Matcher<T extends Matchable = Matchable> {
    *   an implementation may declare fewer parameters.
    */
   authorize(resource: T, options?: AuthorizeOptions): AuthorizationResult
+
+  /**
+   * Explain how far an approved value is from a resource this matcher did not
+   * identify, for the denial reason only — never consulted for a decision.
+   *
+   * `OrMatcher` picks an alternative by `identify()`, and a matcher whose
+   * `identify()` is as strict as its `authorize()` (CspDirectiveMatcher) is
+   * never picked for a changed value, so the denial would only ever say "no
+   * child matcher identified the resource". A matcher that can say what moved
+   * implements this; `OrMatcher` names its nearest alternative with it.
+   *
+   * Returns undefined when this matcher has nothing true to say: it does not
+   * apply to the resource at all (another CSP directive, a scoping conjunct
+   * that does not match), it is not approved (`authorised: false`), or it
+   * would identify the resource after all.
+   */
+  explainMiss?(resource: T): MissExplanation | undefined
+}
+
+/**
+ * How an approved value differs from a resource, for a denial reason.
+ * @see Matcher.explainMiss
+ */
+export interface MissExplanation {
+  /** How many differences there are; the smallest names the nearest alternative. */
+  distance: number
+  /** What differs, in the words the matcher's own `authorize()` would use. */
+  reason: string
 }
 
 /**
