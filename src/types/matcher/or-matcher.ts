@@ -24,7 +24,7 @@
 
 import type { AuthorizationResult } from './authorization-result.js'
 import { type AuthorizationTraceStep, type AuthorizeOptions, leafTrace } from './authorization-trace.js'
-import type { AuthorisationInfo, AuthorisationMatcher, Matchable, Matcher } from './matcher.interface.js'
+import type { AuthorisationInfo, AuthorisationMatcher, Matchable, Matcher, MissExplanation } from './matcher.interface.js'
 
 /**
  * OrMatcher - Composite matcher with OR logic (any child matches).
@@ -156,10 +156,12 @@ export class OrMatcher<T extends Matchable = Matchable> implements Authorisation
     const matchingChild = matchingChildIndex === -1 ? undefined : this.children[matchingChildIndex]
 
     if (!matchingChild) {
+      // A declined OR has no approved alternative to name.
+      const nearest = this.authorisationInfo?.authorised === false ? undefined : this.nearestMiss(resource)
       return withTrace(
         {
           authorized: false,
-          reason: 'No child matcher identified the resource',
+          reason: nearest === undefined ? 'No child matcher identified the resource' : `No child matcher identified the resource; nearest approved alternative (${nearest.index + 1} of ${this.children.length}): ${nearest.reason}`,
           metadataPath: this.authorisationInfo ? [this.authorisationInfo] : [],
         },
         [],
@@ -188,5 +190,31 @@ export class OrMatcher<T extends Matchable = Matchable> implements Authorisation
 
     // Use child authorization result without override
     return withTrace(childResult, consulted)
+  }
+
+  /**
+   * The nearest alternative's explanation, so a nested OR can name what moved
+   * too. Not approved at this level → nothing to explain against.
+   */
+  explainMiss(resource: T): MissExplanation | undefined {
+    if (!resource || this.authorisationInfo?.authorised === false) return undefined
+
+    return this.nearestMiss(resource)
+  }
+
+  /**
+   * The alternative with the fewest differences, first on a tie (the order the
+   * inventory author gave). Only alternatives that can explain themselves take
+   * part, so a value no alternative applies to keeps the bare reason.
+   */
+  private nearestMiss(resource: T): (MissExplanation & { index: number }) | undefined {
+    let nearest: (MissExplanation & { index: number }) | undefined
+
+    for (const [index, child] of this.children.entries()) {
+      const explanation = child.explainMiss?.(resource)
+      if (explanation !== undefined && (nearest === undefined || explanation.distance < nearest.distance)) nearest = { ...explanation, index }
+    }
+
+    return nearest
   }
 }

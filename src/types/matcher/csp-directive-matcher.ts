@@ -1,8 +1,11 @@
 import type { AuthorizationResult } from './authorization-result.js'
-import type { AuthorisationInfo, AuthorisationMatcher, Matchable } from './matcher.interface.js'
+import type { AuthorisationInfo, AuthorisationMatcher, Matchable, MissExplanation } from './matcher.interface.js'
 
 /** The one wildcard `allow` understands. @see CspDirectiveMatcher */
 export const CSP_ANY_NONCE = "'nonce-*'"
+
+/** One way the observed sources differ from the approved ones, and by how many. */
+type SetDifference = { count: number; text: string }
 
 /** A single-response nonce source expression, per CSP's base64-value grammar. */
 const NONCE_SOURCE = /^'nonce-[A-Za-z0-9+/\-_]+={0,2}'$/u
@@ -137,7 +140,7 @@ export class CspDirectiveMatcher implements AuthorisationMatcher {
         ? { authorized: true }
         : {
             authorized: false,
-            reason: `${this.directive} differs from the approved policy: ${differences.join('; ')}`,
+            reason: this.describeDifferences(differences),
           }
 
     if (this.authorisationInfo) result.metadataPath = [this.authorisationInfo]
@@ -146,12 +149,34 @@ export class CspDirectiveMatcher implements AuthorisationMatcher {
   }
 
   /**
+   * Say which sources moved, for an `OrMatcher` none of whose alternatives
+   * identified the value — the only way a changed directive reaches a denial
+   * when the entry approves more than one variant of it.
+   */
+  explainMiss(resource: Matchable): MissExplanation | undefined {
+    const parsed = this.parse(resource.content)
+
+    if (parsed === null || parsed.directive !== this.directive) return undefined
+    if (this.authorisationInfo?.authorised === false) return undefined
+
+    const differences = this.compareSets(parsed.sources)
+
+    if (differences.length === 0) return undefined
+
+    return { distance: differences.reduce((sum, difference) => sum + difference.count, 0), reason: this.describeDifferences(differences) }
+  }
+
+  private describeDifferences(differences: readonly SetDifference[]): string {
+    return `${this.directive} differs from the approved policy: ${differences.map((difference) => difference.text).join('; ')}`
+  }
+
+  /**
    * Describe every membership difference between observed and approved.
    *
    * Additions and removals are both reported, and separately, so the finding
    * says which way the policy moved.
    */
-  private compareSets(observed: readonly string[]): string[] {
+  private compareSets(observed: readonly string[]): SetDifference[] {
     const observedNonces = observed.filter((source) => NONCE_SOURCE.test(source))
     const observedRest = new Set(observed.filter((source) => !NONCE_SOURCE.test(source)))
 
@@ -161,16 +186,19 @@ export class CspDirectiveMatcher implements AuthorisationMatcher {
     const added = [...observedRest].filter((source) => source === CSP_ANY_NONCE || !this.allow.has(source))
     const removed = this.allowOrdered.filter((source) => source !== CSP_ANY_NONCE && !observedRest.has(source))
 
-    const differences: string[] = []
+    const differences: SetDifference[] = []
 
-    if (added.length > 0) differences.push(`${added.length} added source${added.length === 1 ? '' : 's'}: ${added.join(' ')}`)
-    if (removed.length > 0) differences.push(`${removed.length} approved source${removed.length === 1 ? '' : 's'} no longer present: ${removed.join(' ')}`)
+    if (added.length > 0) differences.push({ count: added.length, text: `${added.length} added source${added.length === 1 ? '' : 's'}: ${added.join(' ')}` })
+    if (removed.length > 0) differences.push({ count: removed.length, text: `${removed.length} approved source${removed.length === 1 ? '' : 's'} no longer present: ${removed.join(' ')}` })
 
     // A nonce placeholder stands for exactly one nonce. An extra nonce is an
     // extra script-execution channel; a missing one can make an approved
     // 'unsafe-inline' live.
     if (observedNonces.length !== this.expectedNonces) {
-      differences.push(`expected ${this.expectedNonces} nonce source${this.expectedNonces === 1 ? '' : 's'} but found ${observedNonces.length}`)
+      differences.push({
+        count: Math.abs(observedNonces.length - this.expectedNonces),
+        text: `expected ${this.expectedNonces} nonce source${this.expectedNonces === 1 ? '' : 's'} but found ${observedNonces.length}`,
+      })
     }
 
     return differences
