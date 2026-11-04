@@ -43,6 +43,19 @@ function headerWithContentMatchers(values: string[]): InventoryHeaderInfo {
   })
 }
 
+const cspAuth = { description: 'x', authorised: true, date: '2026-01-01T00:00:00.000Z' }
+
+function headerWithCspDirectives(allowSets: string[][]): InventoryHeaderInfo {
+  return headerWithMixedAlternatives([], allowSets)
+}
+
+function headerWithMixedAlternatives(contentValues: string[], allowSets: string[][]): InventoryHeaderInfo {
+  return rawInventoryHeaderInfoToInventoryHeaderInfo({
+    identifyWith: { headerNameMatcher: '^content-security-policy$' },
+    authoriseWith: [...contentValues.map((v) => ({ contentMatcher: `^${v}$`, authorisationInfo: cspAuth })), ...allowSets.map((allow) => ({ cspDirectiveMatcher: { directive: 'frame-ancestors', allow }, authorisationInfo: cspAuth }))],
+  })
+}
+
 function scriptWithHashes(hashes: string[]): InventoryScriptInfo {
   return rawInventoryScriptInfoToInventoryScriptInfo({
     identifyWith: { nameMatcher: '^https://cdn\\.example\\.com/s\\.js$' },
@@ -161,6 +174,46 @@ describe('buildInventoryCommitMessage', () => {
     const after = makeInventory('1.0.json', [], [headerWithScopedContentMatchers(['nosniff'], ['legacy-value'])])
 
     expect(buildInventoryCommitMessage([diffOf('1.0.json', before, after)])).toBe('inventory(1.0): add 1 header matcher')
+  })
+
+  // A new CSP value is appended as a `cspDirectiveMatcher` (newHeaderValueMatcherConfig).
+  // Counting only `contentMatcher` scored such a diff as empty, so `push()` skipped it,
+  // after the inventory alert had already reported the value as recorded.
+  it('counts new cspDirectiveMatcher alternatives as header matchers', () => {
+    const before = makeInventory('1.0.json', [], [headerWithCspDirectives([['https://*.example.com', 'https://*.example.net']])])
+    const after = makeInventory('1.0.json', [], [headerWithCspDirectives([['https://*.example.com', 'https://*.example.net'], ['https://*.example.com']])])
+
+    expect(buildInventoryCommitMessage([diffOf('1.0.json', before, after)])).toBe('inventory(1.0): add 1 header matcher')
+  })
+
+  it('counts a cspDirectiveMatcher appended to an entry of contentMatcher alternatives', () => {
+    const before = makeInventory('1.0.json', [], [headerWithContentMatchers(['frame-ancestors https://\\*\\.example\\.com'])])
+    const after = makeInventory('1.0.json', [], [headerWithMixedAlternatives(['frame-ancestors https://\\*\\.example\\.com'], [['https://*.example.org']])])
+
+    expect(buildInventoryCommitMessage([diffOf('1.0.json', before, after)])).toBe('inventory(1.0): add 1 header matcher')
+  })
+
+  // The backstop: an existing entry that changed in a way no bucket counts must still
+  // be committed, never dropped as "no changes".
+  it('reports an existing header entry that changed without adding a counted matcher', () => {
+    const before = makeInventory('1.0.json', [], [headerWithContentMatchers(['a'])])
+    const after = makeInventory('1.0.json', [], [headerWithContentMatchers(['b'])])
+
+    expect(buildInventoryCommitMessage([diffOf('1.0.json', before, after)])).toBe('inventory(1.0): update 1 entry')
+  })
+
+  it('reports an existing script entry that changed without adding a hash', () => {
+    const before = makeInventory('1.0.json', [scriptWithHashes(['a'])], [])
+    const after = makeInventory('1.0.json', [scriptWithHashes(['b'])], [])
+
+    expect(buildInventoryCommitMessage([diffOf('1.0.json', before, after)])).toBe('inventory(1.0): update 1 entry')
+  })
+
+  it('combines added matchers with updated entries in one message', () => {
+    const before = makeInventory('1.0.json', [scriptWithHashes(['a'])], [headerWithContentMatchers(['x'])])
+    const after = makeInventory('1.0.json', [scriptWithHashes(['b'])], [headerWithContentMatchers(['x', 'y'])])
+
+    expect(buildInventoryCommitMessage([diffOf('1.0.json', before, after)])).toBe('inventory(1.0): add 1 header matcher and update 1 entry')
   })
 
   it('omits files with no changes from the scope', () => {
