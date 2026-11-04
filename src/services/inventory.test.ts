@@ -787,6 +787,46 @@ describe('ScriptInventoryService', () => {
         const callArgs = mockRepository.push.mock.calls[0]
         expect(callArgs?.[2]).toMatch(/^inventory\(.+\): add 1 script$/)
       })
+
+      it('pushes a run whose only change is a new CSP value (regression: prod 2026-10-30)', async () => {
+        // diff() appends a changed CSP directive as a cspDirectiveMatcher, and
+        // the inventory alert reports it as recorded; the commit-message
+        // counter saw only contentMatcher leaves, scored the diff as empty, and
+        // push() skipped it — every run, for as long as the value kept coming.
+        const mockRepository = {
+          pull: jest.fn(),
+          push: jest.fn().mockResolvedValue(undefined),
+          getLastPullRef: jest.fn().mockReturnValue(null),
+        }
+        const pushService = new ScriptInventoryService({ inventoryRepository: mockRepository })
+        const target = createMockTarget()
+        const entry = rawInventoryHeaderInfoToInventoryHeaderInfo({
+          identifyWith: { headerNameMatcher: '^content-security-policy$' },
+          authoriseWith: [
+            {
+              contentMatcher: '^frame-ancestors https:\\/\\/\\*\\.example\\.com https:\\/\\/\\*\\.example\\.net$',
+              authorisationInfo: { description: 'Approved framing origins', authorised: true, date: '2026-05-19T00:00:00.000Z' },
+            },
+          ],
+        })
+        const inventory: Inventory = { ...createMockInventory([]), headers: [entry] }
+        const changed = new KnownHeaderWithUnauthorisedContentFound(
+          target,
+          new Date('2026-11-03T00:00:00.000Z'),
+          { name: 'content-security-policy', value: 'frame-ancestors https://*.example.com', target, workflow: target.workflow },
+          entry,
+          entry.authoriseWith.matcher,
+          'No child matcher identified the resource',
+        )
+
+        const diff = await pushService.diff(inventory, [changed])
+        expect(diff.appliedResults).toEqual([changed])
+
+        await pushService.push([diff])
+
+        expect(mockRepository.push).toHaveBeenCalledTimes(1)
+        expect(mockRepository.push.mock.calls[0]?.[2]).toMatch(/^inventory\(.+\): add 1 header matcher$/)
+      })
     })
 
     describe('Round-trip conversion', () => {
