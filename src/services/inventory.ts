@@ -231,8 +231,15 @@ export class ScriptInventoryService implements IInventoryService {
     }
 
     const content = script.content ?? ''
-    const contentSnippet = content.slice(0, 64)
-    if (contentSnippet.trim() === '') {
+    // The window starts at the first non-whitespace character. Taken from the
+    // raw content, a body opening with 64 whitespace characters (template
+    // indentation) produced a whitespace-only snippet and fell through to the
+    // exact-name matcher below — `inline_script/id_not_found`, which every
+    // id-less inline script carries, so once approved the entry identified
+    // all of them and shadowed every later entry.
+    const body = content.trimStart()
+    const contentSnippet = body.slice(0, 64)
+    if (contentSnippet === '') {
       // Whitespace-only content would produce a bare `^` matcher that
       // identifies every script. Fall back to the (degenerate) exact-name
       // matcher rather than minting a universal one.
@@ -241,10 +248,11 @@ export class ScriptInventoryService implements IInventoryService {
     // When the whole body fits in the snippet window, anchor both ends —
     // a prefix-only match would also identify any longer script that merely
     // starts with this content. Truncated snippets stay prefix-anchored.
-    // Compare the original length, not the snippet's: content of exactly 64
+    // Compare the body's length, not the snippet's: a body of exactly 64
     // chars is untruncated and must still get the end anchor.
-    const endAnchor = content.length <= 64 ? '$' : ''
-    const contentConfig = { contentMatcher: `^${this.escapeRegex(contentSnippet)}${endAnchor}` }
+    const endAnchor = body.length <= 64 ? '$' : ''
+    const leading = body.length < content.length ? '\\s*' : ''
+    const contentConfig = { contentMatcher: `^${leading}${this.escapeRegex(contentSnippet)}${endAnchor}` }
 
     let host = ''
     if (script.url) {

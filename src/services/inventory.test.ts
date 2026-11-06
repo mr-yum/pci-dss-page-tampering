@@ -1513,6 +1513,35 @@ describe('ScriptInventoryService', () => {
         expect(entry.identifyWith.identify({ name: 'inline_script/id_not_found', content: exactly64 + ';stealCards()', hash: { value: 'h-evil' }, url: 'https://staging.example.com/menu' })).toBe(false)
       })
 
+      it('skips leading whitespace, so a body opening with a long indent is identified by its code and not by the shared fallback name', async () => {
+        const target = createMockTarget()
+        const indented = new UnknownScriptFound(target, timestamp, {
+          name: 'inline_script/id_not_found',
+          content: `${' '.repeat(80)}window.__app = { region: "au" };\n`,
+          hash: { value: 'h-indented' },
+          url: 'https://staging.example.com/menu',
+        })
+
+        const diff = await service.diff(createMockInventory([]), [indented])
+        const entry = diff.newInventory.scripts[0]!
+        const raw = inventoryScriptInfoToRawInventoryScriptInfo(entry) as any
+
+        expect(raw.identifyWith).not.toHaveProperty('nameMatcher')
+        expect(raw.identifyWith.andMatcher[1]).toEqual({ contentMatcher: '^\\s*window\\.__app = \\{ region: "au" \\};\\n$' })
+        expect(entry.identifyWith.identify(indented.script)).toBe(true)
+        // Another id-less inline script on the same host must not be identified.
+        expect(entry.identifyWith.identify({ name: 'inline_script/id_not_found', content: 'stealCards()', hash: { value: 'h-evil' }, url: 'https://staging.example.com/menu' })).toBe(false)
+      })
+
+      it('falls back to the exact-name matcher only for a body that is whitespace alone', async () => {
+        const target = createMockTarget()
+        const blank = new UnknownScriptFound(target, timestamp, { name: 'inline_script/id_not_found', content: ' \n\t ', hash: { value: 'h-blank' }, url: 'https://staging.example.com/menu' })
+
+        const diff = await service.diff(createMockInventory([]), [blank])
+
+        expect(inventoryScriptInfoToRawInventoryScriptInfo(diff.newInventory.scripts[0]!).identifyWith).toHaveProperty('nameMatcher')
+      })
+
       it('does not append a duplicate entry when a pending (authorised: false) entry already covers the script', async () => {
         const target = createMockTarget()
         const unknown = new UnknownScriptFound(target, timestamp, {
