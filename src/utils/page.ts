@@ -4,7 +4,7 @@ import type { PageScriptElement } from '../types/page.js'
 import type { ScriptInfo } from '../types/script.js'
 import { createSha256Hash } from './hash.js'
 import type { ScriptElementRecord, ScriptInsertionRecord } from './page-attribution.js'
-import { tryGetIdFromInLineScriptCode } from './script/inline.js'
+import { UNIDENTIFIED_INLINE_SCRIPT_ID } from './script/inline.js'
 
 /** One scan of the current top-level document. */
 export type PageScripts = {
@@ -49,7 +49,8 @@ export async function readPageScripts(page: Page): Promise<PageScripts> {
 
   const inlineScripts: ScriptInfo[] = []
   scanned.inline.forEach((pageScriptElement) => {
-    const idToUse = pageScriptElement.id ? `inline_script/${pageScriptElement.id}` : tryGetIdFromInLineScriptCode(pageScriptElement)
+    // Named by element id alone; content is the inventory's to judge.
+    const idToUse = pageScriptElement.id ? `inline_script/${pageScriptElement.id}` : UNIDENTIFIED_INLINE_SCRIPT_ID
     // Always the content's own hash. (Until 2026-11 an inventory entry whose
     // top-level identifyWith was a contentMatcher that also matched the script's
     // NAME replaced this with a constant hash of the two patterns — so every

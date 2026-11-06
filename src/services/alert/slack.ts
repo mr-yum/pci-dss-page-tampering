@@ -418,7 +418,7 @@ export class SlackAlertService implements IAlertService {
    */
   private detectedScriptToScriptInfo(detectedScript: DetectedScript): ScriptInfo {
     // Inline script names are always `inline_script/...` ids (assigned by
-    // getInlineScriptsFromPage / tryGetIdFromInLineScriptCode); anything else
+    // getInlineScriptsFromPage); anything else
     // is an external script URL — including non-http schemes such as blob:
     // worker code minted via URL.createObjectURL.
     const isInline = detectedScript.name.startsWith('inline_script/')

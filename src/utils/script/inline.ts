@@ -1,93 +1,20 @@
-import type { PageScriptElement } from '../../types/page.js'
-import type { InLineScriptMatcher } from '../../types/script/inline.js'
-
 /**
- * Shared fallback id for inline scripts that match none of the known
- * framework snippets below. Multiple distinct scripts can carry this id at
- * once, so it must never be used to *identify* a script in the inventory —
- * `InventoryService.addNewScript` generates an anchored content-snippet
- * matcher for these (combined with the initiator host when the initiator
- * URL is available) instead of a name matcher.
+ * Shared fallback name for inline scripts whose `<script>` element carries no
+ * `id` attribute (those are named `inline_script/<id>`).
+ *
+ * Many distinct scripts carry this name at once, so it must never be used to
+ * *identify* a script in the inventory — `InventoryService.addNewScript`
+ * generates an anchored content-snippet matcher for these (combined with the
+ * initiator host when the initiator URL is available) instead of a name
+ * matcher.
+ *
+ * Until 2026-11 the tool also gave a few framework- and vendor-emitted
+ * snippets (Cloudflare's JavaScript Detections bootstrap, Next.js flight data,
+ * React's streaming runtime) names of their own from patterns in this file.
+ * Those patterns lived in code, so when a vendor changed its snippet only a
+ * tool release could follow it. Snippets like these are identified by content
+ * in the inventory now, through shared matcher definitions
+ * (`shared/matchers.json`, see `../matcher-ref.ts`), where an inventory pull
+ * request can change them.
  */
 export const UNIDENTIFIED_INLINE_SCRIPT_ID = 'inline_script/id_not_found'
-
-/*
-  Returns `inline_script/id_not_found` if we cannot match on known in-line script code.
-
-  Known in-line script code include:
-    - [Cloudflare Bot Flight Mode](https://community.cloudflare.com/t/report-of-deprecated-api-usage-in-cloudflares-auto-generated-script/578200/7)
-    - [Next.js Server-side Rendering](https://github.com/vercel/next.js/discussions/42170#discussioncomment-8880248)
-    - React Server Components runtime helpers and hydration-timing bootstrap
-      (both emitted verbatim by react-dom's server renderer — the exact
-      `$RT=performance.now()` snippet ships inside vercel/next.js's compiled
-      react-dom-server builds)
-
-  Contribution rule: every matcher here classifies a TECHNOLOGY, never a
-  site. A new matcher must target a snippet attributable to the framework or
-  vendor's own source/documentation (link the evidence in its comment), so it
-  holds for any site built on that stack. If a snippet cannot be traced
-  upstream, it is application-specific and belongs in that target's inventory
-  file — the inventory workflow already generates an anchored content-snippet
-  entry for it (combined with the initiator host when available).
- */
-export function tryGetIdFromInLineScriptCode(pageScriptElement: PageScriptElement): string {
-  const scriptMatchers = [cloudFlareScriptMatcher, nextJsServerSideRenderingScriptMatcher, reactServerComponentScriptMatcher, reactHydrationTimingScriptMatcher]
-  const maybeMatch = scriptMatchers.find((matcher) => matcher.predicate(pageScriptElement))
-
-  return maybeMatch ? maybeMatch.resultingIdentifier : UNIDENTIFIED_INLINE_SCRIPT_ID
-}
-
-/*
- In-line script code with [Cloudflare Bot Fight Mode](https://community.cloudflare.com/t/report-of-deprecated-api-usage-in-cloudflares-auto-generated-script/578200/7):
- */
-const cloudFlareScriptMatcher: InLineScriptMatcher = {
-  resultingIdentifier: 'inline_script/cloudflare-bot-fight',
-  predicate: (script: PageScriptElement): boolean => {
-    const innerScriptSrcCode = "a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js'"
-    return script.content.includes(innerScriptSrcCode)
-  },
-}
-
-/*
- In-line script code for Next.js [Server-side Rendering](https://github.com/vercel/next.js/discussions/42170#discussioncomment-8880248).
- Anchored to the start of the script so it covers both the flush chunks
- (`self.__next_f.push([1,"..."])`) and the initialiser variant
- (`(self.__next_f=self.__next_f||[]).push([0])`) without matching scripts
- that merely mention the marker somewhere in their body.
- */
-const nextJsServerSideRenderingScriptMatcher: InLineScriptMatcher = {
-  resultingIdentifier: 'inline_script/nextjs-ssr',
-  predicate: (script: PageScriptElement) => {
-    const regex = RegExp('^\\(?self\\.__next_f[.=]')
-    return regex.test(script.content)
-  },
-}
-
-/*
- In-line script code for React [Server Components](https://tonyalicea.dev/blog/understanding-react-server-components/).
- The RSC runtime emits several `$R<letter>` globals at the start of its
- bootstrap scripts ($RC/$RS completion handlers, but also $RB/$RV/$RT
- runtime helpers), so accept any leading `$R<uppercase>` token — but only
- as a complete identifier (assignment `$RC=` or call `$RC(`), so unrelated
- identifiers like `$RANDOM` don't inherit the RSC identity.
- */
-const reactServerComponentScriptMatcher: InLineScriptMatcher = {
-  resultingIdentifier: 'inline_script/react-server-component',
-  predicate: (script: PageScriptElement) => {
-    const regex = RegExp('^\\$R[A-Z](?![A-Za-z0-9_$])')
-    return regex.test(script.content)
-  },
-}
-
-/*
- React/Next.js hydration-timing bootstrap: records the render timestamp into
- `$RT` for the RSC runtime. Emitted verbatim by the framework, so match the
- whole snippet exactly (modulo surrounding whitespace).
- */
-const reactHydrationTimingScriptMatcher: InLineScriptMatcher = {
-  resultingIdentifier: 'inline_script/react-hydration-timing',
-  predicate: (script: PageScriptElement) => {
-    const regex = RegExp('^requestAnimationFrame\\(function\\(\\)\\{\\$RT=performance\\.now\\(\\)\\}\\);?$')
-    return regex.test(script.content.trim())
-  },
-}

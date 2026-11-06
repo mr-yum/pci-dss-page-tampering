@@ -149,9 +149,9 @@ moduleNameMapper hides a missing extension, so tests pass while the built app br
     brief: `Adherence to this project's stated rules, and only rules that are actually written down in
 CLAUDE.md. High-value ones: configuration is CLI-parameters-only — no new environment variables for
 execution config; relative imports carry explicit .js extensions, CommonJS config files use .cjs;
-inline-script classifiers in src/utils/script/inline.ts are tech-generic only (framework/vendor
-snippets with cited evidence in the matcher's comment) — anything site-specific belongs in the
-target's inventory entry; ContentMatcher matches actual content, never the URL (URL matching is
+inline scripts are named by element id alone (inline_script/<id> or inline_script/id_not_found) —
+recognising a framework's or vendor's snippet by content belongs in the inventory (shared matchers),
+never in tool code; ContentMatcher matches actual content, never the URL (URL matching is
 NameMatcher/UrlMatcher/HostMatcher); NameMatcher is case-sensitive, HeaderNameMatcher is
 case-insensitive per RFC 7230 — do not let a change blur that distinction. Quote the rule you are
 applying. If it is not written down, it is not a finding.`,
