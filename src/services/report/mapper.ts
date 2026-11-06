@@ -203,7 +203,9 @@ function toInventoryEntryRef(result: ComparisonResultType, inventory: Inventory,
   return {
     index: index === -1 ? null : index,
     // Re-serialised with the same converters the push path uses, so the report
-    // shows exactly what is committed rather than a second rendering of it.
+    // shows the matcher that ran rather than a second rendering of it. A
+    // `{ "matcherRef" }` appears here expanded — the definition it resolved to —
+    // while the committed file keeps the ref; provenance names both.
     raw: isScript ? inventoryScriptInfoToRawInventoryScriptInfo(entry as InventoryScriptInfo) : inventoryHeaderInfoToRawInventoryHeaderInfo(entry as InventoryHeaderInfo),
     provenance: resolveProvenance?.(result) ?? null,
   }

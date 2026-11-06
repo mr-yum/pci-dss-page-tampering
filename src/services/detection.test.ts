@@ -43,7 +43,7 @@ describe('DetectionService framed workflow actions', () => {
     service.detectAttempt = jest.fn().mockRejectedValueOnce(timeoutError).mockResolvedValueOnce(summary)
     service.sleep = jest.fn().mockResolvedValue(undefined)
 
-    await expect((service as unknown as DetectionService).detect(browser, workflowTarget, [])).resolves.toBe(summary)
+    await expect((service as unknown as DetectionService).detect(browser, workflowTarget)).resolves.toBe(summary)
 
     expect(service.detectAttempt).toHaveBeenCalledTimes(2)
     expect(service.sleep).toHaveBeenCalledWith(1000)
@@ -58,7 +58,7 @@ describe('DetectionService framed workflow actions', () => {
     service.detectAttempt = jest.fn().mockRejectedValue(validationError)
     service.sleep = jest.fn().mockResolvedValue(undefined)
 
-    await expect((service as unknown as DetectionService).detect(browser, workflowTarget, [])).rejects.toBe(validationError)
+    await expect((service as unknown as DetectionService).detect(browser, workflowTarget)).rejects.toBe(validationError)
     expect(service.detectAttempt).toHaveBeenCalledTimes(1)
     expect(service.sleep).not.toHaveBeenCalled()
   })
@@ -123,7 +123,7 @@ describe('DetectionService framed workflow actions', () => {
     })
     service.sleep = jest.fn().mockResolvedValue(undefined)
 
-    await expect((service as unknown as DetectionService).detect(workflowBrowser, workflowTarget, [])).rejects.toBe(timeoutError)
+    await expect((service as unknown as DetectionService).detect(workflowBrowser, workflowTarget)).rejects.toBe(timeoutError)
 
     expect(workflowBrowser.createBrowserContext).toHaveBeenCalledTimes(1)
     expect(context.close).toHaveBeenCalledTimes(1)
@@ -1659,7 +1659,7 @@ describe('DetectionService payment page scope', () => {
 
 describe('DetectionService inline script attribution', () => {
   type Internals = {
-    detectNewInlineScripts(page: Page, existing: unknown[], matchers: unknown[], tracker?: unknown): Promise<{ hash: { value: string }; document?: string }[]>
+    detectNewInlineScripts(page: Page, existing: unknown[], tracker?: unknown): Promise<{ hash: { value: string }; document?: string }[]>
     getInlineScriptsSettled: () => Promise<unknown>
   }
   const inline = (hash: string) => ({ source: { type: 'inline', id: `inline_script/${hash}`, content: hash }, hash: { value: hash } })
@@ -1673,24 +1673,24 @@ describe('DetectionService inline script attribution', () => {
   }
 
   it('attributes a scan to its document when no navigation happened during it', async () => {
-    const found = await service([inline('a')]).detectNewInlineScripts({} as Page, [], [], tracker('L1', 'L1'))
+    const found = await service([inline('a')]).detectNewInlineScripts({} as Page, [], tracker('L1', 'L1'))
     expect(found.map((s) => s.document)).toEqual(['L1'])
   })
 
   // A navigation mid-scan means the scripts could belong to either page:
   // leaving them unattributed keeps them in payment scope.
   it('leaves a scan unattributed when the document changed during it', async () => {
-    const found = await service([inline('a')]).detectNewInlineScripts({} as Page, [], [], tracker('L1', 'L2'))
+    const found = await service([inline('a')]).detectNewInlineScripts({} as Page, [], tracker('L1', 'L2'))
     expect(found[0]).not.toHaveProperty('document')
   })
 
   it('keeps the payment page copy of an inline script an earlier page already ran', async () => {
-    const found = await service([inline('a')]).detectNewInlineScripts({} as Page, [{ ...inline('a'), document: 'L1' }], [], tracker('L2', 'L2'))
+    const found = await service([inline('a')]).detectNewInlineScripts({} as Page, [{ ...inline('a'), document: 'L1' }], tracker('L2', 'L2'))
     expect(found.map((s) => s.document)).toEqual(['L2'])
   })
 
   it('still drops a script already captured from the same document', async () => {
-    const found = await service([inline('a')]).detectNewInlineScripts({} as Page, [{ ...inline('a'), document: 'L2' }], [], tracker('L2', 'L2'))
+    const found = await service([inline('a')]).detectNewInlineScripts({} as Page, [{ ...inline('a'), document: 'L2' }], tracker('L2', 'L2'))
     expect(found).toEqual([])
   })
 })

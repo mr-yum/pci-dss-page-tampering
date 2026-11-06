@@ -61,8 +61,14 @@ import type { TargetType } from './target.js'
  * when a request's frame went away with the request outstanding, the step
  * running then and the frame's redacted URL. Additive and optional — the
  * entry and its `reason` mean what they meant — so this is minor.
+ *
+ * 1.9.0 adds shared matcher definitions: a provenance node the target file
+ * wrote as `{ "matcherRef": name }` cites the definition in
+ * `shared/matchers.json` and carries `ref: { name, site }` naming where the
+ * target used it, and `run.inventorySources` lists the shared file when any
+ * target referenced it. Additive and optional, so minor.
  */
-export const REPORT_SCHEMA_VERSION = '1.8.0'
+export const REPORT_SCHEMA_VERSION = '1.9.0'
 
 /**
  * Where an observation sits relative to the payment page, when the target's
@@ -192,7 +198,11 @@ export type ReportAuthorisation = {
 export type ReportInventoryEntryRef = {
   /** Index into `scripts[]` / `headers[]`, pairing with the provenance pointer. */
   index: number | null
-  /** The entry re-serialised to its committed JSON shape. */
+  /**
+   * The entry re-serialised to its committed JSON shape — except that a
+   * `{ "matcherRef" }` appears expanded to the definition it resolved to, the
+   * matcher that actually ran; `provenance` names the ref and the definition.
+   */
   raw: unknown
   /** File, JSON pointer and line for the entry and the node that authorised it. */
   provenance: EntryProvenance | null

@@ -34,7 +34,6 @@ import type { UnansweredRequestRecord, UnreadScriptRecord } from './types/script
 import { PullTarget, type Target } from './types/target.js'
 import { mapGroupsSequentially } from './utils/concurrency.js'
 import { createLogger } from './utils/logger.js'
-import { getScriptContentMatchersFromInventory } from './utils/script/matcher.js'
 import { redactRepositoryTarget } from './utils/url.js'
 import { collectTotpSeedRefs } from './utils/workflow.js'
 
@@ -237,11 +236,8 @@ async function executeWorkflows(config: RuntimeConfiguration): Promise<void> {
         throw new Error(`Target '${target.url}' references TOTP seed(s) that were not provided: ${missingSeedRefs.join(', ')}. Pass them via --totp-seed <name>=<base32-seed>.`)
       }
 
-      // Get content matchers for in-script detection
-      const scriptMatchers = getScriptContentMatchersFromInventory(payload)
-
       // Prepare to run resource detection
-      const detectResourcesForTarget = detectionService.detect(browser, target, scriptMatchers, payload.headers)
+      const detectResourcesForTarget = detectionService.detect(browser, target, payload.headers)
 
       // Run resource detection
       const detectionSummaryForTarget = await detectResourcesForTarget

@@ -8,6 +8,7 @@ import type { PullTarget } from '../types/target.js'
 import { GIT_CLONE_PATH, TARGET_DIRECTORY_NAME, TARGET_PATH } from '../utils/constants.js'
 import { inventoryToRawInventory, rawInventoryHeaderInfoToInventoryHeaderInfo } from '../utils/inventory.js'
 import { createTargetLogger } from '../utils/logger.js'
+import { collapseMatcherRefs, unusedSharedMatchers } from '../utils/matcher-ref.js'
 import { rawInventoryScriptInfoToInventoryScriptInfo } from '../utils/script.js'
 import { getWorkflowFromFile } from '../utils/workflow.js'
 
@@ -97,11 +98,21 @@ export class ScriptInventoryRepository implements IScriptInventoryRepository {
         scripts: payload.rawInventory.scripts.map(rawInventoryScriptInfoToInventoryScriptInfo),
         headers: (payload.rawInventory.headers || []).map(rawInventoryHeaderInfoToInventoryHeaderInfo),
         source: { file: `${TARGET_DIRECTORY_NAME}/${payload.fileName}`, text: payload.rawText },
+        ...(pullResult.shared !== undefined && payload.refSites !== undefined && payload.refSites.length > 0 ? { matcherRefs: { shared: pullResult.shared, sites: payload.refSites } } : {}),
       }
     })
 
     const processedPayloads = await Promise.all(payloadsToProcess)
     console.log(`[Inventory → Repository] Raw inventory successfully processed.`)
+
+    if (pullResult.shared !== undefined) {
+      // Warn, never fail: a definition no target uses yet is how a new one is staged.
+      const unused = unusedSharedMatchers(
+        pullResult.shared,
+        payloads.flatMap((payload) => payload.refSites ?? []),
+      )
+      if (unused.length > 0) console.warn(`[Inventory → Repository] ${pullResult.shared.file} defines matcher(s) no target references: ${unused.join(', ')}.`)
+    }
 
     return Promise.resolve(processedPayloads)
   }
@@ -110,7 +121,9 @@ export class ScriptInventoryRepository implements IScriptInventoryRepository {
     const rawInventories = inventories.map((inventory) => {
       return {
         fileName: inventory.fileName,
-        rawInventory: inventoryToRawInventory(inventory),
+        // Refs are expanded everywhere in memory and collapsed only here, at the
+        // file write, so the diff and the commit counter compare like with like.
+        rawInventory: collapseMatcherRefs(inventoryToRawInventory(inventory), inventory.matcherRefs, `${TARGET_DIRECTORY_NAME}/${inventory.fileName}`),
       }
     })
 

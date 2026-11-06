@@ -2,12 +2,12 @@ import { readdir } from 'fs/promises'
 import { simpleGit } from 'simple-git'
 
 import { PullTarget } from '../../types/target.js'
-import { getInventoryFileNames } from '../../utils/file.js'
+import { getInventoryFileNames, getRawInventoryFromFile, getSharedMatchersFromFile } from '../../utils/file.js'
 import { GitInventoryStore } from './git.js'
 
 jest.mock('fs/promises', () => ({ readdir: jest.fn() }))
 jest.mock('simple-git', () => ({ simpleGit: jest.fn() }))
-jest.mock('../../utils/file.js', () => ({ getInventoryFileNames: jest.fn(), getRawInventoryFromFile: jest.fn() }))
+jest.mock('../../utils/file.js', () => ({ getInventoryFileNames: jest.fn(), getRawInventoryFromFile: jest.fn(), getSharedMatchersFromFile: jest.fn() }))
 
 const authenticatedTarget = 'https://x-access-token:ghp_super_secret@github.com/org/inventory'
 
@@ -31,6 +31,7 @@ describe('GitInventoryStore repository logging', () => {
     jest.clearAllMocks()
     ;(readdir as jest.MockedFunction<typeof readdir>).mockResolvedValue(['targets', 'workflows'] as never)
     ;(getInventoryFileNames as jest.MockedFunction<typeof getInventoryFileNames>).mockResolvedValue([])
+    ;(getSharedMatchersFromFile as jest.MockedFunction<typeof getSharedMatchersFromFile>).mockResolvedValue(undefined)
     ;(simpleGit as jest.MockedFunction<typeof simpleGit>).mockReturnValue({
       fetch: jest.fn().mockResolvedValue(undefined),
       branch: jest.fn().mockResolvedValue({ all: ['remotes/origin/main'] }),
@@ -69,6 +70,36 @@ describe('GitInventoryStore repository logging', () => {
     const result = await store.pull(PullTarget.Detection, 'main')
 
     expect(result.ref).toEqual({ branch: 'main', commitSha: 'acece577a438c48985bec8eac857bff3ca13c678', commitIsoDate: '2026-01-02T03:04:05.000Z' })
+  })
+
+  it('reads the shared matcher file once and resolves every target against it', async () => {
+    const shared = { file: 'shared/matchers.json', text: '{"matchers":{}}', definitions: {} }
+    ;(getSharedMatchersFromFile as jest.MockedFunction<typeof getSharedMatchersFromFile>).mockResolvedValue(shared)
+    ;(getInventoryFileNames as jest.MockedFunction<typeof getInventoryFileNames>).mockResolvedValue(['a.json', 'b.json'])
+    ;(getRawInventoryFromFile as jest.MockedFunction<typeof getRawInventoryFromFile>).mockImplementation(async (path) => ({
+      rawInventory: {} as never,
+      rawText: '{}',
+      refSites: path.endsWith('a.json') ? [{ collection: 'scripts', entryIndex: 0, pointer: '/scripts/0/identifyWith', name: 'x' }] : [],
+    }))
+
+    const { store } = createStore()
+    const result = await store.pull(PullTarget.Detection, 'main')
+
+    expect(getSharedMatchersFromFile).toHaveBeenCalledTimes(1)
+    expect(getRawInventoryFromFile).toHaveBeenCalledWith(expect.stringMatching(/a\.json$/u), shared)
+    expect(getRawInventoryFromFile).toHaveBeenCalledWith(expect.stringMatching(/b\.json$/u), shared)
+    expect(result.shared).toBe(shared)
+    expect(result.payloads.find((payload) => payload.fileName === 'a.json')?.refSites).toHaveLength(1)
+    // A file with no refs carries none, so it round-trips exactly as before.
+    expect(result.payloads.find((payload) => payload.fileName === 'b.json')).not.toHaveProperty('refSites')
+  })
+
+  it('fails the pull, naming the shared file, when it does not validate', async () => {
+    ;(getSharedMatchersFromFile as jest.MockedFunction<typeof getSharedMatchersFromFile>).mockRejectedValue(new Error('bad definition'))
+
+    const { store } = createStore()
+
+    await expect(store.pull(PullTarget.Detection, 'main')).rejects.toThrow("Validation failed for shared matcher file 'shared/matchers.json': bad definition")
   })
 
   it('still returns the inventory when the revision cannot be read', async () => {

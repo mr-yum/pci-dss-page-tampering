@@ -8,7 +8,6 @@ import type { DetectionSummary } from '../types/detection.js'
 import type { DocumentId } from '../types/document.js'
 import type { DetectedResponse, HeaderDetectionSummary, HeaderName, HeaderUrl } from '../types/header.js'
 import type { InventoryHeaderInfo } from '../types/inventory/model.js'
-import type { ScriptMatcher } from '../types/matcher.js'
 import type { PuppeteerClickAction, PuppeteerClickPopupAction, PuppeteerInputAction, PuppeteerLocatorAction, PuppeteerNavigateAction, PuppeteerTotpAction } from '../types/puppeteer.js'
 import { type ScriptInfo, unansweredRequestTiming, type UnreadScriptResponse } from '../types/script.js'
 import type { Target } from '../types/target.js'
@@ -140,12 +139,12 @@ export class DetectionService implements IDetectionService {
     this.scriptSettle = options.scriptSettle ?? { deadlineMs: SCRIPT_READ_SETTLE_TIMEOUT_MS, closeGraceMs: SCRIPT_READ_CLOSE_GRACE_MS }
     this.frameDiagnosisMs = options.frameDiagnosisMs ?? FRAME_DIAGNOSIS_TIMEOUT_MS
   }
-  async detect(browser: Browser, target: Target, scriptContentMatchers: ScriptMatcher[], inventoryHeaders: readonly InventoryHeaderInfo[] = []): Promise<DetectionSummary> {
+  async detect(browser: Browser, target: Target, inventoryHeaders: readonly InventoryHeaderInfo[] = []): Promise<DetectionSummary> {
     const retry = getPuppeteerWorkflowFromTarget(target).retry
 
     for (let attempt = 1; ; attempt++) {
       try {
-        const summary = await this.detectAttempt(browser, target, scriptContentMatchers, inventoryHeaders)
+        const summary = await this.detectAttempt(browser, target, inventoryHeaders)
         if (attempt > 1) {
           target.logger.log(`Workflow recovered successfully on attempt ${attempt}/${retry.maxAttempts}.`)
         }
@@ -163,7 +162,7 @@ export class DetectionService implements IDetectionService {
     }
   }
 
-  private async detectAttempt(browser: Browser, target: Target, scriptContentMatchers: ScriptMatcher[], inventoryHeaders: readonly InventoryHeaderInfo[] = []): Promise<DetectionSummary> {
+  private async detectAttempt(browser: Browser, target: Target, inventoryHeaders: readonly InventoryHeaderInfo[] = []): Promise<DetectionSummary> {
     const externalScripts: ScriptInfo[] = []
     const internalScripts: ScriptInfo[] = []
     // Script elements the attribution shim saw inserted with a src, from every
@@ -385,7 +384,7 @@ export class DetectionService implements IDetectionService {
           })
 
           // Detect and add new inline scripts on each workflow action
-          const newInlineScripts = await this.detectNewInlineScripts(page, internalScripts, scriptContentMatchers, tracker, insertions)
+          const newInlineScripts = await this.detectNewInlineScripts(page, internalScripts, tracker, insertions)
           newInlineScripts.forEach((script) => internalScripts.push(script))
         } catch (stepError) {
           // Enhanced error logging for workflow steps
@@ -1455,9 +1454,9 @@ export class DetectionService implements IDetectionService {
    * payment scope. Dedupe by (hash, document), so the payment page's copy of a
    * script an earlier page also ran is kept rather than lost to scoping.
    */
-  private async detectNewInlineScripts(page: Page, existingScripts: ScriptInfo[], scriptContentMatchers: ScriptMatcher[], tracker?: DocumentTracker, insertions?: Map<string, AttributedInsertion>): Promise<ScriptInfo[]> {
+  private async detectNewInlineScripts(page: Page, existingScripts: ScriptInfo[], tracker?: DocumentTracker, insertions?: Map<string, AttributedInsertion>): Promise<ScriptInfo[]> {
     const before = await tracker?.currentDocument()
-    const scanned = await this.getInlineScriptsSettled(page, scriptContentMatchers)
+    const scanned = await this.getInlineScriptsSettled(page)
     const after = await tracker?.currentDocument()
     const document = before !== undefined && before === after ? before : undefined
     for (const record of scanned.insertions) if (!insertions?.has(record.token)) insertions?.set(record.token, { ...record, ...(document !== undefined ? { document } : {}) })
@@ -1475,11 +1474,11 @@ export class DetectionService implements IDetectionService {
    * document to settle and rescan, up to a few attempts. Any other error, or
    * destruction on the final attempt, still fails the run (fail-secure).
    */
-  private async getInlineScriptsSettled(page: Page, scriptContentMatchers: ScriptMatcher[]): Promise<PageScripts> {
+  private async getInlineScriptsSettled(page: Page): Promise<PageScripts> {
     const maxAttempts = 3
     for (let attempt = 1; ; attempt++) {
       try {
-        return await readPageScripts(page, scriptContentMatchers)
+        return await readPageScripts(page)
       } catch (error) {
         const isContextDestroyed = error instanceof Error && error.message.includes('Execution context was destroyed')
         if (!isContextDestroyed || attempt >= maxAttempts) {

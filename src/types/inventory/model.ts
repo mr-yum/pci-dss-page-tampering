@@ -3,6 +3,7 @@ import type { SHA256Hash } from '../hash.js'
 import type { ResponseResourceType } from '../header.js'
 import type { Matcher } from '../matcher/matcher.interface.js'
 import type { TargetDetection, TargetInventory, TargetType } from '../target.js'
+import type { InventoryMatcherRefs, MatcherRefSite, SharedMatchers } from './matcher-ref.js'
 import type { RawInventory } from './raw.js'
 
 export type InventoryAuthorisationInfo = {
@@ -197,6 +198,12 @@ export type Inventory = {
   headers: InventoryHeaderInfo[]
   /** Absent for inventories not built by a repository pull (notably in tests). */
   source?: InventorySource | undefined
+  /**
+   * The shared definitions this file referenced and where — present only when
+   * it used at least one `{ "matcherRef" }`. Needed to cite the definition in
+   * the auditor report and to write the refs back on push; never serialised.
+   */
+  matcherRefs?: InventoryMatcherRefs | undefined
 }
 
 export type InventoryDifferenceResult = {
@@ -218,6 +225,8 @@ export type InventoryPullPayload = {
   rawInventory: RawInventory
   /** Exact file contents as read. @see InventorySource */
   rawText: string
+  /** Where the file used `{ "matcherRef" }`, in file order. */
+  refSites?: MatcherRefSite[] | undefined
 }
 
 /**
@@ -237,4 +246,6 @@ export type InventoryPullResult = {
   payloads: InventoryPullPayload[]
   /** Absent when the revision could not be read (e.g. a store with no Git). */
   ref?: InventoryRef | undefined
+  /** `shared/matchers.json`, when the repository has one. */
+  shared?: SharedMatchers | undefined
 }

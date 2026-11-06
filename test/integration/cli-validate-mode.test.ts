@@ -184,6 +184,73 @@ describe('CLI --mode validate integration tests', () => {
       expect(result.stdout).toContain('1.0.json')
     })
 
+    describe('shared matcher refs', () => {
+      const shared = {
+        matchers: {
+          'app-script': { description: 'The app bundle, by URL', matcher: { nameMatcher: '^https://example\\.com/app\\.js$' } },
+          'csp-self': { description: 'CSP requires self + no objects', matcher: { andMatcher: [{ contentMatcher: "default-src\\s+'self'" }, { contentMatcher: "object-src\\s+'none'" }] } },
+          staged: { description: 'Not used by any target yet', matcher: { contentMatcher: '^staged$' } },
+        },
+      }
+      const withRefs = (): typeof validInventoryPayload => {
+        const payload = structuredClone(validInventoryPayload) as typeof validInventoryPayload & { scripts: object[]; headers: object[] }
+        payload.scripts[0] = { ...payload.scripts[0], identifyWith: { matcherRef: 'app-script' } } as never
+        payload.headers[0] = { ...payload.headers[0], authoriseWith: { matcherRef: 'csp-self', authorisationInfo: payload.headers[0]!.authoriseWith.authorisationInfo } } as never
+        return payload
+      }
+      const repoWith = (payload: object, sharedFile: object | null): string =>
+        createFixtureRepo((root) => {
+          fs.writeFileSync(path.join(root, 'targets/1.0.json'), JSON.stringify(payload, null, 2))
+          fs.writeFileSync(path.join(root, 'workflows/checkout.json'), JSON.stringify({ steps: [] }))
+          if (sharedFile !== null) {
+            fs.mkdirSync(path.join(root, 'shared'))
+            fs.writeFileSync(path.join(root, 'shared/matchers.json'), JSON.stringify(sharedFile, null, 2))
+          }
+        })
+
+      it('exits 0 when every ref resolves, and names definitions no target uses', () => {
+        repoPath = repoWith(withRefs(), shared)
+
+        const result = executeCli(['--mode', 'validate', '--repo', `file://${repoPath}`, '--inventory-branch', 'main'], newSandbox())
+
+        expect(result.status).toBe(0)
+        expect(result.stdout).toContain('Successfully validated 1 inventory file(s)')
+        expect(result.stderr).toContain('shared/matchers.json defines matcher(s) no target references: staged.')
+      })
+
+      it('exits 2 naming the file, the pointer and the shared file for an unknown ref', () => {
+        const payload = withRefs() as unknown as { scripts: { identifyWith: object }[] }
+        payload.scripts[0]!.identifyWith = { matcherRef: 'app-scrpit' }
+        repoPath = repoWith(payload, shared)
+
+        const result = executeCli(['--mode', 'validate', '--repo', `file://${repoPath}`, '--inventory-branch', 'main'], newSandbox())
+
+        expect(result.status).toBe(2)
+        expect(result.stderr).toContain('targets/1.0.json: matcherRef "app-scrpit" at /scripts/0/identifyWith is not defined in shared/matchers.json')
+      })
+
+      it('exits 2 when a target uses a ref and the repository has no shared file', () => {
+        repoPath = repoWith(withRefs(), null)
+
+        const result = executeCli(['--mode', 'validate', '--repo', `file://${repoPath}`, '--inventory-branch', 'main'], newSandbox())
+
+        expect(result.status).toBe(2)
+        expect(result.stderr).toContain('has no shared matcher file')
+      })
+
+      it('exits 2 naming the shared file when a definition carries authorisationInfo', () => {
+        const bad = structuredClone(shared) as { matchers: Record<string, { matcher: object }> }
+        bad.matchers['app-script']!.matcher = { ...bad.matchers['app-script']!.matcher, authorisationInfo: { description: 'd', authorised: true, date: '2025-01-01T00:00:00.000Z' } }
+        repoPath = repoWith(withRefs(), bad)
+
+        const result = executeCli(['--mode', 'validate', '--repo', `file://${repoPath}`, '--inventory-branch', 'main'], newSandbox())
+
+        expect(result.status).toBe(2)
+        expect(result.stderr).toContain("Validation failed for shared matcher file 'shared/matchers.json'")
+        expect(result.stderr).toContain('carries authorisationInfo')
+      })
+    })
+
     it('exits 2 with file context when a matcher regex is malformed', () => {
       const payload = structuredClone(validInventoryPayload) as typeof validInventoryPayload
       payload.scripts[0]!.identifyWith = { nameMatcher: '^https://example\\.com/[' }

@@ -32,7 +32,7 @@ import type { Inventory, InventoryAuthorisationInfo, InventoryHeaderInfo, Invent
 import { type AuthorizationTrace, leafTrace, type MatcherKind } from '../types/matcher/authorization-trace.js'
 import type { AuthorisationInfo, Matchable, Matcher } from '../types/matcher/matcher.interface.js'
 import { detectedHeaderToMatchable } from './header.js'
-import { buildJsonPositionIndex, type JsonPositionIndex, resolveJsonPointer } from './json-position.js'
+import { buildJsonPositionIndex, encodeJsonPointerSegment, type JsonPositionIndex, resolveJsonPointer } from './json-position.js'
 
 /** A location in an inventory file. Line and column are 1-based. */
 export type SourceProvenance = {
@@ -59,6 +59,12 @@ export type ProvenanceNode = SourceProvenance & {
   authorisationInfo?: InventoryAuthorisationInfo | undefined
   /** For `or`, the single winning alternative; for `and`, every evaluated conjunct. */
   children?: ProvenanceNode[] | undefined
+  /**
+   * Set when the target file wrote this matcher as `{ "matcherRef": name }`:
+   * the node's own location is then the definition in the shared file, and
+   * `site` is where the target used it. `authorisationInfo` is the ref site's.
+   */
+  ref?: { name: string; site: SourceProvenance } | undefined
 }
 
 /** Everything the report knows about where an inventory entry lives. */
@@ -201,6 +207,15 @@ function rawChildren(raw: unknown): { segment: string | null; children: unknown[
   return null
 }
 
+/** The name a `{ "matcherRef" }` node refers to, or null for any other node. */
+function matcherRefNameOf(raw: unknown): string | null {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null
+
+  const name = (raw as Record<string, unknown>)['matcherRef']
+
+  return typeof name === 'string' ? name : null
+}
+
 function rawHashes(raw: unknown): unknown[] | null {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null
 
@@ -246,6 +261,29 @@ export function createProvenanceResolver(inventory: Inventory): ProvenanceResolv
     return position === undefined ? null : { file, pointer, line: position.line, column: position.column }
   }
 
+  type Document = { root: unknown; locate: (pointer: string) => SourceProvenance | null }
+  const targetDocument: Document = { root: rawRoot, locate }
+
+  // The shared definitions a `{ "matcherRef" }` node continues into. Built only
+  // when the file used refs; if its text no longer parses, every walk that
+  // reaches a ref degrades to unresolved rather than citing the wrong place.
+  let sharedDocument: Document | null = null
+  if (inventory.matcherRefs !== undefined) {
+    const shared = inventory.matcherRefs.shared
+    try {
+      const sharedPositions = buildJsonPositionIndex(shared.text)
+      sharedDocument = {
+        root: JSON.parse(shared.text),
+        locate: (pointer: string): SourceProvenance | null => {
+          const position = sharedPositions.get(pointer)
+          return position === undefined ? null : { file: shared.file, pointer, line: position.line, column: position.column }
+        },
+      }
+    } catch {
+      sharedDocument = null
+    }
+  }
+
   /**
    * Walk raw JSON, matcher tree and trace in lockstep, emitting a node per step.
    *
@@ -253,8 +291,27 @@ export function createProvenanceResolver(inventory: Inventory): ProvenanceResolv
    * makes the array-syntax/orMatcher ambiguity harmless and catches any future
    * drift between the loader and the serialiser.
    */
-  const walk = (raw: unknown, matcher: Matcher<never>, trace: AuthorizationTrace, pointer: string): ProvenanceNode | null => {
-    const here = locate(pointer)
+  const walk = (rawAtSite: unknown, matcher: Matcher<never>, trace: AuthorizationTrace, pointerAtSite: string, documentAtSite: Document): ProvenanceNode | null => {
+    let raw = rawAtSite
+    let pointer = pointerAtSite
+    let document = documentAtSite
+    let ref: ProvenanceNode['ref']
+
+    // A ref: cite the definition, and keep where the target used it. The
+    // loader expanded the ref in place, so the matcher here IS the definition
+    // and the lockstep checks below apply to it unchanged.
+    const refName = matcherRefNameOf(rawAtSite)
+    if (refName !== null) {
+      const site = documentAtSite.locate(pointerAtSite)
+      if (site === null || sharedDocument === null) return null
+      pointer = `/matchers/${encodeJsonPointerSegment(refName)}/matcher`
+      raw = resolveJsonPointer(sharedDocument.root, pointer)
+      if (raw === undefined) return null
+      document = sharedDocument
+      ref = { name: refName, site }
+    }
+
+    const here = document.locate(pointer)
 
     if (here === null) return null
 
@@ -267,7 +324,9 @@ export function createProvenanceResolver(inventory: Inventory): ProvenanceResolv
       ...here,
       matcherType,
       description: matcher.getDescription(),
-      authorisationInfo: authorisationInfoAt(raw, matcher),
+      // A definition carries no authorisationInfo; the entry's approval is at the ref site.
+      authorisationInfo: authorisationInfoAt(ref === undefined ? raw : rawAtSite, matcher),
+      ...(ref !== undefined ? { ref } : {}),
     }
 
     if (trace.consulted.length === 0) return node
@@ -284,7 +343,7 @@ export function createProvenanceResolver(inventory: Inventory): ProvenanceResolv
 
         if (hashes === null || step.index >= hashes.length) return null
 
-        const hashLocation = locate(`${pointer}/hashes/${step.index}`)
+        const hashLocation = document.locate(`${pointer}/hashes/${step.index}`)
 
         if (hashLocation === null) return null
 
@@ -315,7 +374,7 @@ export function createProvenanceResolver(inventory: Inventory): ProvenanceResolv
       if (childMatcher === undefined || childTrace === undefined) return null
 
       const childPointer = rawComposite.segment === null ? `${pointer}/${step.index}` : `${pointer}/${rawComposite.segment}/${step.index}`
-      const childNode = walk(childRaw, childMatcher, childTrace, childPointer)
+      const childNode = walk(childRaw, childMatcher, childTrace, childPointer, document)
 
       if (childNode === null) return null
 
@@ -405,7 +464,7 @@ export function createProvenanceResolver(inventory: Inventory): ProvenanceResolv
     const trace = replay.trace ?? leafTrace(rootMatcher)
 
     const rawAuthoriseWith = resolveJsonPointer(rawRoot, `${basePointer}/authoriseWith`)
-    const authorisedBy = walk(rawAuthoriseWith, rootMatcher, trace, `${basePointer}/authoriseWith`)
+    const authorisedBy = walk(rawAuthoriseWith, rootMatcher, trace, `${basePointer}/authoriseWith`, targetDocument)
 
     if (authorisedBy === null) return unresolved('inventory file structure did not match the matcher that ran')
 

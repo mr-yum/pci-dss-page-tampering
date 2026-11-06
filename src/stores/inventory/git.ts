@@ -6,8 +6,8 @@ import type { IInventoryStore, InventoryPullOptions } from '../../interfaces/inv
 import type { Inventory, InventoryPullResult, InventoryRef } from '../../types/inventory/model.js'
 import type { GitInventoryStoreProps } from '../../types/inventory/props.js'
 import { PullTarget } from '../../types/target.js'
-import { GIT_CLONE_PATH, GIT_DETECTION_SCRIPTS_BRANCH_NAME, GIT_UPDATED_SCRIPTS_BRANCH_NAME, TARGET_DIRECTORY_NAME, TARGET_PATH, WORKFLOW_DIRECTORY_NAME } from '../../utils/constants.js'
-import { getInventoryFileNames, getRawInventoryFromFile } from '../../utils/file.js'
+import { GIT_CLONE_PATH, GIT_DETECTION_SCRIPTS_BRANCH_NAME, GIT_UPDATED_SCRIPTS_BRANCH_NAME, SHARED_MATCHERS_FILE, TARGET_DIRECTORY_NAME, TARGET_PATH, WORKFLOW_DIRECTORY_NAME } from '../../utils/constants.js'
+import { getInventoryFileNames, getRawInventoryFromFile, getSharedMatchersFromFile } from '../../utils/file.js'
 import { redactRepositoryTarget, redactUrlCredentials } from '../../utils/url.js'
 
 export class GitInventoryStore implements IInventoryStore {
@@ -56,17 +56,28 @@ export class GitInventoryStore implements IInventoryStore {
     console.log(`[Inventory → Store] Reading and returning raw inventory.`)
     const files = await getInventoryFileNames()
 
+    // Read once per pull, before any target: every target's refs resolve
+    // against the same definitions, and the clone is gone by the next pull.
+    let shared: Awaited<ReturnType<typeof getSharedMatchersFromFile>>
+    try {
+      shared = await getSharedMatchersFromFile()
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      throw new Error(`[Inventory → Store] Validation failed for shared matcher file '${SHARED_MATCHERS_FILE}': ${errorMessage}`, { cause: error })
+    }
+
     // Read and return raw inventory + filename
     const pullResponse = await Promise.all(
       files.map(async (fileName) => {
         const filePath = `${TARGET_PATH}/${fileName}`
 
         try {
-          const { rawInventory, rawText } = await getRawInventoryFromFile(filePath)
+          const { rawInventory, rawText, refSites } = await getRawInventoryFromFile(filePath, shared)
           return {
             fileName: fileName,
             rawInventory: rawInventory,
             rawText: rawText,
+            ...(refSites.length > 0 ? { refSites } : {}),
           }
         } catch (error) {
           // Enhanced error message with file context for Zod validation failures
@@ -78,6 +89,7 @@ export class GitInventoryStore implements IInventoryStore {
 
     return {
       payloads: pullResponse,
+      ...(shared !== undefined ? { shared } : {}),
       ...(await this.readInventoryRef(targetBranch)),
     }
   }
