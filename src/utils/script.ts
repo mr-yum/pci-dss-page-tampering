@@ -13,6 +13,11 @@ import type { ScriptInfo } from '../types/script.js'
  * @param info - Authorization metadata with Date instance
  * @returns JSON-serializable object with ISO date string
  */
+/** Same approval: description, flag and instant. */
+function sameAuthorisationInfo(left: InventoryAuthorisationInfo | undefined, right: InventoryAuthorisationInfo): boolean {
+  return left !== undefined && left.description === right.description && left.authorised === right.authorised && left.date.getTime() === right.date.getTime()
+}
+
 function serializeAuthorisationInfo(info: InventoryAuthorisationInfo): { description: string; authorised: boolean; date: string } {
   return {
     description: info.description,
@@ -77,6 +82,144 @@ function fromLoadGrant(grant: LoadGrant | undefined, toConfig: (matcher: Matcher
 }
 
 /**
+ * Converts one Matcher back to its raw (JSON) config.
+ *
+ * `isTopLevelAuthoriseWith`: the matcher is an entry's top-level `authoriseWith`, where an
+ * OrMatcher is written in array syntax. Exported so `collapseMatcherRefs` can put a shared
+ * definition through exactly the serialiser the entry it is compared with went through.
+ */
+export function scriptMatcherToRawConfig(matcher: Matcher, isTopLevelAuthoriseWith = false): any {
+  const matcherType = matcher.getType()
+  const pattern = matcher.getPattern()
+
+  switch (matcherType) {
+    case 'name': {
+      const config: any = { nameMatcher: pattern as string }
+      const authInfo = (matcher as any).getAuthorisationInfo?.()
+      if (authInfo) {
+        config.authorisationInfo = serializeAuthorisationInfo(authInfo)
+      }
+      return config
+    }
+    // `MatcherConfigSchema` is shared between scripts and headers, so a
+    // script entry may legally be written with a headerNameMatcher. Odd, but
+    // it validates and loads — and without this case serialising such an
+    // entry throws, which now happens on the detection path via the auditor
+    // report rather than only when writing inventory back.
+    case 'header-name': {
+      const config: any = { headerNameMatcher: pattern as string }
+      const authInfo = (matcher as any).getAuthorisationInfo?.()
+      if (authInfo) {
+        config.authorisationInfo = serializeAuthorisationInfo(authInfo)
+      }
+      return config
+    }
+    case 'csp-directive': {
+      const csp = matcher as unknown as { getDirective(): string; getAllowedSources(): readonly string[] }
+      const config: any = { cspDirectiveMatcher: { directive: csp.getDirective(), allow: [...csp.getAllowedSources()] } }
+      const authInfo = (matcher as any).getAuthorisationInfo?.()
+      if (authInfo) {
+        config.authorisationInfo = serializeAuthorisationInfo(authInfo)
+      }
+      return config
+    }
+    case 'content': {
+      const config: any = { contentMatcher: pattern as string }
+      const authInfo = (matcher as any).getAuthorisationInfo?.()
+      if (authInfo) {
+        config.authorisationInfo = serializeAuthorisationInfo(authInfo)
+      }
+      return config
+    }
+    case 'host': {
+      const config: any = { hostMatcher: pattern as string }
+      const authInfo = (matcher as any).getAuthorisationInfo?.()
+      if (authInfo) {
+        config.authorisationInfo = serializeAuthorisationInfo(authInfo)
+      }
+      return config
+    }
+    case 'initiator-host': {
+      // The transitive form round-trips as its object form; the string form stays a string.
+      const options = (matcher as unknown as { getOptions?: () => { transitive: true; maxDepth?: number; kinds?: string[] } | undefined }).getOptions?.()
+      const config: any = { initiatorHostMatcher: options === undefined ? (pattern as string) : { host: pattern as string, ...options } }
+      const authInfo = (matcher as any).getAuthorisationInfo?.()
+      if (authInfo) {
+        config.authorisationInfo = serializeAuthorisationInfo(authInfo)
+      }
+      return config
+    }
+    case 'url': {
+      const config: any = { urlMatcher: pattern as string }
+      const authInfo = (matcher as any).getAuthorisationInfo?.()
+      if (authInfo) {
+        config.authorisationInfo = serializeAuthorisationInfo(authInfo)
+      }
+      return config
+    }
+    case 'workflow': {
+      const config: any = { workflowMatcher: pattern as string }
+      const authInfo = (matcher as any).getAuthorisationInfo?.()
+      if (authInfo) config.authorisationInfo = serializeAuthorisationInfo(authInfo)
+      return config
+    }
+    case 'targetType': {
+      const config: any = { targetTypeMatcher: pattern as string }
+      const authInfo = (matcher as any).getAuthorisationInfo?.()
+      if (authInfo) config.authorisationInfo = serializeAuthorisationInfo(authInfo)
+      return config
+    }
+    case 'hash': {
+      // Shallow-clone the hashes array. HashMatcher.getPattern() returns its
+      // internal `authorizedHashes` by reference; without the clone, callers
+      // that mutate `config.hashes` (e.g. inventory diff appending a new hash)
+      // silently corrupt the matcher's internal state and therefore the
+      // *old* inventory entry too — leaving `buildInventoryCommitMessage`
+      // unable to see any difference between old and new while alerts had
+      // already buffered the result as "applied".
+      const config: any = { hashes: [...(pattern as import('../types/inventory/model.js').InventoryScriptHashInfo[])] }
+      const authInfo = (matcher as any).getAuthorisationInfo?.()
+      if (authInfo) {
+        config.authorisationInfo = serializeAuthorisationInfo(authInfo)
+      }
+      return config
+    }
+    case 'or': {
+      const children = pattern as import('../types/matcher/matcher.interface.js').Matcher[]
+      const authInfo = (matcher as any).getAuthorisationInfo?.()
+
+      // Top-level OrMatcher in authoriseWith: use array syntax (more concise)
+      if (isTopLevelAuthoriseWith) {
+        // Return array of child configs, each with its own authorisationInfo
+        return children.map((child) => scriptMatcherToRawConfig(child, false))
+      }
+
+      // Nested OrMatcher: use orMatcher format
+      const config: any = {
+        orMatcher: children.map((c) => scriptMatcherToRawConfig(c, false)),
+      }
+      if (authInfo) {
+        config.authorisationInfo = serializeAuthorisationInfo(authInfo)
+      }
+      return config
+    }
+    case 'and': {
+      const children = pattern as import('../types/matcher/matcher.interface.js').Matcher[]
+      const config: any = {
+        andMatcher: children.map((c) => scriptMatcherToRawConfig(c, false)),
+      }
+      const authInfo = (matcher as any).getAuthorisationInfo?.()
+      if (authInfo) {
+        config.authorisationInfo = serializeAuthorisationInfo(authInfo)
+      }
+      return config
+    }
+    default:
+      throw new Error(`Unknown matcher type: ${matcherType}`)
+  }
+}
+
+/**
  * Converts InventoryScriptInfo (with Matcher instances) back to RawInventoryScriptInfo (for JSON serialization).
  *
  * Updated for Phase 3 + Phase 7:
@@ -88,163 +231,41 @@ function fromLoadGrant(grant: LoadGrant | undefined, toConfig: (matcher: Matcher
  * - Used when pushing inventory updates back to Git
  */
 export function inventoryScriptInfoToRawInventoryScriptInfo(inventoryScriptInfo: InventoryScriptInfo): RawInventoryScriptInfo {
-  // Helper function to convert Matcher back to RawMatcherConfig
-  // isTopLevelAuthoriseWith: true if this is the top-level authoriseWith matcher (use array syntax for OrMatcher)
-  function matcherToConfig(matcher: InventoryScriptInfo['identifyWith'], isTopLevelAuthoriseWith = false): any {
-    const matcherType = matcher.getType()
-    const pattern = matcher.getPattern()
-
-    switch (matcherType) {
-      case 'name': {
-        const config: any = { nameMatcher: pattern as string }
-        const authInfo = (matcher as any).getAuthorisationInfo?.()
-        if (authInfo) {
-          config.authorisationInfo = serializeAuthorisationInfo(authInfo)
-        }
-        return config
-      }
-      // `MatcherConfigSchema` is shared between scripts and headers, so a
-      // script entry may legally be written with a headerNameMatcher. Odd, but
-      // it validates and loads — and without this case serialising such an
-      // entry throws, which now happens on the detection path via the auditor
-      // report rather than only when writing inventory back.
-      case 'header-name': {
-        const config: any = { headerNameMatcher: pattern as string }
-        const authInfo = (matcher as any).getAuthorisationInfo?.()
-        if (authInfo) {
-          config.authorisationInfo = serializeAuthorisationInfo(authInfo)
-        }
-        return config
-      }
-      case 'csp-directive': {
-        const csp = matcher as unknown as { getDirective(): string; getAllowedSources(): readonly string[] }
-        const config: any = { cspDirectiveMatcher: { directive: csp.getDirective(), allow: [...csp.getAllowedSources()] } }
-        const authInfo = (matcher as any).getAuthorisationInfo?.()
-        if (authInfo) {
-          config.authorisationInfo = serializeAuthorisationInfo(authInfo)
-        }
-        return config
-      }
-      case 'content': {
-        const config: any = { contentMatcher: pattern as string }
-        const authInfo = (matcher as any).getAuthorisationInfo?.()
-        if (authInfo) {
-          config.authorisationInfo = serializeAuthorisationInfo(authInfo)
-        }
-        return config
-      }
-      case 'host': {
-        const config: any = { hostMatcher: pattern as string }
-        const authInfo = (matcher as any).getAuthorisationInfo?.()
-        if (authInfo) {
-          config.authorisationInfo = serializeAuthorisationInfo(authInfo)
-        }
-        return config
-      }
-      case 'initiator-host': {
-        // The transitive form round-trips as its object form; the string form stays a string.
-        const options = (matcher as unknown as { getOptions?: () => { transitive: true; maxDepth?: number; kinds?: string[] } | undefined }).getOptions?.()
-        const config: any = { initiatorHostMatcher: options === undefined ? (pattern as string) : { host: pattern as string, ...options } }
-        const authInfo = (matcher as any).getAuthorisationInfo?.()
-        if (authInfo) {
-          config.authorisationInfo = serializeAuthorisationInfo(authInfo)
-        }
-        return config
-      }
-      case 'url': {
-        const config: any = { urlMatcher: pattern as string }
-        const authInfo = (matcher as any).getAuthorisationInfo?.()
-        if (authInfo) {
-          config.authorisationInfo = serializeAuthorisationInfo(authInfo)
-        }
-        return config
-      }
-      case 'workflow': {
-        const config: any = { workflowMatcher: pattern as string }
-        const authInfo = (matcher as any).getAuthorisationInfo?.()
-        if (authInfo) config.authorisationInfo = serializeAuthorisationInfo(authInfo)
-        return config
-      }
-      case 'targetType': {
-        const config: any = { targetTypeMatcher: pattern as string }
-        const authInfo = (matcher as any).getAuthorisationInfo?.()
-        if (authInfo) config.authorisationInfo = serializeAuthorisationInfo(authInfo)
-        return config
-      }
-      case 'hash': {
-        // Shallow-clone the hashes array. HashMatcher.getPattern() returns its
-        // internal `authorizedHashes` by reference; without the clone, callers
-        // that mutate `config.hashes` (e.g. inventory diff appending a new hash)
-        // silently corrupt the matcher's internal state and therefore the
-        // *old* inventory entry too — leaving `buildInventoryCommitMessage`
-        // unable to see any difference between old and new while alerts had
-        // already buffered the result as "applied".
-        const config: any = { hashes: [...(pattern as import('../types/inventory/model.js').InventoryScriptHashInfo[])] }
-        const authInfo = (matcher as any).getAuthorisationInfo?.()
-        if (authInfo) {
-          config.authorisationInfo = serializeAuthorisationInfo(authInfo)
-        }
-        return config
-      }
-      case 'or': {
-        const children = pattern as import('../types/matcher/matcher.interface.js').Matcher[]
-        const authInfo = (matcher as any).getAuthorisationInfo?.()
-
-        // Top-level OrMatcher in authoriseWith: use array syntax (more concise)
-        if (isTopLevelAuthoriseWith) {
-          // Return array of child configs, each with its own authorisationInfo
-          return children.map((child) => matcherToConfig(child, false))
-        }
-
-        // Nested OrMatcher: use orMatcher format
-        const config: any = {
-          orMatcher: children.map((c) => matcherToConfig(c, false)),
-        }
-        if (authInfo) {
-          config.authorisationInfo = serializeAuthorisationInfo(authInfo)
-        }
-        return config
-      }
-      case 'and': {
-        const children = pattern as import('../types/matcher/matcher.interface.js').Matcher[]
-        const config: any = {
-          andMatcher: children.map((c) => matcherToConfig(c, false)),
-        }
-        const authInfo = (matcher as any).getAuthorisationInfo?.()
-        if (authInfo) {
-          config.authorisationInfo = serializeAuthorisationInfo(authInfo)
-        }
-        return config
-      }
-      default:
-        throw new Error(`Unknown matcher type: ${matcherType}`)
-    }
-  }
-
   // Special handling for top-level OrMatcher in authoriseWith
   if (inventoryScriptInfo.authoriseWith.matcher.getType() === 'or') {
     const topLevelMatcherAuthInfo = (inventoryScriptInfo.authoriseWith.matcher as any).getAuthorisationInfo?.()
 
-    // Use array syntax if the OrMatcher itself doesn't have authorisationInfo
-    // Use orMatcher syntax if the OrMatcher has authorisationInfo (needs carrier)
-    if (!topLevelMatcherAuthInfo) {
+    // Array syntax only when every alternative carries its own authorisationInfo — the
+    // schema requires one on each array element. An authoriseWith written as
+    // `{ orMatcher: [...], authorisationInfo }` (or expanded from a matcherRef whose definition
+    // is an orMatcher) loads as an OrMatcher whose children carry none, because the
+    // entry-level info is lifted off the root; writing that as array syntax would drop the
+    // entry's authorisation and produce a file that no longer validates.
+    //
+    // And only when the entry-level info IS the first alternative's: array syntax
+    // loads with element [0]'s info as the entry's, so writing an entry whose own
+    // approval differs (`{ orMatcher: [approved, approved], authorisationInfo:
+    // pending }`) as an array would silently approve it on the next load.
+    const children = inventoryScriptInfo.authoriseWith.matcher.getPattern() as Matcher[]
+    const everyChildCarriesInfo = children.every((child) => (child as any).getAuthorisationInfo?.() !== undefined)
+    if (!topLevelMatcherAuthInfo && everyChildCarriesInfo && sameAuthorisationInfo((children[0] as any)?.getAuthorisationInfo?.(), inventoryScriptInfo.authoriseWith.authorisationInfo)) {
       // Array syntax - no authorisationInfo on the matcher itself
-      const arrayConfig = matcherToConfig(inventoryScriptInfo.authoriseWith.matcher, true)
+      const arrayConfig = scriptMatcherToRawConfig(inventoryScriptInfo.authoriseWith.matcher, true)
       return {
-        identifyWith: matcherToConfig(inventoryScriptInfo.identifyWith),
+        identifyWith: scriptMatcherToRawConfig(inventoryScriptInfo.identifyWith),
         authoriseWith: arrayConfig,
         ...(inventoryScriptInfo.requiredOn !== undefined ? { requiredOn: inventoryScriptInfo.requiredOn } : {}),
-        ...fromLoadGrant(inventoryScriptInfo.authorisesLoads, (matcher) => matcherToConfig(matcher)),
+        ...fromLoadGrant(inventoryScriptInfo.authorisesLoads, (matcher) => scriptMatcherToRawConfig(matcher)),
       }
     }
-    // Fall through to use orMatcher format (OrMatcher has its own authorisationInfo)
+    // Fall through to the orMatcher format, carrying the entry-level authorisationInfo
   }
 
   // For non-OrMatcher top-level matchers (or OrMatcher with its own authInfo), use standard format
-  const matcherConfig = matcherToConfig(inventoryScriptInfo.authoriseWith.matcher, false)
+  const matcherConfig = scriptMatcherToRawConfig(inventoryScriptInfo.authoriseWith.matcher, false)
 
   return {
-    identifyWith: matcherToConfig(inventoryScriptInfo.identifyWith),
+    identifyWith: scriptMatcherToRawConfig(inventoryScriptInfo.identifyWith),
     authoriseWith: {
       ...matcherConfig,
       authorisationInfo: {
@@ -254,6 +275,6 @@ export function inventoryScriptInfoToRawInventoryScriptInfo(inventoryScriptInfo:
       },
     },
     ...(inventoryScriptInfo.requiredOn !== undefined ? { requiredOn: inventoryScriptInfo.requiredOn } : {}),
-    ...fromLoadGrant(inventoryScriptInfo.authorisesLoads, (matcher) => matcherToConfig(matcher)),
+    ...fromLoadGrant(inventoryScriptInfo.authorisesLoads, (matcher) => scriptMatcherToRawConfig(matcher)),
   }
 }

@@ -11,6 +11,7 @@
  */
 
 import type { InventoryAuthorisationInfo } from '../../src/types/inventory/model.js'
+import { RawInventoryScriptInfoSchema } from '../../src/types/inventory/zod.js'
 import { AndMatcher } from '../../src/types/matcher/and-matcher.js'
 import { ContentMatcher } from '../../src/types/matcher/content-matcher.js'
 import { HashMatcher } from '../../src/types/matcher/hash-matcher.js'
@@ -748,16 +749,21 @@ describe('Composite Matcher Integration Tests (T041-T043)', () => {
         // Verify all scripts serialized correctly
         const parsed = JSON.parse(jsonString)
         expect(parsed.scripts).toHaveLength(3)
-        // Script 1: OrMatcher without its own authInfo uses array syntax
-        expect(Array.isArray(parsed.scripts[0].authoriseWith)).toBe(true)
+        // Script 1: an OrMatcher whose alternatives carry no authInfo of their own
+        // keeps the orMatcher format with the entry's authInfo — array syntax
+        // would need one on every element and would drop the entry's approval.
+        expect(parsed.scripts[0].authoriseWith).toHaveProperty('orMatcher')
+        expect(parsed.scripts[0].authoriseWith.authorisationInfo.description).toBe('Script 1')
         // Script 2: AndMatcher keeps andMatcher format
         expect(parsed.scripts[1].authoriseWith).toHaveProperty('andMatcher')
         expect(parsed.scripts[1].authoriseWith).toHaveProperty('authorisationInfo')
-        // Script 3: Nested OrMatcher without its own authInfo uses array syntax
-        expect(Array.isArray(parsed.scripts[2].authoriseWith)).toBe(true)
+        // Script 3: likewise, with the nested AND kept as the first alternative
+        expect(parsed.scripts[2].authoriseWith.orMatcher[0]).toHaveProperty('andMatcher')
 
-        // Verify nested structure in script3 - first array element should have andMatcher
-        expect(parsed.scripts[2].authoriseWith[0]).toHaveProperty('andMatcher')
+        // What gets committed must load again, approval intact.
+        for (const [index, script] of parsed.scripts.entries()) {
+          expect(rawInventoryScriptInfoToInventoryScriptInfo(RawInventoryScriptInfoSchema.parse(script)).authoriseWith.authorisationInfo.description).toBe(`Script ${index + 1}`)
+        }
       })
     })
   })

@@ -216,6 +216,9 @@ export class ReportCollector implements IReportCollector {
     const files = this.inventoryFiles.get(pass) ?? new Map<string, string>()
 
     files.set(inventory.source.file, inventory.source.text)
+    // The shared definitions the file referenced are part of the baseline too:
+    // provenance cites lines in them, so they are copied and digested alongside.
+    if (inventory.matcherRefs !== undefined) files.set(inventory.matcherRefs.shared.file, inventory.matcherRefs.shared.text)
     this.inventoryFiles.set(pass, files)
   }
 

@@ -141,6 +141,7 @@ function formatProvenanceNode(node: ProvenanceNode): RawHtml {
 
   return html`<li>
     <span class="mono">${node.file}:${node.line}</span> — ${node.description} ${node.authorisationInfo === undefined ? '' : html` <span class="muted">${node.authorisationInfo.description}</span>`}
+    ${node.ref === undefined ? '' : html` <span class="muted">(shared matcher <span class="mono">${node.ref.name}</span>, used at <span class="mono">${node.ref.site.file}:${node.ref.site.line}</span>)</span>`}
     ${
       children.length === 0
         ? ''

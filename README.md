@@ -598,14 +598,14 @@ npm start -- \
 
 ### What an assessor gets
 
-| Requirement                       | The question they ask                                    | Where the report answers it                                                            |
-| --------------------------------- | -------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| **6.4.3** inventory of scripts    | "Is every script on the payment page in your inventory?" | The full census — every row, including `status: "unknown"`                             |
-| **6.4.3** written justification   | "Why is this script here?"                               | `authorisation.effective.description` and the full `authorisation.metadataPath` chain  |
-| **6.4.3** authorisation           | "Who approved it, and when?"                             | `authorisation.effective.authorised` / `.date`, plus `inventoryEntry.raw` as committed |
-| **6.4.3** integrity assurance     | "How do you know it has not changed?"                    | `observed.hash` and the authorising matcher (hash, anchored content, or provenance)    |
-| **11.6.1** detection and alerting | "Show me the mechanism ran, and what it found."          | `run` (mode, inventory commit, time window, status) and every non-`authorised` row     |
-| Both                              | "Where is this written down?"                            | `inventoryEntry.provenance` — `targets/2.0.json:184` plus the exact JSON pointer       |
+| Requirement                       | The question they ask                                    | Where the report answers it                                                                                                                                               |
+| --------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **6.4.3** inventory of scripts    | "Is every script on the payment page in your inventory?" | The full census — every row, including `status: "unknown"`                                                                                                                |
+| **6.4.3** written justification   | "Why is this script here?"                               | `authorisation.effective.description` and the full `authorisation.metadataPath` chain                                                                                     |
+| **6.4.3** authorisation           | "Who approved it, and when?"                             | `authorisation.effective.authorised` / `.date`, plus `inventoryEntry.raw` (the entry as committed, with any `matcherRef` shown expanded to the definition it resolved to) |
+| **6.4.3** integrity assurance     | "How do you know it has not changed?"                    | `observed.hash` and the authorising matcher (hash, anchored content, or provenance)                                                                                       |
+| **11.6.1** detection and alerting | "Show me the mechanism ran, and what it found."          | `run` (mode, inventory commit, time window, status) and every non-`authorised` row                                                                                        |
+| Both                              | "Where is this written down?"                            | `inventoryEntry.provenance` — `targets/2.0.json:184` plus the exact JSON pointer                                                                                          |
 
 The provenance is specific, not approximate: for an entry authorised by one of several hashes it points at `/scripts/7/authoriseWith/hashes/2`, the hash that actually matched — not the entry as a whole.
 
@@ -634,6 +634,8 @@ Each pass ships a verbatim copy of the inventory files it read, under `<pass>/in
 ```bash
 jq -r '.run.inventorySources[] | "\(.sha256)  \(.copiedTo)"' detection/report.json | (cd detection && shasum -a 256 -c)
 ```
+
+A target that used [shared matchers](#shared-matchers-sharedmatchersjson-matcherref) brings `shared/matchers.json` with it — provenance cites lines there too.
 
 Each pass carries its own copy on purpose: under `--mode all` the two passes read different branches, so one shared copy would misrepresent at least one of them.
 
@@ -684,6 +686,8 @@ A 1.5.0 consumer that treated every `status: 0` entry as a gap stays correct for
 1.7.0 adds initiator chains — `observed.initiatorChain` (and `alternateInitiatorChains` where the walk forked) on script rows, `initiatorChain` on `unansweredRequests` — and inherited authorisation: an `authorised` script row may carry `authorisation.inherited` (the granting script and the chain to it), in which case `identification` and `authorisation.matcher` are null and `inventoryEntry` is the **granting** entry, with `inventoryEntry.provenance.grantedBy` pointing at its `authorisesLoads`. `authorised` still means the inventory authorises the script; read `inherited` to learn how.
 
 1.8.0 adds `detachedAtStep` and `detachedFrameUrl` to `unansweredRequests` entries: when the request's frame was detached with the request still outstanding — removed or navigated away by the page, or closed with the browser context (then the last step) — the workflow step running then and the frame's URL (origin and path). Both are optional and absent when no detach was seen; `step` still names the step that issued the request, and the entry and its `reason` mean what they meant.
+
+1.9.0 adds shared matcher references: a provenance node (`authorisedBy` and its `children`) for a matcher the target wrote as `{ "matcherRef": name }` points into `shared/matchers.json` and carries `ref: { name, site }`, where `site` is the ref's location in the target file; `run.inventorySources` then lists `shared/matchers.json` too. Additive and optional.
 
 ### In CI
 
@@ -756,7 +760,7 @@ The `validate` mode is designed to run as a pre-merge CI check in the script-inv
 ### What validate mode does
 
 1. Clones the inventory repo (supports `file://` for the CI's local checkout) and switches to the requested branch.
-2. Reads every `targets/*.json` file.
+2. Reads `shared/matchers.json` when present, and every `targets/*.json` file, expanding each `{ "matcherRef" }` from the shared file (an unknown name, or a definition carrying `authorisationInfo`, fails here).
 3. Parses each file with `RawInventorySchema` (catches bad regex patterns, missing fields, malformed hashes, unsupported matcher shapes).
 4. Runs `createMatcher()` on every `identifyWith` and `authoriseWith` tree (catches any matcher construction failures that slip past schema).
 5. Resolves every `workflow` reference via `WorkflowDefinitionSchema` (catches dangling workflow files and malformed workflow definitions).
@@ -983,6 +987,8 @@ External scripts are named by their URL; inline scripts have no URL, so the syst
   | `inline_script/react-server-component` | React streaming-SSR inline runtime (`$RC`/`$RS`/`$RB`/`$RV`/`$RT` bootstrap globals)           |
   | `inline_script/react-hydration-timing` | react-dom server renderer's paint-timing snippet (`requestAnimationFrame(...$RT=...)`)         |
 
+  The same snippets can instead be identified by content through a [shared matcher](#shared-matchers-sharedmatchersjson-matcherref), which keeps the pattern in the inventory, where it is reviewed, versioned and changed without a tool release.
+
   These names classify a **technology, never a site**: each recogniser is attributable byte-for-byte to the framework or vendor's own source code, so it holds for every site built on that stack. Application-specific inline scripts must never be added to this list — they belong in the target's inventory file, where the system identifies them by provenance instead (see below).
 
 - **`inline_script/id_not_found`** — the shared fallback for anything unrecognised. Because many distinct scripts can carry this name at once, it can never identify a script; when the inventory workflow discovers one, it generates a content-based entry instead: an anchored snippet of the script body (`contentMatcher`, both ends anchored when the whole body fits the window), combined under an `andMatcher` with the initiator host (`hostMatcher`) whenever the initiator URL is available and parseable. The entry is ready for a human to review and authorise.
@@ -1063,6 +1069,42 @@ Each alternative's own `authorisationInfo` counts: an alternative with
 reviewer declined — authorises nothing, whatever its matcher type, even while
 the entry's first alternative is approved. Approve an alternative by setting
 its own flag to `true`.
+
+### Shared matchers (`shared/matchers.json`, `matcherRef`)
+
+A matcher several targets need — a framework's or an edge vendor's generated snippet, say — can be defined once in `shared/matchers.json` at the root of the inventory repository (not under `targets/`, whose every file is read as an inventory) and referenced from any target entry with `{ "matcherRef": "<name>" }`, anywhere a matcher config is accepted: `identifyWith`, `authoriseWith` or one of its array alternatives, a child of `andMatcher`/`orMatcher`, or `loadsMatching`.
+
+```json
+{
+  "matchers": {
+    "edge-bootstrap-shape": {
+      "description": "Edge vendor's challenge bootstrap, loosely — so a changed snippet reads as known-but-changed, not unknown",
+      "matcher": { "contentMatcher": "^\\(function\\(\\)\\{function c\\(\\)\\{" }
+    },
+    "edge-bootstrap": {
+      "description": "Edge vendor's challenge bootstrap, exactly; only the per-request ids may vary",
+      "matcher": { "contentMatcher": "^\\(function\\(\\)\\{function c\\(\\)\\{…r:'[0-9a-f]{16}'…\\}\\)\\(\\);$" }
+    }
+  }
+}
+```
+
+```json
+{
+  "identifyWith": { "matcherRef": "edge-bootstrap-shape" },
+  "authoriseWith": {
+    "matcherRef": "edge-bootstrap",
+    "authorisationInfo": { "description": "Edge challenge bootstrap", "authorised": true, "date": "2026-11-06T00:00:00.000Z" }
+  }
+}
+```
+
+Each target keeps its own entry, so it keeps its own position in first-match-wins order, its own approval, and its own scope — wrap a ref to narrow it, e.g. `"identifyWith": { "andMatcher": [{ "hostMatcher": "^shop\\.example\\.com$" }, { "matcherRef": "edge-bootstrap-shape" }] }`.
+
+- **A definition is matching logic only.** `authorisationInfo` and `matcherRef` are rejected anywhere inside one; approval is written at the ref site, as above, and lands on the root of the expansion. Names are lowercase (`a-z`, `0-9`, `.`, `_`, `-`). The file is optional; a ref with no file, or to an unknown name, fails the load naming the target, the JSON pointer and the names that are defined.
+- **Refs are expanded when the inventory loads**, before validation, so every rule an inline matcher is held to applies to the expansion too — a `loadsMatching` guard reached through a ref is judged exactly as if it were written out. Comparison, alerts, the RUM lane and `--mode validate` see ordinary matchers. A validation error inside an expansion says which ref it is in. `--mode validate` (and every run) warns about definitions no target references, without failing.
+- **The inventory pass writes refs back as refs.** When it updates a target file, each entry that used a ref keeps it, and a new alternative it appends (a hash, a CSP value) lands beside the ref. If the update changed the referenced matcher itself — a hash pushed into a shared `hashes` list — that one use is written out inline instead, with a warning in the run log, so the change shows up in the inventory pull request and automation never edits a shared definition.
+- **The report cites both places.** An authorising matcher reached through a ref is located in `shared/matchers.json` (file, pointer, line), with `ref: { name, site }` naming where the target used it, and the shared file is copied and digested with the report alongside the target files.
 
 ### CspDirectiveMatcher (Content-Security-Policy)
 

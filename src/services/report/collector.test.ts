@@ -277,6 +277,22 @@ describe('ReportCollector', () => {
       expect(collector.build('detection', runContext())!.run.inventorySources.map((source) => source.file)).toEqual(['targets/2.0.json'])
     })
 
+    it('retains the shared matcher file beside every target that referenced it, once', () => {
+      // Provenance cites lines in shared/matchers.json, so its bytes are part of
+      // the baseline the run judged against and must be copied and digested too.
+      const collector = new ReportCollector()
+      const shared = { file: 'shared/matchers.json', text: '{ "matchers": {} }\n', definitions: {} }
+      const site = { collection: 'scripts' as const, entryIndex: 0, pointer: '/scripts/0/identifyWith', name: 'x' }
+
+      for (const name of ['1.0.json', '2.0.json']) {
+        collector.recordTargetRun({ inventory: { ...buildInventory(undefined, name), matcherRefs: { shared, sites: [site] } }, target: detectionTarget, comparisonResults: [] })
+      }
+      collector.recordTargetRun({ inventory: buildInventory(undefined, '3.0.json'), target: detectionTarget, comparisonResults: [] })
+
+      expect(collector.getInventoryFiles('detection').map(({ file }) => file)).toEqual(['shared/matchers.json', 'targets/1.0.json', 'targets/2.0.json', 'targets/3.0.json'])
+      expect(collector.getInventoryFiles('detection').find(({ file }) => file === 'shared/matchers.json')?.text).toBe(shared.text)
+    })
+
     it('redacts credentials from a failure message before it reaches the artefact', () => {
       // Git errors echo the authenticated remote. Without redaction the token
       // lands in a 90-day CI artefact whose own notes promise it cannot.
@@ -522,7 +538,7 @@ describe('ReportCollector unanswered script requests', () => {
       [5, 'https://challenge.example.test/widget'],
       [7, 'https://challenge.example.test/widget'],
     ])
-    expect(report.schemaVersion).toBe('1.8.0')
+    expect(report.schemaVersion).toBe('1.9.0')
   })
 
   it('records an empty list when every request was answered', () => {

@@ -1,6 +1,5 @@
 import type { Page } from 'puppeteer'
 
-import type { ScriptMatcher } from '../types/matcher.js'
 import type { PageScriptElement } from '../types/page.js'
 import type { ScriptInfo } from '../types/script.js'
 import { createSha256Hash } from './hash.js'
@@ -16,7 +15,7 @@ export type PageScripts = {
 
 type AttributionApi = { describe(el: Element): ScriptElementRecord | null; insertions(): ScriptInsertionRecord[] }
 
-export async function readPageScripts(page: Page, scriptContentMatchers: ScriptMatcher[]): Promise<PageScripts> {
+export async function readPageScripts(page: Page): Promise<PageScripts> {
   const scanned = await page.evaluate(() => {
     const api = (window as unknown as { __pciAttribution?: AttributionApi }).__pciAttribution
     const scriptElements = Array.from(document.querySelectorAll('script:not([src])'))
@@ -51,8 +50,13 @@ export async function readPageScripts(page: Page, scriptContentMatchers: ScriptM
   const inlineScripts: ScriptInfo[] = []
   scanned.inline.forEach((pageScriptElement) => {
     const idToUse = pageScriptElement.id ? `inline_script/${pageScriptElement.id}` : tryGetIdFromInLineScriptCode(pageScriptElement)
-    const maybeContentMatcher = scriptContentMatchers.find((matcher) => matcher.nameMatcher.test(idToUse) && matcher.contentMatcher.test(pageScriptElement.content))
-    const scriptHash = maybeContentMatcher ? createSha256Hash(`${maybeContentMatcher.nameMatcher.source}|${maybeContentMatcher.contentMatcher.source}`) : createSha256Hash(pageScriptElement.content)
+    // Always the content's own hash. (Until 2026-11 an inventory entry whose
+    // top-level identifyWith was a contentMatcher that also matched the script's
+    // NAME replaced this with a constant hash of the two patterns — so every
+    // such script hashed alike, defeating hash authorisation and the
+    // (hash, document) dedupe. Shared matcher refs made content identifiers
+    // routine, so that path was removed rather than left reachable.)
+    const scriptHash = createSha256Hash(pageScriptElement.content)
 
     if (pageScriptElement.content) {
       inlineScripts.push({
@@ -71,6 +75,6 @@ export async function readPageScripts(page: Page, scriptContentMatchers: ScriptM
   return { inlineScripts, insertions: scanned.insertions }
 }
 
-export async function getInlineScriptsFromPage(page: Page, scriptContentMatchers: ScriptMatcher[]): Promise<ScriptInfo[]> {
-  return (await readPageScripts(page, scriptContentMatchers)).inlineScripts
+export async function getInlineScriptsFromPage(page: Page): Promise<ScriptInfo[]> {
+  return (await readPageScripts(page)).inlineScripts
 }
