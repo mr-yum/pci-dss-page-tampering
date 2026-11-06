@@ -145,6 +145,13 @@ export class ScriptInventoryService implements IInventoryService {
       if (this.isCoveredByExistingEntry(result, updatedInventory)) {
         continue
       }
+      if (isBlankUnidentifiedInlineScript(result)) {
+        // Nothing can identify it but its name, which every id-less inline
+        // script shares (see buildIdentifyMatcher). The finding is still
+        // alerted; it just never becomes an entry.
+        result.target.logger.log(`${result.script.name} has a blank body; not proposing an inventory entry, since one could only identify it by the name every id-less inline script shares.`)
+        continue
+      }
       updatedInventory = this.addNewScript(result, updatedInventory, updateDate)
       appliedResults.push(result)
     }
@@ -240,10 +247,10 @@ export class ScriptInventoryService implements IInventoryService {
     const body = content.trimStart()
     const contentSnippet = body.slice(0, 64)
     if (contentSnippet === '') {
-      // Whitespace-only content would produce a bare `^` matcher that
-      // identifies every script. Fall back to the (degenerate) exact-name
-      // matcher rather than minting a universal one.
-      return createMatcher(withWorkflow({ nameMatcher: `^${this.escapeRegex(script.name)}$` }))
+      // `diff` never proposes a blank id-less script (isBlankUnidentifiedInlineScript).
+      // Its only identifier would be `^inline_script\/id_not_found$`, which
+      // once approved identifies every id-less inline script.
+      throw new Error(`Refusing to build an identifier for a blank ${UNIDENTIFIED_INLINE_SCRIPT_ID} script`)
     }
     // When the whole body fits in the snippet window, anchor both ends —
     // a prefix-only match would also identify any longer script that merely
@@ -581,4 +588,16 @@ export class ScriptInventoryService implements IInventoryService {
       authorisationInfo: { description, authorised: true, date: date.toISOString() },
     }
   }
+}
+
+/**
+ * An id-less inline script whose body is empty or whitespace. Comparison
+ * judges it unknown before consulting any entry (empty content is never
+ * matched), so no entry can authorise it; and ContentMatcher identifies no
+ * blank body, so the only identifier left is the shared fallback name, which
+ * matches every id-less inline script. Proposing one would add an entry whose
+ * only possible effect, once approved, is to claim unrelated scripts.
+ */
+function isBlankUnidentifiedInlineScript(result: UnknownScriptFound): boolean {
+  return result.script.name === UNIDENTIFIED_INLINE_SCRIPT_ID && (result.script.content ?? '').trim() === ''
 }
