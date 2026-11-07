@@ -975,23 +975,14 @@ Matcher fields always operate on what their name says: `nameMatcher` on the scri
 
 ### Inline Script Names
 
-External scripts are named by their URL; inline scripts have no URL, so the system assigns them a stable `inline_script/...` name that inventory entries can match with `nameMatcher`:
+External scripts are named by their URL; inline scripts have no URL, so the system assigns them an `inline_script/...` name:
 
-- **`inline_script/<element-id>`** — used when the `<script>` element carries a DOM `id` attribute (e.g. a script tag your application renders as `<script id="facebookPixel">` is named `inline_script/facebookPixel`).
-- **Convenience names for known tech types** — scripts that frameworks and edge vendors generate on _any_ site that uses them are recognised by their canonical snippet and given a shared, human-readable name. This keeps one inventory entry per technology instead of one per anonymous script:
+- **`inline_script/<element-id>`** — used when the `<script>` element carries a DOM `id` attribute (e.g. a script tag your application renders as `<script id="facebookPixel">` is named `inline_script/facebookPixel`), so an inventory entry can match it with `nameMatcher`.
+- **`inline_script/id_not_found`** — every other inline script. Because many distinct scripts can carry this name at once, it can never identify a script; when the inventory workflow discovers one, it generates a content-based entry instead: an anchored snippet of the script body (`contentMatcher` on its first 64 characters after any leading whitespace, both ends anchored when the whole body fits the window), combined under an `andMatcher` with the initiator host (`hostMatcher`) whenever the initiator URL is available and parseable. The entry is ready for a human to review and authorise. Check its host scope before approving: the host is the one observed on the pass that proposed it, usually the inventory (staging) target, so if the detection target serves the script from a different host, widen the `hostMatcher` to the hosts that should be trusted (or move it into a shared matcher scoped to them) — approved as proposed, the entry matches staging and the production copy stays unknown. One is never proposed for a script whose body is empty or whitespace: nothing but its shared name could identify it, and comparison reports a blank script as unknown whatever the inventory says, so it stays an alert on every run instead.
 
-  | Name                                   | Technology                                                                                     |
-  | -------------------------------------- | ---------------------------------------------------------------------------------------------- |
-  | `inline_script/cloudflare-bot-fight`   | Cloudflare Bot Fight Mode challenge loader (injected by Cloudflare on any protected site)      |
-  | `inline_script/nextjs-ssr`             | Next.js App Router flight-data scripts (`self.__next_f.push(...)` and its initialiser variant) |
-  | `inline_script/react-server-component` | React streaming-SSR inline runtime (`$RC`/`$RS`/`$RB`/`$RV`/`$RT` bootstrap globals)           |
-  | `inline_script/react-hydration-timing` | react-dom server renderer's paint-timing snippet (`requestAnimationFrame(...$RT=...)`)         |
+Snippets that a framework or an edge vendor generates on every site built on it — a bot-detection bootstrap, streaming-render data, a framework runtime — are identified by **content**, in the inventory: an anchored `contentMatcher` on the snippet's stable opening, usually defined once as a [shared matcher](#shared-matchers-sharedmatchersjson-matcherref) and used by every target that serves it. Keep identification loose enough to recognise the snippet when the vendor changes it (it then reads as known-but-changed, with a reason) and authorise as tightly as the snippet allows.
 
-  The same snippets can instead be identified by content through a [shared matcher](#shared-matchers-sharedmatchersjson-matcherref), which keeps the pattern in the inventory, where it is reviewed, versioned and changed without a tool release.
-
-  These names classify a **technology, never a site**: each recogniser is attributable byte-for-byte to the framework or vendor's own source code, so it holds for every site built on that stack. Application-specific inline scripts must never be added to this list — they belong in the target's inventory file, where the system identifies them by provenance instead (see below).
-
-- **`inline_script/id_not_found`** — the shared fallback for anything unrecognised. Because many distinct scripts can carry this name at once, it can never identify a script; when the inventory workflow discovers one, it generates a content-based entry instead: an anchored snippet of the script body (`contentMatcher`, both ends anchored when the whole body fits the window), combined under an `andMatcher` with the initiator host (`hostMatcher`) whenever the initiator URL is available and parseable. The entry is ready for a human to review and authorise.
+Until 2026-11 the system also named four such snippets itself — `inline_script/cloudflare-bot-fight`, `inline_script/nextjs-ssr`, `inline_script/react-server-component` and `inline_script/react-hydration-timing` — from patterns built into the tool. Those patterns could only change with a tool release, so a vendor's change to its snippet left every inventory unable to follow until one shipped. The names are no longer assigned: an inventory entry whose `nameMatcher` targets one of them identifies nothing, and the scripts it covered are reported as unknown. Replace such an entry with a content identifier before upgrading.
 
 ### Simple Matcher
 

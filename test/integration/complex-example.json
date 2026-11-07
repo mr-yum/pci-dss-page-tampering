@@ -159,7 +159,7 @@
     },
     {
       "identifyWith": {
-        "nameMatcher": "^inline_script\\/cloudflare-bot-fight$"
+        "contentMatcher": "^\\(function\\(\\)\\{function c\\(\\)\\{var b=a\\.contentDocument"
       },
       "authoriseWith": {
         "contentMatcher": "a.src='\\/cdn-cgi\\/challenge-platform\\/scripts\\/jsd\\/main.js'",
@@ -172,7 +172,7 @@
     },
     {
       "identifyWith": {
-        "nameMatcher": "^inline_script\\/nextjs-ssr$"
+        "contentMatcher": "^\\(?self\\.__next_f[.=]"
       },
       "authoriseWith": {
         "contentMatcher": "self.__next_f\\.push",
@@ -185,7 +185,7 @@
     },
     {
       "identifyWith": {
-        "nameMatcher": "^inline_script\\/react-server-component$"
+        "contentMatcher": "^\\$R[A-Z][=(]"
       },
       "authoriseWith": {
         "contentMatcher": "^\\$R[CS]",
