@@ -146,6 +146,74 @@ describe('Required script inventory validation', () => {
   })
 })
 
+// An inline script's name is its element id, which the page chooses. An
+// approved entry that identifies inline scripts by name must read the body.
+describe('Inline script entries identified by name', () => {
+  const info = (authorised = true) => ({ description: 'inline entry', authorised, date: '2026-11-09T00:00:00.000Z' })
+  const hashes = [{ timestamp: '2026-11-09T00:00:00.000Z', hash: { value: 'a'.repeat(64) } }]
+  const ownOrigin = '^https:\\/\\/([^\\/]+\\.)*example\\.com\\/'
+  const REFUSAL = 'identifies inline scripts by name'
+  const issues = (entry: unknown): string => {
+    const result = RawInventoryScriptInfoSchema.safeParse(entry)
+    return result.success ? '' : result.error.issues.map((issue) => issue.message).join('\n')
+  }
+
+  it.each<[string, unknown, unknown]>([
+    ['an id prefix authorised by the page origin', { nameMatcher: '^inline_script\\/example\\.com\\/.*$' }, { urlMatcher: ownOrigin, authorisationInfo: info() }],
+    ['one exact id authorised by host', { nameMatcher: '^inline_script\\/vendor-config$' }, { hostMatcher: '^example\\.com$', authorisationInfo: info() }],
+    ['a pattern that admits any name', { nameMatcher: '.*' }, { urlMatcher: ownOrigin, authorisationInfo: info() }],
+    ['a name inside an AND with run metadata only', { andMatcher: [{ nameMatcher: '^inline_script\\/boot$' }, { workflowMatcher: '^checkout$' }] }, { urlMatcher: ownOrigin, authorisationInfo: info() }],
+    [
+      'one approved alternative that reads no body',
+      { nameMatcher: '^inline_script\\/boot$' },
+      [
+        { hashes, authorisationInfo: info() },
+        { urlMatcher: ownOrigin, authorisationInfo: info() },
+      ],
+    ],
+    ['an OR authoriser with a URL-only branch', { nameMatcher: '^inline_script\\/boot$' }, { orMatcher: [{ hashes }, { urlMatcher: ownOrigin }], authorisationInfo: info() }],
+    // First-party patterns that never mention inline_script but that a page
+    // can satisfy with id="shop.example.com/x".
+    ['an unanchored host pattern', { nameMatcher: 'shop\\.example\\.com\\/' }, { urlMatcher: ownOrigin, authorisationInfo: info() }],
+    ['a .*-led host pattern', { nameMatcher: '^.*shop\\.example\\.com\\/.*$' }, { urlMatcher: ownOrigin, authorisationInfo: info() }],
+    ['a scheme-free prefix pattern', { nameMatcher: '^[^:]+\\/shop\\.example\\.com\\/' }, { urlMatcher: ownOrigin, authorisationInfo: info() }],
+    ['a .+-led domain pattern', { nameMatcher: '^.+\\.example\\.com\\/' }, { hostMatcher: '^example\\.com$', authorisationInfo: info() }],
+    // identifyWith is judged without the pending skip: identification ignores
+    // authorisationInfo, so a pending flag there makes nothing safe.
+    ['a pending flag on the identifying node', { nameMatcher: '^inline_script\\/boot$', authorisationInfo: info(false) }, { urlMatcher: ownOrigin, authorisationInfo: info() }],
+  ])('refuses an approved entry that never reads the body: %s', (_label, identifyWith, authoriseWith) => {
+    expect(issues({ identifyWith, authoriseWith })).toContain(REFUSAL)
+  })
+
+  it.each<[string, unknown, unknown]>([
+    ['an exact id pinned by hash', { nameMatcher: '^inline_script\\/__NEXT_DATA__$' }, { hashes, authorisationInfo: info() }],
+    ['an id authorised by content and origin together', { nameMatcher: '^inline_script\\/boot$' }, { andMatcher: [{ contentMatcher: '^window\\.boot=' }, { urlMatcher: ownOrigin }], authorisationInfo: info() }],
+    ['an id identified by content as well', { andMatcher: [{ nameMatcher: '^inline_script\\/boot$' }, { contentMatcher: '^window\\.boot=' }] }, { urlMatcher: ownOrigin, authorisationInfo: info() }],
+    [
+      'a URL-only alternative that is still pending',
+      { nameMatcher: '^inline_script\\/boot$' },
+      [
+        { hashes, authorisationInfo: info() },
+        { urlMatcher: ownOrigin, authorisationInfo: info(false) },
+      ],
+    ],
+    // The RUM candidate lane writes hash-less inline candidates authorised by
+    // exact name, pending, for a reviewer to replace (buildNewScriptAuthoriser).
+    ['a pending name-only candidate', { nameMatcher: '^inline_script\\/rum$' }, { nameMatcher: '^inline_script\\/rum$', authorisationInfo: info(false) }],
+    // External scripts are named by their URL; the rule is about inline names.
+    ['an external script authorised by its own URL', { nameMatcher: '^https:\\/\\/cdn\\.example\\.com\\/sdk\\.js$' }, { urlMatcher: '^https:\\/\\/cdn\\.example\\.com\\/', authorisationInfo: info() }],
+    [
+      // The README's vendor-frame entry: scheme-anchored, so no inline name fits.
+      'a scheme-anchored vendor pattern with alternatives',
+      { andMatcher: [{ initiatorHostMatcher: { host: '^([a-z0-9-]+\\.)*vendor\\.example$', transitive: true, kinds: ['document'] } }, { nameMatcher: '^(https|blob:https):\\/\\/([a-z0-9-]+\\.)*(vendor\\.example|captcha\\.example)\\/' }] },
+      { nameMatcher: '^(https|blob:https):\\/\\/([a-z0-9-]+\\.)*(vendor\\.example|captcha\\.example)\\/', authorisationInfo: info() },
+    ],
+    ['an id-less snippet identified by host and content', { andMatcher: [{ hostMatcher: '^example\\.com$' }, { contentMatcher: '^\\s*window\\.x=1;$' }] }, { hostMatcher: '^example\\.com$', authorisationInfo: info() }],
+  ])('accepts: %s', (_label, identifyWith, authoriseWith) => {
+    expect(issues({ identifyWith, authoriseWith })).not.toContain(REFUSAL)
+  })
+})
+
 describe('MatcherConfigSchema', () => {
   describe('Invalid regex patterns (T027)', () => {
     it('should reject nameMatcher with invalid regex (unclosed bracket)', () => {

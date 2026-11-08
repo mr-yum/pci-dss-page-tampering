@@ -207,7 +207,42 @@ function constrainsOwnEvidence(config: unknown): boolean {
 /** Names an inline script can carry, for probing whether a guard pattern would admit one. */
 const INLINE_NAME_PROBES = [INLINE_SCRIPT_NAME_PREFIX, `${INLINE_SCRIPT_NAME_PREFIX}id_not_found`, `${INLINE_SCRIPT_NAME_PREFIX}boot#k1-1`]
 
-/** The `nameMatcher` patterns in a guard that would admit an inline script's name. */
+/**
+ * The literal runs in a regex source — the text between metacharacters, with
+ * escaped punctuation unescaped — so `shop\.example\.com\/` yields
+ * `shop.example.com/`. An inline id is free text, so a page can choose one
+ * that spells out any run a pattern requires.
+ */
+function literalRuns(pattern: string): string[] {
+  const runs: string[] = []
+  let current = ''
+  for (let i = 0; i < pattern.length; i++) {
+    const char = pattern[i]!
+    if (char === '\\' && i + 1 < pattern.length) {
+      const next = pattern[++i]!
+      if (/[A-Za-z0-9]/.test(next)) {
+        // A class (\d, \w, \s…) or an escape sequence: not literal text.
+        if (current) runs.push(current)
+        current = ''
+      } else current += next
+    } else if ('^$.*+?()[]{}|'.includes(char)) {
+      if (current) runs.push(current)
+      current = ''
+    } else current += char
+  }
+  if (current) runs.push(current)
+  return runs
+}
+
+/**
+ * The `nameMatcher` patterns in a config that would admit an inline script's
+ * name. Decided by probing, not by proof: the fixed probes, plus
+ * `inline_script/<run>` for each literal run of the pattern (and every run in
+ * order), which catches an unanchored or `^.*`-led first-party pattern such as
+ * `shop\.example\.com\/` that a page can satisfy with `id="shop.example.com/x"`.
+ * A pattern anchored to an external scheme (`^https:`, `^blob:`) fails every
+ * probe, because an inline name starts `inline_script/`.
+ */
 function inlineAdmittingNamePatterns(config: unknown): string[] {
   if (typeof config !== 'object' || config === null) return []
   if (Array.isArray(config)) return config.flatMap(inlineAdmittingNamePatterns)
@@ -217,12 +252,35 @@ function inlineAdmittingNamePatterns(config: unknown): string[] {
     if (/inline_script/i.test(pattern)) return true
     try {
       const regex = new RegExp(pattern)
-      return INLINE_NAME_PROBES.some((probe) => regex.test(probe))
+      const runs = literalRuns(pattern)
+      const derived = [...runs, runs.join(''), runs.join('/')].flatMap((run) => [`${INLINE_SCRIPT_NAME_PREFIX}${run}`, `${INLINE_SCRIPT_NAME_PREFIX}${run}x`, `${INLINE_SCRIPT_NAME_PREFIX}x/${run}`])
+      return [...INLINE_NAME_PROBES, ...derived].some((probe) => regex.test(probe))
     } catch {
       return false // reported by the matcher schema
     }
   }
   return [...(typeof own === 'string' && admits(own) ? [own] : []), ...inlineAdmittingNamePatterns(node['orMatcher']), ...inlineAdmittingNamePatterns(node['andMatcher'])]
+}
+
+/**
+ * True when a matcher config can only succeed after reading the script's body:
+ * a leaf must be a `contentMatcher` or a hash list, every alternative of an OR
+ * (or array) must be, and at least one conjunct of an AND must be.
+ *
+ * With `skipUnapproved`, a node whose own `authorisationInfo.authorised` is
+ * `false` counts as satisfied, because every matcher denies when its own
+ * approval is withheld: a pending alternative authorises nothing, whatever it
+ * reads. Identification ignores `authorisationInfo`, so `identifyWith` is
+ * judged without it.
+ */
+function readsBody(config: unknown, skipUnapproved: boolean): boolean {
+  if (typeof config !== 'object' || config === null) return false
+  if (Array.isArray(config)) return config.length > 0 && config.every((child) => readsBody(child, skipUnapproved))
+  const node = config as Record<string, unknown>
+  if (skipUnapproved && (node['authorisationInfo'] as { authorised?: unknown } | undefined)?.authorised === false) return true
+  if (Array.isArray(node['orMatcher'])) return readsBody(node['orMatcher'], skipUnapproved)
+  if (Array.isArray(node['andMatcher'])) return node['andMatcher'].some((child) => readsBody(child, skipUnapproved))
+  return 'contentMatcher' in node || 'hashes' in node
 }
 
 export const RawInventoryScriptInfoSchema: z.ZodType<RawInventoryScriptInfo> = z
@@ -303,6 +361,26 @@ export const RawInventoryScriptInfoSchema: z.ZodType<RawInventoryScriptInfo> = z
           message: `loadsMatching must not admit inline scripts (${inlinePatterns.map((pattern) => `nameMatcher "${pattern}"`).join(', ')}): an inline load never inherits, because its name and chain are page-controlled evidence. Authorise an inline script with its own entry on its content or hash, and anchor guard patterns to the vendor's own origin (e.g. "^https://js\\.vendor\\.example/").`,
         })
       }
+    }
+
+    // An inline script's name is `inline_script/<element id>`, and the id is
+    // whatever the page — or code injected into it — chose. An approved entry
+    // that identifies inline scripts by name must therefore read the body
+    // somewhere: in identifyWith, or in every authoriseWith alternative. A
+    // url/host/workflow authoriser does not count, because an inline script's
+    // `url` is the page or script that inserted it. Without this, an entry
+    // `^inline_script/example\.com/.*$` authorised by a urlMatcher on the
+    // site's own origin authorises any script that sets such an id. Pending
+    // and declined alternatives are left alone (they authorise nothing), so
+    // the RUM candidate lane's name-only pending entries stay valid until a
+    // reviewer approves one, which is when the body has to be pinned.
+    const inlineNames = inlineAdmittingNamePatterns(entry.identifyWith)
+    if (inlineNames.length > 0 && !readsBody(entry.identifyWith, false) && !readsBody(entry.authoriseWith, true)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['authoriseWith'],
+        message: `An entry that identifies inline scripts by name (${inlineNames.map((pattern) => `nameMatcher "${pattern}"`).join(', ')}) must check their content or hash: an inline script's name is its element id, which the page chooses, and its url is the page or script that inserted it. Add a contentMatcher or hashes to identifyWith, or to every approved authoriseWith alternative.`,
+      })
     }
 
     // HeaderNameMatcher matches case-insensitively (RFC 7230 header names).
