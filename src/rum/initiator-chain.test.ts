@@ -234,12 +234,17 @@ describe('inheritance on the RUM lane', () => {
     })
 
     it('an inline hop never grants, even when an entry would identify and authorise its identity', async () => {
-      const inlineGranter = entry({
+      const raw: RawInventoryScriptInfo = {
         identifyWith: { nameMatcher: '^inline_script\\/' },
         authoriseWith: { nameMatcher: '^inline_script\\/', authorisationInfo: AUTHORISED },
         authorisesLoads: 'transitive',
         loadsMatching: { nameMatcher: '^https:' },
-      })
+      }
+      // Validation refuses this entry (an inline name authorised without reading
+      // the body); the comparison must refuse the grant on its own as well, so
+      // the entry is built past the schema.
+      expect(RawInventoryScriptInfoSchema.safeParse(raw).success).toBe(false)
+      const inlineGranter = rawInventoryScriptInfoToInventoryScriptInfo(raw)
       expect((await route([inlineGranter], external(ASSET, [s('inline_script/rum#3'), page]))).category).toBe('rum_uninventoried_script_detected')
     })
 

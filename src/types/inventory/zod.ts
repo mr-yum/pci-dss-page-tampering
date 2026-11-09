@@ -207,7 +207,102 @@ function constrainsOwnEvidence(config: unknown): boolean {
 /** Names an inline script can carry, for probing whether a guard pattern would admit one. */
 const INLINE_NAME_PROBES = [INLINE_SCRIPT_NAME_PREFIX, `${INLINE_SCRIPT_NAME_PREFIX}id_not_found`, `${INLINE_SCRIPT_NAME_PREFIX}boot#k1-1`]
 
-/** The `nameMatcher` patterns in a guard that would admit an inline script's name. */
+/**
+ * The literal text a regex fragment must start with: characters up to the
+ * first metacharacter, escaped punctuation unescaped. A quantifier that can
+ * make the last character optional (`?`, `*`, `{`) drops that character.
+ */
+function leadingLiteral(source: string): string {
+  let literal = ''
+  for (let i = 0; i < source.length; i++) {
+    const char = source[i]!
+    if (char === '\\') {
+      const next = source[i + 1]
+      if (next === undefined || /[A-Za-z0-9]/.test(next)) break // a class (\d, \w…) or escape sequence
+      literal += next
+      i++
+    } else if ('?*{'.includes(char)) return literal.slice(0, -1)
+    else if ('^$.+()[]|'.includes(char)) break
+    else literal += char
+  }
+  return literal
+}
+
+/** True when `literal` and the inline-name prefix differ at some position both cover. */
+function divergesFromInlinePrefix(literal: string): boolean {
+  if (literal === '') return false
+  for (let k = 0; k < Math.min(literal.length, INLINE_SCRIPT_NAME_PREFIX.length); k++) {
+    if (literal[k] !== INLINE_SCRIPT_NAME_PREFIX[k]) return true
+  }
+  return false
+}
+
+/** Splits `source` at `|` outside groups and classes; `undefined` when it cannot be scanned. */
+function splitTopLevelAlternatives(source: string): string[] | undefined {
+  const parts: string[] = []
+  let depth = 0
+  let inClass = false
+  let start = 0
+  for (let i = 0; i < source.length; i++) {
+    const char = source[i]!
+    if (char === '\\') i++
+    else if (inClass) inClass = char !== ']'
+    else if (char === '[') inClass = true
+    else if (char === '(') depth++
+    else if (char === ')') depth--
+    else if (char === '|' && depth === 0) {
+      parts.push(source.slice(start, i))
+      start = i + 1
+    }
+    if (depth < 0) return undefined
+  }
+  if (depth !== 0 || inClass) return undefined
+  parts.push(source.slice(start))
+  return parts
+}
+
+/**
+ * True only when a name pattern provably cannot match an inline script's name.
+ * Every inline name starts `inline_script/`, and a page can choose everything
+ * after it, so the only sound exclusion is an anchored prefix that differs from
+ * `inline_script/`: the pattern is `^` followed by literal text (`^https:`), or
+ * by a group of plain-literal alternatives (`^(https|blob:https):`), each of
+ * which diverges. Anything else — unanchored, a top-level `|`, a class or
+ * quantifier before the text diverges, a lookaround — is treated as able to
+ * match, because no finite set of probes can rule it out (`^in[l]ine_script/…`
+ * evades a literal check, `shop\.example\.com\/` evades fixed probes).
+ */
+function provablyExcludesInlineNames(pattern: string): boolean {
+  const alternatives = splitTopLevelAlternatives(pattern)
+  if (alternatives === undefined || alternatives.length !== 1 || !pattern.startsWith('^')) return false
+  const rest = pattern.slice(1)
+  if (!rest.startsWith('(')) return divergesFromInlinePrefix(leadingLiteral(rest))
+  const body = rest.startsWith('(?:') ? rest.slice(3) : rest.startsWith('(?') ? undefined : rest.slice(1)
+  if (body === undefined) return false // a lookaround or named group
+  // Find the group's own `)`, skipping escapes; a nested group or a class is
+  // more than plain alternatives, so it is not reasoned about.
+  let close = -1
+  for (let i = 0; i < body.length && close < 0; i++) {
+    const char = body[i]!
+    if (char === '\\') i++
+    else if (char === '(' || char === '[') return false
+    else if (char === ')') close = i
+  }
+  if (close < 0) return false
+  const after = body[close + 1]
+  if (after !== undefined && '?*{'.includes(after)) return false // the whole group is optional
+  // Each alternative must itself start with text that diverges; leadingLiteral
+  // stops at the first metacharacter and drops a character made optional.
+  const groupAlternatives = splitTopLevelAlternatives(body.slice(0, close))
+  return groupAlternatives !== undefined && groupAlternatives.every((alternative) => divergesFromInlinePrefix(leadingLiteral(alternative)))
+}
+
+/**
+ * The `nameMatcher` patterns in a config that could match an inline script's
+ * name: every pattern containing `inline_script` (any casing), and every
+ * pattern that does not provably exclude one (`provablyExcludesInlineNames`). Anchor patterns for external scripts to
+ * their scheme (`^https:\/\/…`, `^blob:https:…`) so they are seen as such.
+ */
 function inlineAdmittingNamePatterns(config: unknown): string[] {
   if (typeof config !== 'object' || config === null) return []
   if (Array.isArray(config)) return config.flatMap(inlineAdmittingNamePatterns)
@@ -217,12 +312,42 @@ function inlineAdmittingNamePatterns(config: unknown): string[] {
     if (/inline_script/i.test(pattern)) return true
     try {
       const regex = new RegExp(pattern)
-      return INLINE_NAME_PROBES.some((probe) => regex.test(probe))
+      if (INLINE_NAME_PROBES.some((probe) => regex.test(probe))) return true
     } catch {
       return false // reported by the matcher schema
     }
+    return !provablyExcludesInlineNames(pattern)
   }
   return [...(typeof own === 'string' && admits(own) ? [own] : []), ...inlineAdmittingNamePatterns(node['orMatcher']), ...inlineAdmittingNamePatterns(node['andMatcher'])]
+}
+
+/**
+ * True when a matcher config can only succeed after reading the script's body:
+ * a leaf must be a `contentMatcher` or a hash list, every alternative of an OR
+ * (or array) must be, and at least one conjunct of an AND must be.
+ *
+ * With `skipUnapproved`, a node whose own `authorisationInfo.authorised` is
+ * `false` counts as satisfied, because every matcher denies when its own
+ * approval is withheld: a pending alternative authorises nothing, whatever it
+ * reads. Identification ignores `authorisationInfo`, so `identifyWith` is
+ * judged without it.
+ *
+ * The exemption ends beneath an `orMatcher` that carries its own approval:
+ * `OrMatcher.authorize` replaces the identifying child's verdict with that
+ * approval, so a declined name-only child under an approved OR authorises
+ * whatever it identifies. Not at a single-matcher root (`liftedRoot`), whose
+ * `authorisationInfo` `processAuthorizeWith` lifts onto the entry before the
+ * matcher is built; array elements and nested nodes keep theirs.
+ */
+function readsBody(config: unknown, skipUnapproved: boolean, liftedRoot = false): boolean {
+  if (typeof config !== 'object' || config === null) return false
+  if (Array.isArray(config)) return config.length > 0 && config.every((child) => readsBody(child, skipUnapproved))
+  const node = config as Record<string, unknown>
+  const approval = (node['authorisationInfo'] as { authorised?: unknown } | undefined)?.authorised
+  if (skipUnapproved && approval === false) return true
+  if (Array.isArray(node['orMatcher'])) return readsBody(node['orMatcher'], skipUnapproved && (liftedRoot || approval !== true))
+  if (Array.isArray(node['andMatcher'])) return node['andMatcher'].some((child) => readsBody(child, skipUnapproved))
+  return 'contentMatcher' in node || 'hashes' in node
 }
 
 export const RawInventoryScriptInfoSchema: z.ZodType<RawInventoryScriptInfo> = z
@@ -303,6 +428,26 @@ export const RawInventoryScriptInfoSchema: z.ZodType<RawInventoryScriptInfo> = z
           message: `loadsMatching must not admit inline scripts (${inlinePatterns.map((pattern) => `nameMatcher "${pattern}"`).join(', ')}): an inline load never inherits, because its name and chain are page-controlled evidence. Authorise an inline script with its own entry on its content or hash, and anchor guard patterns to the vendor's own origin (e.g. "^https://js\\.vendor\\.example/").`,
         })
       }
+    }
+
+    // An inline script's name is `inline_script/<element id>`, and the id is
+    // whatever the page — or code injected into it — chose. An approved entry
+    // that identifies inline scripts by name must therefore read the body
+    // somewhere: in identifyWith, or in every authoriseWith alternative. A
+    // url/host/workflow authoriser does not count, because an inline script's
+    // `url` is the page or script that inserted it. Without this, an entry
+    // `^inline_script/example\.com/.*$` authorised by a urlMatcher on the
+    // site's own origin authorises any script that sets such an id. Pending
+    // and declined alternatives are left alone (they authorise nothing), so
+    // the RUM candidate lane's name-only pending entries stay valid until a
+    // reviewer approves one, which is when the body has to be pinned.
+    const inlineNames = inlineAdmittingNamePatterns(entry.identifyWith)
+    if (inlineNames.length > 0 && !readsBody(entry.identifyWith, false) && !readsBody(entry.authoriseWith, true, !Array.isArray(entry.authoriseWith))) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['authoriseWith'],
+        message: `An entry that identifies inline scripts by name (${inlineNames.map((pattern) => `nameMatcher "${pattern}"`).join(', ')}) must check their content or hash: an inline script's name is its element id, which the page chooses, and its url is the page or script that inserted it. Add a contentMatcher or hashes to identifyWith, or to every approved authoriseWith alternative.`,
+      })
     }
 
     // HeaderNameMatcher matches case-insensitively (RFC 7230 header names).

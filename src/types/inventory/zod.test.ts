@@ -15,7 +15,8 @@
 
 import { inventoryScriptInfoToRawInventoryScriptInfo, rawInventoryScriptInfoToInventoryScriptInfo } from '../../utils/script.js'
 import { MatcherConfigSchema } from './matcher-config-schema.js'
-import { AlertDestinationSchema, InventoryAlertSchema, RawInventoryHeaderInfoSchema, RawInventoryScriptInfoSchema, RawInventoryTargetSchema } from './zod.js'
+import type { RawAuthorizeWithConfig } from './raw.js'
+import { AlertDestinationSchema, InventoryAlertSchema, processAuthorizeWith, RawInventoryHeaderInfoSchema, RawInventoryScriptInfoSchema, RawInventoryTargetSchema } from './zod.js'
 
 describe('Multi-workflow inventory target validation', () => {
   const target = (type: 'inventory' | 'detection') => ({ type, url: 'https://example.com', workflow: `${type}.json` })
@@ -143,6 +144,138 @@ describe('Required script inventory validation', () => {
 
     expect(RawInventoryScriptInfoSchema.safeParse({ ...base, requiredOn: ['production'] }).success).toBe(false)
     expect(RawInventoryScriptInfoSchema.safeParse({ ...base, requiredOn: [] }).success).toBe(false)
+  })
+})
+
+// An inline script's name is its element id, which the page chooses. An
+// approved entry that identifies inline scripts by name must read the body.
+describe('Inline script entries identified by name', () => {
+  const info = (authorised = true) => ({ description: 'inline entry', authorised, date: '2026-11-09T00:00:00.000Z' })
+  const hashes = [{ timestamp: '2026-11-09T00:00:00.000Z', hash: { value: 'a'.repeat(64) } }]
+  const ownOrigin = '^https:\\/\\/([^\\/]+\\.)*example\\.com\\/'
+  const REFUSAL = 'identifies inline scripts by name'
+  const issues = (entry: unknown): string => {
+    const result = RawInventoryScriptInfoSchema.safeParse(entry)
+    return result.success ? '' : result.error.issues.map((issue) => issue.message).join('\n')
+  }
+
+  it.each<[string, unknown, unknown]>([
+    ['an id prefix authorised by the page origin', { nameMatcher: '^inline_script\\/example\\.com\\/.*$' }, { urlMatcher: ownOrigin, authorisationInfo: info() }],
+    ['one exact id authorised by host', { nameMatcher: '^inline_script\\/vendor-config$' }, { hostMatcher: '^example\\.com$', authorisationInfo: info() }],
+    ['a pattern that admits any name', { nameMatcher: '.*' }, { urlMatcher: ownOrigin, authorisationInfo: info() }],
+    ['a name inside an AND with run metadata only', { andMatcher: [{ nameMatcher: '^inline_script\\/boot$' }, { workflowMatcher: '^checkout$' }] }, { urlMatcher: ownOrigin, authorisationInfo: info() }],
+    [
+      'one approved alternative that reads no body',
+      { nameMatcher: '^inline_script\\/boot$' },
+      [
+        { hashes, authorisationInfo: info() },
+        { urlMatcher: ownOrigin, authorisationInfo: info() },
+      ],
+    ],
+    ['an OR authoriser with a URL-only branch', { nameMatcher: '^inline_script\\/boot$' }, { orMatcher: [{ hashes }, { urlMatcher: ownOrigin }], authorisationInfo: info() }],
+    // First-party patterns that never mention inline_script but that a page
+    // can satisfy with id="shop.example.com/x".
+    ['an unanchored host pattern', { nameMatcher: 'shop\\.example\\.com\\/' }, { urlMatcher: ownOrigin, authorisationInfo: info() }],
+    ['a .*-led host pattern', { nameMatcher: '^.*shop\\.example\\.com\\/.*$' }, { urlMatcher: ownOrigin, authorisationInfo: info() }],
+    ['a scheme-free prefix pattern', { nameMatcher: '^[^:]+\\/shop\\.example\\.com\\/' }, { urlMatcher: ownOrigin, authorisationInfo: info() }],
+    ['a .+-led domain pattern', { nameMatcher: '^.+\\.example\\.com\\/' }, { hostMatcher: '^example\\.com$', authorisationInfo: info() }],
+    // Probes cannot rule these out; only a provably divergent anchored prefix can.
+    ['an inline prefix obscured by a class', { nameMatcher: '^in[l]ine_script\\/foo[0-9]{2}bar$' }, { urlMatcher: ownOrigin, authorisationInfo: info() }],
+    ['a scheme anchor beside an unanchored alternative', { nameMatcher: '^https:\\/\\/cdn\\.example\\.com\\/|shop\\.example' }, { urlMatcher: ownOrigin, authorisationInfo: info() }],
+    ['a lookahead before the scheme', { nameMatcher: '^(?=.*example)' }, { urlMatcher: ownOrigin, authorisationInfo: info() }],
+    ['an optional scheme group', { nameMatcher: '^(https:\\/\\/)?shop\\.example\\.com\\/' }, { urlMatcher: ownOrigin, authorisationInfo: info() }],
+    // An escaped `)` must not end the group early and hide the inline alternative.
+    ['an escaped paren hiding an inline alternative', { nameMatcher: '^(a\\)|inlin[e]_script\\/z)' }, { urlMatcher: ownOrigin, authorisationInfo: info() }],
+    ['an escaped paren hiding an inline alternative (non-capturing)', { nameMatcher: '^(?:a\\)|inlin[e]_script\\/z)' }, { urlMatcher: ownOrigin, authorisationInfo: info() }],
+    ['an i-led group alternative', { nameMatcher: '^(?:https|i)nline_script\\/' }, { urlMatcher: ownOrigin, authorisationInfo: info() }],
+    // The literal check is a deliberate extra: a divergent prefix does not
+    // rescue a pattern that names inline scripts anywhere, in any casing.
+    ['a scheme-anchored pattern naming inline_script in its path', { nameMatcher: '^https:\\/\\/example\\.com\\/INLINE_SCRIPT\\/.*' }, { urlMatcher: ownOrigin, authorisationInfo: info() }],
+    // identifyWith is judged without the pending skip: identification ignores
+    // authorisationInfo, so a pending flag there makes nothing safe.
+    ['a pending flag on the identifying node', { nameMatcher: '^inline_script\\/boot$', authorisationInfo: info(false) }, { urlMatcher: ownOrigin, authorisationInfo: info() }],
+    // An approved OR replaces its identifying child's verdict with its own
+    // (OrMatcher.authorize), so beneath it a declined child is not exempt.
+    ['a declined URL child under an approved OR alternative', { nameMatcher: '^inline_script\\/boot$' }, [{ orMatcher: [{ hashes }, { urlMatcher: ownOrigin, authorisationInfo: info(false) }], authorisationInfo: info() }]],
+    [
+      'a declined URL child two levels under an approved OR alternative',
+      { nameMatcher: '^inline_script\\/boot$' },
+      [{ orMatcher: [{ hashes }, { orMatcher: [{ hashes }, { urlMatcher: ownOrigin, authorisationInfo: info(false) }] }], authorisationInfo: info() }],
+    ],
+    // Only the root's approval is lifted; an approved OR beneath a root keeps
+    // its own and overrides its children.
+    [
+      'an approved OR nested under a root OR',
+      { nameMatcher: '^inline_script\\/boot$' },
+      { orMatcher: [{ hashes }, { orMatcher: [{ hashes }, { urlMatcher: ownOrigin, authorisationInfo: info(false) }], authorisationInfo: info() }], authorisationInfo: info() },
+    ],
+    [
+      'an approved OR nested under a root AND',
+      { nameMatcher: '^inline_script\\/boot$' },
+      { andMatcher: [{ orMatcher: [{ hashes }, { urlMatcher: ownOrigin, authorisationInfo: info(false) }], authorisationInfo: info() }], authorisationInfo: info() },
+    ],
+  ])('refuses an approved entry that never reads the body: %s', (_label, identifyWith, authoriseWith) => {
+    expect(issues({ identifyWith, authoriseWith })).toContain(REFUSAL)
+  })
+
+  // The schema's verdict must follow the runtime's: every shape it refuses
+  // authorises a body-less skimmer once loaded, and every shape it accepts
+  // denies one. This pins processAuthorizeWith lifting a root's approval off
+  // the OrMatcher, which the root exemption depends on.
+  it.each<[string, unknown, boolean]>([
+    ['root OR with a declined URL child', { orMatcher: [{ hashes }, { urlMatcher: ownOrigin, authorisationInfo: info(false) }], authorisationInfo: info() }, false],
+    ['approved OR alternative with a declined URL child', [{ orMatcher: [{ hashes }, { urlMatcher: ownOrigin, authorisationInfo: info(false) }], authorisationInfo: info() }], true],
+    ['approved OR nested under a root OR', { orMatcher: [{ hashes }, { orMatcher: [{ hashes }, { urlMatcher: ownOrigin, authorisationInfo: info(false) }], authorisationInfo: info() }], authorisationInfo: info() }, true],
+    ['unapproved OR inside an approved AND alternative', [{ andMatcher: [{ orMatcher: [{ hashes }, { urlMatcher: ownOrigin, authorisationInfo: info(false) }] }], authorisationInfo: info() }], false],
+  ])('schema and runtime agree: %s', (_label, authoriseWith, authorisesSkimmer) => {
+    const identifyWith = { nameMatcher: '^inline_script\\/boot$' }
+    const skimmer = { name: 'inline_script/boot', url: 'https://shop.example.com/pay', content: 'steal()', hash: 'b'.repeat(64) }
+    const { matcher } = processAuthorizeWith(authoriseWith as RawAuthorizeWithConfig)
+    expect(matcher.identify(skimmer as never) && matcher.authorize(skimmer as never).authorized).toBe(authorisesSkimmer)
+    expect(issues({ identifyWith, authoriseWith }).includes(REFUSAL)).toBe(authorisesSkimmer)
+  })
+
+  it.each<[string, unknown, unknown]>([
+    ['an exact id pinned by hash', { nameMatcher: '^inline_script\\/__NEXT_DATA__$' }, { hashes, authorisationInfo: info() }],
+    ['an id authorised by content and origin together', { nameMatcher: '^inline_script\\/boot$' }, { andMatcher: [{ contentMatcher: '^window\\.boot=' }, { urlMatcher: ownOrigin }], authorisationInfo: info() }],
+    ['an id identified by content as well', { andMatcher: [{ nameMatcher: '^inline_script\\/boot$' }, { contentMatcher: '^window\\.boot=' }] }, { urlMatcher: ownOrigin, authorisationInfo: info() }],
+    [
+      'a URL-only alternative that is still pending',
+      { nameMatcher: '^inline_script\\/boot$' },
+      [
+        { hashes, authorisationInfo: info() },
+        { urlMatcher: ownOrigin, authorisationInfo: info(false) },
+      ],
+    ],
+    // A single-matcher root's authorisationInfo is lifted onto the entry
+    // (processAuthorizeWith), so a root OR never overrides its children.
+    ['a declined URL child under a root OR', { nameMatcher: '^inline_script\\/boot$' }, { orMatcher: [{ hashes }, { urlMatcher: ownOrigin, authorisationInfo: info(false) }], authorisationInfo: info() }],
+    // An OR without its own approval keeps the child's verdict, and an approved
+    // AND only ever denies what its children authorised.
+    [
+      'a declined URL child under an unapproved OR inside an approved AND',
+      { nameMatcher: '^inline_script\\/boot$' },
+      [{ andMatcher: [{ orMatcher: [{ hashes }, { urlMatcher: ownOrigin, authorisationInfo: info(false) }] }], authorisationInfo: info() }],
+    ],
+    // The RUM candidate lane writes hash-less inline candidates authorised by
+    // exact name, pending, for a reviewer to replace (buildNewScriptAuthoriser).
+    ['a pending name-only candidate', { nameMatcher: '^inline_script\\/rum$' }, { nameMatcher: '^inline_script\\/rum$', authorisationInfo: info(false) }],
+    // External scripts are named by their URL; the rule is about inline names.
+    ['an external script authorised by its own URL', { nameMatcher: '^https:\\/\\/cdn\\.example\\.com\\/sdk\\.js$' }, { urlMatcher: '^https:\\/\\/cdn\\.example\\.com\\/', authorisationInfo: info() }],
+    [
+      // The README's vendor-frame entry: scheme-anchored, so no inline name fits.
+      'a scheme-anchored vendor pattern with alternatives',
+      { andMatcher: [{ initiatorHostMatcher: { host: '^([a-z0-9-]+\\.)*vendor\\.example$', transitive: true, kinds: ['document'] } }, { nameMatcher: '^(https|blob:https):\\/\\/([a-z0-9-]+\\.)*(vendor\\.example|captcha\\.example)\\/' }] },
+      { nameMatcher: '^(https|blob:https):\\/\\/([a-z0-9-]+\\.)*(vendor\\.example|captcha\\.example)\\/', authorisationInfo: info() },
+    ],
+    ['a blob URL pattern', { nameMatcher: '^blob:https:\\/\\/challenges\\.example\\.com\\/[a-f0-9-]+$' }, { hostMatcher: '^challenges\\.example\\.com$', authorisationInfo: info() }],
+    ['an optional-s scheme', { nameMatcher: '^https?:\\/\\/cdn\\.example\\.com\\/' }, { urlMatcher: '^https?:\\/\\/cdn\\.example\\.com\\/', authorisationInfo: info() }],
+    ['a non-capturing scheme group', { nameMatcher: '^(?:https|blob:https):\\/\\/cdn\\.example\\.com\\/' }, { urlMatcher: '^https:\\/\\/cdn\\.example\\.com\\/', authorisationInfo: info() }],
+    ['a scheme group that ends the pattern', { nameMatcher: '^(https|blob:https)' }, { urlMatcher: '^https:\\/\\/cdn\\.example\\.com\\/', authorisationInfo: info() }],
+    ['a group alternative with an optional character', { nameMatcher: '^(?:https?|blob):\\/\\/cdn\\.example\\.com\\/' }, { urlMatcher: '^https:\\/\\/cdn\\.example\\.com\\/', authorisationInfo: info() }],
+    ['an id-less snippet identified by host and content', { andMatcher: [{ hostMatcher: '^example\\.com$' }, { contentMatcher: '^\\s*window\\.x=1;$' }] }, { hostMatcher: '^example\\.com$', authorisationInfo: info() }],
+  ])('accepts: %s', (_label, identifyWith, authoriseWith) => {
+    expect(issues({ identifyWith, authoriseWith })).not.toContain(REFUSAL)
   })
 })
 
