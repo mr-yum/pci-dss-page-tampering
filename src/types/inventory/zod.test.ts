@@ -15,7 +15,8 @@
 
 import { inventoryScriptInfoToRawInventoryScriptInfo, rawInventoryScriptInfoToInventoryScriptInfo } from '../../utils/script.js'
 import { MatcherConfigSchema } from './matcher-config-schema.js'
-import { AlertDestinationSchema, InventoryAlertSchema, RawInventoryHeaderInfoSchema, RawInventoryScriptInfoSchema, RawInventoryTargetSchema } from './zod.js'
+import type { RawAuthorizeWithConfig } from './raw.js'
+import { AlertDestinationSchema, InventoryAlertSchema, processAuthorizeWith, RawInventoryHeaderInfoSchema, RawInventoryScriptInfoSchema, RawInventoryTargetSchema } from './zod.js'
 
 describe('Multi-workflow inventory target validation', () => {
   const target = (type: 'inventory' | 'detection') => ({ type, url: 'https://example.com', workflow: `${type}.json` })
@@ -193,8 +194,45 @@ describe('Inline script entries identified by name', () => {
     // identifyWith is judged without the pending skip: identification ignores
     // authorisationInfo, so a pending flag there makes nothing safe.
     ['a pending flag on the identifying node', { nameMatcher: '^inline_script\\/boot$', authorisationInfo: info(false) }, { urlMatcher: ownOrigin, authorisationInfo: info() }],
+    // An approved OR replaces its identifying child's verdict with its own
+    // (OrMatcher.authorize), so beneath it a declined child is not exempt.
+    ['a declined URL child under an approved OR alternative', { nameMatcher: '^inline_script\\/boot$' }, [{ orMatcher: [{ hashes }, { urlMatcher: ownOrigin, authorisationInfo: info(false) }], authorisationInfo: info() }]],
+    [
+      'a declined URL child two levels under an approved OR alternative',
+      { nameMatcher: '^inline_script\\/boot$' },
+      [{ orMatcher: [{ hashes }, { orMatcher: [{ hashes }, { urlMatcher: ownOrigin, authorisationInfo: info(false) }] }], authorisationInfo: info() }],
+    ],
+    // Only the root's approval is lifted; an approved OR beneath a root keeps
+    // its own and overrides its children.
+    [
+      'an approved OR nested under a root OR',
+      { nameMatcher: '^inline_script\\/boot$' },
+      { orMatcher: [{ hashes }, { orMatcher: [{ hashes }, { urlMatcher: ownOrigin, authorisationInfo: info(false) }], authorisationInfo: info() }], authorisationInfo: info() },
+    ],
+    [
+      'an approved OR nested under a root AND',
+      { nameMatcher: '^inline_script\\/boot$' },
+      { andMatcher: [{ orMatcher: [{ hashes }, { urlMatcher: ownOrigin, authorisationInfo: info(false) }], authorisationInfo: info() }], authorisationInfo: info() },
+    ],
   ])('refuses an approved entry that never reads the body: %s', (_label, identifyWith, authoriseWith) => {
     expect(issues({ identifyWith, authoriseWith })).toContain(REFUSAL)
+  })
+
+  // The schema's verdict must follow the runtime's: every shape it refuses
+  // authorises a body-less skimmer once loaded, and every shape it accepts
+  // denies one. This pins processAuthorizeWith lifting a root's approval off
+  // the OrMatcher, which the root exemption depends on.
+  it.each<[string, unknown, boolean]>([
+    ['root OR with a declined URL child', { orMatcher: [{ hashes }, { urlMatcher: ownOrigin, authorisationInfo: info(false) }], authorisationInfo: info() }, false],
+    ['approved OR alternative with a declined URL child', [{ orMatcher: [{ hashes }, { urlMatcher: ownOrigin, authorisationInfo: info(false) }], authorisationInfo: info() }], true],
+    ['approved OR nested under a root OR', { orMatcher: [{ hashes }, { orMatcher: [{ hashes }, { urlMatcher: ownOrigin, authorisationInfo: info(false) }], authorisationInfo: info() }], authorisationInfo: info() }, true],
+    ['unapproved OR inside an approved AND alternative', [{ andMatcher: [{ orMatcher: [{ hashes }, { urlMatcher: ownOrigin, authorisationInfo: info(false) }] }], authorisationInfo: info() }], false],
+  ])('schema and runtime agree: %s', (_label, authoriseWith, authorisesSkimmer) => {
+    const identifyWith = { nameMatcher: '^inline_script\\/boot$' }
+    const skimmer = { name: 'inline_script/boot', url: 'https://shop.example.com/pay', content: 'steal()', hash: 'b'.repeat(64) }
+    const { matcher } = processAuthorizeWith(authoriseWith as RawAuthorizeWithConfig)
+    expect(matcher.identify(skimmer as never) && matcher.authorize(skimmer as never).authorized).toBe(authorisesSkimmer)
+    expect(issues({ identifyWith, authoriseWith }).includes(REFUSAL)).toBe(authorisesSkimmer)
   })
 
   it.each<[string, unknown, unknown]>([
@@ -208,6 +246,16 @@ describe('Inline script entries identified by name', () => {
         { hashes, authorisationInfo: info() },
         { urlMatcher: ownOrigin, authorisationInfo: info(false) },
       ],
+    ],
+    // A single-matcher root's authorisationInfo is lifted onto the entry
+    // (processAuthorizeWith), so a root OR never overrides its children.
+    ['a declined URL child under a root OR', { nameMatcher: '^inline_script\\/boot$' }, { orMatcher: [{ hashes }, { urlMatcher: ownOrigin, authorisationInfo: info(false) }], authorisationInfo: info() }],
+    // An OR without its own approval keeps the child's verdict, and an approved
+    // AND only ever denies what its children authorised.
+    [
+      'a declined URL child under an unapproved OR inside an approved AND',
+      { nameMatcher: '^inline_script\\/boot$' },
+      [{ andMatcher: [{ orMatcher: [{ hashes }, { urlMatcher: ownOrigin, authorisationInfo: info(false) }] }], authorisationInfo: info() }],
     ],
     // The RUM candidate lane writes hash-less inline candidates authorised by
     // exact name, pending, for a reviewer to replace (buildNewScriptAuthoriser).

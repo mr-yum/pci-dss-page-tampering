@@ -331,13 +331,21 @@ function inlineAdmittingNamePatterns(config: unknown): string[] {
  * approval is withheld: a pending alternative authorises nothing, whatever it
  * reads. Identification ignores `authorisationInfo`, so `identifyWith` is
  * judged without it.
+ *
+ * The exemption ends beneath an `orMatcher` that carries its own approval:
+ * `OrMatcher.authorize` replaces the identifying child's verdict with that
+ * approval, so a declined name-only child under an approved OR authorises
+ * whatever it identifies. Not at a single-matcher root (`liftedRoot`), whose
+ * `authorisationInfo` `processAuthorizeWith` lifts onto the entry before the
+ * matcher is built; array elements and nested nodes keep theirs.
  */
-function readsBody(config: unknown, skipUnapproved: boolean): boolean {
+function readsBody(config: unknown, skipUnapproved: boolean, liftedRoot = false): boolean {
   if (typeof config !== 'object' || config === null) return false
   if (Array.isArray(config)) return config.length > 0 && config.every((child) => readsBody(child, skipUnapproved))
   const node = config as Record<string, unknown>
-  if (skipUnapproved && (node['authorisationInfo'] as { authorised?: unknown } | undefined)?.authorised === false) return true
-  if (Array.isArray(node['orMatcher'])) return readsBody(node['orMatcher'], skipUnapproved)
+  const approval = (node['authorisationInfo'] as { authorised?: unknown } | undefined)?.authorised
+  if (skipUnapproved && approval === false) return true
+  if (Array.isArray(node['orMatcher'])) return readsBody(node['orMatcher'], skipUnapproved && (liftedRoot || approval !== true))
   if (Array.isArray(node['andMatcher'])) return node['andMatcher'].some((child) => readsBody(child, skipUnapproved))
   return 'contentMatcher' in node || 'hashes' in node
 }
@@ -434,7 +442,7 @@ export const RawInventoryScriptInfoSchema: z.ZodType<RawInventoryScriptInfo> = z
     // the RUM candidate lane's name-only pending entries stay valid until a
     // reviewer approves one, which is when the body has to be pinned.
     const inlineNames = inlineAdmittingNamePatterns(entry.identifyWith)
-    if (inlineNames.length > 0 && !readsBody(entry.identifyWith, false) && !readsBody(entry.authoriseWith, true)) {
+    if (inlineNames.length > 0 && !readsBody(entry.identifyWith, false) && !readsBody(entry.authoriseWith, true, !Array.isArray(entry.authoriseWith))) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['authoriseWith'],
