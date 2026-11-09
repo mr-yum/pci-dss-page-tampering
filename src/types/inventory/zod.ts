@@ -208,40 +208,100 @@ function constrainsOwnEvidence(config: unknown): boolean {
 const INLINE_NAME_PROBES = [INLINE_SCRIPT_NAME_PREFIX, `${INLINE_SCRIPT_NAME_PREFIX}id_not_found`, `${INLINE_SCRIPT_NAME_PREFIX}boot#k1-1`]
 
 /**
- * The literal runs in a regex source — the text between metacharacters, with
- * escaped punctuation unescaped — so `shop\.example\.com\/` yields
- * `shop.example.com/`. An inline id is free text, so a page can choose one
- * that spells out any run a pattern requires.
+ * The literal text a regex fragment must start with: characters up to the
+ * first metacharacter, escaped punctuation unescaped. A quantifier that can
+ * make the last character optional (`?`, `*`, `{`) drops that character.
  */
-function literalRuns(pattern: string): string[] {
-  const runs: string[] = []
-  let current = ''
-  for (let i = 0; i < pattern.length; i++) {
-    const char = pattern[i]!
-    if (char === '\\' && i + 1 < pattern.length) {
-      const next = pattern[++i]!
-      if (/[A-Za-z0-9]/.test(next)) {
-        // A class (\d, \w, \s…) or an escape sequence: not literal text.
-        if (current) runs.push(current)
-        current = ''
-      } else current += next
-    } else if ('^$.*+?()[]{}|'.includes(char)) {
-      if (current) runs.push(current)
-      current = ''
-    } else current += char
+function leadingLiteral(source: string): string {
+  let literal = ''
+  for (let i = 0; i < source.length; i++) {
+    const char = source[i]!
+    if (char === '\\') {
+      const next = source[i + 1]
+      if (next === undefined || /[A-Za-z0-9]/.test(next)) break // a class (\d, \w…) or escape sequence
+      literal += next
+      i++
+    } else if ('?*{'.includes(char)) return literal.slice(0, -1)
+    else if ('^$.+()[]|'.includes(char)) break
+    else literal += char
   }
-  if (current) runs.push(current)
-  return runs
+  return literal
+}
+
+/** True when `literal` and the inline-name prefix differ at some position both cover. */
+function divergesFromInlinePrefix(literal: string): boolean {
+  if (literal === '') return false
+  for (let k = 0; k < Math.min(literal.length, INLINE_SCRIPT_NAME_PREFIX.length); k++) {
+    if (literal[k] !== INLINE_SCRIPT_NAME_PREFIX[k]) return true
+  }
+  return false
+}
+
+/** Splits `source` at `|` outside groups and classes; `undefined` when it cannot be scanned. */
+function splitTopLevelAlternatives(source: string): string[] | undefined {
+  const parts: string[] = []
+  let depth = 0
+  let inClass = false
+  let start = 0
+  for (let i = 0; i < source.length; i++) {
+    const char = source[i]!
+    if (char === '\\') i++
+    else if (inClass) inClass = char !== ']'
+    else if (char === '[') inClass = true
+    else if (char === '(') depth++
+    else if (char === ')') depth--
+    else if (char === '|' && depth === 0) {
+      parts.push(source.slice(start, i))
+      start = i + 1
+    }
+    if (depth < 0) return undefined
+  }
+  if (depth !== 0 || inClass) return undefined
+  parts.push(source.slice(start))
+  return parts
 }
 
 /**
- * The `nameMatcher` patterns in a config that would admit an inline script's
- * name. Decided by probing, not by proof: the fixed probes, plus
- * `inline_script/<run>` for each literal run of the pattern (and every run in
- * order), which catches an unanchored or `^.*`-led first-party pattern such as
- * `shop\.example\.com\/` that a page can satisfy with `id="shop.example.com/x"`.
- * A pattern anchored to an external scheme (`^https:`, `^blob:`) fails every
- * probe, because an inline name starts `inline_script/`.
+ * True only when a name pattern provably cannot match an inline script's name.
+ * Every inline name starts `inline_script/`, and a page can choose everything
+ * after it, so the only sound exclusion is an anchored prefix that differs from
+ * `inline_script/`: the pattern is `^` followed by literal text (`^https:`), or
+ * by a group of plain-literal alternatives (`^(https|blob:https):`), each of
+ * which diverges. Anything else — unanchored, a top-level `|`, a class or
+ * quantifier before the text diverges, a lookaround — is treated as able to
+ * match, because no finite set of probes can rule it out (`^in[l]ine_script/…`
+ * evades a literal check, `shop\.example\.com\/` evades fixed probes).
+ */
+function provablyExcludesInlineNames(pattern: string): boolean {
+  const alternatives = splitTopLevelAlternatives(pattern)
+  if (alternatives === undefined || alternatives.length !== 1 || !pattern.startsWith('^')) return false
+  const rest = pattern.slice(1)
+  if (!rest.startsWith('(')) return divergesFromInlinePrefix(leadingLiteral(rest))
+  const body = rest.startsWith('(?:') ? rest.slice(3) : rest.startsWith('(?') ? undefined : rest.slice(1)
+  if (body === undefined) return false // a lookaround or named group
+  // Find the group's own `)`, skipping escapes; a nested group or a class is
+  // more than plain alternatives, so it is not reasoned about.
+  let close = -1
+  for (let i = 0; i < body.length && close < 0; i++) {
+    const char = body[i]!
+    if (char === '\\') i++
+    else if (char === '(' || char === '[') return false
+    else if (char === ')') close = i
+  }
+  if (close < 0) return false
+  const after = body[close + 1]
+  if (after !== undefined && '?*{'.includes(after)) return false // the whole group is optional
+  // Each alternative must itself start with text that diverges; leadingLiteral
+  // stops at the first metacharacter and drops a character made optional.
+  const groupAlternatives = splitTopLevelAlternatives(body.slice(0, close))
+  return groupAlternatives !== undefined && groupAlternatives.every((alternative) => divergesFromInlinePrefix(leadingLiteral(alternative)))
+}
+
+/**
+ * The `nameMatcher` patterns in a config that could match an inline script's
+ * name: every pattern that does not provably exclude one
+ * (`provablyExcludesInlineNames`). Anchor patterns for external scripts to
+ * their scheme (`^https:\/\/…`, `^blob:https:…`) so they are seen as such.
  */
 function inlineAdmittingNamePatterns(config: unknown): string[] {
   if (typeof config !== 'object' || config === null) return []
@@ -252,12 +312,11 @@ function inlineAdmittingNamePatterns(config: unknown): string[] {
     if (/inline_script/i.test(pattern)) return true
     try {
       const regex = new RegExp(pattern)
-      const runs = literalRuns(pattern)
-      const derived = [...runs, runs.join(''), runs.join('/')].flatMap((run) => [`${INLINE_SCRIPT_NAME_PREFIX}${run}`, `${INLINE_SCRIPT_NAME_PREFIX}${run}x`, `${INLINE_SCRIPT_NAME_PREFIX}x/${run}`])
-      return [...INLINE_NAME_PROBES, ...derived].some((probe) => regex.test(probe))
+      if (INLINE_NAME_PROBES.some((probe) => regex.test(probe))) return true
     } catch {
       return false // reported by the matcher schema
     }
+    return !provablyExcludesInlineNames(pattern)
   }
   return [...(typeof own === 'string' && admits(own) ? [own] : []), ...inlineAdmittingNamePatterns(node['orMatcher']), ...inlineAdmittingNamePatterns(node['andMatcher'])]
 }

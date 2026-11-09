@@ -178,6 +178,15 @@ describe('Inline script entries identified by name', () => {
     ['a .*-led host pattern', { nameMatcher: '^.*shop\\.example\\.com\\/.*$' }, { urlMatcher: ownOrigin, authorisationInfo: info() }],
     ['a scheme-free prefix pattern', { nameMatcher: '^[^:]+\\/shop\\.example\\.com\\/' }, { urlMatcher: ownOrigin, authorisationInfo: info() }],
     ['a .+-led domain pattern', { nameMatcher: '^.+\\.example\\.com\\/' }, { hostMatcher: '^example\\.com$', authorisationInfo: info() }],
+    // Probes cannot rule these out; only a provably divergent anchored prefix can.
+    ['an inline prefix obscured by a class', { nameMatcher: '^in[l]ine_script\\/foo[0-9]{2}bar$' }, { urlMatcher: ownOrigin, authorisationInfo: info() }],
+    ['a scheme anchor beside an unanchored alternative', { nameMatcher: '^https:\\/\\/cdn\\.example\\.com\\/|shop\\.example' }, { urlMatcher: ownOrigin, authorisationInfo: info() }],
+    ['a lookahead before the scheme', { nameMatcher: '^(?=.*example)' }, { urlMatcher: ownOrigin, authorisationInfo: info() }],
+    ['an optional scheme group', { nameMatcher: '^(https:\\/\\/)?shop\\.example\\.com\\/' }, { urlMatcher: ownOrigin, authorisationInfo: info() }],
+    // An escaped `)` must not end the group early and hide the inline alternative.
+    ['an escaped paren hiding an inline alternative', { nameMatcher: '^(a\\)|inlin[e]_script\\/z)' }, { urlMatcher: ownOrigin, authorisationInfo: info() }],
+    ['an escaped paren hiding an inline alternative (non-capturing)', { nameMatcher: '^(?:a\\)|inlin[e]_script\\/z)' }, { urlMatcher: ownOrigin, authorisationInfo: info() }],
+    ['an i-led group alternative', { nameMatcher: '^(?:https|i)nline_script\\/' }, { urlMatcher: ownOrigin, authorisationInfo: info() }],
     // identifyWith is judged without the pending skip: identification ignores
     // authorisationInfo, so a pending flag there makes nothing safe.
     ['a pending flag on the identifying node', { nameMatcher: '^inline_script\\/boot$', authorisationInfo: info(false) }, { urlMatcher: ownOrigin, authorisationInfo: info() }],
@@ -208,6 +217,11 @@ describe('Inline script entries identified by name', () => {
       { andMatcher: [{ initiatorHostMatcher: { host: '^([a-z0-9-]+\\.)*vendor\\.example$', transitive: true, kinds: ['document'] } }, { nameMatcher: '^(https|blob:https):\\/\\/([a-z0-9-]+\\.)*(vendor\\.example|captcha\\.example)\\/' }] },
       { nameMatcher: '^(https|blob:https):\\/\\/([a-z0-9-]+\\.)*(vendor\\.example|captcha\\.example)\\/', authorisationInfo: info() },
     ],
+    ['a blob URL pattern', { nameMatcher: '^blob:https:\\/\\/challenges\\.example\\.com\\/[a-f0-9-]+$' }, { hostMatcher: '^challenges\\.example\\.com$', authorisationInfo: info() }],
+    ['an optional-s scheme', { nameMatcher: '^https?:\\/\\/cdn\\.example\\.com\\/' }, { urlMatcher: '^https?:\\/\\/cdn\\.example\\.com\\/', authorisationInfo: info() }],
+    ['a non-capturing scheme group', { nameMatcher: '^(?:https|blob:https):\\/\\/cdn\\.example\\.com\\/' }, { urlMatcher: '^https:\\/\\/cdn\\.example\\.com\\/', authorisationInfo: info() }],
+    ['a scheme group that ends the pattern', { nameMatcher: '^(https|blob:https)' }, { urlMatcher: '^https:\\/\\/cdn\\.example\\.com\\/', authorisationInfo: info() }],
+    ['a group alternative with an optional character', { nameMatcher: '^(?:https?|blob):\\/\\/cdn\\.example\\.com\\/' }, { urlMatcher: '^https:\\/\\/cdn\\.example\\.com\\/', authorisationInfo: info() }],
     ['an id-less snippet identified by host and content', { andMatcher: [{ hostMatcher: '^example\\.com$' }, { contentMatcher: '^\\s*window\\.x=1;$' }] }, { hostMatcher: '^example\\.com$', authorisationInfo: info() }],
   ])('accepts: %s', (_label, identifyWith, authoriseWith) => {
     expect(issues({ identifyWith, authoriseWith })).not.toContain(REFUSAL)
