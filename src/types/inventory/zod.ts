@@ -299,8 +299,8 @@ function provablyExcludesInlineNames(pattern: string): boolean {
 
 /**
  * The `nameMatcher` patterns in a config that could match an inline script's
- * name: every pattern that does not provably exclude one
- * (`provablyExcludesInlineNames`). Anchor patterns for external scripts to
+ * name: every pattern containing `inline_script` (any casing), and every
+ * pattern that does not provably exclude one (`provablyExcludesInlineNames`). Anchor patterns for external scripts to
  * their scheme (`^https:\/\/…`, `^blob:https:…`) so they are seen as such.
  */
 function inlineAdmittingNamePatterns(config: unknown): string[] {

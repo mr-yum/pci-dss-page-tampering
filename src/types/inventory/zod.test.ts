@@ -187,6 +187,9 @@ describe('Inline script entries identified by name', () => {
     ['an escaped paren hiding an inline alternative', { nameMatcher: '^(a\\)|inlin[e]_script\\/z)' }, { urlMatcher: ownOrigin, authorisationInfo: info() }],
     ['an escaped paren hiding an inline alternative (non-capturing)', { nameMatcher: '^(?:a\\)|inlin[e]_script\\/z)' }, { urlMatcher: ownOrigin, authorisationInfo: info() }],
     ['an i-led group alternative', { nameMatcher: '^(?:https|i)nline_script\\/' }, { urlMatcher: ownOrigin, authorisationInfo: info() }],
+    // The literal check is a deliberate extra: a divergent prefix does not
+    // rescue a pattern that names inline scripts anywhere, in any casing.
+    ['a scheme-anchored pattern naming inline_script in its path', { nameMatcher: '^https:\\/\\/example\\.com\\/INLINE_SCRIPT\\/.*' }, { urlMatcher: ownOrigin, authorisationInfo: info() }],
     // identifyWith is judged without the pending skip: identification ignores
     // authorisationInfo, so a pending flag there makes nothing safe.
     ['a pending flag on the identifying node', { nameMatcher: '^inline_script\\/boot$', authorisationInfo: info(false) }, { urlMatcher: ownOrigin, authorisationInfo: info() }],
