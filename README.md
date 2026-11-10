@@ -1061,6 +1061,13 @@ reviewer declined — authorises nothing, whatever its matcher type, even while
 the entry's first alternative is approved. Approve an alternative by setting
 its own flag to `true`.
 
+Such an alternative also holds its hash or value: the inventory pass never
+appends the same hash or header value again while an alternative covers it,
+whatever that alternative's approval. So to refuse a change, leave its
+alternative in place with `"authorised": false` and say why in its
+description. Deleting it frees the hash, and the next inventory pass appends it
+again, this time approved.
+
 ### Shared matchers (`shared/matchers.json`, `matcherRef`)
 
 A matcher several targets need — a framework's or an edge vendor's generated snippet, say — can be defined once in `shared/matchers.json` at the root of the inventory repository (not under `targets/`, whose every file is read as an inventory) and referenced from any target entry with `{ "matcherRef": "<name>" }`, anywhere a matcher config is accepted: `identifyWith`, `authoriseWith` or one of its array alternatives, a child of `andMatcher`/`orMatcher`, or `loadsMatching`.

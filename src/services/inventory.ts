@@ -8,12 +8,14 @@ import type { InventoryServiceProps } from '../types/inventory/props.js'
 import { ContentMatcher } from '../types/matcher/content-matcher.js'
 import { CspDirectiveMatcher } from '../types/matcher/csp-directive-matcher.js'
 import { HashMatcher } from '../types/matcher/hash-matcher.js'
+import type { Matchable } from '../types/matcher/matcher.interface.js'
 import { createMatcher } from '../types/matcher/matcher-factory.js'
 import { OrMatcher } from '../types/matcher/or-matcher.js'
 import type { PullTarget } from '../types/target.js'
 import { buildInventoryCommitMessage } from '../utils/commit-message.js'
 import { newHeaderValueMatcherConfig } from '../utils/header.js'
 import { copyInventory, inventoryHeaderInfoToRawInventoryHeaderInfo, rawInventoryHeaderInfoToInventoryHeaderInfo } from '../utils/inventory.js'
+import type { Logger } from '../utils/logger.js'
 import { inventoryScriptInfoToRawInventoryScriptInfo, rawInventoryScriptInfoToInventoryScriptInfo } from '../utils/script.js'
 import { UNIDENTIFIED_INLINE_SCRIPT_ID } from '../utils/script/inline.js'
 
@@ -359,9 +361,7 @@ export class ScriptInventoryService implements IInventoryService {
       } else if (Array.isArray(rawInventoryScript.authoriseWith)) {
         // Top-level OrMatcher serialised as array syntax: append a new
         // hash matcher element to the OR.
-        const hashAlreadyExists = rawInventoryScript.authoriseWith.some((element: any) => {
-          return createMatcher(element).authorize(result.script).authorized
-        })
+        const hashAlreadyExists = this.anyAlternativeHolds(rawInventoryScript.authoriseWith, result.script, result.target.logger, `${result.script.name}: hash ${result.script.hash.value}`)
         if (!hashAlreadyExists) {
           const matcher = { hashes: [newHashInfo] }
           rawInventoryScript.authoriseWith.push(this.scopeNewAuthorisationAlternative(matcher, result.target.workflowId, `Hash detected during inventory run ${updateDate.toISOString()}`, updateDate))
@@ -373,9 +373,7 @@ export class ScriptInventoryService implements IInventoryService {
         // Append a new hash matcher child rather than turning the structure
         // into array syntax, which would drop the OrMatcher's own authInfo.
         const orChildren = rawInventoryScript.authoriseWith.orMatcher as any[]
-        const hashAlreadyExists = orChildren.some((element: any) => {
-          return createMatcher(element).authorize(result.script).authorized
-        })
+        const hashAlreadyExists = this.anyAlternativeHolds(orChildren, result.script, result.target.logger, `${result.script.name}: hash ${result.script.hash.value}`)
         if (!hashAlreadyExists) {
           const matcher = { hashes: [newHashInfo] }
           orChildren.push(this.scopeNewAuthorisationAlternative(matcher, result.target.workflowId, `Hash detected during inventory run ${updateDate.toISOString()}`, updateDate))
@@ -387,6 +385,35 @@ export class ScriptInventoryService implements IInventoryService {
     }
 
     return { updated: rawInventoryScriptInfoToInventoryScriptInfo(rawInventoryScript), applied }
+  }
+
+  /**
+   * Whether an existing alternative already holds this observation — a script
+   * hash or a header value — whatever a human decided about it.
+   *
+   * Every `authorisationInfo` is stripped, at every depth, before the
+   * alternative is tested: a pending or declined alternative denies, so
+   * asking whether it *authorises* the observation answers "no" for exactly
+   * what a reviewer is holding, and the inventory pass would then append it
+   * again as a new `authorised: true` alternative on every run. The hold only
+   * went on winning because OrMatcher takes the first alternative that
+   * identifies, so it sat ahead of the copy — and deleting the hold to express
+   * "no" would have approved it. Stripping approvals can only widen what
+   * counts as held, never narrow it, so an approved alternative that already
+   * covered the observation still does. Scope survives the strip: a hold under
+   * a `workflowMatcher` still holds only that workflow's observation.
+   *
+   * `subject` names the observation in the log line; never put a header value
+   * in it (a `set-cookie` value can be a secret).
+   */
+  private anyAlternativeHolds(alternatives: unknown[], matchable: Matchable, logger: Pick<Logger, 'log'>, subject: string): boolean {
+    return alternatives.some((alternative) => {
+      const held = createMatcher(withoutApprovals(alternative) as any).authorize(matchable).authorized
+      if (held && !createMatcher(alternative as any).authorize(matchable).authorized) {
+        logger.log(`${subject} is held by a pending or declined inventory alternative; not appending it again.`)
+      }
+      return held
+    })
   }
 
   /**
@@ -531,7 +558,7 @@ export class ScriptInventoryService implements IInventoryService {
 
       if (Array.isArray(rawInventoryHeader.authoriseWith)) {
         const matchable = { name: result.header.name, content: result.header.value, workflowId: result.target.workflowId ?? 'default', ...(result.header.url !== undefined ? { url: result.header.url } : {}) }
-        const patternAlreadyExists = rawInventoryHeader.authoriseWith.some((m: any) => createMatcher(m).authorize(matchable).authorized)
+        const patternAlreadyExists = this.anyAlternativeHolds(rawInventoryHeader.authoriseWith, matchable, result.target.logger, `${result.header.name}: the observed value`)
         if (!patternAlreadyExists) {
           rawInventoryHeader.authoriseWith.push(
             this.scopeNewAuthorisationAlternative(newHeaderValueMatcherConfig(result.header.name, result.header.value), result.target.workflowId, newMatcherConfig.authorisationInfo.description, updateDate),
@@ -541,7 +568,7 @@ export class ScriptInventoryService implements IInventoryService {
       } else if ('orMatcher' in rawInventoryHeader.authoriseWith) {
         const orChildren = rawInventoryHeader.authoriseWith.orMatcher as any[]
         const matchable = { name: result.header.name, content: result.header.value, workflowId: result.target.workflowId ?? 'default', ...(result.header.url !== undefined ? { url: result.header.url } : {}) }
-        const patternAlreadyExists = orChildren.some((m: any) => createMatcher(m).authorize(matchable).authorized)
+        const patternAlreadyExists = this.anyAlternativeHolds(orChildren, matchable, result.target.logger, `${result.header.name}: the observed value`)
         if (!patternAlreadyExists) {
           orChildren.push(this.scopeNewAuthorisationAlternative(newHeaderValueMatcherConfig(result.header.name, result.header.value), result.target.workflowId, newMatcherConfig.authorisationInfo.description, updateDate))
           applied.push(result)
@@ -600,4 +627,19 @@ export class ScriptInventoryService implements IInventoryService {
  */
 function isBlankUnidentifiedInlineScript(result: UnknownScriptFound): boolean {
   return result.script.name === UNIDENTIFIED_INLINE_SCRIPT_ID && (result.script.content ?? '').trim() === ''
+}
+
+/**
+ * A deep copy of a raw matcher config with every `authorisationInfo` removed,
+ * so testing it asks what the matcher holds rather than what a human approved.
+ * Never written back: the result is only ever handed to `createMatcher`.
+ */
+function withoutApprovals(config: unknown): unknown {
+  if (Array.isArray(config)) return config.map(withoutApprovals)
+  if (typeof config !== 'object' || config === null) return config
+  return Object.fromEntries(
+    Object.entries(config)
+      .filter(([key]) => key !== 'authorisationInfo')
+      .map(([key, value]) => [key, withoutApprovals(value)]),
+  )
 }

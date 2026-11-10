@@ -895,6 +895,161 @@ describe('ScriptInventoryService', () => {
       })
     })
 
+    describe('A hash a reviewer is holding is never appended again', () => {
+      // A reviewer held a changed inline body pending (an alternative with
+      // authorised: false). The duplicate check asked whether any alternative
+      // *authorised* the hash — a hold never does — so every inventory pass
+      // appended it again as authorised: true. The hold kept winning only
+      // because it sat earlier in the array; deleting it to say "no" would
+      // have approved the hash.
+      const approved = { description: 'Release v1', authorised: true, date: '2026-01-01T00:00:00.000Z' }
+      // An orMatcher root whose approval equals its first child's is written back as array
+      // syntax, which would exercise the array branch instead — so the root info differs.
+      const rootApproval = { description: 'Entry approved as a whole', authorised: true, date: '2026-02-01T00:00:00.000Z' }
+      const pending = { description: 'PENDING REVIEW', authorised: false, date: '2026-11-09T00:00:00.000Z' }
+      const declined = { description: 'DECLINED: unexplained change', authorised: false, date: '2026-11-09T00:00:00.000Z' }
+      const name = 'inline_script/analytics-init'
+      const v1 = { timestamp: '2026-01-01T00:00:00.000Z', hash: { value: 'v1' } }
+      const held = { timestamp: '2026-11-09T09:00:00.000Z', hash: { value: 'held' } }
+
+      const observe = (entry: InventoryScriptInfo, hash: string, workflowId = 'workflow-a') =>
+        new KnownScriptWithUnauthorisedContentFound(
+          { ...createMockTarget(), workflowId },
+          new Date('2026-11-09T12:00:00.000Z'),
+          { name, content: `body ${hash}`, hash: { value: hash }, workflowId },
+          entry,
+          entry.authoriseWith.matcher,
+          'No child matcher identified the resource',
+        )
+
+      const entryWith = (authoriseWith: any) => rawInventoryScriptInfoToInventoryScriptInfo({ identifyWith: { nameMatcher: '^inline_script\\/analytics-init$' }, authoriseWith })
+
+      it.each([
+        ['pending', pending],
+        ['declined', declined],
+      ])('does not re-append a hash a %s array alternative holds, and the hold still denies it', async (_label, info) => {
+        const entry = entryWith([
+          { hashes: [v1], authorisationInfo: approved },
+          { hashes: [held], authorisationInfo: info },
+        ])
+
+        const diff = await service.diff(createMockInventory([entry]), [observe(entry, 'held')])
+
+        expect(diff.appliedResults).toEqual([])
+        expect(inventoryScriptInfoToRawInventoryScriptInfo(diff.newInventory.scripts[0]!).authoriseWith).toHaveLength(2)
+        expect(diff.newInventory.scripts[0]!.authoriseWith.matcher.authorize({ name, content: 'body held', hash: { value: 'held' }, workflowId: 'workflow-a' }).authorized).toBe(false)
+      })
+
+      it('does not re-append a hash held under an orMatcher root that carries its own approval', async () => {
+        const entry = entryWith({
+          orMatcher: [
+            { hashes: [v1], authorisationInfo: approved },
+            { hashes: [held], authorisationInfo: pending },
+          ],
+          authorisationInfo: rootApproval,
+        })
+
+        expect(inventoryScriptInfoToRawInventoryScriptInfo(entry).authoriseWith).toHaveProperty('orMatcher')
+
+        const diff = await service.diff(createMockInventory([entry]), [observe(entry, 'held')])
+
+        expect(diff.appliedResults).toEqual([])
+      })
+
+      it('does not re-append a hash held by a pending leaf nested inside a scoped alternative', async () => {
+        const entry = entryWith([
+          { hashes: [v1], authorisationInfo: approved },
+          { andMatcher: [{ workflowMatcher: '^workflow-a$' }, { hashes: [held], authorisationInfo: pending }], authorisationInfo: approved },
+        ])
+
+        const diff = await service.diff(createMockInventory([entry]), [observe(entry, 'held', 'workflow-a')])
+
+        expect(diff.appliedResults).toEqual([])
+      })
+
+      it('keeps the hold to its scope: the same hash from another workflow is still appended', async () => {
+        const entry = entryWith([
+          { hashes: [v1], authorisationInfo: approved },
+          { andMatcher: [{ workflowMatcher: '^workflow-a$' }, { hashes: [held] }], authorisationInfo: pending },
+        ])
+
+        const diff = await service.diff(createMockInventory([entry]), [observe(entry, 'held', 'workflow-b')])
+
+        expect(diff.appliedResults).toHaveLength(1)
+        const raw = inventoryScriptInfoToRawInventoryScriptInfo(diff.newInventory.scripts[0]!).authoriseWith as any[]
+        expect(raw).toHaveLength(3)
+        expect(raw[2]).toMatchObject({ andMatcher: [{ workflowMatcher: '^workflow-b$' }, { hashes: [{ hash: { value: 'held' } }] }], authorisationInfo: { authorised: true } })
+      })
+
+      it('still appends a hash nothing holds, beside the hold', async () => {
+        const entry = entryWith([
+          { hashes: [v1], authorisationInfo: approved },
+          { hashes: [held], authorisationInfo: pending },
+        ])
+
+        const diff = await service.diff(createMockInventory([entry]), [observe(entry, 'new-release')])
+
+        expect(diff.appliedResults).toHaveLength(1)
+        const raw = inventoryScriptInfoToRawInventoryScriptInfo(diff.newInventory.scripts[0]!).authoriseWith as any[]
+        expect(raw).toHaveLength(3)
+        expect(raw[1]).toMatchObject({ hashes: [{ hash: { value: 'held' } }], authorisationInfo: { authorised: false } })
+        expect(raw[2]).toMatchObject({ andMatcher: [{ workflowMatcher: '^workflow-a$' }, { hashes: [{ hash: { value: 'new-release' } }] }], authorisationInfo: { authorised: true } })
+      })
+
+      describe('headers', () => {
+        const alternatives = () => [
+          { cspDirectiveMatcher: { directive: 'script-src', allow: ["'self'"] }, authorisationInfo: approved },
+          { cspDirectiveMatcher: { directive: 'connect-src', allow: ["'self'", 'https://held.example'] }, authorisationInfo: pending },
+        ]
+        const cspEntry = (shape: 'array' | 'orMatcher root' = 'array') =>
+          rawInventoryHeaderInfoToInventoryHeaderInfo({
+            identifyWith: { headerNameMatcher: '^content-security-policy$' },
+            authoriseWith: shape === 'array' ? alternatives() : { orMatcher: alternatives(), authorisationInfo: rootApproval },
+          })
+        const observeHeader = (entry: ReturnType<typeof cspEntry>, value: string, logger = createMockTarget().logger) => {
+          const target = { ...createMockTarget(), workflowId: 'workflow-a', logger }
+          return new KnownHeaderWithUnauthorisedContentFound(
+            target,
+            new Date('2026-11-09T12:00:00.000Z'),
+            { name: 'content-security-policy', value, target, workflow: target.workflow },
+            entry,
+            entry.authoriseWith.matcher,
+            'No child matcher identified the resource',
+          )
+        }
+
+        it.each(['array', 'orMatcher root'] as const)('does not re-append a header value a pending alternative holds (%s)', async (shape) => {
+          const entry = cspEntry(shape)
+          expect(Object.keys(inventoryHeaderInfoToRawInventoryHeaderInfo(entry).authoriseWith).includes('orMatcher')).toBe(shape === 'orMatcher root')
+
+          const diff = await service.diff({ ...createMockInventory([]), headers: [entry] }, [observeHeader(entry, "connect-src https://held.example 'self'")])
+
+          expect(diff.appliedResults).toEqual([])
+          expect(inventoryHeaderInfoToRawInventoryHeaderInfo(diff.newInventory.headers[0]!)).toEqual(inventoryHeaderInfoToRawInventoryHeaderInfo(entry))
+        })
+
+        it('logs the hold by header name, never the value (a set-cookie value can be a secret)', async () => {
+          const entry = cspEntry()
+          const logger = { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() }
+
+          await service.diff({ ...createMockInventory([]), headers: [entry] }, [observeHeader(entry, "connect-src https://held.example 'self'", logger)])
+
+          const lines = logger.log.mock.calls.map(([line]) => String(line))
+          expect(lines.some((line) => line.includes('content-security-policy') && line.includes('held by a pending or declined'))).toBe(true)
+          expect(lines.some((line) => line.includes('held.example'))).toBe(false)
+        })
+
+        it('still appends a header value nothing holds', async () => {
+          const entry = cspEntry()
+
+          const diff = await service.diff({ ...createMockInventory([]), headers: [entry] }, [observeHeader(entry, "connect-src 'self' https://new.example")])
+
+          expect(diff.appliedResults).toHaveLength(1)
+          expect(inventoryHeaderInfoToRawInventoryHeaderInfo(diff.newInventory.headers[0]!).authoriseWith).toHaveLength(3)
+        })
+      })
+    })
+
     describe('Composite matcher handling (top-level matcher gating)', () => {
       it('appends a new hash when the top-level authoriser is an OrMatcher (array syntax)', async () => {
         // Mirrors the realistic comparison-service contract: `authorizationMatcher`
